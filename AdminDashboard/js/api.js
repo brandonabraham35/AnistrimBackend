@@ -25,9 +25,11 @@ async function apiRequest(endpoint, options = {}) {
     if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
             localStorage.removeItem('admin_token');
-            if (!window.location.pathname.endsWith('index.html') && window.location.pathname !== '/AdminDashboard/') {
-                window.location.href = 'index.html';
-            }
+            if (response.status === 401 || response.status === 403) {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
+    window.location.replace('index.html');
+}
         }
         throw new Error(data.message || 'API Request failed');
     }

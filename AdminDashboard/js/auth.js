@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.user && (data.user.isAdmin || data.user.is_admin)) {
                     localStorage.setItem('admin_token', data.token);
                     localStorage.setItem('admin_user', JSON.stringify(data.user));
-                    window.location.href = 'dashboard.html';
+                    window.location.replace('dashboard.html');
                 } else {
                     errorMsg.innerText = 'Access denied. Admin only.';
                     localStorage.removeItem('admin_token');
