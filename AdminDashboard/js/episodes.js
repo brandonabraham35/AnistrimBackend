@@ -1,140 +1,159 @@
 let currentAnimeId = null;
+let animeEpisodes = [];
 
 async function manageEpisodes(animeId, animeTitle) {
     currentAnimeId = animeId;
-    document.getElementById('current-anime-title').innerText = `Episodes for: ${animeTitle}`;
+    document.getElementById('current-anime-title').innerText = `Manage Episodes: ${animeTitle}`;
     window.showSection('episodes');
-    await loadEpisodes();
+    await loadEpisodesList();
 }
 
-let allEpisodes = [];
+async function loadEpisodesList() {
+    const data = await window.apiRequest(`/anime/${currentAnimeId}`);
+    animeEpisodes = data.episodes || [];
+    const tbody = document.querySelector('#episodes-table tbody');
+    tbody.innerHTML = '';
 
-async function loadEpisodes() {
-    try {
-        const data = await window.apiRequest(`/anime/${currentAnimeId}`);
-        allEpisodes = data.episodes || [];
-        const tbody = document.querySelector('#episodes-table tbody');
-        tbody.innerHTML = '';
-
-        allEpisodes.forEach(ep => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
+    animeEpisodes.forEach(ep => {
+        tbody.innerHTML += `
+            <tr>
                 <td>${ep.episode_number}</td>
-                <td><img src="${ep.thumbnail_url || 'placeholder.jpg'}" width="80" height="45" style="object-fit: cover;"></td>
-                <td>${ep.title || 'No Title'}</td>
-                <td>${ep.is_premium ? '⭐' : 'Free'}</td>
+                <td><img src="${ep.thumbnail_url || 'placeholder.jpg'}" width="80" style="border-radius:4px"></td>
+                <td>${ep.title || 'Untitled'}</td>
+                <td><span class="status-badge" style="background:#6366f1">${ep.video_status || 'ready'}</span></td>
+                <td>${ep.is_premium ? '💎' : 'Free'}</td>
                 <td>
-                    <button class="action-btn edit-btn" onclick="openEditEpisode(${ep.id})">Edit</button>
-                    <button class="action-btn delete-btn" onclick="deleteEpisode(${ep.id})">Delete</button>
+                    <button class="action-btn edit-btn" onclick="editEpisode(${ep.id})"><i class="fas fa-edit"></i></button>
+                    <button class="action-btn delete-btn" onclick="deleteEpisode(${ep.id})"><i class="fas fa-trash"></i></button>
                 </td>
-            `;
-            tbody.appendChild(tr);
-        });
-    } catch (err) {
-        console.error('Failed to load episodes:', err);
-    }
+            </tr>
+        `;
+    });
 }
 
-async function deleteEpisode(id) {
-    if (!confirm('Delete this episode?')) return;
-    try {
-        await window.apiRequest(`/admin/episodes/${id}`, { method: 'DELETE' });
-        loadEpisodes();
-    } catch (err) {
-        alert(err.message);
-    }
-}
-
-// Modal handling
 const epModal = document.getElementById('episode-modal');
-const epForm = document.getElementById('episode-form');
-const closeEpModal = epModal.querySelector('.close-modal');
-
-document.getElementById('add-episode-btn').addEventListener('click', () => {
+document.getElementById('add-episode-btn').onclick = () => {
     document.getElementById('episode-modal-title').innerText = 'Add Episode';
-    epForm.reset();
+    document.getElementById('episode-form').reset();
     document.getElementById('episode-id').value = '';
     document.getElementById('ep-thumb-preview').innerHTML = '';
+    document.getElementById('video-status-display').innerText = '';
     epModal.style.display = 'block';
-});
+};
 
-closeEpModal.onclick = () => epModal.style.display = 'none';
-window.addEventListener('click', (e) => { if (e.target == epModal) epModal.style.display = 'none'; });
-
-function editEpisode(ep) {
+function editEpisode(id) {
+    const ep = animeEpisodes.find(x => x.id === id);
+    if (!ep) return;
     document.getElementById('episode-modal-title').innerText = 'Edit Episode';
     document.getElementById('episode-id').value = ep.id;
     document.getElementById('ep-number').value = ep.episode_number;
     document.getElementById('ep-title').value = ep.title || '';
-    document.getElementById('ep-video-url').value = ep.video_url || '';
-    document.getElementById('ep-duration').value = ep.duration_sec || '';
     document.getElementById('ep-description').value = ep.description || '';
     document.getElementById('ep-is-premium').checked = !!ep.is_premium;
     document.getElementById('ep-thumb-url').value = ep.thumbnail_url || '';
+    document.getElementById('ep-bunny-id').value = ep.bunny_video_id || '';
+    document.getElementById('ep-playback-url').value = ep.playback_url || '';
+    document.getElementById('ep-embed-url').value = ep.embed_url || '';
 
-    if (ep.thumbnail_url) document.getElementById('ep-thumb-preview').innerHTML = `<img src="${ep.thumbnail_url}" width="150">`;
+    if (ep.thumbnail_url) document.getElementById('ep-thumb-preview').innerHTML = `<img src="${ep.thumbnail_url}">`;
+    document.getElementById('video-status-display').innerText = `Status: ${ep.video_status || 'unknown'}`;
 
     epModal.style.display = 'block';
 }
 
-// Thumbnail upload
-document.getElementById('ep-thumb-file').addEventListener('change', async (e) => {
+async function deleteEpisode(id) {
+    if (confirm('Delete this episode?')) {
+        await window.apiRequest(`/admin/episodes/${id}`, { method: 'DELETE' });
+        loadEpisodesList();
+    }
+}
+
+// Video Upload to Bunny Stream
+document.getElementById('ep-video-file').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    const progress = document.getElementById('video-upload-progress');
+    const fill = progress.querySelector('.progress-fill');
+    const status = document.getElementById('video-status-display');
+
+    progress.style.display = 'block';
+    fill.style.width = '0%';
+    status.innerText = 'Uploading to Bunny Stream...';
+
     try {
-        document.getElementById('ep-thumb-preview').innerText = 'Uploading...';
         const formData = new FormData();
-        formData.append('image', file);
-        const data = await window.apiRequest('/admin/upload/thumbnails', {
+        formData.append('video', file);
+        formData.append('title', document.getElementById('ep-title').value || `Ep ${document.getElementById('ep-number').value}`);
+
+        const data = await window.apiRequest('/admin/upload/video', {
             method: 'POST',
             body: formData
         });
-        const url = data.url || data.imageUrl || data.image_url || data.secure_url || data.path;
-        document.getElementById('ep-thumb-url').value = url;
-        document.getElementById('ep-thumb-preview').innerHTML = `<img src="${url}" width="150">`;
+
+        document.getElementById('ep-bunny-id').value = data.bunny_video_id;
+        document.getElementById('ep-playback-url').value = data.playback_url;
+        document.getElementById('ep-embed-url').value = data.embed_url;
+
+        fill.style.width = '100%';
+        status.innerText = 'Uploaded! Processing...';
+
+        // Start polling status
+        pollVideoStatus(data.bunny_video_id);
     } catch (err) {
-        alert('Upload failed: ' + err.message);
+        status.innerText = 'Upload failed: ' + err.message;
     }
-});
+};
 
-epForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const id = document.getElementById('episode-id').value;
-    const epData = {
-        episode_number: parseInt(document.getElementById('ep-number').value),
-        title: document.getElementById('ep-title').value,
-        video_url: document.getElementById('ep-video-url').value,
-        duration_sec: parseInt(document.getElementById('ep-duration').value) || 0,
-        description: document.getElementById('ep-description').value,
-        is_premium: document.getElementById('ep-is-premium').checked ? 1 : 0,
-        thumbnail_url: document.getElementById('ep-thumb-url').value
-    };
-
-    try {
-        const method = id ? 'PUT' : 'POST';
-        const endpoint = id ? `/admin/episodes/${id}` : `/admin/anime/${currentAnimeId}/episodes`;
-        await window.apiRequest(endpoint, {
-            method,
-            body: epData
-        });
-        epModal.style.display = 'none';
-        loadEpisodes();
-    } catch (err) {
-        alert(err.message);
-    }
-});
-
-document.getElementById('back-to-anime-btn').addEventListener('click', () => {
-    window.showSection('anime');
-});
-
-function openEditEpisode(id) {
-    const ep = allEpisodes.find(e => e.id === id);
-    if (ep) editEpisode(ep);
+async function pollVideoStatus(videoId) {
+    const statusDisplay = document.getElementById('video-status-display');
+    const interval = setInterval(async () => {
+        try {
+            const data = await window.apiRequest(`/admin/videos/${videoId}/status`);
+            statusDisplay.innerText = `Status: ${data.status} (${data.progress || 0}%)`;
+            if (data.status === 'ready' || data.status === 'failed') {
+                clearInterval(interval);
+            }
+        } catch (e) { clearInterval(interval); }
+    }, 5000);
 }
 
+// Thumbnail Upload
+document.getElementById('ep-thumb-file').onchange = async (e) => {
+    if (!e.target.files[0]) return;
+    const formData = new FormData();
+    formData.append('image', e.target.files[0]);
+    const data = await window.apiRequest('/admin/upload/thumbnails', { method: 'POST', body: formData });
+    document.getElementById('ep-thumb-url').value = data.url;
+    document.getElementById('ep-thumb-preview').innerHTML = `<img src="${data.url}">`;
+};
+
+document.getElementById('episode-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('episode-id').value;
+    const body = {
+        episode_number: parseInt(document.getElementById('ep-number').value),
+        title: document.getElementById('ep-title').value,
+        description: document.getElementById('ep-description').value,
+        is_premium: document.getElementById('ep-is-premium').checked ? 1 : 0,
+        thumbnail_url: document.getElementById('ep-thumb-url').value,
+        bunny_video_id: document.getElementById('ep-bunny-id').value,
+        playback_url: document.getElementById('ep-playback-url').value,
+        embed_url: document.getElementById('ep-embed-url').value,
+        video_status: document.getElementById('video-status-display').innerText.replace('Status: ', '').split(' ')[0]
+    };
+
+    await window.apiRequest(id ? `/admin/episodes/${id}` : `/admin/anime/${currentAnimeId}/episodes`, {
+        method: id ? 'PUT' : 'POST',
+        body
+    });
+    epModal.style.display = 'none';
+    loadEpisodesList();
+};
+
+document.getElementById('back-to-anime-btn').onclick = () => window.showSection('anime');
+epModal.querySelector('.close-modal').onclick = () => epModal.style.display = 'none';
+
 window.manageEpisodes = manageEpisodes;
-window.loadEpisodes = loadEpisodes;
 window.editEpisode = editEpisode;
-window.openEditEpisode = openEditEpisode;
 window.deleteEpisode = deleteEpisode;

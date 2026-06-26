@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: { email, password }
                 });
 
-                if (data.user && (data.user.isAdmin || data.user.is_admin)) {
+                if (data.user && data.user.is_admin) {
                     localStorage.setItem('admin_token', data.token);
                     localStorage.setItem('admin_user', JSON.stringify(data.user));
                     window.location.replace('dashboard.html');
@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function logout() {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
-    window.location.href = 'index.html';
+    window.location.replace('index.html');
 }
 
 window.logout = logout;
