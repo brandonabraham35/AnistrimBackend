@@ -4,7 +4,7 @@ const db = require('../config/db');
 require('dotenv').config();
 
 const PESAPAL_BASE = 'https://pay.pesapal.com/v3';
-const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrim-backend-production.up.railway.app';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 
 // ── CORRECTED PLANS (monthly = 180000 per spec) ──────────────
 const PLANS = {

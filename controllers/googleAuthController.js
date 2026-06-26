@@ -5,7 +5,7 @@ const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const db  = require('../config/db');
 
-const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrim-backend-production.up.railway.app';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
 const APP_PACKAGE = process.env.APP_PACKAGE || 'com.anistrim.app';
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
