@@ -39,6 +39,116 @@ exports.getDashboardStats = async (req, res) => {
   }
 };
 
+exports.getDashboardOverview = async (req, res) => {
+  try {
+    // 1. User Stats
+    let userStats = { total: 0, premium: 0, banned: 0, activeToday: 0 };
+    try {
+      const [[u]] = await db.query(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN is_premium = 1 THEN 1 ELSE 0 END) as premium,
+          SUM(CASE WHEN status = 'banned' THEN 1 ELSE 0 END) as banned
+        FROM users
+      `);
+      userStats = { ...userStats, ...u };
+
+      const [[active]] = await db.query(`
+        SELECT COUNT(DISTINCT user_id) as count
+        FROM activity_logs
+        WHERE DATE(created_at) = CURDATE()
+      `);
+      userStats.activeToday = active ? active.count : 0;
+    } catch (e) { console.error('User stats error:', e); }
+
+    // 2. Content Stats
+    let contentStats = { totalAnime: 0, totalEpisodes: 0, totalViews: 0 };
+    try {
+      const [[a]] = await db.query(`SELECT COUNT(*) as total, SUM(view_count) as views FROM anime`);
+      const [[e]] = await db.query(`SELECT COUNT(*) as total FROM episodes`);
+      contentStats = {
+        totalAnime: a.total || 0,
+        totalEpisodes: e.total || 0,
+        totalViews: a.views || 0
+      };
+    } catch (e) { console.error('Content stats error:', e); }
+
+    // 3. Revenue Stats
+    let revenueStats = { total: 0, today: 0, monthly: 0 };
+    try {
+      const [[rev]] = await db.query(`
+        SELECT
+          COALESCE(SUM(amount), 0) as total,
+          COALESCE(SUM(CASE WHEN DATE(paid_at) = CURDATE() THEN amount ELSE 0 END), 0) as today,
+          COALESCE(SUM(CASE WHEN MONTH(paid_at) = MONTH(CURDATE()) AND YEAR(paid_at) = YEAR(CURDATE()) THEN amount ELSE 0 END), 0) as monthly
+        FROM payments
+        WHERE status = 'successful'
+      `);
+      revenueStats = rev;
+    } catch (e) { console.error('Revenue stats error:', e); }
+
+    // 4. Bunny Stream Stats
+    let bunnyStats = { ready: 0, processing: 0, failed: 0 };
+    try {
+      const [counts] = await db.query(`
+        SELECT video_status, COUNT(*) as count
+        FROM episodes
+        WHERE bunny_video_id IS NOT NULL
+        GROUP BY video_status
+      `);
+      counts.forEach(row => {
+        if (row.video_status === 'ready') bunnyStats.ready = row.count;
+        else if (row.video_status === 'processing' || row.video_status === 'encoding') bunnyStats.processing += row.count;
+        else if (row.video_status === 'failed') bunnyStats.failed = row.count;
+      });
+    } catch (e) { console.error('Bunny stats error:', e); }
+
+    // 5. Recent Data
+    let recentAnime = [], recentEpisodes = [], topAnime = [], recentPayments = [], activityLogs = [], latestUsers = [];
+    try {
+      [recentAnime] = await db.query(`SELECT id, title, cover_image, created_at FROM anime ORDER BY created_at DESC LIMIT 5`);
+      [recentEpisodes] = await db.query(`
+        SELECT e.id, e.title, e.episode_number, a.title as anime_title, e.created_at
+        FROM episodes e
+        JOIN anime a ON e.anime_id = a.id
+        ORDER BY e.created_at DESC LIMIT 5
+      `);
+      [topAnime] = await db.query(`SELECT id, title, view_count, cover_image FROM anime ORDER BY view_count DESC LIMIT 5`);
+      [recentPayments] = await db.query(`
+        SELECT p.id, u.name, p.amount, p.status, p.created_at
+        FROM payments p
+        JOIN users u ON p.user_id = u.id
+        ORDER BY p.created_at DESC LIMIT 5
+      `);
+      [activityLogs] = await db.query(`
+        SELECT l.*, u.name as user_name
+        FROM activity_logs l
+        LEFT JOIN users u ON l.user_id = u.id
+        ORDER BY l.created_at DESC LIMIT 10
+      `);
+      [latestUsers] = await db.query(`SELECT id, name, email, is_premium, status, created_at FROM users ORDER BY created_at DESC LIMIT 5`);
+    } catch (e) { console.error('Recent data error:', e); }
+
+    res.json({
+      overview: {
+        users: userStats,
+        content: contentStats,
+        revenue: revenueStats,
+        bunny: bunnyStats
+      },
+      recentAnime,
+      recentEpisodes,
+      topAnime,
+      recentPayments,
+      activityLogs,
+      latestUsers
+    });
+  } catch (err) {
+    console.error('Dashboard Overview Error:', err);
+    res.status(500).json({ message: 'Failed to fetch dashboard overview.' });
+  }
+};
+
 // ─── USERS ────────────────────────────────────────────────
 exports.getAllUsers = async (req, res) => {
   const { q, role, status } = req.query;

@@ -39,64 +39,133 @@
 
         <!-- Stats Section -->
         <section id="stats-section" class="content-section">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <i class="fas fa-users"></i>
-                    <div>
-                        <h3>Total Users</h3>
+            <div class="dashboard-header-stats">
+                <div class="stat-card main">
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                    <div class="stat-info">
+                        <h3>Community</h3>
                         <p id="total-users">0</p>
+                        <span class="stat-detail"><i class="fas fa-star"></i> <span id="premium-users">0</span> Premium</span>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <i class="fas fa-star"></i>
-                    <div>
-                        <h3>Premium Users</h3>
-                        <p id="premium-users">0</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-clapperboard"></i>
-                    <div>
-                        <h3>Total Anime</h3>
+                <div class="stat-card main">
+                    <div class="stat-icon"><i class="fas fa-clapperboard"></i></div>
+                    <div class="stat-info">
+                        <h3>Library</h3>
                         <p id="total-anime">0</p>
+                        <span class="stat-detail"><i class="fas fa-play-circle"></i> <span id="total-episodes">0</span> Episodes</span>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <i class="fas fa-play-circle"></i>
-                    <div>
-                        <h3>Total Episodes</h3>
-                        <p id="total-episodes">0</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-eye"></i>
-                    <div>
-                        <h3>Total Views</h3>
+                <div class="stat-card main">
+                    <div class="stat-icon"><i class="fas fa-eye"></i></div>
+                    <div class="stat-info">
+                        <h3>Reach</h3>
                         <p id="total-views">0</p>
+                        <span class="stat-detail"><i class="fas fa-chart-line"></i> Views Today</span>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <i class="fas fa-coins"></i>
-                    <div>
+                <div class="stat-card main highlight">
+                    <div class="stat-icon"><i class="fas fa-coins"></i></div>
+                    <div class="stat-info">
                         <h3>Total Revenue</h3>
                         <p id="revenue-total">0</p>
+                        <span class="stat-detail"><i class="fas fa-calendar-check"></i> <span id="revenue-monthly">0</span> This Month</span>
                     </div>
                 </div>
             </div>
-            <div class="dashboard-tables">
-                <div class="table-container">
-                    <h3><i class="fas fa-fire"></i> Top Anime</h3>
-                    <table id="top-anime-table">
-                        <thead><tr><th>Title</th><th>Views</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
+
+            <div class="dashboard-grid">
+                <!-- Row 1: Left (66%) and Right (33%) -->
+                <div class="dashboard-main-row">
+                    <div class="dashboard-column-double">
+                        <!-- Revenue Chart Placeholder / Summary -->
+                        <div class="dashboard-card revenue-summary">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-pie"></i> Revenue Performance</h3>
+                                <div class="card-badges">
+                                    <span class="badge success">Today: <span id="revenue-today">0</span></span>
+                                </div>
+                            </div>
+                            <div class="revenue-stats-inline">
+                                <div class="rev-item">
+                                    <label>Daily Avg</label>
+                                    <p id="rev-avg-daily">UGX 0</p>
+                                </div>
+                                <div class="rev-item">
+                                    <label>Active Users Today</label>
+                                    <p id="active-users-today">0</p>
+                                </div>
+                                <div class="rev-item">
+                                    <label>Banned Users</label>
+                                    <p id="banned-users" class="text-error">0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Encoding Queue -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-microchip"></i> Bunny Encoding Queue</h3>
+                            </div>
+                            <div class="bunny-stats">
+                                <div class="bunny-badge ready"><i class="fas fa-check-circle"></i> <span id="bunny-ready">0</span> Ready</div>
+                                <div class="bunny-badge processing"><i class="fas fa-spinner fa-spin"></i> <span id="bunny-processing">0</span> Encoding</div>
+                                <div class="bunny-badge failed"><i class="fas fa-exclamation-triangle"></i> <span id="bunny-failed">0</span> Failed</div>
+                            </div>
+                        </div>
+
+                        <!-- Recent Uploads -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-upload"></i> Recent Uploads</h3>
+                            </div>
+                            <div class="recent-uploads-list" id="recent-uploads">
+                                <!-- JS Populated -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-column-single">
+                        <!-- Top Content -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-fire"></i> Top Anime</h3>
+                            </div>
+                            <div class="top-anime-list" id="top-anime-list">
+                                <!-- JS Populated -->
+                            </div>
+                        </div>
+
+                        <!-- Recent Payments -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-receipt"></i> Recent Payments</h3>
+                            </div>
+                            <table class="simple-table" id="recent-payments-table">
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-                <div class="table-container">
-                    <h3><i class="fas fa-receipt"></i> Recent Payments</h3>
-                    <table id="recent-payments-table">
-                        <thead><tr><th>User</th><th>Amount</th><th>Status</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
+
+                <!-- Row 2: Logs and New Users -->
+                <div class="dashboard-footer-row">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-history"></i> System Activity</h3>
+                        </div>
+                        <div class="activity-timeline" id="activity-logs">
+                            <!-- JS Populated -->
+                        </div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-user-plus"></i> New Registrations</h3>
+                        </div>
+                        <div class="new-users-list" id="latest-users">
+                            <!-- JS Populated -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>

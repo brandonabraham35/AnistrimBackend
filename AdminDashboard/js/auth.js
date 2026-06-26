@@ -2,8 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('login-form');
     const errorMsg = document.getElementById('error-message');
 
-    // Check if already logged in
-    if (localStorage.getItem('admin_token')) {
+    // Check if already logged in (only redirect if on login page)
+    if (localStorage.getItem('admin_token') && (window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/'))) {
         window.location.href = 'dashboard.html';
     }
 
