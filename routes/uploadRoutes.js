@@ -11,11 +11,11 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const {
   handleImageUpload,
-  hasCloudinaryConfig,
+  hasBunnyConfig,
   FIELD_NAMES,
   FOLDERS,
   MAX_FILE_SIZE,
-} = require('../utils/cloudinaryUpload');
+} = require('../utils/bunnyUpload');
 
 const protect = auth.protect || auth.auth || auth.authenticate;
 
@@ -48,9 +48,11 @@ router.get('/_ping', (_req, res) => {
   res.json({
     ok: true,
     route: '/api/admin/upload',
-    provider: 'cloudinary',
-    uploadEngine: 'multer-memory-storage + cloudinary-upload-stream',
-    cloudConfigured: hasCloudinaryConfig(),
+    provider: 'bunny',
+    uploadEngine: 'multer-memory-storage + axios-put-bunny',
+    bunnyConfigured: hasBunnyConfig(),
+    storageZone: process.env.BUNNY_STORAGE_ZONE,
+    cdnUrl: process.env.BUNNY_CDN_URL,
     maxFileSizeMb: Math.round(MAX_FILE_SIZE / 1024 / 1024),
     acceptedFields: FIELD_NAMES,
     folders: FOLDERS,
@@ -61,8 +63,8 @@ router.get('/_ping', (_req, res) => {
 router.get('/_health', protect, (_req, res) => {
   res.json({
     ok: true,
-    provider: 'cloudinary',
-    cloudConfigured: hasCloudinaryConfig(),
+    provider: 'bunny',
+    bunnyConfigured: hasBunnyConfig(),
     maxFileSizeMb: Math.round(MAX_FILE_SIZE / 1024 / 1024),
     acceptedFields: FIELD_NAMES,
     folders: FOLDERS,
