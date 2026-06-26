@@ -58,7 +58,14 @@ console.log("password_hash:", user.password_hash);
 console.log("typeof password_hash:", typeof user.password_hash);
 console.log("================================");
 
+if (!user.password_hash) {
+    return res.status(401).json({
+        message: 'This account uses Google Sign-In. Please sign in with Google or set a password first.'
+    });
+}
+
 const match = await bcrypt.compare(password, user.password_hash);
+
     if (!match)
       return res.status(401).json({ message: 'Invalid email or password.' });
 
