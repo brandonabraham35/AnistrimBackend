@@ -82,12 +82,20 @@ exports.googleCallback = async (req, res) => {
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
-    const ticket = await client.verifyIdToken({
-      idToken: tokens.id_token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+  headers: {
+    Authorization: `Bearer ${tokens.access_token}`,
+  },
+});
 
-    const payload = ticket.getPayload();
+if (!userInfoResponse.ok) {
+  const text = await userInfoResponse.text();
+  throw new Error(`Failed to fetch Google user info: ${text}`);
+}
+
+const payload = await userInfoResponse.json();
+
+const payload = ticket.getPayload();
 
     if (!payload?.email) return res.send(errorPage('Could not get your email.'));
     if (payload.email_verified === false) return res.send(errorPage('Google email is not verified.'));
