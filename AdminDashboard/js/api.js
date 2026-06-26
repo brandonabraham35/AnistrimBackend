@@ -21,15 +21,17 @@ async function apiRequest(endpoint, options = {}) {
         headers
     });
 
+    if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        window.location.replace('index.html');
+        return;
+    }
+
     const data = response.status !== 204 ? await response.json() : null;
+
     if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-            localStorage.removeItem('admin_token');
-            if (!window.location.pathname.endsWith('index.html') && window.location.pathname !== '/AdminDashboard/') {
-                window.location.href = 'index.html';
-            }
-        }
-        throw new Error(data.message || 'API Request failed');
+        throw new Error(data?.message || 'API Request failed');
     }
 
     return data;

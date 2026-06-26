@@ -5,81 +5,96 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AniStrim Admin - Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="dashboard-page">
     <aside class="sidebar">
         <div class="sidebar-header">
-            <h2>AniStrim Admin</h2>
+            <h2><i class="fas fa-film"></i> AniStrim</h2>
         </div>
         <nav class="sidebar-nav">
             <ul>
-                <li><a href="#" class="nav-link active" data-section="stats">Dashboard</a></li>
-                <li><a href="#" class="nav-link" data-section="anime">Anime</a></li>
-                <li><a href="#" class="nav-link" data-section="users">Users</a></li>
-                <li><a href="#" class="nav-link" data-section="payments">Payments</a></li>
+                <li><a href="#" class="nav-link active" data-section="stats"><i class="fas fa-chart-line"></i> Dashboard</a></li>
+                <li><a href="#" class="nav-link" data-section="anime"><i class="fas fa-clapperboard"></i> Anime</a></li>
+                <li><a href="#" class="nav-link" data-section="genres"><i class="fas fa-tags"></i> Genres</a></li>
+                <li><a href="#" class="nav-link" data-section="users"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="#" class="nav-link" data-section="payments"><i class="fas fa-money-bill-wave"></i> Payments</a></li>
+                <li><a href="#" class="nav-link" data-section="ads"><i class="fas fa-ad"></i> Ads</a></li>
+                <li><a href="#" class="nav-link" data-section="settings"><i class="fas fa-cog"></i> Settings</a></li>
+                <li><a href="#" class="nav-link" data-section="logs"><i class="fas fa-history"></i> Logs</a></li>
             </ul>
         </nav>
         <div class="sidebar-footer">
-            <button onclick="logout()" class="logout-btn">Logout</button>
+            <button onclick="logout()" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
         </div>
     </aside>
 
     <main class="content">
         <header class="content-header">
             <h1 id="section-title">Dashboard</h1>
-            <div id="admin-name" class="admin-name"></div>
+            <div id="admin-info" class="admin-info">
+                <span id="admin-name"></span>
+            </div>
         </header>
 
         <!-- Stats Section -->
         <section id="stats-section" class="content-section">
             <div class="stats-grid">
                 <div class="stat-card">
-                    <h3>Total Users</h3>
-                    <p id="total-users">-</p>
+                    <i class="fas fa-users"></i>
+                    <div>
+                        <h3>Total Users</h3>
+                        <p id="total-users">0</p>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Premium Users</h3>
-                    <p id="premium-users">-</p>
+                    <i class="fas fa-star"></i>
+                    <div>
+                        <h3>Premium Users</h3>
+                        <p id="premium-users">0</p>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Total Anime</h3>
-                    <p id="total-anime">-</p>
+                    <i class="fas fa-clapperboard"></i>
+                    <div>
+                        <h3>Total Anime</h3>
+                        <p id="total-anime">0</p>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Total Views</h3>
-                    <p id="total-views">-</p>
+                    <i class="fas fa-play-circle"></i>
+                    <div>
+                        <h3>Total Episodes</h3>
+                        <p id="total-episodes">0</p>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Today's Revenue</h3>
-                    <p id="revenue-today">-</p>
+                    <i class="fas fa-eye"></i>
+                    <div>
+                        <h3>Total Views</h3>
+                        <p id="total-views">0</p>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Total Revenue</h3>
-                    <p id="revenue-total">-</p>
+                    <i class="fas fa-coins"></i>
+                    <div>
+                        <h3>Total Revenue</h3>
+                        <p id="revenue-total">0</p>
+                    </div>
                 </div>
             </div>
             <div class="dashboard-tables">
                 <div class="table-container">
-                    <h3>Top Anime</h3>
+                    <h3><i class="fas fa-fire"></i> Top Anime</h3>
                     <table id="top-anime-table">
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Views</th>
-                            </tr>
-                        </thead>
+                        <thead><tr><th>Title</th><th>Views</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
                 <div class="table-container">
-                    <h3>Recent Users</h3>
-                    <table id="recent-users-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Email</th>
-                            </tr>
-                        </thead>
+                    <h3><i class="fas fa-receipt"></i> Recent Payments</h3>
+                    <table id="recent-payments-table">
+                        <thead><tr><th>User</th><th>Amount</th><th>Status</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -89,7 +104,16 @@
         <!-- Anime Section -->
         <section id="anime-section" class="content-section" style="display: none;">
             <div class="section-actions">
-                <button class="primary-btn" id="add-anime-btn">Add New Anime</button>
+                <div class="search-box">
+                    <input type="text" id="anime-search" placeholder="Search anime...">
+                    <select id="anime-filter-status">
+                        <option value="">All Status</option>
+                        <option value="airing">Airing</option>
+                        <option value="completed">Completed</option>
+                        <option value="upcoming">Upcoming</option>
+                    </select>
+                </div>
+                <button class="primary-btn" id="add-anime-btn"><i class="fas fa-plus"></i> Add Anime</button>
             </div>
             <div class="table-container">
                 <table id="anime-table">
@@ -97,9 +121,9 @@
                         <tr>
                             <th>Cover</th>
                             <th>Title</th>
-                            <th>Year</th>
                             <th>Status</th>
                             <th>Premium</th>
+                            <th>Featured</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -108,24 +132,17 @@
             </div>
         </section>
 
-        <!-- Episodes Section (Hidden by default, shown when managing an anime) -->
-        <section id="episodes-section" class="content-section" style="display: none;">
+        <!-- Genres Section -->
+        <section id="genres-section" class="content-section" style="display: none;">
             <div class="section-actions">
-                <button class="secondary-btn" id="back-to-anime-btn">Back to Anime</button>
-                <button class="primary-btn" id="add-episode-btn">Add New Episode</button>
+                <form id="genre-form" class="inline-form">
+                    <input type="text" id="genre-name" placeholder="Genre Name" required>
+                    <button type="submit" class="primary-btn">Add Genre</button>
+                </form>
             </div>
-            <h2 id="current-anime-title"></h2>
             <div class="table-container">
-                <table id="episodes-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Thumbnail</th>
-                            <th>Title</th>
-                            <th>Premium</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                <table id="genres-table">
+                    <thead><tr><th>Name</th><th>Actions</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -133,14 +150,18 @@
 
         <!-- Users Section -->
         <section id="users-section" class="content-section" style="display: none;">
+            <div class="section-actions">
+                <input type="text" id="user-search" placeholder="Search users...">
+            </div>
             <div class="table-container">
                 <table id="users-table">
                     <thead>
                         <tr>
                             <th>Name</th>
                             <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
                             <th>Premium</th>
-                            <th>Joined</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -151,30 +172,113 @@
 
         <!-- Payments Section -->
         <section id="payments-section" class="content-section" style="display: none;">
-            <div class="stats-grid">
-                 <div class="stat-card">
-                    <h3>Monthly Subs</h3>
-                    <p id="monthly-subs">-</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Yearly Subs</h3>
-                    <p id="yearly-subs">-</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Total Trans.</h3>
-                    <p id="total-transactions">-</p>
-                </div>
-            </div>
             <div class="table-container">
-                <h3>Recent Payments</h3>
-                <table id="payments-table">
+                <table id="payments-full-table">
                     <thead>
                         <tr>
                             <th>User</th>
-                            <th>Plan</th>
                             <th>Amount</th>
                             <th>Status</th>
                             <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Ads Section -->
+        <section id="ads-section" class="content-section" style="display: none;">
+            <div class="section-actions">
+                <button class="primary-btn" id="add-ad-btn">Add New Ad</button>
+            </div>
+            <div class="table-container">
+                <table id="ads-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Type</th>
+                            <th>Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings-section" class="content-section" style="display: none;">
+            <div class="settings-container card">
+                <form id="settings-form">
+                    <div class="form-group">
+                        <label>Site Name</label>
+                        <input type="text" name="site_name">
+                    </div>
+                    <div class="form-group">
+                        <label>Announcement Message</label>
+                        <textarea name="announcement"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Premium Monthly Price (UGX)</label>
+                            <input type="number" name="premium_price_monthly">
+                        </div>
+                        <div class="form-group">
+                            <label>Premium Yearly Price (UGX)</label>
+                            <input type="number" name="premium_price_yearly">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Bunny CDN Hostname</label>
+                        <input type="text" name="bunny_cdn_hostname">
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Email</label>
+                        <input type="email" name="contact_email">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" name="maintenance_mode" value="1"> Maintenance Mode</label>
+                    </div>
+                    <button type="submit" class="primary-btn">Save Settings</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Logs Section -->
+        <section id="logs-section" class="content-section" style="display: none;">
+            <div class="table-container">
+                <table id="logs-table">
+                    <thead>
+                        <tr>
+                            <th>Admin</th>
+                            <th>Action</th>
+                            <th>Target</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Episodes Section (Contextual) -->
+        <section id="episodes-section" class="content-section" style="display: none;">
+            <div class="section-actions">
+                <button class="secondary-btn" id="back-to-anime-btn"><i class="fas fa-arrow-left"></i> Back</button>
+                <button class="primary-btn" id="add-episode-btn"><i class="fas fa-plus"></i> Add Episode</button>
+            </div>
+            <h2 id="current-anime-title"></h2>
+            <div class="table-container">
+                <table id="episodes-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Thumbnail</th>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th>Premium</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -208,6 +312,7 @@
                         <select id="anime-status">
                             <option value="airing">Airing</option>
                             <option value="completed">Completed</option>
+                            <option value="upcoming">Upcoming</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -220,26 +325,36 @@
                     </div>
                 </div>
                 <div class="form-group">
+                    <label>Genres (Hold Ctrl to select multiple)</label>
+                    <select id="anime-genres" multiple class="multi-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Tags (Comma separated)</label>
+                    <input type="text" id="anime-tags">
+                </div>
+                <div class="form-group">
                     <label>Description</label>
                     <textarea id="anime-description"></textarea>
                 </div>
-                <div class="form-row">
+                <div class="form-row checkbox-row">
                     <label><input type="checkbox" id="anime-is-premium"> Premium</label>
                     <label><input type="checkbox" id="anime-is-featured"> Featured</label>
                 </div>
-                <div class="form-group">
-                    <label>Cover Image</label>
-                    <input type="file" id="anime-cover-file" accept="image/*">
-                    <input type="hidden" id="anime-cover-url">
-                    <div id="cover-preview" class="image-preview"></div>
+                <div class="upload-grid">
+                    <div class="form-group">
+                        <label>Cover Image</label>
+                        <input type="file" id="anime-cover-file" accept="image/*">
+                        <input type="hidden" id="anime-cover-url">
+                        <div id="cover-preview" class="image-preview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Banner Image</label>
+                        <input type="file" id="anime-banner-file" accept="image/*">
+                        <input type="hidden" id="anime-banner-url">
+                        <div id="banner-preview" class="image-preview"></div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Banner Image</label>
-                    <input type="file" id="anime-banner-file" accept="image/*">
-                    <input type="hidden" id="anime-banner-url">
-                    <div id="banner-preview" class="image-preview"></div>
-                </div>
-                <button type="submit" class="primary-btn">Save Anime</button>
+                <button type="submit" class="primary-btn full-width">Save Anime</button>
             </form>
         </div>
     </div>
@@ -259,29 +374,34 @@
                         <label>Title</label>
                         <input type="text" id="ep-title">
                     </div>
-                    <div class="form-group">
-                        <label>Video URL</label>
-                        <input type="text" id="ep-video-url">
-                    </div>
-                    <div class="form-group">
-                        <label>Duration (sec)</label>
-                        <input type="number" id="ep-duration">
-                    </div>
                 </div>
                 <div class="form-group">
                     <label>Description</label>
                     <textarea id="ep-description"></textarea>
                 </div>
-                <div class="form-row">
+                <div class="form-row checkbox-row">
                     <label><input type="checkbox" id="ep-is-premium"> Premium</label>
                 </div>
-                <div class="form-group">
-                    <label>Thumbnail Image</label>
-                    <input type="file" id="ep-thumb-file" accept="image/*">
-                    <input type="hidden" id="ep-thumb-url">
-                    <div id="ep-thumb-preview" class="image-preview"></div>
+                <div class="upload-grid">
+                    <div class="form-group">
+                        <label>Video File (MP4 to Bunny Stream)</label>
+                        <input type="file" id="ep-video-file" accept="video/mp4,video/x-matroska,video/quicktime">
+                        <div id="video-upload-progress" class="progress-bar" style="display:none">
+                            <div class="progress-fill"></div>
+                        </div>
+                        <input type="hidden" id="ep-bunny-id">
+                        <input type="hidden" id="ep-playback-url">
+                        <input type="hidden" id="ep-embed-url">
+                        <div id="video-status-display"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Thumbnail Image</label>
+                        <input type="file" id="ep-thumb-file" accept="image/*">
+                        <input type="hidden" id="ep-thumb-url">
+                        <div id="ep-thumb-preview" class="image-preview"></div>
+                    </div>
                 </div>
-                <button type="submit" class="primary-btn">Save Episode</button>
+                <button type="submit" class="primary-btn full-width">Save Episode</button>
             </form>
         </div>
     </div>
@@ -290,50 +410,59 @@
     <script src="js/auth.js"></script>
     <script src="js/dashboard.js"></script>
     <script src="js/anime.js"></script>
-    <script src="js/episodes.js"></script>
+    <script src="js/genres.js"></script>
     <script src="js/users.js"></script>
     <script src="js/payments.js"></script>
+    <script src="js/ads.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/logs.js"></script>
+    <script src="js/episodes.js"></script>
     <script>
-        // Basic Navigation
+        // SPA Logic
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                const section = link.getAttribute('data-section');
-                showSection(section);
+                showSection(link.getAttribute('data-section'));
             });
         });
 
         function showSection(sectionId) {
             document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
-            document.getElementById(sectionId + '-section').style.display = 'block';
+            const target = document.getElementById(sectionId + '-section');
+            if (target) target.style.display = 'block';
 
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
             document.querySelector(`[data-section="${sectionId}"]`)?.classList.add('active');
 
             const titles = {
-                'stats': 'Dashboard',
-                'anime': 'Anime Management',
-                'users': 'User Management',
-                'payments': 'Payment Management',
-                'episodes': 'Episode Management'
+                stats: 'Dashboard Overview',
+                anime: 'Anime Catalog',
+                genres: 'Genre Management',
+                users: 'User Management',
+                payments: 'Payment History',
+                ads: 'Ad Manager',
+                settings: 'System Settings',
+                logs: 'Activity Logs',
+                episodes: 'Episode Management'
             };
             document.getElementById('section-title').innerText = titles[sectionId] || 'Admin';
 
-            // Refresh data for the section
-            if (sectionId === 'stats') loadStats();
-            if (sectionId === 'anime') loadAnime();
-            if (sectionId === 'users') loadUsers();
-            if (sectionId === 'payments') loadPayments();
+            // Init module data
+            if (window['init' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1)]) {
+                window['init' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1)]();
+            }
         }
 
-        // Check auth on load
-        if (!localStorage.getItem('admin_token')) {
-            window.location.href = 'index.html';
-        } else {
+        // Boot
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!localStorage.getItem('admin_token')) {
+                window.location.replace('index.html');
+                return;
+            }
             const user = JSON.parse(localStorage.getItem('admin_user'));
-            document.getElementById('admin-name').innerText = `Welcome, ${user.name}`;
-            loadStats();
-        }
+            document.getElementById('admin-name').innerText = user.name;
+            showSection('stats');
+        });
     </script>
 </body>
 </html>

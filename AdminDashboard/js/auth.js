@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.user && data.user.is_admin) {
                     localStorage.setItem('admin_token', data.token);
                     localStorage.setItem('admin_user', JSON.stringify(data.user));
-                    window.location.href = 'dashboard.html';
+                    window.location.replace('dashboard.html');
                 } else {
                     errorMsg.innerText = 'Access denied. Admin only.';
                     localStorage.removeItem('admin_token');
@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function logout() {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
-    window.location.href = 'index.html';
+    window.location.replace('index.html');
 }
 
 window.logout = logout;

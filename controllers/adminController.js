@@ -2,224 +2,262 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 
-// ─── USERS ────────────────────────────────────────────────
-// GET /api/admin/users
-exports.getAllUsers = async (req, res) => {
+// ─── UTILS ────────────────────────────────────────────────
+async function logActivity(userId, action, targetType, targetId, details = '', req = null) {
   try {
-    const [rows] = await db.query(
-      `SELECT id, name, email, is_premium, is_admin, premium_expires_at, created_at
-       FROM users ORDER BY created_at DESC`
+    const ip = req ? (req.headers['x-forwarded-for'] || req.socket.remoteAddress) : null;
+    await db.query(
+      'INSERT INTO activity_logs (user_id, action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, action, targetType, targetId, details, ip]
     );
-    res.json({ total: rows.length, users: rows });
+  } catch (err) { console.error('Logging failed:', err); }
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const [[users]] = await db.query(`SELECT COUNT(*) as total, SUM(is_premium) as premium FROM users`);
+    const [[anime]] = await db.query(`SELECT COUNT(*) as total, SUM(view_count) as views FROM anime`);
+    const [[episodes]] = await db.query(`SELECT COUNT(*) as total FROM episodes`);
+    const [[revenue]] = await db.query(`SELECT COALESCE(SUM(amount),0) as total, COALESCE(SUM(CASE WHEN DATE(paid_at)=CURDATE() THEN amount END),0) as today FROM payments WHERE status='successful'`);
+
+    const [recentUsers] = await db.query(`SELECT id, name, email, is_premium, created_at FROM users ORDER BY created_at DESC LIMIT 5`);
+    const [recentPayments] = await db.query(`SELECT p.id, u.name, p.amount, p.status, p.created_at FROM payments p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC LIMIT 5`);
+    const [topAnime] = await db.query(`SELECT id, title, view_count FROM anime ORDER BY view_count DESC LIMIT 5`);
+
+    res.json({
+      users,
+      anime: { total: anime.total, totalViews: anime.views },
+      episodes: episodes.total,
+      revenue,
+      recentUsers,
+      recentPayments,
+      topAnime
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch stats.' });
+  }
+};
+
+// ─── USERS ────────────────────────────────────────────────
+exports.getAllUsers = async (req, res) => {
+  const { q, role, status } = req.query;
+  try {
+    let sql = `SELECT id, name, email, is_premium, is_admin, status, created_at FROM users WHERE 1=1`;
+    const params = [];
+
+    if (q) { sql += ` AND (name LIKE ? OR email LIKE ?)`; params.push(`%${q}%`, `%${q}%`); }
+    if (role === 'admin') sql += ` AND is_admin = 1`;
+    if (role === 'premium') sql += ` AND is_premium = 1`;
+    if (status) { sql += ` AND status = ?`; params.push(status); }
+
+    sql += ` ORDER BY created_at DESC`;
+    const [rows] = await db.query(sql, params);
+    res.json({ users: rows });
   } catch (err) {
     res.status(500).json({ message: 'Could not retrieve users.' });
   }
 };
 
-// PUT /api/admin/users/:id/premium
-exports.togglePremium = async (req, res) => {
+exports.updateUser = async (req, res) => {
   const { id } = req.params;
-  const { isPremium } = req.body;
+  const { is_admin, status, is_premium } = req.body;
   try {
-    const expiresAt = isPremium ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null;
-    await db.query('UPDATE users SET is_premium = ?, premium_expires_at = ? WHERE id = ?', [isPremium ? 1 : 0, expiresAt, id]);
-    await logAdminAction(req.user.id, `Set premium=${isPremium}`, 'user', id);
-    res.json({ message: `Premium ${isPremium ? 'granted' : 'revoked'}.` });
-  } catch (err) {
-    res.status(500).json({ message: 'Update failed.' });
-  }
+    await db.query('UPDATE users SET is_admin = ?, status = ?, is_premium = ? WHERE id = ?', [is_admin, status, is_premium, id]);
+    await logActivity(req.user.id, 'Updated user', 'user', id, `Admin: ${is_admin}, Status: ${status}`, req);
+    res.json({ message: 'User updated.' });
+  } catch (err) { res.status(500).json({ message: 'Update failed.' }); }
 };
 
-// ─── ANIME CMS ────────────────────────────────────────────
-// GET /api/admin/anime
+// ─── ANIME ────────────────────────────────────────────────
 exports.getAllAnime = async (req, res) => {
+  const { q, status, is_premium, is_featured } = req.query;
   try {
-    const [rows] = await db.query(
-      `SELECT id, title, cover_image, rating, year, status, is_premium, is_featured, view_count, created_at
-       FROM anime ORDER BY created_at DESC`
-    );
+    let sql = `SELECT * FROM anime WHERE 1=1`;
+    const params = [];
+    if (q) { sql += ` AND title LIKE ?`; params.push(`%${q}%`); }
+    if (status) { sql += ` AND status = ?`; params.push(status); }
+    if (is_premium !== undefined) { sql += ` AND is_premium = ?`; params.push(is_premium); }
+    if (is_featured !== undefined) { sql += ` AND is_featured = ?`; params.push(is_featured); }
+
+    sql += ` ORDER BY created_at DESC`;
+    const [rows] = await db.query(sql, params);
     res.json(rows);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch anime list.' });
-  }
+  } catch (err) { res.status(500).json({ message: 'Failed to fetch anime.' }); }
 };
 
-// POST /api/admin/anime
 exports.createAnime = async (req, res) => {
-  const { title, title_japanese, description, cover_image, banner_image, rating, year, studio, status, is_premium, is_featured, genres } = req.body;
-  if (!title) return res.status(400).json({ message: 'Title is required.' });
+  const { title, title_japanese, description, year, status, studio, rating, is_premium, is_featured, cover_image, banner_image, genres, tags } = req.body;
   try {
     const [result] = await db.query(
-      `INSERT INTO anime (title, title_japanese, description, cover_image, banner_image, rating, year, studio, status, is_premium, is_featured)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [title, title_japanese || null, description || null, cover_image || null, banner_image || null,
-        rating || 0, year || null, studio || null, status || 'completed',
-        is_premium ? 1 : 0, is_featured ? 1 : 0]
+      `INSERT INTO anime (title, title_japanese, description, year, status, studio, rating, is_premium, is_featured, cover_image, banner_image, tags) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [title, title_japanese, description, year, status, studio, rating, is_premium, is_featured, cover_image, banner_image, tags]
     );
     const animeId = result.insertId;
-
-    // Link genres
     if (genres && genres.length) {
-      const [genreRows] = await db.query('SELECT id, name FROM genres WHERE name IN (?)', [genres]);
-      if (genreRows.length) {
-        const values = genreRows.map(g => [animeId, g.id]);
-        await db.query('INSERT IGNORE INTO anime_genres (anime_id, genre_id) VALUES ?', [values]);
-      }
+      const vals = genres.map(gid => [animeId, gid]);
+      await db.query('INSERT INTO anime_genres (anime_id, genre_id) VALUES ?', [vals]);
     }
-
-    await logAdminAction(req.user.id, `Created anime: ${title}`, 'anime', animeId);
-    res.status(201).json({ message: 'Anime created!', id: animeId });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to create anime.' });
-  }
+    await logActivity(req.user.id, 'Created anime', 'anime', animeId, title, req);
+    res.status(201).json({ id: animeId, message: 'Anime created.' });
+  } catch (err) { res.status(500).json({ message: 'Failed to create.' }); }
 };
 
-// PUT /api/admin/anime/:id
 exports.updateAnime = async (req, res) => {
   const { id } = req.params;
-  const fields = req.body;
-  const allowed = ['title', 'title_japanese', 'description', 'cover_image', 'banner_image', 'rating', 'year', 'studio', 'status', 'is_premium', 'is_featured'];
-  const updates = Object.keys(fields).filter(k => allowed.includes(k));
-  if (!updates.length) return res.status(400).json({ message: 'No valid fields to update.' });
-
+  const { title, title_japanese, description, year, status, studio, rating, is_premium, is_featured, cover_image, banner_image, genres, tags } = req.body;
   try {
-    const sql = `UPDATE anime SET ${updates.map(k => `${k} = ?`).join(', ')} WHERE id = ?`;
-    await db.query(sql, [...updates.map(k => fields[k]), id]);
-    await logAdminAction(req.user.id, `Updated anime id=${id}`, 'anime', parseInt(id));
+    await db.query(
+      `UPDATE anime SET title=?, title_japanese=?, description=?, year=?, status=?, studio=?, rating=?, is_premium=?, is_featured=?, cover_image=?, banner_image=?, tags=? WHERE id=?`,
+      [title, title_japanese, description, year, status, studio, rating, is_premium, is_featured, cover_image, banner_image, tags, id]
+    );
+    await db.query('DELETE FROM anime_genres WHERE anime_id = ?', [id]);
+    if (genres && genres.length) {
+      const vals = genres.map(gid => [id, gid]);
+      await db.query('INSERT INTO anime_genres (anime_id, genre_id) VALUES ?', [vals]);
+    }
+    await logActivity(req.user.id, 'Updated anime', 'anime', id, title, req);
     res.json({ message: 'Anime updated.' });
-  } catch (err) {
-    res.status(500).json({ message: 'Update failed.' });
-  }
+  } catch (err) { res.status(500).json({ message: 'Update failed.' }); }
 };
 
-// DELETE /api/admin/anime/:id
 exports.deleteAnime = async (req, res) => {
   const { id } = req.params;
   try {
-    const [rows] = await db.query('SELECT title FROM anime WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ message: 'Anime not found.' });
     await db.query('DELETE FROM anime WHERE id = ?', [id]);
-    await logAdminAction(req.user.id, `Deleted anime: ${rows[0].title}`, 'anime', parseInt(id));
-    res.json({ message: `Deleted: ${rows[0].title}` });
-  } catch (err) {
-    res.status(500).json({ message: 'Delete failed.' });
-  }
+    await logActivity(req.user.id, 'Deleted anime', 'anime', id, '', req);
+    res.json({ message: 'Anime deleted.' });
+  } catch (err) { res.status(500).json({ message: 'Delete failed.' }); }
 };
 
-// ─── EPISODES CMS ─────────────────────────────────────────
-// POST /api/admin/anime/:animeId/episodes
+// ─── GENRES ───────────────────────────────────────────────
+exports.getAllGenres = async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM genres ORDER BY name ASC');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ message: 'Failed to fetch genres.' }); }
+};
+
+exports.createGenre = async (req, res) => {
+  try {
+    const { name } = req.body;
+    const [result] = await db.query('INSERT INTO genres (name) VALUES (?)', [name]);
+    await logActivity(req.user.id, 'Created genre', 'genre', result.insertId, name, req);
+    res.status(201).json({ id: result.insertId });
+  } catch (err) { res.status(500).json({ message: 'Failed.' }); }
+};
+
+exports.deleteGenre = async (req, res) => {
+  try {
+    await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]);
+    await logActivity(req.user.id, 'Deleted genre', 'genre', req.params.id, '', req);
+    res.json({ message: 'Deleted.' });
+  } catch (err) { res.status(500).json({ message: 'Failed.' }); }
+};
+
+// ─── EPISODES ─────────────────────────────────────────────
 exports.addEpisode = async (req, res) => {
   const { animeId } = req.params;
-  const { episode_number, title, description, video_url, thumbnail_url, duration_sec, is_premium } = req.body;
-  if (!episode_number) return res.status(400).json({ message: 'episode_number required.' });
+  const { episode_number, title, description, duration_sec, is_premium, thumbnail_url, bunny_video_id, playback_url, embed_url, video_status } = req.body;
   try {
-    await db.query(
-      `INSERT INTO episodes (anime_id, episode_number, title, description, video_url, thumbnail_url, duration_sec, is_premium)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [animeId, episode_number, title || `Episode ${episode_number}`, description || null,
-        video_url || null, thumbnail_url || null, duration_sec || 1440, is_premium ? 1 : 0]
+    const [result] = await db.query(
+      `INSERT INTO episodes (anime_id, episode_number, title, description, duration_sec, is_premium, thumbnail_url, bunny_video_id, playback_url, embed_url, video_status) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [animeId, episode_number, title, description, duration_sec, is_premium, thumbnail_url, bunny_video_id, playback_url, embed_url, video_status || 'ready']
     );
-    res.status(201).json({ message: 'Episode added.' });
-  } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY')
-      return res.status(409).json({ message: `Episode ${episode_number} already exists for this anime.` });
-    res.status(500).json({ message: 'Failed to add episode.' });
-  }
+    await logActivity(req.user.id, 'Added episode', 'episode', result.insertId, `Anime ${animeId} Ep ${episode_number}`, req);
+    res.status(201).json({ id: result.insertId, message: 'Episode added.' });
+  } catch (err) { res.status(500).json({ message: 'Failed to add episode.' }); }
 };
 
-// PUT /api/admin/episodes/:id
 exports.updateEpisode = async (req, res) => {
   const { id } = req.params;
-  const {
-    video_url, title, duration_sec, is_premium,
-    thumbnail_url, episode_number,
-    intro_start_time, intro_end_time,
-    // also accept camelCase from admin form
-    introStartTime, introEndTime,
-  } = req.body;
-
-  const introStart = intro_start_time != null ? intro_start_time : (introStartTime != null ? introStartTime : undefined);
-  const introEnd = intro_end_time != null ? intro_end_time : (introEndTime != null ? introEndTime : undefined);
-
+  const { episode_number, title, description, duration_sec, is_premium, thumbnail_url, bunny_video_id, playback_url, embed_url, video_status } = req.body;
   try {
     await db.query(
-      `UPDATE episodes SET
-        video_url        = COALESCE(?, video_url),
-        title            = COALESCE(?, title),
-        duration_sec     = COALESCE(?, duration_sec),
-        is_premium       = COALESCE(?, is_premium),
-        thumbnail_url    = COALESCE(?, thumbnail_url),
-        episode_number   = COALESCE(?, episode_number),
-        intro_start_time = ?,
-        intro_end_time   = ?
-       WHERE id = ?`,
-      [
-        video_url || null,
-        title || null,
-        duration_sec || null,
-        is_premium != null ? (is_premium ? 1 : 0) : null,
-        thumbnail_url || null,
-        episode_number || null,
-        introStart != null ? parseInt(introStart) : null,
-        introEnd != null ? parseInt(introEnd) : null,
-        id,
-      ]
+      `UPDATE episodes SET episode_number=?, title=?, description=?, duration_sec=?, is_premium=?, thumbnail_url=?, bunny_video_id=?, playback_url=?, embed_url=?, video_status=? WHERE id=?`,
+      [episode_number, title, description, duration_sec, is_premium, thumbnail_url, bunny_video_id, playback_url, embed_url, video_status, id]
     );
-    await logAdminAction(req.user.id, `Updated episode id=${id}`, 'episode', parseInt(id));
+    await logActivity(req.user.id, 'Updated episode', 'episode', id, title, req);
     res.json({ message: 'Episode updated.' });
-  } catch (err) {
-    console.error('updateEpisode error:', err.message);
-    res.status(500).json({ message: 'Update failed.' });
-  }
+  } catch (err) { res.status(500).json({ message: 'Update failed.' }); }
 };
 
-// DELETE /api/admin/episodes/:id
 exports.deleteEpisode = async (req, res) => {
+  try {
+    await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]);
+    await logActivity(req.user.id, 'Deleted episode', 'episode', req.params.id, '', req);
+    res.json({ message: 'Deleted.' });
+  } catch (err) { res.status(500).json({ message: 'Failed.' }); }
+};
+
+// ─── SETTINGS & ADS ───────────────────────────────────────
+exports.getSettings = async (req, res) => {
+  const [rows] = await db.query('SELECT * FROM settings');
+  res.json(rows.reduce((acc, r) => ({...acc, [r.key]: r.value}), {}));
+};
+
+exports.updateSettings = async (req, res) => {
+  const settings = req.body;
+  for (const [key, value] of Object.entries(settings)) {
+    await db.query('INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?', [key, value, value]);
+  }
+  await logActivity(req.user.id, 'Updated settings', 'settings', null, '', req);
+  res.json({ message: 'Settings updated.' });
+};
+
+exports.getAds = async (req, res) => {
+  const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC');
+  res.json(rows);
+};
+
+exports.createAd = async (req, res) => {
+  const { title, type, image_url, video_url, target_url, frequency, is_active, target_free_only } = req.body;
+  await db.query(
+    'INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?,?,?,?,?,?,?,?)',
+    [title, type, image_url, video_url, target_url, frequency, is_active, target_free_only]
+  );
+  res.status(201).json({ message: 'Ad created.' });
+};
+
+exports.updateAd = async (req, res) => {
   const { id } = req.params;
+  const { title, type, image_url, video_url, target_url, frequency, is_active, target_free_only } = req.body;
+  await db.query(
+    'UPDATE ads SET title=?, type=?, image_url=?, video_url=?, target_url=?, frequency=?, is_active=?, target_free_only=? WHERE id=?',
+    [title, type, image_url, video_url, target_url, frequency, is_active, target_free_only, id]
+  );
+  res.json({ message: 'Ad updated.' });
+};
+
+exports.deleteAd = async (req, res) => {
+  await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Ad deleted.' });
+};
+
+// ─── PAYMENTS ─────────────────────────────────────────────
+exports.updatePaymentStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
   try {
-    const [result] = await db.query('DELETE FROM episodes WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Episode not found.' });
-    }
-    await logAdminAction(req.user.id, 'Deleted episode', 'episode', id);
-    res.json({ message: 'Episode deleted.' });
+    await db.query('UPDATE payments SET status = ? WHERE id = ?', [status, id]);
+    await logActivity(req.user.id, 'Updated payment status', 'payment', id, status, req);
+    res.json({ message: 'Payment updated.' });
+  } catch (err) { res.status(500).json({ message: 'Failed.' }); }
+};
+
+// ─── VIDEOS ───────────────────────────────────────────────
+const bunnyStream = require('../utils/bunnyStream');
+exports.getVideoStatus = async (req, res) => {
+  try {
+    const status = await bunnyStream.getVideoStatus(req.params.videoId);
+    res.json(status);
   } catch (err) {
-    console.error('deleteEpisode error:', err);
-    res.status(500).json({ message: 'Failed to delete episode.' });
+    res.status(500).json({ message: err.message });
   }
 };
 
-
-// ─── ANALYTICS ────────────────────────────────────────────
-// GET /api/admin/stats
-exports.getDashboardStats = async (req, res) => {
-  try {
-    const [[userStats]] = await db.query(`SELECT COUNT(*) AS total, SUM(is_premium) AS premium FROM users`);
-    const [[animeStats]] = await db.query(`SELECT COUNT(*) AS total, SUM(view_count) AS views FROM anime`);
-    const [[revenue]] = await db.query(`SELECT COALESCE(SUM(amount),0) AS total, COALESCE(SUM(CASE WHEN DATE(paid_at)=CURDATE() THEN amount END),0) AS today FROM payments WHERE status='successful'`);
-    const [recentUsers] = await db.query(`SELECT id, name, email, is_premium, created_at FROM users ORDER BY created_at DESC LIMIT 5`);
-    const [topAnime] = await db.query(`SELECT id, title, view_count FROM anime ORDER BY view_count DESC LIMIT 5`);
-
-    res.json({
-      users: { total: userStats.total, premium: userStats.premium },
-      anime: { total: animeStats.total, totalViews: animeStats.views },
-      revenue: { total: revenue.total, today: revenue.today },
-      recentUsers,
-      topAnime,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to fetch stats.' });
-  }
+// ─── LOGS ─────────────────────────────────────────────────
+exports.getActivityLogs = async (req, res) => {
+  const [rows] = await db.query('SELECT l.*, u.name as admin_name FROM activity_logs l JOIN users u ON l.user_id = u.id ORDER BY created_at DESC LIMIT 100');
+  res.json(rows);
 };
-
-// ─── HELPER ───────────────────────────────────────────────
-async function logAdminAction(adminId, action, targetType, targetId) {
-  try {
-    await db.query(
-      'INSERT INTO admin_logs (admin_id, action, target_type, target_id) VALUES (?, ?, ?, ?)',
-      [adminId, action, targetType, targetId || null]
-    );
-  } catch (_) { }
-}

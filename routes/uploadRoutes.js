@@ -16,6 +16,12 @@ const {
   FOLDERS,
   MAX_FILE_SIZE,
 } = require('../utils/bunnyUpload');
+const bunnyStream = require('../utils/bunnyStream');
+const multer = require('multer');
+const videoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit for videos
+});
 
 const protect = auth.protect || auth.auth || auth.authenticate;
 
@@ -86,5 +92,37 @@ router.post('/thumbnails', protect, adminOnly, uploadTo('thumbnails'));
 router.post('/avatar', protect, uploadTo('avatars'));
 router.post('/profile', protect, uploadTo('profiles'));
 router.post('/profile/avatar', protect, uploadTo('avatars'));
+
+// Admin Video Uploads (Bunny Stream)
+router.post('/video', protect, adminOnly, videoUpload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'No video file provided.' });
+  try {
+    const title = req.body.title || 'Untitled Episode';
+    const videoGuid = await bunnyStream.createVideo(title);
+    await bunnyStream.uploadVideoFile(videoGuid, req.file.buffer);
+
+    const playbackUrl = `https://${process.env.BUNNY_STREAM_CDN_HOSTNAME}/${videoGuid}/playlist.m3u8`;
+    const embedUrl = `https://iframe.mediadelivery.net/embed/${process.env.BUNNY_STREAM_LIBRARY_ID}/${videoGuid}`;
+
+    res.json({
+      success: true,
+      bunny_video_id: videoGuid,
+      playback_url: playbackUrl,
+      embed_url: embedUrl,
+      status: 'processing'
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/video/:videoId/status', protect, adminOnly, async (req, res) => {
+  try {
+    const status = await bunnyStream.getVideoStatus(req.params.videoId);
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 module.exports = router;
