@@ -3,11 +3,11 @@
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
-const db  = require('../config/db');
+const db = require('../config/db');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
-const APP_PACKAGE = process.env.APP_PACKAGE || 'com.anistrim.app';
+const APP_PACKAGE = process.env.APP_PACKAGE || 'com.anistrim.render';
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
 
 // In production, Redis/DB is better. This works on one Railway instance.
@@ -83,26 +83,26 @@ exports.googleCallback = async (req, res) => {
     client.setCredentials(tokens);
 
     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-  headers: {
-    Authorization: `Bearer ${tokens.access_token}`,
-  },
-});
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+      },
+    });
 
-if (!userInfoResponse.ok) {
-  const text = await userInfoResponse.text();
-  throw new Error(`Failed to fetch Google user info: ${text}`);
-}
+    if (!userInfoResponse.ok) {
+      const text = await userInfoResponse.text();
+      throw new Error(`Failed to fetch Google user info: ${text}`);
+    }
 
-const payload = await userInfoResponse.json();
+    const payload = await userInfoResponse.json();
 
 
     if (!payload?.email) return res.send(errorPage('Could not get your email.'));
     if (payload.email_verified === false) return res.send(errorPage('Google email is not verified.'));
 
-    const googleEmail  = payload.email;
-    const googleName   = payload.name || googleEmail.split('@')[0];
+    const googleEmail = payload.email;
+    const googleName = payload.name || googleEmail.split('@')[0];
     const googleAvatar = payload.picture || null;
-    const googleId     = payload.sub;
+    const googleId = payload.sub;
 
     const [existing] = await db.query('SELECT * FROM users WHERE email = ?', [googleEmail]);
     let user;
