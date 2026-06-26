@@ -95,7 +95,6 @@ if (!userInfoResponse.ok) {
 
 const payload = await userInfoResponse.json();
 
-const payload = ticket.getPayload();
 
     if (!payload?.email) return res.send(errorPage('Could not get your email.'));
     if (payload.email_verified === false) return res.send(errorPage('Google email is not verified.'));
