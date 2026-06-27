@@ -8,6 +8,7 @@ router.use(protect, adminOnly);
 
 // Dashboard
 router.get('/stats',                        admin.getDashboardStats);
+router.get('/dashboard/overview',           admin.getDashboardOverview);
 
 // Users
 router.get('/users',                        admin.getAllUsers);
