@@ -40,7 +40,19 @@ exports.uploadVideo = async (req, res) => {
       }
     );
 
-    const created = await createRes.json();
+    const createText = await createRes.text();
+
+let created;
+try {
+  created = JSON.parse(createText);
+} catch {
+  console.error('[BunnyStream] Create returned non-JSON:', createText);
+  return res.status(502).json({
+    success: false,
+    message: 'Bunny Stream returned a temporary server error. Please try again later.',
+    raw: createText.slice(0, 300),
+  });
+}
 
     if (!createRes.ok || !created.guid) {
       return res.status(500).json({
