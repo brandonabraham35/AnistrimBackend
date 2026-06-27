@@ -157,7 +157,7 @@ async function uploadVideoIfSelected() {
   setVideoProgress(30);
   setVideoStatus("Upload complete. Bunny Stream is now encoding...", "processing");
 
-  pollVideoStatus(bunnyId);
+  // pollVideoStatus(bunnyId);
 
   return {
     bunny_video_id: bunnyId,
@@ -389,14 +389,14 @@ async function saveEpisode(event) {
 
     if (episodeId) {
       await window.apiRequest(`/admin/episodes/${episodeId}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
+  method: "PUT",
+  body: payload,
+});
     } else {
       await window.apiRequest(`/admin/anime/${currentAnimeId}/episodes`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+  method: "POST",
+  body: payload,
+});
     }
 
     document.getElementById("episode-modal").style.display = "none";
