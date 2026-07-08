@@ -1,172 +1,231 @@
-const axios = require('axios');
-const multer = require('multer');
-const path = require('path');
+const axios = require("axios");
+const multer = require("multer");
+const path = require("path");
 
-const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024; //15MB
+
 const FIELD_NAMES = [
-  'image',
-  'file',
-  'avatar',
-  'photo',
-  'picture',
-  'thumbnail',
-  'thumbnail_url',
-  'cover',
-  'cover_image',
-  'banner',
-  'banner_image',
+    "image",
+    "file",
+    "avatar",
+    "photo",
+    "picture",
+    "thumbnail",
+    "thumbnail_url",
+    "cover",
+    "cover_image",
+    "banner",
+    "banner_image",
 ];
 
 const FOLDERS = {
-  anime: 'anime/covers',
-  banners: 'anime/banners',
-  thumbnails: 'anime/thumbnails',
-  avatars: 'avatars',
-  profiles: 'avatars',
+    anime: "anime/covers",
+    banners: "anime/banners",
+    thumbnails: "anime/thumbnails",
+    avatars: "avatars",
+    profiles: "avatars",
 };
 
 function hasBunnyConfig() {
-  return Boolean(
-    process.env.BUNNY_STORAGE_ZONE &&
-    process.env.BUNNY_STORAGE_PASSWORD &&
-    process.env.BUNNY_CDN_URL
-  );
+    return Boolean(
+        process.env.BUNNY_STORAGE_ZONE &&
+        process.env.BUNNY_STORAGE_PASSWORD &&
+        process.env.BUNNY_CDN_URL
+    );
 }
 
 const uploadParser = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_FILE_SIZE,
-    files: 1,
-  },
-  fileFilter: (_req, file, cb) => {
-    const mime = String(file.mimetype || '').toLowerCase();
-    if (mime.startsWith('image/')) return cb(null, true);
-    return cb(new Error('Only image files are allowed.'));
-  },
-}).fields(FIELD_NAMES.map((name) => ({ name, maxCount: 1 })));
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: MAX_FILE_SIZE,
+        files: 1,
+    },
+    fileFilter: (_req, file, cb) => {
+        if (String(file.mimetype).startsWith("image/")) {
+            return cb(null, true);
+        }
+
+        cb(new Error("Only image files are allowed."));
+    },
+}).fields(FIELD_NAMES.map(name => ({
+    name,
+    maxCount: 1
+})));
 
 function parseUpload(req, res) {
-  return new Promise((resolve, reject) => {
-    uploadParser(req, res, (err) => {
-      if (err) return reject(err);
-      return resolve();
+    return new Promise((resolve, reject) => {
+        uploadParser(req, res, err => {
+            if (err) return reject(err);
+            resolve();
+        });
     });
-  });
 }
 
 function firstUploadedFile(req) {
-  if (req.file) return req.file;
-  if (!req.files) return null;
 
-  for (const name of FIELD_NAMES) {
-    const value = req.files[name];
-    if (Array.isArray(value) && value[0]) return value[0];
-  }
+    if (req.file) return req.file;
 
-  for (const value of Object.values(req.files)) {
-    if (Array.isArray(value) && value[0]) return value[0];
-  }
+    if (!req.files) return null;
 
-  return null;
+    for (const field of FIELD_NAMES) {
+        if (req.files[field] && req.files[field][0]) {
+            return req.files[field][0];
+        }
+    }
+
+    for (const value of Object.values(req.files)) {
+        if (Array.isArray(value) && value[0]) {
+            return value[0];
+        }
+    }
+
+    return null;
 }
 
 function normalizeFolder(folderKey) {
-  return FOLDERS[folderKey] || FOLDERS.anime;
+    return FOLDERS[folderKey] || FOLDERS.anime;
 }
 
 async function uploadBufferToBunny(file, folderKey) {
-  if (!file || !file.buffer) {
-    throw new Error('No image file received.');
-  }
 
-  const storageZone = process.env.BUNNY_STORAGE_ZONE;
-  const accessKey = process.env.BUNNY_STORAGE_PASSWORD;
-  const cdnUrl = process.env.BUNNY_CDN_URL.replace(/\/$/, ''); // Remove trailing slash
-  const folder = normalizeFolder(folderKey);
+    if (!file || !file.buffer) {
+        throw new Error("No image received.");
+    }
 
-  const ext = path.extname(file.originalname) || '.jpg';
-  const safeName = String(file.originalname || 'image')
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[^a-zA-Z0-9_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60) || 'image';
+    const storageZone = process.env.BUNNY_STORAGE_ZONE;
+    const accessKey = process.env.BUNNY_STORAGE_PASSWORD;
+    const storageRegion = (process.env.BUNNY_STORAGE_REGION || "").trim();
+    const cdnUrl = process.env.BUNNY_CDN_URL.replace(/\/$/, "");
 
-  const filename = `${folderKey || 'image'}-${Date.now()}-${safeName}${ext}`;
+    const folder = normalizeFolder(folderKey);
 
-  // Bunny upload endpoint format:
-  // https://storage.bunnycdn.com/{BUNNY_STORAGE_ZONE}/{folder}/{filename}
-  const uploadUrl = `https://storage.bunnycdn.com/${storageZone}/${folder}/${filename}`;
+    const uploadHost = storageRegion
+        ? `https://${storageRegion}.storage.bunnycdn.com`
+        : "https://storage.bunnycdn.com";
 
-  await axios.put(uploadUrl, file.buffer, {
-    headers: {
-      AccessKey: accessKey,
-      'Content-Type': file.mimetype,
-    },
-  });
+    const ext =
+        path.extname(file.originalname || "") ||
+        ".jpg";
 
-  const publicUrl = `${cdnUrl}/${folder}/${filename}`;
+    const safeName =
+        (file.originalname || "image")
+            .replace(/\.[^/.]+$/, "")
+            .replace(/[^a-zA-Z0-9_-]/g, "-")
+            .replace(/-+/g, "-")
+            .substring(0, 60);
 
-  return {
-    url: publicUrl,
-    imageUrl: publicUrl,
-    image_url: publicUrl,
-    secure_url: publicUrl,
-    path: publicUrl,
-    public_id: filename,
-    folder: folder,
-  };
+    const filename =
+        `${folderKey}-${Date.now()}-${safeName}${ext}`;
+
+    const uploadUrl =
+        `${uploadHost}/${storageZone}/${folder}/${filename}`;
+
+    console.log("\n============================");
+    console.log("BUNNY IMAGE UPLOAD");
+    console.log("============================");
+    console.log("Storage Zone :", storageZone);
+    console.log("Region       :", storageRegion || "(default)");
+    console.log("Upload Host  :", uploadHost);
+    console.log("Folder       :", folder);
+    console.log("Filename     :", filename);
+    console.log("Upload URL   :", uploadUrl);
+    console.log("Content Type :", file.mimetype);
+    console.log("File Size    :", file.buffer.length);
+    console.log("============================\n");
+
+    try {
+
+        await axios.put(
+            uploadUrl,
+            file.buffer,
+            {
+                headers: {
+                    AccessKey: accessKey,
+                    "Content-Type": file.mimetype,
+                    "Content-Length": file.buffer.length,
+                },
+                maxBodyLength: Infinity,
+                maxContentLength: Infinity,
+                timeout: 60000,
+            }
+        );
+
+        const publicUrl =
+            `${cdnUrl}/${folder}/${filename}`;
+
+        return {
+            url: publicUrl,
+            imageUrl: publicUrl,
+            image_url: publicUrl,
+            secure_url: publicUrl,
+            path: publicUrl,
+            public_id: filename,
+            folder,
+        };
+
+    } catch (err) {
+
+        console.error("\n========== BUNNY ERROR ==========");
+        console.error("Status :", err.response?.status);
+        console.error("Data   :", err.response?.data);
+        console.error("Message:", err.message);
+        console.error("=================================\n");
+
+        throw err;
+    }
 }
 
 async function handleImageUpload(req, res, folderKey) {
-  try {
-    if (!hasBunnyConfig()) {
-      return res.status(500).json({
-        success: false,
-        message: 'Bunny.net Storage is not configured.',
-        code: 'BUNNY_NOT_CONFIGURED',
-      });
+
+    try {
+
+        if (!hasBunnyConfig()) {
+            return res.status(500).json({
+                success: false,
+                message: "Bunny Storage is not configured."
+            });
+        }
+
+        await parseUpload(req, res);
+
+        const file = firstUploadedFile(req);
+
+        if (!file) {
+            return res.status(400).json({
+                success: false,
+                message: "No image uploaded.",
+                acceptedFields: FIELD_NAMES
+            });
+        }
+
+        const result =
+            await uploadBufferToBunny(file, folderKey);
+
+        return res.json({
+            success: true,
+            message: "Image uploaded successfully.",
+            ...result
+        });
+
+    } catch (err) {
+
+        console.error("[bunnyUpload]", err);
+
+        return res.status(500).json({
+            success: false,
+            message:
+                err.response?.data?.Message ||
+                err.response?.data ||
+                err.message ||
+                "Upload failed."
+        });
     }
-
-    await parseUpload(req, res);
-    const file = firstUploadedFile(req);
-
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        message: `No image received. The form field must be one of: ${FIELD_NAMES.join(', ')}.`,
-        code: 'NO_FILE_RECEIVED',
-        acceptedFields: FIELD_NAMES,
-      });
-    }
-
-    const result = await uploadBufferToBunny(file, folderKey);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Image uploaded successfully.',
-      ...result,
-    });
-  } catch (err) {
-    console.error('[bunnyUpload] Upload failed:', err);
-
-    const isTooLarge = err && err.code === 'LIMIT_FILE_SIZE';
-    const message = isTooLarge
-      ? 'Image too large. Please upload an image smaller than 15 MB.'
-      : (err && err.response && err.response.data && err.response.data.Message) || (err && err.message) || 'Upload failed. Please try again.';
-
-    return res.status(isTooLarge ? 413 : 400).json({
-      success: false,
-      message,
-      code: (err && err.code) || 'UPLOAD_FAILED',
-    });
-  }
 }
 
 module.exports = {
-  handleImageUpload,
-  hasBunnyConfig,
-  FIELD_NAMES,
-  FOLDERS,
-  MAX_FILE_SIZE,
+    handleImageUpload,
+    hasBunnyConfig,
+    FIELD_NAMES,
+    FOLDERS,
+    MAX_FILE_SIZE,
 };
