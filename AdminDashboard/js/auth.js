@@ -1,3 +1,5 @@
+// File Path: Frontend/js/auth.js
+
 document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('login-form');
     const errorMsg = document.getElementById('error-message');
@@ -33,29 +35,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: { email, password }
                 });
 
-                // 🚨 ====== EMERGENCY DEBUG LOGS ====== 🚨
-                console.log("=== RAW SERVER RESPONSE DATA ===", data);
-                alert("Server raw response: " + JSON.stringify(data));
-                
-                if (data && data.user) {
-                    console.log("=== USER OBJECT ===", data.user);
-                    console.log("data.user.isAdmin value:", data.user.isAdmin);
-                    console.log("data.user.is_admin value:", data.user.is_admin);
-                    alert("isAdmin: " + data.user.isAdmin + " | is_admin: " + data.user.is_admin);
-                } else {
-                    alert("Server responded, but 'data.user' is completely missing!");
-                }
-                // 🚨 ================================== 🚨
+                // Diagnostic log trace to track type transformations inside DevTools
+                console.log('LOGIN PAYLOAD:', JSON.stringify(data));
 
-                // Lax fallback condition to try and force you through while testing
-                if (data && data.user && (data.user.isAdmin === true || data.user.is_admin == 1 || data.user.is_admin === true)) {
+                const u = data?.user;
+                const isAdmin =
+                    u?.isAdmin === true ||
+                    u?.is_admin === 1 ||
+                    u?.is_admin === '1' ||
+                    u?.is_admin === true ||
+                    (u?.is_admin && typeof u.is_admin === 'object' && u.is_admin.data && u.is_admin.data[0] === 1);
+
+                if (data?.token && isAdmin) {
                     localStorage.setItem('admin_token', data.token);
-                    localStorage.setItem('admin_user', JSON.stringify(data.user));
+                    localStorage.setItem('admin_user', JSON.stringify(u));
                     window.location.replace('dashboard.html');
-                } else {
-                    if (errorMsg) errorMsg.innerText = 'Access denied. Admin only.';
+                } else if (data?.token) {
+                    if (errorMsg) errorMsg.innerText = 'Logged in, but this account is not an admin.';
                     localStorage.removeItem('admin_token');
-                    localStorage.removeItem('admin_user');
+                } else {
+                    if (errorMsg) errorMsg.innerText = 'Login failed.';
                 }
             } catch (err) {
                 if (errorMsg) errorMsg.innerText = err.message;
