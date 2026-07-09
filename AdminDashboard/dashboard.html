@@ -1,139 +1,318 @@
-// File Path: Frontend/js/dashboard.js
-
-// 1. Guard check to make sure we don't boot out while using the bypass
-(function verifyDashboardAccess() {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-        window.location.replace('index.html');
-    }
-})();
-
-// 2. Main statistics loader with deep protection against missing UI elements
-async function initStats() {
-    console.log("Initializing dashboard stats...");
-    try {
-        const data = await window.apiRequest('/admin/dashboard/overview');
-        if (!data || !data.overview) {
-            console.error("No overview data returned from apiRequest");
-            return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AniStrim Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --accent: #3b82f6;
+            --accent-premium: #eab308;
+            --danger: #ef4444;
+            --success: #22c55e;
         }
-        
-        const { overview, recentEpisodes, topAnime, recentPayments, activityLogs, latestUsers } = data;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-card);
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            border-right: 1px solid #334155;
+        }
+        .sidebar h2 {
+            font-size: 1.5rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .nav-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .nav-links a {
+            color: var(--text-sub);
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: all 0.2s;
+        }
+        .nav-links a.active, .nav-links a:hover {
+            background-color: #334155;
+            color: var(--text-main);
+        }
+        .logout-btn {
+            margin-top: auto;
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            cursor: pointer;
+        }
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+        .header {
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .grid-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background-color: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card-info h3 {
+            font-size: 0.875rem;
+            color: var(--text-sub);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .card-info .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        .card-icon {
+            font-size: 2rem;
+            color: var(--accent);
+            opacity: 0.8;
+        }
+        .grid-sections {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+        .section-box {
+            background-color: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid #334155;
+            margin-bottom: 1.5rem;
+        }
+        .section-box h4 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #334155;
+        }
+        th {
+            color: var(--text-sub);
+            font-weight: 600;
+        }
+        .list-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #334155;
+        }
+        .list-item:last-child {
+            border-bottom: none;
+        }
+        .mini-thumb {
+            width: 45px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 0.25rem;
+        }
+        .item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .item-title {
+            font-weight: 600;
+        }
+        .item-sub {
+            font-size: 0.85rem;
+            color: var(--text-sub);
+        }
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .status-badge.completed { background-color: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .status-badge.pending { background-color: rgba(234, 179, 8, 0.2); color: var(--accent-premium); }
+        .badge.premium { background-color: var(--accent-premium); color: #000; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; }
+        .timeline-item {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        .timeline-item .time { color: var(--accent); font-weight: bold; min-width: 65px; }
+    </style>
+</head>
+<body>
 
-        // Safely helper function to update text without throwing errors if the ID doesn't exist yet
-        const safeSetText = (id, text) => {
-            const el = document.getElementById(id);
-            if (el) el.innerText = text.toLocaleString();
-        };
+    <div class="sidebar">
+        <h2><i class="fas fa-film"></i> AniStrim</h2>
+        <ul class="nav-links">
+            <li><a href="#" class="active"><i class="fas fa-chart-pie"></i> Dashboard</a></li>
+            <li><a href="#"><i class="fas fa-tv"></i> Anime List</a></li>
+            <li><a href="#"><i class="fas fa-users"></i> Users Management</a></li>
+            <li><a href="#"><i class="fas fa-wallet"></i> Payments</a></li>
+            <li><a href="#" class="logout-btn" onclick="window.logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
+        </ul>
+    </div>
 
-        // Header Stats
-        safeSetText('total-users', overview.users?.total ?? 0);
-        safeSetText('premium-users', overview.users?.premium ?? 0);
-        safeSetText('total-anime', overview.content?.totalAnime ?? 0);
-        safeSetText('total-episodes', overview.content?.totalEpisodes ?? 0);
-        safeSetText('total-views', overview.content?.totalViews ?? 0);
-        
-        safeSetText('revenue-total', `UGX ${(overview.revenue?.total ?? 0).toLocaleString()}`);
-        safeSetText('revenue-monthly', `UGX ${(overview.revenue?.monthly ?? 0).toLocaleString()}`);
-        safeSetText('revenue-today', `UGX ${(overview.revenue?.today ?? 0).toLocaleString()}`);
+    <div class="main-content">
+        <div class="header">
+            <h2>Administrative Overview</h2>
+            <div id="active-user-badge"><i class="fas fa-circle" style="color: var(--success);"></i> Live Testing Environment</div>
+        </div>
 
-        // Revenue Performance
-        safeSetText('active-users-today', overview.users?.activeToday ?? 0);
-        safeSetText('banned-users', overview.users?.banned ?? 0);
-        safeSetText('rev-avg-daily', `UGX ${Math.round((overview.revenue?.total ?? 0) / 30).toLocaleString()}`);
+        <div class="grid-stats">
+            <div class="card">
+                <div class="card-info"><h3>Total Users</h3><div class="value" id="total-users">0</div></div>
+                <div class="card-icon"><i class="fas fa-users"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>VIP Users</h3><div class="value" id="premium-users">0</div></div>
+                <div class="card-icon" style="color: var(--accent-premium);"><i class="fas fa-crown"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Total Anime</h3><div class="value" id="total-anime">0</div></div>
+                <div class="card-icon"><i class="fas fa-compact-disc"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Total Episodes</h3><div class="value" id="total-episodes">0</div></div>
+                <div class="card-icon"><i class="fas fa-video"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Total Views</h3><div class="value" id="total-views">0</div></div>
+                <div class="card-icon"><i class="fas fa-eye"></i></div>
+            </div>
+        </div>
 
-        // Bunny Stats
-        safeSetText('bunny-ready', overview.bunny?.ready ?? 0);
-        safeSetText('bunny-processing', overview.bunny?.processing ?? 0);
-        safeSetText('bunny-failed', overview.bunny?.failed ?? 0);
+        <div class="grid-stats">
+            <div class="card">
+                <div class="card-info"><h3>Total Earnings</h3><div class="value" id="revenue-total">UGX 0</div></div>
+                <div class="card-icon" style="color: var(--success);"><i class="fas fa-money-bill-wave"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Monthly Target</h3><div class="value" id="revenue-monthly">UGX 0</div></div>
+                <div class="card-icon"><i class="fas fa-calendar-alt"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Collected Today</h3><div class="value" id="revenue-today">UGX 0</div></div>
+                <div class="card-icon"><i class="fas fa-hand-holding-usd"></i></div>
+            </div>
+        </div>
 
-        // Top Anime List
-        const topList = document.getElementById('top-anime-list');
-        if (topList && topAnime) {
-            topList.innerHTML = '';
-            topAnime.forEach(a => {
-                topList.innerHTML += `
-                    <div class="list-item">
-                        <img src="${a.cover_image || 'https://via.placeholder.com/150'}" alt="" class="mini-thumb">
-                        <div class="item-info">
-                            <span class="item-title">${a.title || 'Unknown'}</span>
-                            <span class="item-sub">${(a.view_count || 0).toLocaleString()} views</span>
+        <div class="grid-sections">
+            <div class="left-column">
+                <div class="section-box">
+                    <h4><i class="fas fa-credit-card"></i> Recent Subscriber Transactions</h4>
+                    <table id="recent-payments-table">
+                        <thead>
+                            <tr>
+                                <th>Subscriber</th>
+                                <th>Amount Base</th>
+                                <th>Gateway Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            </tbody>
+                    </table>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                    <div class="section-box">
+                        <h4><i class="fas fa-server"></i> Encoding Engine Status</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div>Ready: <strong id="bunny-ready" style="color: var(--success);">0</strong></div>
+                            <div>Processing: <strong id="bunny-processing" style="color: var(--accent);">0</strong></div>
+                            <div>Failed: <strong id="bunny-failed" style="color: var(--danger);">0</strong></div>
                         </div>
-                    </div>`;
-            });
-        }
-
-        // Recent Uploads
-        const uploadsList = document.getElementById('recent-uploads');
-        if (uploadsList && recentEpisodes) {
-            uploadsList.innerHTML = '';
-            recentEpisodes.forEach(ep => {
-                uploadsList.innerHTML += `
-                    <div class="list-item">
-                        <div class="item-icon upload"><i class="fas fa-play-circle"></i></div>
-                        <div class="item-info">
-                            <span class="item-title">${ep.anime_title || 'Unknown'} - Episode ${ep.episode_number || 0}</span>
-                            <span class="item-sub">${ep.created_at ? new Date(ep.created_at).toLocaleString() : 'Just now'}</span>
+                    </div>
+                    <div class="section-box">
+                        <h4><i class="fas fa-user-shield"></i> Moderation Summary</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div>Active Visitors Today: <strong id="active-users-today">0</strong></div>
+                            <div>Banned Accounts: <strong id="banned-users" style="color: var(--danger);">0</strong></div>
+                            <div>Est. Average Daily Rev: <strong id="rev-avg-daily">0</strong></div>
                         </div>
-                    </div>`;
-            });
-        }
+                    </div>
+                </div>
+            </div>
 
-        // Recent Payments
-        const payBody = document.querySelector('#recent-payments-table tbody');
-        if (payBody && recentPayments) {
-            payBody.innerHTML = '';
-            recentPayments.forEach(p => {
-                payBody.innerHTML += `<tr>
-                    <td>${p.name || 'Anonymous'}</td>
-                    <td>UGX ${(p.amount || 0).toLocaleString()}</td>
-                    <td><span class="status-badge ${p.status || 'pending'}">${p.status || 'pending'}</span></td>
-                </tr>`;
-            });
-        }
+            <div class="right-column">
+                <div class="section-box">
+                    <h4><i class="fas fa-fire"></i> Trending Catalogue</h4>
+                    <div id="top-anime-list"></div>
+                </div>
 
-        // Activity Logs
-        const activityList = document.getElementById('activity-logs');
-        if (activityList && activityLogs) {
-            activityList.innerHTML = '';
-            activityLogs.forEach(log => {
-                activityList.innerHTML += `
-                    <div class="timeline-item">
-                        <span class="time">${log.created_at ? new Date(log.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now'}</span>
-                        <span class="action"><strong>${log.user_name || 'System'}</strong> ${log.action || ''}</span>
-                    </div>`;
-            });
-        }
+                <div class="section-box">
+                    <h4><i class="fas fa-cloud-upload-alt"></i> Recent Live Feeds</h4>
+                    <div id="recent-uploads"></div>
+                </div>
 
-        // New Registrations
-        const usersList = document.getElementById('latest-users');
-        if (usersList && latestUsers) {
-            usersList.innerHTML = '';
-            latestUsers.forEach(u => {
-                usersList.innerHTML += `
-                    <div class="list-item">
-                        <div class="item-icon user"><i class="fas fa-user"></i></div>
-                        <div class="item-info">
-                            <span class="item-title">${u.name || 'User'}</span>
-                            <span class="item-sub">${u.email || ''}</span>
-                        </div>
-                        ${u.is_premium ? '<span class="badge premium">VIP</span>' : ''}
-                    </div>`;
-            });
-        }
+                <div class="section-box">
+                    <h4><i class="fas fa-user-plus"></i> Newly Onboarded Users</h4>
+                    <div id="latest-users"></div>
+                </div>
 
-    } catch (err) { 
-        console.error('Stats layout load halted safely to prevent infinite reload loops:', err); 
-    }
-}
+                <div class="section-box">
+                    <h4><i class="fas fa-history"></i> System Activity Logs</h4>
+                    <div id="activity-logs"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-// Ensure execution triggers smoothly exactly once when DOM is fully built
-document.addEventListener('DOMContentLoaded', () => {
-    initStats();
-    
-    // Controlled interval refresh (30 seconds) instead of unmanaged loops
-    if (window.statsInterval) clearInterval(window.statsInterval);
-    window.statsInterval = setInterval(initStats, 30000);
-});
-
-window.initStats = initStats;
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
