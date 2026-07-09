@@ -1,28 +1,20 @@
 // Verification Guard: Block dashboard execution immediately if local credentials are missing
+
+// File Path: Frontend/js/dashboard.js
+
+// Ensure the page guard accepts the bypass session
 (function verifyDashboardAccess() {
     const token = localStorage.getItem('admin_token');
     const userJson = localStorage.getItem('admin_user');
 
     if (!token || !userJson) {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
         window.location.replace('index.html');
         return;
     }
-
-    try {
-        const user = JSON.parse(userJson);
-        if (user.isAdmin !== true && user.is_admin != 1) {
-            localStorage.removeItem('admin_token');
-            localStorage.removeItem('admin_user');
-            window.location.replace('index.html');
-        }
-    } catch (e) {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
-        window.location.replace('index.html');
-    }
 })();
+
+// ... Keep your standard initStats() and layout rendering functions below exactly as they are ...
+
 
 async function initStats() {
     try {
