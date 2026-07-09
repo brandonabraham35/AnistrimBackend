@@ -1,10 +1,7 @@
-// File Path: Frontend/js/auth.js
-
 document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('login-form');
     const errorMsg = document.getElementById('error-message');
 
-    // Check if already logged in (only redirect if on login page)
     const currentPath = window.location.pathname;
     const isLoginPage = currentPath.endsWith('index.html') || currentPath === '/' || currentPath.endsWith('/');
 
@@ -20,11 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const password = document.getElementById('password').value;
             const loginBtn = document.getElementById('login-btn');
 
-            if (!email || !password) {
-                if (errorMsg) errorMsg.innerText = 'Please fill out all fields.';
-                return;
-            }
-
             loginBtn.disabled = true;
             loginBtn.innerText = 'Logging in...';
             if (errorMsg) errorMsg.innerText = '';
@@ -34,9 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     body: { email, password }
                 });
-
-                // Diagnostic log trace to track type transformations inside DevTools
-                console.log('LOGIN PAYLOAD:', JSON.stringify(data));
 
                 const u = data?.user;
                 const isAdmin =

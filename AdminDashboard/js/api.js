@@ -1,6 +1,4 @@
-// File Path: Frontend/js/api.js
-
-const API_BASE = 'http://localhost:5000/api'; // 🔥 Switched to local backend
+const API_BASE = 'http://localhost:5000/api';
 
 async function apiRequest(endpoint, options = {}) {
     const token = localStorage.getItem('admin_token');
