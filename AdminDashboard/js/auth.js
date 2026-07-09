@@ -33,7 +33,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: { email, password }
                 });
 
-                if (data && data.user && (data.user.isAdmin === true || data.user.is_admin == 1)) {
+                // 🚨 ====== EMERGENCY DEBUG LOGS ====== 🚨
+                console.log("=== RAW SERVER RESPONSE DATA ===", data);
+                alert("Server raw response: " + JSON.stringify(data));
+                
+                if (data && data.user) {
+                    console.log("=== USER OBJECT ===", data.user);
+                    console.log("data.user.isAdmin value:", data.user.isAdmin);
+                    console.log("data.user.is_admin value:", data.user.is_admin);
+                    alert("isAdmin: " + data.user.isAdmin + " | is_admin: " + data.user.is_admin);
+                } else {
+                    alert("Server responded, but 'data.user' is completely missing!");
+                }
+                // 🚨 ================================== 🚨
+
+                // Lax fallback condition to try and force you through while testing
+                if (data && data.user && (data.user.isAdmin === true || data.user.is_admin == 1 || data.user.is_admin === true)) {
                     localStorage.setItem('admin_token', data.token);
                     localStorage.setItem('admin_user', JSON.stringify(data.user));
                     window.location.replace('dashboard.html');

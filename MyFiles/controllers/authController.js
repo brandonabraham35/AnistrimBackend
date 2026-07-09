@@ -32,7 +32,11 @@ exports.register = async (req, res) => {
     );
 
     const token = signToken({ id: result.insertId, email, is_admin: 0, is_premium: 0 });
-    res.status(201).json({ message: 'Account created!', token, user: { id: result.insertId, name, email, isPremium: false, isAdmin: false } });
+    res.status(201).json({ 
+      message: 'Account created!', 
+      token, 
+      user: { id: result.insertId, name, email, isPremium: false, isAdmin: false, is_premium: 0, is_admin: 0 } 
+    });
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ message: 'Server error during registration.' });
@@ -52,19 +56,13 @@ exports.login = async (req, res) => {
 
     const user = rows[0];
 
-console.log("========== LOGIN DEBUG ==========");
-console.log("User object:", user);
-console.log("password_hash:", user.password_hash);
-console.log("typeof password_hash:", typeof user.password_hash);
-console.log("================================");
+    if (!user.password_hash) {
+        return res.status(401).json({
+            message: 'This account uses Google Sign-In. Please sign in with Google or set a password first.'
+        });
+    }
 
-if (!user.password_hash) {
-    return res.status(401).json({
-        message: 'This account uses Google Sign-In. Please sign in with Google or set a password first.'
-    });
-}
-
-const match = await bcrypt.compare(password, user.password_hash);
+    const match = await bcrypt.compare(password, user.password_hash);
 
     if (!match)
       return res.status(401).json({ message: 'Invalid email or password.' });
@@ -73,7 +71,16 @@ const match = await bcrypt.compare(password, user.password_hash);
     res.status(200).json({
       message: 'Welcome back!',
       token,
-      user: { id: user.id, name: user.name, email: user.email, isPremium: !!user.is_premium, isAdmin: !!user.is_admin, avatar: user.avatar_url }
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        isPremium: !!user.is_premium, 
+        isAdmin: !!user.is_admin, 
+        is_premium: user.is_premium,
+        is_admin: user.is_admin,
+        avatar: user.avatar_url 
+      }
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -95,14 +102,12 @@ exports.getMe = async (req, res) => {
   }
 };
 
-// FIX 5: Forgot password — generates a reset token stored in DB
-// For now stores token in users table (no email sending — add nodemailer later)
+// Forgot password
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Email required.' });
   try {
     const [rows] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-    // Always return same message for security (don't reveal if email exists)
     if (!rows.length) return res.json({ message: 'If that email exists, a reset link has been sent.' });
 
     const token   = require('crypto').randomBytes(32).toString('hex');
@@ -112,14 +117,11 @@ exports.forgotPassword = async (req, res) => {
       [token, expires, email]
     );
 
-    // In production: send email with link
-    // For now: return token directly (dev mode)
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/reset-password.html?token=${token}`;
     console.log(`🔑 Password reset link for ${email}: ${resetLink}`);
 
     res.json({
       message: 'Password reset link generated.',
-      // Remove dev_link in production!
       dev_link: resetLink
     });
   } catch (err) {
@@ -127,7 +129,7 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-// FIX 5: Reset password with token
+// Reset password with token
 exports.resetPassword = async (req, res) => {
   const { token, newPassword } = req.body;
   if (!token || !newPassword) return res.status(400).json({ message: 'Token and new password required.' });

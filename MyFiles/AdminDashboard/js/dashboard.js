@@ -1,6 +1,34 @@
+// Verification Guard: Block dashboard execution immediately if local credentials are missing
+(function verifyDashboardAccess() {
+    const token = localStorage.getItem('admin_token');
+    const userJson = localStorage.getItem('admin_user');
+
+    if (!token || !userJson) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        window.location.replace('index.html');
+        return;
+    }
+
+    try {
+        const user = JSON.parse(userJson);
+        if (user.isAdmin !== true && user.is_admin != 1) {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_user');
+            window.location.replace('index.html');
+        }
+    } catch (e) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        window.location.replace('index.html');
+    }
+})();
+
 async function initStats() {
     try {
         const data = await window.apiRequest('/admin/dashboard/overview');
+        if (!data) return;
+        
         const { overview, recentAnime, recentEpisodes, topAnime, recentPayments, activityLogs, latestUsers } = data;
 
         // Header Stats
@@ -54,14 +82,16 @@ async function initStats() {
 
         // Recent Payments
         const payBody = document.querySelector('#recent-payments-table tbody');
-        payBody.innerHTML = '';
-        recentPayments.forEach(p => {
-            payBody.innerHTML += `<tr>
-                <td>${p.name}</td>
-                <td>UGX ${p.amount.toLocaleString()}</td>
-                <td><span class="status-badge ${p.status}">${p.status}</span></td>
-            </tr>`;
-        });
+        if (payBody) {
+            payBody.innerHTML = '';
+            recentPayments.forEach(p => {
+                payBody.innerHTML += `<tr>
+                    <td>${p.name}</td>
+                    <td>UGX ${p.amount.toLocaleString()}</td>
+                    <td><span class="status-badge ${p.status}">${p.status}</span></td>
+                </tr>`;
+            });
+        }
 
         // Activity Logs
         const activityList = document.getElementById('activity-logs');
@@ -89,11 +119,16 @@ async function initStats() {
                 </div>`;
         });
 
-    } catch (err) { console.error('Stats load failed:', err); }
+    } catch (err) { 
+        console.error('Stats load failed:', err); 
+    }
 }
 
-// Auto-refresh every 30 seconds
-if (window.statsInterval) clearInterval(window.statsInterval);
-window.statsInterval = setInterval(initStats, 30000);
+// Initial script auto-invocation
+document.addEventListener('DOMContentLoaded', () => {
+    initStats();
+    if (window.statsInterval) clearInterval(window.statsInterval);
+    window.statsInterval = setInterval(initStats, 30000);
+});
 
 window.initStats = initStats;

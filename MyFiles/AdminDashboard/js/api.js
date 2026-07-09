@@ -24,7 +24,12 @@ async function apiRequest(endpoint, options = {}) {
     if (response.status === 401 || response.status === 403) {
         localStorage.removeItem('admin_token');
         localStorage.removeItem('admin_user');
-        window.location.replace('index.html');
+        
+        // Only redirect to index if we aren't already on the login landing page
+        const currentPath = window.location.pathname;
+        if (!currentPath.endsWith('index.html') && currentPath !== '/' && !currentPath.endsWith('/')) {
+            window.location.replace('index.html');
+        }
         return;
     }
 
