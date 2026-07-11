@@ -1,3 +1,5 @@
+// File Path: Frontend/js/api.js
+
 const API_BASE = 'https://anistrimbackend.onrender.com/api';
 
 async function apiRequest(endpoint, options = {}) {
@@ -16,25 +18,36 @@ async function apiRequest(endpoint, options = {}) {
         options.body = JSON.stringify(options.body);
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        headers
-    });
+    try {
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+            ...options,
+            headers
+        });
 
-    if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
-        window.location.replace('index.html');
-        return;
+        if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_user');
+            
+            const currentPath = window.location.pathname;
+            if (!currentPath.endsWith('index.html') && currentPath !== '/' && !currentPath.endsWith('/')) {
+                window.location.replace('index.html');
+            }
+            return null;
+        }
+
+        if (response.status === 204) return null;
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data?.message || 'API Request failed');
+        }
+
+        return data;
+    } catch (error) {
+        console.error(`API Error [${endpoint}]:`, error);
+        throw error;
     }
-
-    const data = response.status !== 204 ? await response.json() : null;
-
-    if (!response.ok) {
-        throw new Error(data?.message || 'API Request failed');
-    }
-
-    return data;
 }
 
 window.apiRequest = apiRequest;

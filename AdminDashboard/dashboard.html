@@ -3,535 +3,316 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AniStrim Admin - Dashboard</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>AniStrim Admin Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --accent: #3b82f6;
+            --accent-premium: #eab308;
+            --danger: #ef4444;
+            --success: #22c55e;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-card);
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            border-right: 1px solid #334155;
+        }
+        .sidebar h2 {
+            font-size: 1.5rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .nav-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .nav-links a {
+            color: var(--text-sub);
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: all 0.2s;
+        }
+        .nav-links a.active, .nav-links a:hover {
+            background-color: #334155;
+            color: var(--text-main);
+        }
+        .logout-btn {
+            margin-top: auto;
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            cursor: pointer;
+        }
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+        .header {
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .grid-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background-color: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card-info h3 {
+            font-size: 0.875rem;
+            color: var(--text-sub);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .card-info .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        .card-icon {
+            font-size: 2rem;
+            color: var(--accent);
+            opacity: 0.8;
+        }
+        .grid-sections {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+        .section-box {
+            background-color: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid #334155;
+            margin-bottom: 1.5rem;
+        }
+        .section-box h4 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #334155;
+        }
+        th {
+            color: var(--text-sub);
+            font-weight: 600;
+        }
+        .list-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #334155;
+        }
+        .list-item:last-child {
+            border-bottom: none;
+        }
+        .mini-thumb {
+            width: 45px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 0.25rem;
+        }
+        .item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .item-title {
+            font-weight: 600;
+        }
+        .item-sub {
+            font-size: 0.85rem;
+            color: var(--text-sub);
+        }
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .status-badge.completed { background-color: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .status-badge.pending { background-color: rgba(234, 179, 8, 0.2); color: var(--accent-premium); }
+        .badge.premium { background-color: var(--accent-premium); color: #000; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; }
+        .timeline-item {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        .timeline-item .time { color: var(--accent); font-weight: bold; min-width: 65px; }
+    </style>
 </head>
-<body class="dashboard-page">
-    <aside class="sidebar">
-        <div class="sidebar-header">
-            <h2><i class="fas fa-film"></i> AniStrim</h2>
-        </div>
-        <nav class="sidebar-nav">
-            <ul>
-                <li><a href="#" class="nav-link active" data-section="stats"><i class="fas fa-chart-line"></i> Dashboard</a></li>
-                <li><a href="#" class="nav-link" data-section="anime"><i class="fas fa-clapperboard"></i> Anime</a></li>
-                <li><a href="#" class="nav-link" data-section="genres"><i class="fas fa-tags"></i> Genres</a></li>
-                <li><a href="#" class="nav-link" data-section="users"><i class="fas fa-users"></i> Users</a></li>
-                <li><a href="#" class="nav-link" data-section="payments"><i class="fas fa-money-bill-wave"></i> Payments</a></li>
-                <li><a href="#" class="nav-link" data-section="ads"><i class="fas fa-ad"></i> Ads</a></li>
-                <li><a href="#" class="nav-link" data-section="settings"><i class="fas fa-cog"></i> Settings</a></li>
-                <li><a href="#" class="nav-link" data-section="logs"><i class="fas fa-history"></i> Logs</a></li>
-            </ul>
-        </nav>
-        <div class="sidebar-footer">
-            <button onclick="logout()" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
-        </div>
-    </aside>
+<body>
 
-    <main class="content">
-        <header class="content-header">
-            <h1 id="section-title">Dashboard</h1>
-            <div id="admin-info" class="admin-info">
-                <span id="admin-name"></span>
-            </div>
-        </header>
-
-        <!-- Stats Section -->
-        <section id="stats-section" class="content-section">
-            <div class="dashboard-header-stats">
-                <div class="stat-card main">
-                    <div class="stat-icon"><i class="fas fa-users"></i></div>
-                    <div class="stat-info">
-                        <h3>Community</h3>
-                        <p id="total-users">0</p>
-                        <span class="stat-detail"><i class="fas fa-star"></i> <span id="premium-users">0</span> Premium</span>
-                    </div>
-                </div>
-                <div class="stat-card main">
-                    <div class="stat-icon"><i class="fas fa-clapperboard"></i></div>
-                    <div class="stat-info">
-                        <h3>Library</h3>
-                        <p id="total-anime">0</p>
-                        <span class="stat-detail"><i class="fas fa-play-circle"></i> <span id="total-episodes">0</span> Episodes</span>
-                    </div>
-                </div>
-                <div class="stat-card main">
-                    <div class="stat-icon"><i class="fas fa-eye"></i></div>
-                    <div class="stat-info">
-                        <h3>Reach</h3>
-                        <p id="total-views">0</p>
-                        <span class="stat-detail"><i class="fas fa-chart-line"></i> Views Today</span>
-                    </div>
-                </div>
-                <div class="stat-card main highlight">
-                    <div class="stat-icon"><i class="fas fa-coins"></i></div>
-                    <div class="stat-info">
-                        <h3>Total Revenue</h3>
-                        <p id="revenue-total">0</p>
-                        <span class="stat-detail"><i class="fas fa-calendar-check"></i> <span id="revenue-monthly">0</span> This Month</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid">
-                <!-- Row 1: Left (66%) and Right (33%) -->
-                <div class="dashboard-main-row">
-                    <div class="dashboard-column-double">
-                        <!-- Revenue Chart Placeholder / Summary -->
-                        <div class="dashboard-card revenue-summary">
-                            <div class="card-header">
-                                <h3><i class="fas fa-chart-pie"></i> Revenue Performance</h3>
-                                <div class="card-badges">
-                                    <span class="badge success">Today: <span id="revenue-today">0</span></span>
-                                </div>
-                            </div>
-                            <div class="revenue-stats-inline">
-                                <div class="rev-item">
-                                    <label>Daily Avg</label>
-                                    <p id="rev-avg-daily">UGX 0</p>
-                                </div>
-                                <div class="rev-item">
-                                    <label>Active Users Today</label>
-                                    <p id="active-users-today">0</p>
-                                </div>
-                                <div class="rev-item">
-                                    <label>Banned Users</label>
-                                    <p id="banned-users" class="text-error">0</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Encoding Queue -->
-                        <div class="dashboard-card">
-                            <div class="card-header">
-                                <h3><i class="fas fa-microchip"></i> Bunny Encoding Queue</h3>
-                            </div>
-                            <div class="bunny-stats">
-                                <div class="bunny-badge ready"><i class="fas fa-check-circle"></i> <span id="bunny-ready">0</span> Ready</div>
-                                <div class="bunny-badge processing"><i class="fas fa-spinner fa-spin"></i> <span id="bunny-processing">0</span> Encoding</div>
-                                <div class="bunny-badge failed"><i class="fas fa-exclamation-triangle"></i> <span id="bunny-failed">0</span> Failed</div>
-                            </div>
-                        </div>
-
-                        <!-- Recent Uploads -->
-                        <div class="dashboard-card">
-                            <div class="card-header">
-                                <h3><i class="fas fa-upload"></i> Recent Uploads</h3>
-                            </div>
-                            <div class="recent-uploads-list" id="recent-uploads">
-                                <!-- JS Populated -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-column-single">
-                        <!-- Top Content -->
-                        <div class="dashboard-card">
-                            <div class="card-header">
-                                <h3><i class="fas fa-fire"></i> Top Anime</h3>
-                            </div>
-                            <div class="top-anime-list" id="top-anime-list">
-                                <!-- JS Populated -->
-                            </div>
-                        </div>
-
-                        <!-- Recent Payments -->
-                        <div class="dashboard-card">
-                            <div class="card-header">
-                                <h3><i class="fas fa-receipt"></i> Recent Payments</h3>
-                            </div>
-                            <table class="simple-table" id="recent-payments-table">
-                                <tbody></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 2: Logs and New Users -->
-                <div class="dashboard-footer-row">
-                    <div class="dashboard-card">
-                        <div class="card-header">
-                            <h3><i class="fas fa-history"></i> System Activity</h3>
-                        </div>
-                        <div class="activity-timeline" id="activity-logs">
-                            <!-- JS Populated -->
-                        </div>
-                    </div>
-                    <div class="dashboard-card">
-                        <div class="card-header">
-                            <h3><i class="fas fa-user-plus"></i> New Registrations</h3>
-                        </div>
-                        <div class="new-users-list" id="latest-users">
-                            <!-- JS Populated -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Anime Section -->
-        <section id="anime-section" class="content-section" style="display: none;">
-            <div class="section-actions">
-                <div class="search-box">
-                    <input type="text" id="anime-search" placeholder="Search anime...">
-                    <select id="anime-filter-status">
-                        <option value="">All Status</option>
-                        <option value="airing">Airing</option>
-                        <option value="completed">Completed</option>
-                        <option value="upcoming">Upcoming</option>
-                    </select>
-                </div>
-                <button class="primary-btn" id="add-anime-btn"><i class="fas fa-plus"></i> Add Anime</button>
-            </div>
-            <div class="table-container">
-                <table id="anime-table">
-                    <thead>
-                        <tr>
-                            <th>Cover</th>
-                            <th>Title</th>
-                            <th>Status</th>
-                            <th>Premium</th>
-                            <th>Featured</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Genres Section -->
-        <section id="genres-section" class="content-section" style="display: none;">
-            <div class="section-actions">
-                <form id="genre-form" class="inline-form">
-                    <input type="text" id="genre-name" placeholder="Genre Name" required>
-                    <button type="submit" class="primary-btn">Add Genre</button>
-                </form>
-            </div>
-            <div class="table-container">
-                <table id="genres-table">
-                    <thead><tr><th>Name</th><th>Actions</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Users Section -->
-        <section id="users-section" class="content-section" style="display: none;">
-            <div class="section-actions">
-                <input type="text" id="user-search" placeholder="Search users...">
-            </div>
-            <div class="table-container">
-                <table id="users-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Role</th>
-                            <th>Status</th>
-                            <th>Premium</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Payments Section -->
-        <section id="payments-section" class="content-section" style="display: none;">
-            <div class="table-container">
-                <table id="payments-full-table">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Ads Section -->
-        <section id="ads-section" class="content-section" style="display: none;">
-            <div class="section-actions">
-                <button class="primary-btn" id="add-ad-btn">Add New Ad</button>
-            </div>
-            <div class="table-container">
-                <table id="ads-table">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>Type</th>
-                            <th>Active</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Settings Section -->
-        <section id="settings-section" class="content-section" style="display: none;">
-            <div class="settings-container card">
-                <form id="settings-form">
-                    <div class="form-group">
-                        <label>Site Name</label>
-                        <input type="text" name="site_name">
-                    </div>
-                    <div class="form-group">
-                        <label>Announcement Message</label>
-                        <textarea name="announcement"></textarea>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Premium Monthly Price (UGX)</label>
-                            <input type="number" name="premium_price_monthly">
-                        </div>
-                        <div class="form-group">
-                            <label>Premium Yearly Price (UGX)</label>
-                            <input type="number" name="premium_price_yearly">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Bunny CDN Hostname</label>
-                        <input type="text" name="bunny_cdn_hostname">
-                    </div>
-                    <div class="form-group">
-                        <label>Contact Email</label>
-                        <input type="email" name="contact_email">
-                    </div>
-                    <div class="form-group">
-                        <label><input type="checkbox" name="maintenance_mode" value="1"> Maintenance Mode</label>
-                    </div>
-                    <button type="submit" class="primary-btn">Save Settings</button>
-                </form>
-            </div>
-        </section>
-
-        <!-- Logs Section -->
-        <section id="logs-section" class="content-section" style="display: none;">
-            <div class="table-container">
-                <table id="logs-table">
-                    <thead>
-                        <tr>
-                            <th>Admin</th>
-                            <th>Action</th>
-                            <th>Target</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Episodes Section (Contextual) -->
-        <section id="episodes-section" class="content-section" style="display: none;">
-            <div class="section-actions">
-                <button class="secondary-btn" id="back-to-anime-btn"><i class="fas fa-arrow-left"></i> Back</button>
-                <button class="primary-btn" id="add-episode-btn"><i class="fas fa-plus"></i> Add Episode</button>
-            </div>
-            <h2 id="current-anime-title"></h2>
-            <div class="table-container">
-                <table id="episodes-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Thumbnail</th>
-                            <th>Title</th>
-                            <th>Status</th>
-                            <th>Premium</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-    </main>
-
-    <!-- Modals -->
-    <div id="anime-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2 id="anime-modal-title">Add Anime</h2>
-            <form id="anime-form">
-                <input type="hidden" id="anime-id">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Title *</label>
-                        <input type="text" id="anime-title" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Japanese Title</label>
-                        <input type="text" id="anime-title-jp">
-                    </div>
-                    <div class="form-group">
-                        <label>Year</label>
-                        <input type="number" id="anime-year">
-                    </div>
-                    <div class="form-group">
-                        <label>Status</label>
-                        <select id="anime-status">
-                            <option value="airing">Airing</option>
-                            <option value="completed">Completed</option>
-                            <option value="upcoming">Upcoming</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Studio</label>
-                        <input type="text" id="anime-studio">
-                    </div>
-                    <div class="form-group">
-                        <label>Rating</label>
-                        <input type="number" step="0.1" id="anime-rating">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Genres (Hold Ctrl to select multiple)</label>
-                    <select id="anime-genres" multiple class="multi-select"></select>
-                </div>
-                <div class="form-group">
-                    <label>Tags (Comma separated)</label>
-                    <input type="text" id="anime-tags">
-                </div>
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea id="anime-description"></textarea>
-                </div>
-                <div class="form-row checkbox-row">
-                    <label><input type="checkbox" id="anime-is-premium"> Premium</label>
-                    <label><input type="checkbox" id="anime-is-featured"> Featured</label>
-                </div>
-                <div class="upload-grid">
-                    <div class="form-group">
-                        <label>Cover Image</label>
-                        <input type="file" id="anime-cover-file" accept="image/*">
-                        <input type="hidden" id="anime-cover-url">
-                        <div id="cover-preview" class="image-preview"></div>
-                    </div>
-                    <div class="form-group">
-                        <label>Banner Image</label>
-                        <input type="file" id="anime-banner-file" accept="image/*">
-                        <input type="hidden" id="anime-banner-url">
-                        <div id="banner-preview" class="image-preview"></div>
-                    </div>
-                </div>
-                <button type="submit" class="primary-btn full-width">Save Anime</button>
-            </form>
-        </div>
+    <div class="sidebar">
+        <h2><i class="fas fa-film"></i> AniStrim</h2>
+        <ul class="nav-links">
+            <li><a href="#" class="active"><i class="fas fa-chart-pie"></i> Dashboard</a></li>
+            <li><a href="#"><i class="fas fa-tv"></i> Anime List</a></li>
+            <li><a href="#"><i class="fas fa-users"></i> Users Management</a></li>
+            <li><a href="#"><i class="fas fa-wallet"></i> Payments</a></li>
+            <li><a href="#" class="logout-btn" onclick="window.logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
+        </ul>
     </div>
 
-    <div id="episode-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2 id="episode-modal-title">Add Episode</h2>
-            <form id="episode-form">
-                <input type="hidden" id="episode-id">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Episode Number *</label>
-                        <input type="number" id="ep-number" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Title</label>
-                        <input type="text" id="ep-title">
-                    </div>
+    <div class="main-content">
+        <div class="header">
+            <h2>Administrative Overview</h2>
+            <div id="active-user-badge"><i class="fas fa-circle" style="color: var(--success);"></i> Live Testing Environment</div>
+        </div>
+
+        <div class="grid-stats">
+            <div class="card">
+                <div class="card-info"><h3>Total Users</h3><div class="value" id="total-users">0</div></div>
+                <div class="card-icon"><i class="fas fa-users"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>VIP Users</h3><div class="value" id="premium-users">0</div></div>
+                <div class="card-icon" style="color: var(--accent-premium);"><i class="fas fa-crown"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Total Anime</h3><div class="value" id="total-anime">0</div></div>
+                <div class="card-icon"><i class="fas fa-compact-disc"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Total Episodes</h3><div class="value" id="total-episodes">0</div></div>
+                <div class="card-icon"><i class="fas fa-video"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Total Views</h3><div class="value" id="total-views">0</div></div>
+                <div class="card-icon"><i class="fas fa-eye"></i></div>
+            </div>
+        </div>
+
+        <div class="grid-stats">
+            <div class="card">
+                <div class="card-info"><h3>Total Earnings</h3><div class="value" id="revenue-total">UGX 0</div></div>
+                <div class="card-icon" style="color: var(--success);"><i class="fas fa-money-bill-wave"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Monthly Target</h3><div class="value" id="revenue-monthly">UGX 0</div></div>
+                <div class="card-icon"><i class="fas fa-calendar-alt"></i></div>
+            </div>
+            <div class="card">
+                <div class="card-info"><h3>Collected Today</h3><div class="value" id="revenue-today">UGX 0</div></div>
+                <div class="card-icon"><i class="fas fa-hand-holding-usd"></i></div>
+            </div>
+        </div>
+
+        <div class="grid-sections">
+            <div class="left-column">
+                <div class="section-box">
+                    <h4><i class="fas fa-credit-card"></i> Recent Subscriber Transactions</h4>
+                    <table id="recent-payments-table">
+                        <thead>
+                            <tr>
+                                <th>Subscriber</th>
+                                <th>Amount Base</th>
+                                <th>Gateway Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            </tbody>
+                    </table>
                 </div>
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea id="ep-description"></textarea>
-                </div>
-                <div class="form-row checkbox-row">
-                    <label><input type="checkbox" id="ep-is-premium"> Premium</label>
-                </div>
-                <div class="upload-grid">
-                    <div class="form-group">
-                        <label>Video File (MP4 to Bunny Stream)</label>
-                        <input type="file" id="ep-video-file" accept="video/mp4,video/x-matroska,video/quicktime">
-                        <div id="video-upload-progress" class="progress-bar" style="display:none">
-                            <div class="progress-fill"></div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                    <div class="section-box">
+                        <h4><i class="fas fa-server"></i> Encoding Engine Status</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div>Ready: <strong id="bunny-ready" style="color: var(--success);">0</strong></div>
+                            <div>Processing: <strong id="bunny-processing" style="color: var(--accent);">0</strong></div>
+                            <div>Failed: <strong id="bunny-failed" style="color: var(--danger);">0</strong></div>
                         </div>
-                        <input type="hidden" id="ep-bunny-id">
-                        <input type="hidden" id="ep-playback-url">
-                        <input type="hidden" id="ep-embed-url">
-                        <div id="video-status-display"></div>
                     </div>
-                    <div class="form-group">
-                        <label>Thumbnail Image</label>
-                        <input type="file" id="ep-thumb-file" accept="image/*">
-                        <input type="hidden" id="ep-thumb-url">
-                        <div id="ep-thumb-preview" class="image-preview"></div>
+                    <div class="section-box">
+                        <h4><i class="fas fa-user-shield"></i> Moderation Summary</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div>Active Visitors Today: <strong id="active-users-today">0</strong></div>
+                            <div>Banned Accounts: <strong id="banned-users" style="color: var(--danger);">0</strong></div>
+                            <div>Est. Average Daily Rev: <strong id="rev-avg-daily">0</strong></div>
+                        </div>
                     </div>
                 </div>
-                <button type="submit" class="primary-btn full-width">Save Episode</button>
-            </form>
+            </div>
+
+            <div class="right-column">
+                <div class="section-box">
+                    <h4><i class="fas fa-fire"></i> Trending Catalogue</h4>
+                    <div id="top-anime-list"></div>
+                </div>
+
+                <div class="section-box">
+                    <h4><i class="fas fa-cloud-upload-alt"></i> Recent Live Feeds</h4>
+                    <div id="recent-uploads"></div>
+                </div>
+
+                <div class="section-box">
+                    <h4><i class="fas fa-user-plus"></i> Newly Onboarded Users</h4>
+                    <div id="latest-users"></div>
+                </div>
+
+                <div class="section-box">
+                    <h4><i class="fas fa-history"></i> System Activity Logs</h4>
+                    <div id="activity-logs"></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
     <script src="js/dashboard.js"></script>
-    <script src="js/anime.js"></script>
-    <script src="js/genres.js"></script>
-    <script src="js/users.js"></script>
-    <script src="js/payments.js"></script>
-    <script src="js/ads.js"></script>
-    <script src="js/settings.js"></script>
-    <script src="js/logs.js"></script>
-    <script src="js/episodes.js"></script>
-    <script>
-        // SPA Logic
-        document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                showSection(link.getAttribute('data-section'));
-            });
-        });
-
-        function showSection(sectionId) {
-            document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
-            const target = document.getElementById(sectionId + '-section');
-            if (target) target.style.display = 'block';
-
-            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-            document.querySelector(`[data-section="${sectionId}"]`)?.classList.add('active');
-
-            const titles = {
-                stats: 'Dashboard Overview',
-                anime: 'Anime Catalog',
-                genres: 'Genre Management',
-                users: 'User Management',
-                payments: 'Payment History',
-                ads: 'Ad Manager',
-                settings: 'System Settings',
-                logs: 'Activity Logs',
-                episodes: 'Episode Management'
-            };
-            document.getElementById('section-title').innerText = titles[sectionId] || 'Admin';
-
-            // Init module data
-            if (window['init' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1)]) {
-                window['init' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1)]();
-            }
-        }
-
-        // Boot
-        window.addEventListener('DOMContentLoaded', () => {
-            if (!localStorage.getItem('admin_token')) {
-                window.location.replace('index.html');
-                return;
-            }
-            const user = JSON.parse(localStorage.getItem('admin_user'));
-            document.getElementById('admin-name').innerText = user.name;
-            showSection('stats');
-        });
-    </script>
 </body>
 </html>

@@ -1,9 +1,8 @@
-// File Path: Frontend/js/auth.js
-
 document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('login-form');
     const errorMsg = document.getElementById('error-message');
 
+    // Check if already logged in (only redirect if on login page)
     const currentPath = window.location.pathname;
     const isLoginPage = currentPath.endsWith('index.html') || currentPath === '/' || currentPath.endsWith('/');
 
@@ -19,6 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const password = document.getElementById('password').value;
             const loginBtn = document.getElementById('login-btn');
 
+            if (!email || !password) {
+                if (errorMsg) errorMsg.innerText = 'Please fill out all fields.';
+                return;
+            }
+
             loginBtn.disabled = true;
             loginBtn.innerText = 'Logging in...';
             if (errorMsg) errorMsg.innerText = '';
@@ -29,24 +33,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: { email, password }
                 });
 
-                const u = data?.user;
-                const isAdmin = u && (
-                    u.isAdmin === true || 
-                    u.is_admin === 1 || 
-                    u.is_admin === '1' || 
-                    u.is_admin === true ||
-                    (u.is_admin && typeof u.is_admin === 'object' && u.is_admin.data && u.is_admin.data[0] === 1)
-                );
-
-                if (data?.token && isAdmin) {
+                if (data && data.user && (data.user.isAdmin === true || data.user.is_admin == 1)) {
                     localStorage.setItem('admin_token', data.token);
-                    localStorage.setItem('admin_user', JSON.stringify(u));
+                    localStorage.setItem('admin_user', JSON.stringify(data.user));
                     window.location.replace('dashboard.html');
-                } else if (data?.token) {
-                    if (errorMsg) errorMsg.innerText = 'Access denied. Account is not configured as an administrator.';
-                    localStorage.removeItem('admin_token');
                 } else {
-                    if (errorMsg) errorMsg.innerText = 'Login failed.';
+                    if (errorMsg) errorMsg.innerText = 'Access denied. Admin only.';
+                    localStorage.removeItem('admin_token');
+                    localStorage.removeItem('admin_user');
                 }
             } catch (err) {
                 if (errorMsg) errorMsg.innerText = err.message;

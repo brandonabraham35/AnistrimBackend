@@ -1,20 +1,12 @@
-// File Path: Backend/controllers/authController.js
+// controllers/authController.js
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const db     = require('../config/db');
 
-// Helper to defensively force true boolean types (handles BIT, TINYINT, strings, Buffers)
-const toBool = v => v === true || v === 1 || v === '1' || (Buffer.isBuffer(v) && v[0] === 1);
-
 // Helper — create a signed JWT
 function signToken(user) {
   return jwt.sign(
-    { 
-      id: user.id, 
-      email: user.email, 
-      isAdmin: toBool(user.is_admin), 
-      isPremium: toBool(user.is_premium) 
-    },
+    { id: user.id, email: user.email, isAdmin: !!user.is_admin, isPremium: !!user.is_premium },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
@@ -43,13 +35,7 @@ exports.register = async (req, res) => {
     res.status(201).json({ 
       message: 'Account created!', 
       token, 
-      user: { 
-        id: result.insertId, 
-        name, 
-        email, 
-        isPremium: false, 
-        isAdmin: false 
-      } 
+      user: { id: result.insertId, name, email, isPremium: false, isAdmin: false, is_premium: 0, is_admin: 0 } 
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -77,6 +63,7 @@ exports.login = async (req, res) => {
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
+
     if (!match)
       return res.status(401).json({ message: 'Invalid email or password.' });
 
@@ -88,8 +75,10 @@ exports.login = async (req, res) => {
         id: user.id, 
         name: user.name, 
         email: user.email, 
-        isPremium: toBool(user.is_premium), 
-        isAdmin: toBool(user.is_admin), 
+        isPremium: !!user.is_premium, 
+        isAdmin: !!user.is_admin, 
+        is_premium: user.is_premium,
+        is_admin: user.is_admin,
         avatar: user.avatar_url 
       }
     });
@@ -107,18 +96,7 @@ exports.getMe = async (req, res) => {
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'User not found.' });
-    
-    const dbUser = rows[0];
-    res.json({
-      id: dbUser.id,
-      name: dbUser.name,
-      email: dbUser.email,
-      avatar_url: dbUser.avatar_url,
-      isPremium: toBool(dbUser.is_premium),
-      isAdmin: toBool(dbUser.is_admin),
-      premium_expires_at: dbUser.premium_expires_at,
-      created_at: dbUser.created_at
-    });
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
   }
