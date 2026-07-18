@@ -15,10 +15,16 @@ const allowedOrigins = new Set([
   'http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.50.55:3000',
   ...(process.env.FRONTEND_URL || '').split(',').map(origin => origin.trim()).filter(Boolean),
 ]);
+// `npx serve` is commonly opened from another device on the same private network.
+// Keep that development flow working without having to add each changing LAN IP to
+// Render. Public production origins must still be declared in FRONTEND_URL.
+const localDevelopmentOrigin = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
-    return callback(new Error('Origin is not allowed by CORS.'));
+    if (!origin || allowedOrigins.has(origin) || localDevelopmentOrigin.test(origin)) return callback(null, true);
+    // Do not throw here: throwing turns a rejected browser origin into a noisy 500
+    // and fills Render logs. The CORS middleware simply omits CORS headers instead.
+    return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
