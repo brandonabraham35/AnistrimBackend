@@ -29,6 +29,9 @@ router.delete('/genres/:id',                admin.deleteGenre);
 
 // Episodes
 router.post('/anime/:animeId/episodes',     admin.addEpisode);
+router.get('/anime/:animeId/episodes',      admin.getAnimeEpisodes);
+router.get('/episodes',                     admin.getAllEpisodes);
+router.get('/episodes/:id',                 admin.getEpisode);
 router.put('/episodes/:id',                 admin.updateEpisode);
 router.delete('/episodes/:id',              admin.deleteEpisode);
 

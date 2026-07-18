@@ -4,7 +4,9 @@
     const token = localStorage.getItem('admin_token');
     const userJson = localStorage.getItem('admin_user');
 
-    if (!token || !userJson) {
+    let user;
+    try { user = userJson ? JSON.parse(userJson) : null; } catch (_) { user = null; }
+    if (!token || !user || !user.isAdmin) {
         localStorage.removeItem('admin_token');
         localStorage.removeItem('admin_user');
         window.location.replace('index.html');
@@ -22,7 +24,7 @@ async function loadDashboardOverview() {
         const data = await window.apiRequest('/admin/dashboard/overview');
         if (!data || !data.overview) return;
 
-        const { overview, recentAnime, recentEpisodes, activityLogs } = data;
+        const { overview, recentAnime, recentEpisodes, activityLogs, topAnime = [] } = data;
 
         // Statistics Widgets Binding
         safeSetText('total-anime', overview.content?.totalAnime);
@@ -34,6 +36,12 @@ async function loadDashboardOverview() {
         safeSetText('video-count', overview.storage?.videoCount);
         safeSetText('avg-rating', overview.content?.avgRating ? Number(overview.content.avgRating).toFixed(1) : '0.0');
         safeSetText('watch-count', overview.content?.totalViews);
+        safeSetText('total-views', overview.content?.totalViews);
+        safeSetText('bunny-ready', overview.bunny?.ready);
+        safeSetText('bunny-processing', overview.bunny?.processing);
+        safeSetText('bunny-failed', overview.bunny?.failed);
+        safeSetText('active-users-today', overview.users?.activeToday);
+        safeSetText('banned-users', overview.users?.banned);
 
         // Feed Traces Populator
         const animeFeed = document.getElementById('recent-anime-feed');
@@ -61,6 +69,25 @@ async function loadDashboardOverview() {
                 </div>
             `).join('');
         }
+
+        const uploads = document.getElementById('recent-uploads');
+        if (uploads) uploads.innerHTML = recentEpisodes.map(ep => `<div class="list-item"><div class="item-info"><span class="item-title">${ep.anime_title} · Episode ${ep.episode_number}</span><span class="item-sub">${ep.video_status || 'pending'}</span></div></div>`).join('') || '<div class="item-sub">No uploads yet.</div>';
+
+        const topList = document.getElementById('top-anime-list');
+        if (topList) topList.innerHTML = topAnime.map(anime => `<div class="list-item"><img src="${anime.cover_image || 'https://via.placeholder.com/150'}" class="mini-thumb"><div class="item-info"><span class="item-title">${anime.title}</span><span class="item-sub">${Number(anime.view_count || 0).toLocaleString()} views</span></div></div>`).join('') || '<div class="item-sub">No catalogue data yet.</div>';
+
+        const logs = document.getElementById('activity-logs');
+        if (logs) logs.innerHTML = activityLogs.map(log => `<div class="timeline-item"><span class="time">${new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="action"><strong>${log.user_name || 'System'}</strong> ${log.action}</span></div>`).join('') || '<div class="item-sub">No recorded activity yet.</div>';
+
+        const revenueData = await window.apiRequest('/payments/revenue');
+        const revenue = revenueData?.stats || {};
+        const currency = revenueData?.recent?.[0]?.currency || 'UGX';
+        const money = value => `${currency} ${Number(value || 0).toLocaleString()}`;
+        safeSetText('revenue-total', money(revenue.total_revenue));
+        safeSetText('revenue-today', money(revenue.revenue_today));
+        safeSetText('rev-avg-daily', money(Number(revenue.total_revenue || 0) / Math.max(1, new Date().getDate())));
+        const payments = document.querySelector('#recent-payments-table tbody');
+        if (payments) payments.innerHTML = (revenueData?.recent || []).slice(0, 5).map(payment => `<tr><td>${payment.name || payment.email}</td><td>${payment.currency || currency} ${Number(payment.amount || 0).toLocaleString()}</td><td>${payment.status}</td></tr>`).join('') || '<tr><td colspan="3">No payment records yet.</td></tr>';
     } catch (err) {
         console.error('Failed to parse remote dashboard metrics:', err);
     }

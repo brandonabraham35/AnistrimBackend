@@ -11,8 +11,15 @@ const PORT = process.env.PORT || 5000;
 // File Path: server.js
 
 // ─── Middleware ────────────────────────────────────────────
+const allowedOrigins = new Set([
+  'http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.50.55:3000',
+  ...(process.env.FRONTEND_URL || '').split(',').map(origin => origin.trim()).filter(Boolean),
+]);
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.50.55:3000'],
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed by CORS.'));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true

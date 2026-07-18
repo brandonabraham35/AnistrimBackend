@@ -16,11 +16,19 @@ const {
   FOLDERS,
   MAX_FILE_SIZE,
 } = require('../utils/bunnyUpload');
-const bunnyStream = require('../utils/bunnyStream');
+const bunnyStreamController = require('../controllers/bunnyStreamController');
 const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const videoTempDir = path.join(require('os').tmpdir(), 'anistrim-videos');
+fs.mkdirSync(videoTempDir, { recursive: true });
 const videoUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit for videos
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, videoTempDir),
+    filename: (_req, file, callback) => callback(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`),
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => callback(null, /^video\/(mp4|quicktime|x-matroska|webm)$/.test(file.mimetype)),
 });
 
 const protect = auth.protect || auth.auth || auth.authenticate;
@@ -94,35 +102,8 @@ router.post('/profile', protect, uploadTo('profiles'));
 router.post('/profile/avatar', protect, uploadTo('avatars'));
 
 // Admin Video Uploads (Bunny Stream)
-router.post('/video', protect, adminOnly, videoUpload.single('video'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'No video file provided.' });
-  try {
-    const title = req.body.title || 'Untitled Episode';
-    const videoGuid = await bunnyStream.createVideo(title);
-    await bunnyStream.uploadVideoFile(videoGuid, req.file.buffer);
+router.post('/video', protect, adminOnly, videoUpload.single('video'), bunnyStreamController.uploadVideo);
 
-    const playbackUrl = `https://${process.env.BUNNY_STREAM_CDN_HOSTNAME}/${videoGuid}/playlist.m3u8`;
-    const embedUrl = `https://iframe.mediadelivery.net/embed/${process.env.BUNNY_STREAM_LIBRARY_ID}/${videoGuid}`;
-
-    res.json({
-      success: true,
-      bunny_video_id: videoGuid,
-      playback_url: playbackUrl,
-      embed_url: embedUrl,
-      status: 'processing'
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-router.get('/video/:videoId/status', protect, adminOnly, async (req, res) => {
-  try {
-    const status = await bunnyStream.getVideoStatus(req.params.videoId);
-    res.json(status);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+router.get('/video/:videoId/status', protect, adminOnly, bunnyStreamController.getVideoStatus);
 
 module.exports = router;

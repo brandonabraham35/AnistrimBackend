@@ -1,182 +1,163 @@
-// File Path: Backend/controllers/adminController.js
-
 const db = require('../config/db');
+const bunnyStream = require('../utils/bunnyStream');
 
-// Utility to normalize buffer bit objects safely into actual JSON booleans
-const toBool = v => v === true || v === 1 || v === '1' || (Buffer.isBuffer(v) && v[0] === 1);
+const toBool = value => value === true || value === 1 || value === '1' || (Buffer.isBuffer(value) && value[0] === 1);
+const numberOrNull = value => value === '' || value === undefined || value === null ? null : Number(value);
+
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim() || null;
+}
+
+async function logActivity(req, action, targetType = null, targetId = null, details = null) {
+  try {
+    await db.query(
+      'INSERT INTO activity_logs (user_id, action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, action, targetType, targetId, details, clientIp(req)]
+    );
+  } catch (error) {
+    // Activity logging must never turn a completed admin operation into a failure.
+    console.warn('Activity log was not recorded:', error.message);
+  }
+}
+
+async function getSettingsObject() {
+  const [rows] = await db.query('SELECT `key`, `value` FROM settings');
+  return rows.reduce((settings, row) => ({ ...settings, [row.key]: row.value }), {});
+}
+
+function settingsResponse(settings) {
+  return {
+    ...settings,
+    maintenance_mode: toBool(settings.maintenance_mode),
+    premium_monthly_amount: settings.premium_price_monthly ?? settings.premium_monthly_amount ?? '',
+    premium_yearly_amount: settings.premium_price_yearly ?? settings.premium_yearly_amount ?? '',
+  };
+}
 
 const adminController = {
-  // 1. Core Analytics Summary Route
-  getDashboardOverview: async (req, res) => {
+  async getDashboardOverview(req, res) {
     try {
-      // User aggregations
-      const [[{ totalUsers }]] = await db.query('SELECT COUNT(*) as totalUsers FROM users');
-      const [[{ premiumUsers }]] = await db.query('SELECT COUNT(*) as premiumUsers FROM users WHERE is_premium = 1 OR premium_expires_at > NOW()');
-      const [[{ activeToday }]] = await db.query('SELECT COUNT(DISTINCT user_id) as activeToday FROM watch_history WHERE DATE(updated_at) = CURDATE()').catch(() => [[{ activeToday: 0 }]]);
-      const [[{ bannedUsers }]] = await db.query('SELECT COUNT(*) as bannedUsers FROM users WHERE status = "banned"').catch(() => [[{ bannedUsers: 0 }]]);
-
-      // Content summaries
-      const [[{ totalAnime }]] = await db.query('SELECT COUNT(*) as totalAnime FROM anime');
-      const [[{ totalEpisodes }]] = await db.query('SELECT COUNT(*) as totalEpisodes FROM episodes');
-      const [[{ totalViews }]] = await db.query('SELECT COALESCE(SUM(view_count), 0) as totalViews FROM anime');
-      const [[{ avgRating }]] = await db.query('SELECT COALESCE(AVG(rating), 0) as avgRating FROM anime').catch(() => [[{ avgRating: 0 }]]);
-
-      // Storage metrics
-      const [[{ videoCount }]] = await db.query('SELECT COUNT(*) as videoCount FROM episodes WHERE video_url IS NOT NULL AND video_url != ""');
-      const [[{ bunnyReady }]] = await db.query('SELECT COUNT(*) as bunnyReady FROM episodes WHERE video_status = "ready"').catch(() => [[{ bunnyReady: 0 }]]);
-      const [[{ bunnyProcessing }]] = await db.query('SELECT COUNT(*) as bunnyProcessing FROM episodes WHERE video_status = "processing"').catch(() => [[{ bunnyProcessing: 0 }]]);
-      const [[{ bunnyFailed }]] = await db.query('SELECT COUNT(*) as bunnyFailed FROM episodes WHERE video_status = "failed"').catch(() => [[{ bunnyFailed: 0 }]]);
-
-      // Array list feeds
-      const [recentAnime] = await db.query('SELECT id, title, cover_image, status, release_year FROM anime ORDER BY created_at DESC LIMIT 5');
-      
-      const [recentEpisodes] = await db.query(`
-        SELECT e.episode_number, e.created_at, a.title as anime_title 
-        FROM episodes e 
-        JOIN anime a ON e.anime_id = a.id 
-        ORDER BY e.created_at DESC LIMIT 5
-      `);
-
-      const [activityLogs] = await db.query(`
-        SELECT al.action, al.created_at, al.ip_address, u.name as user_name 
-        FROM admin_logs al 
-        LEFT JOIN users u ON al.admin_id = u.id 
-        ORDER BY al.created_at DESC LIMIT 5
-      `).catch(() => [[]]);
-
-      res.status(200).json({
+      const [results] = await Promise.all([
+        db.query('SELECT COUNT(*) total, SUM(is_premium = 1 OR premium_expires_at > NOW()) premium, SUM(status = "banned") banned FROM users'),
+        db.query('SELECT COUNT(*) totalAnime, COALESCE(SUM(view_count), 0) totalViews, COALESCE(AVG(rating), 0) avgRating FROM anime'),
+        db.query('SELECT COUNT(*) totalEpisodes, COALESCE(SUM(view_count), 0) episodeViews, COUNT(bunny_video_id) videoCount, SUM(video_status = "ready") bunnyReady, SUM(video_status IN ("queued", "processing", "encoding", "resolving")) bunnyProcessing, SUM(video_status = "failed") bunnyFailed FROM episodes'),
+        db.query('SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_history WHERE DATE(watched_at) = CURDATE()').catch(() => [[{ activeToday: 0, dailyViews: 0 }]]),
+        db.query('SELECT id, title, cover_image, status, year AS release_year, created_at FROM anime ORDER BY created_at DESC LIMIT 5'),
+        db.query('SELECT e.id, e.episode_number, e.title, e.thumbnail_url, e.video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5'),
+        db.query('SELECT a.action, a.created_at, a.ip_address, u.name user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 10').catch(() => [[]]),
+        db.query('SELECT id, title, cover_image, view_count FROM anime ORDER BY view_count DESC, created_at DESC LIMIT 5'),
+        db.query('SELECT COALESCE(SUM(amount), 0) revenue FROM payments WHERE status = "successful"').catch(() => [[{ revenue: 0 }]]),
+      ]);
+      const users = results[0][0];
+      const content = results[1][0];
+      const episodes = results[2][0];
+      const activity = results[3][0];
+      res.json({
         overview: {
-          users: { total: totalUsers || 0, premium: premiumUsers || 0, activeToday: activeToday || 0, banned: bannedUsers || 0 },
-          content: { totalAnime: totalAnime || 0, totalEpisodes: totalEpisodes || 0, totalViews: totalViews || 0, avgRating: avgRating || 0 },
-          storage: { usageGB: (totalEpisodes * 0.45).toFixed(2), videoCount: videoCount || 0 }, 
-          bunny: { ready: bunnyReady || 0, processing: bunnyProcessing || 0, failed: bunnyFailed || 0 }
+          users: { total: Number(users.total) || 0, premium: Number(users.premium) || 0, activeToday: Number(activity.activeToday) || 0, banned: Number(users.banned) || 0 },
+          content: { totalAnime: Number(content.totalAnime) || 0, totalEpisodes: Number(episodes.totalEpisodes) || 0, totalViews: (Number(content.totalViews) || 0) + (Number(episodes.episodeViews) || 0), dailyViews: Number(activity.dailyViews) || 0, avgRating: Number(content.avgRating) || 0 },
+          // Bunny Stream does not expose stored-byte totals in this API. Do not invent an estimate.
+          storage: { usageGB: null, videoCount: Number(episodes.videoCount) || 0 },
+          bunny: { ready: Number(episodes.bunnyReady) || 0, processing: Number(episodes.bunnyProcessing) || 0, failed: Number(episodes.bunnyFailed) || 0 },
+          revenue: Number(results[8][0].revenue) || 0,
         },
-        recentAnime,
-        recentEpisodes,
-        activityLogs
+        recentAnime: results[4][0], recentEpisodes: results[5][0], activityLogs: results[6][0], topAnime: results[7][0],
       });
-    } catch (err) {
-      console.error('Overview query failure:', err);
-      res.status(500).json({ message: 'Internal Server Error fetching dashboard aggregates' });
+    } catch (error) {
+      console.error('Dashboard overview error:', error);
+      res.status(500).json({ message: 'Unable to load dashboard analytics.' });
     }
   },
 
-  // Fallback map matching your baseline stats query line
-  getDashboardStats: async (req, res) => {
-    try {
-      const [[{ count }]] = await db.query('SELECT COUNT(*) as count FROM users');
-      res.status(200).json({ totalUsers: count });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+  async getDashboardStats(req, res) {
+    return adminController.getDashboardOverview(req, res);
   },
 
-  // Anime CRUD Data Mapping
-  getAllAnime: async (req, res) => {
+  async getAllAnime(req, res) {
     try {
-      const [anime] = await db.query(`
-        SELECT a.*, COUNT(e.id) as episode_count, GROUP_CONCAT(g.name SEPARATOR ', ') as genres
-        FROM anime a
-        LEFT JOIN episodes e ON a.id = e.anime_id
-        LEFT JOIN anime_genres ag ON a.id = ag.anime_id
-        LEFT JOIN genres g ON ag.genre_id = g.id
-        GROUP BY a.id ORDER BY a.created_at DESC
-      `);
-      res.status(200).json(anime);
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+      const params = [];
+      const where = [];
+      if (req.query.q) { where.push('(a.title LIKE ? OR a.title_japanese LIKE ?)'); params.push(`%${req.query.q}%`, `%${req.query.q}%`); }
+      if (req.query.status) { where.push('a.status = ?'); params.push(req.query.status); }
+      const [anime] = await db.query(`SELECT a.*, COUNT(DISTINCT e.id) episode_count, GROUP_CONCAT(DISTINCT g.name ORDER BY g.name SEPARATOR ', ') genres
+        FROM anime a LEFT JOIN episodes e ON e.anime_id = a.id LEFT JOIN anime_genres ag ON ag.anime_id = a.id LEFT JOIN genres g ON g.id = ag.genre_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''} GROUP BY a.id ORDER BY a.created_at DESC`, params);
+      res.json(anime.map(row => ({ ...row, is_premium: toBool(row.is_premium), is_featured: toBool(row.is_featured) })));
+    } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
-  createAnime: async (req, res) => { res.status(201).json({ message: "Stub completed" }); },
-  updateAnime: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-  deleteAnime: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-  getAllGenres: async (req, res) => { res.status(200).json([]); },
-  createGenre: async (req, res) => { res.status(201).json([]); },
-  deleteGenre: async (req, res) => { res.status(200).json([]); },
-
-  // Episode Management
-  getAllEpisodes: async (req, res) => {
+  async createAnime(req, res) {
+    const { title, title_japanese, description, cover_image, banner_image, trailer_url, rating, year, studio, status = 'completed', is_premium = 0, is_featured = 0, tags, genres = [] } = req.body;
+    if (!title?.trim()) return res.status(400).json({ message: 'Anime title is required.' });
     try {
-      const [episodes] = await db.query(`
-        SELECT e.*, a.title as anime_title 
-        FROM episodes e
-        JOIN anime a ON e.anime_id = a.id
-        ORDER BY e.created_at DESC
-      `);
-      res.status(200).json(episodes);
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+      const [result] = await db.query('INSERT INTO anime (title, title_japanese, description, cover_image, banner_image, trailer_url, rating, year, studio, status, is_premium, is_featured, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), title_japanese || null, description || null, cover_image || null, banner_image || null, trailer_url || null, numberOrNull(rating), numberOrNull(year), studio || null, status, toBool(is_premium) ? 1 : 0, toBool(is_featured) ? 1 : 0, tags || null]);
+      await adminController.replaceGenres(result.insertId, genres);
+      await logActivity(req, `Created anime: ${title.trim()}`, 'anime', result.insertId);
+      res.status(201).json({ id: result.insertId, message: 'Anime created.' });
+    } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
-  addEpisode: async (req, res) => { res.status(201).json({ message: "Stub completed" }); },
-  updateEpisode: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-  deleteEpisode: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-
-  // User Management
-  getAllUsers: async (req, res) => {
+  async updateAnime(req, res) {
+    const { title, title_japanese, description, cover_image, banner_image, trailer_url, rating, year, studio, status, is_premium, is_featured, tags, genres } = req.body;
     try {
-      const [users] = await db.query('SELECT id, name, email, is_admin, is_premium, premium_expires_at, status, created_at FROM users ORDER BY created_at DESC');
-      res.status(200).json(users.map(u => ({
-          ...u,
-          is_admin: toBool(u.is_admin),
-          is_premium: toBool(u.is_premium)
-      })));
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+      const [existing] = await db.query('SELECT id FROM anime WHERE id = ?', [req.params.id]);
+      if (!existing.length) return res.status(404).json({ message: 'Anime not found.' });
+      await db.query('UPDATE anime SET title = COALESCE(?, title), title_japanese = ?, description = ?, cover_image = ?, banner_image = ?, trailer_url = ?, rating = ?, year = ?, studio = ?, status = COALESCE(?, status), is_premium = COALESCE(?, is_premium), is_featured = COALESCE(?, is_featured), tags = ? WHERE id = ?', [title?.trim() || null, title_japanese ?? null, description ?? null, cover_image ?? null, banner_image ?? null, trailer_url ?? null, numberOrNull(rating), numberOrNull(year), studio ?? null, status || null, is_premium === undefined ? null : (toBool(is_premium) ? 1 : 0), is_featured === undefined ? null : (toBool(is_featured) ? 1 : 0), tags ?? null, req.params.id]);
+      if (Array.isArray(genres)) await adminController.replaceGenres(req.params.id, genres);
+      await logActivity(req, `Updated anime #${req.params.id}`, 'anime', req.params.id);
+      res.json({ message: 'Anime updated.' });
+    } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
-  updateUser: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-  deleteUser: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-
-  // Configuration Setup
-  getSettings: async (req, res) => {
+  async deleteAnime(req, res) {
     try {
-      const [rows] = await db.query('SELECT * FROM settings LIMIT 1').catch(() => [[]]);
-      if (!rows.length) {
-          return res.status(200).json({ site_name: "AniStrim", premium_monthly_amount: 15000, premium_yearly_amount: 180000 });
-      }
-      res.status(200).json(rows[0]);
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+      const [result] = await db.query('DELETE FROM anime WHERE id = ?', [req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Anime not found.' });
+      await logActivity(req, `Deleted anime #${req.params.id}`, 'anime', req.params.id);
+      res.json({ message: 'Anime deleted.' });
+    } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
-  updateSettings: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-
-  // Campaigns Layout
-  getAds: async (req, res) => {
-    try {
-      const [ads] = await db.query('SELECT * FROM advertisements ORDER BY created_at DESC').catch(() => [[]]);
-      res.status(200).json(ads.map(ad => ({ ...ad, is_active: toBool(ad.is_active), target_free_only: toBool(ad.target_free_only) })));
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+  async replaceGenres(animeId, genres) {
+    await db.query('DELETE FROM anime_genres WHERE anime_id = ?', [animeId]);
+    const ids = [...new Set((genres || []).map(Number).filter(Number.isInteger))];
+    if (ids.length) await db.query('INSERT IGNORE INTO anime_genres (anime_id, genre_id) VALUES ?', [ids.map(id => [animeId, id])]);
   },
 
-  createAd: async (req, res) => { res.status(201).json({ message: "Stub completed" }); },
-  updateAd: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-  deleteAd: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
+  async getAllGenres(req, res) { try { const [rows] = await db.query('SELECT id, name FROM genres ORDER BY name'); res.json(rows); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); res.status(201).json({ id: r.insertId, name: req.body.name.trim() }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : error.message }); } },
+  async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); res.json({ message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  updatePaymentStatus: async (req, res) => { res.status(200).json({ message: "Stub completed" }); },
-  getVideoStatus: async (req, res) => { res.status(200).json({ status: "processing" }); },
+  async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); res.json({ ...rows[0], is_premium: toBool(rows[0].is_premium) }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async addEpisode(req, res) {
+    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, video_url, duration_sec, is_premium = 0, bunny_video_id, video_status, playback_url, embed_url } = req.body;
+    if (!Number.isInteger(animeId) || !Number.isInteger(Number(episode_number))) return res.status(400).json({ message: 'A valid episode number is required.' });
+    try { const [r] = await db.query('INSERT INTO episodes (anime_id, episode_number, title, description, thumbnail_url, video_url, duration_sec, is_premium, bunny_video_id, video_status, playback_url, embed_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, "ready"), ?, ?)', [animeId, Number(episode_number), title || null, description || null, thumbnail_url || null, video_url || null, numberOrNull(duration_sec), toBool(is_premium) ? 1 : 0, bunny_video_id || null, video_status || null, playback_url || null, embed_url || null]); await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); res.status(201).json({ id: r.insertId, message: 'Episode created.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+  },
+  async updateEpisode(req, res) {
+    const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'video_url', 'duration_sec', 'is_premium', 'bunny_video_id', 'video_status', 'playback_url', 'embed_url']; const updates = []; const values = [];
+    for (const field of fields) if (Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : field === 'duration_sec' || field === 'episode_number' ? numberOrNull(req.body[field]) : req.body[field] || null); }
+    if (!updates.length) return res.status(400).json({ message: 'No episode fields were supplied.' });
+    try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); res.json({ message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+  },
+  async deleteEpisode(req, res) { try { const [r] = await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); res.json({ message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  // Audit Trails Handler
-  getActivityLogs: async (req, res) => {
-    try {
-      const [logs] = await db.query(`
-        SELECT al.action, al.created_at, al.ip_address, u.name as user_name 
-        FROM admin_logs al 
-        LEFT JOIN users u ON al.admin_id = u.id 
-        ORDER BY al.created_at DESC LIMIT 50
-      `).catch(() => [[]]);
-      res.status(200).json(logs);
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
-  }
+  async getAllUsers(req, res) { try { const [rows] = await db.query('SELECT id, name, email, is_admin, is_premium, premium_expires_at, status, created_at FROM users ORDER BY created_at DESC'); res.json(rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updateUser(req, res) { const allowed = ['status', 'is_premium', 'premium_expires_at']; const updates = []; const values = []; for (const field of allowed) if (Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : req.body[field]); } if (!updates.length) return res.status(400).json({ message: 'No editable user fields were supplied.' }); try { const [r] = await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'User not found.' }); await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id); res.json({ message: 'User updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+
+  async getSettings(req, res) { try { res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'bunny_cdn_hostname']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
+
+  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); res.json(rows.map(row => ({ ...row, banner_url: row.image_url, frequency_minutes: row.frequency, is_active: toBool(row.is_active), target_free_only: toBool(row.target_free_only) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async createAd(req, res) { const { title, type = 'banner', image_url, banner_url, video_url, target_url, frequency, frequency_minutes, is_active = 1, target_free_only = 1 } = req.body; if (!title?.trim()) return res.status(400).json({ message: 'Ad title is required.' }); try { const [r] = await db.query('INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), type, image_url || banner_url || null, video_url || null, target_url || null, Number(frequency ?? frequency_minutes) || 1, toBool(is_active) ? 1 : 0, toBool(target_free_only) ? 1 : 0]); await logActivity(req, `Created advertisement: ${title.trim()}`, 'ad', r.insertId); res.status(201).json({ id: r.insertId, message: 'Advertisement created.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); res.json({ message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); res.json({ message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+
+  async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); res.json({ message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getVideoStatus(req, res) { try { const status = await bunnyStream.getVideoStatus(req.params.videoId); res.json({ ...status, video_status: status.status, encodeProgress: status.progress ?? 0 }); } catch (error) { res.status(502).json({ message: error.message }); } },
+  async getActivityLogs(req, res) { try { const [rows] = await db.query('SELECT a.action, a.created_at, a.ip_address, u.name user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50'); res.json(rows); } catch (error) { res.status(500).json({ message: error.message }); } },
 };
 
 module.exports = adminController;

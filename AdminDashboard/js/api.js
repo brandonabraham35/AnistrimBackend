@@ -24,7 +24,10 @@ async function apiRequest(endpoint, options = {}) {
             headers
         });
 
-        if (response.status === 401 || response.status === 403) {
+        // A 401 means the credential is missing, expired, or invalid. A 403 means
+        // the current authenticated account is not permitted for this one action;
+        // clearing a valid token on 403 caused the observed dashboard login loop.
+        if (response.status === 401) {
             localStorage.removeItem('admin_token');
             localStorage.removeItem('admin_user');
             
@@ -37,7 +40,10 @@ async function apiRequest(endpoint, options = {}) {
 
         if (response.status === 204) return null;
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+        const data = contentType.includes('application/json')
+            ? await response.json()
+            : { message: await response.text() || `Request failed (${response.status})` };
 
         if (!response.ok) {
             throw new Error(data?.message || 'API Request failed');

@@ -41,6 +41,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data?.token && isAdmin) {
                     localStorage.setItem('admin_token', data.token);
                     localStorage.setItem('admin_user', JSON.stringify(u));
+                    // Verify the persisted token before leaving the login screen.
+                    // This prevents stale/corrupted localStorage from flashing the dashboard.
+                    const verifiedUser = await window.apiRequest('/auth/me');
+                    if (!verifiedUser?.isAdmin) {
+                        throw new Error('Access denied. Account is not configured as an administrator.');
+                    }
+                    localStorage.setItem('admin_user', JSON.stringify({ ...u, ...verifiedUser }));
                     window.location.replace('dashboard.html');
                 } else if (data?.token) {
                     if (errorMsg) errorMsg.innerText = 'Access denied. Account is not configured as an administrator.';
@@ -49,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (errorMsg) errorMsg.innerText = 'Login failed.';
                 }
             } catch (err) {
+                localStorage.removeItem('admin_token');
+                localStorage.removeItem('admin_user');
                 if (errorMsg) errorMsg.innerText = err.message;
             } finally {
                 loginBtn.disabled = false;

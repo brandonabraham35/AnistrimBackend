@@ -1,63 +1,56 @@
 const axios = require('axios');
 
-const LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
-const API_KEY = process.env.BUNNY_STREAM_API_KEY;
 const BASE_URL = 'https://video.bunnycdn.com/library';
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
-async function createVideo(title) {
-    try {
-        const response = await axios.post(`${BASE_URL}/${LIBRARY_ID}/videos`,
-            { title },
-            { headers: { AccessKey: API_KEY, 'Content-Type': 'application/json' } }
-        );
-        return response.data.guid;
-    } catch (err) {
-        console.error('[BunnyStream] Create failed:', err.response?.data || err.message);
-        throw new Error('Failed to create Bunny Stream video placeholder.');
-    }
+function config() {
+  const libraryId = process.env.BUNNY_STREAM_LIBRARY_ID;
+  const apiKey = process.env.BUNNY_STREAM_API_KEY;
+  if (!libraryId || !apiKey) throw new Error('Bunny Stream is not configured. Set BUNNY_STREAM_LIBRARY_ID and BUNNY_STREAM_API_KEY.');
+  return { libraryId, apiKey };
 }
 
-async function uploadVideoFile(videoGuid, buffer) {
-    try {
-        const response = await axios.put(`${BASE_URL}/${LIBRARY_ID}/videos/${videoGuid}`, buffer, {
-            headers: { AccessKey: API_KEY, 'Content-Type': 'application/octet-stream' }
-        });
-        return response.data;
-    } catch (err) {
-        console.error('[BunnyStream] Upload failed:', err.response?.data || err.message);
-        throw new Error('Failed to upload video file to Bunny Stream.');
+function isRetryable(error) {
+  return !error.response || RETRYABLE_STATUSES.has(error.response.status);
+}
+
+async function withRetry(operation, label, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try { return await operation(); } catch (error) {
+      lastError = error;
+      if (!isRetryable(error) || attempt === attempts) break;
+      const delay = 400 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
+      console.warn(`[BunnyStream] ${label} failed (attempt ${attempt}/${attempts}); retrying in ${delay}ms.`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
+  }
+  const status = lastError?.response?.status;
+  const detail = typeof lastError?.response?.data === 'string' ? lastError.response.data : lastError?.response?.data?.message;
+  const error = new Error(detail || `Bunny Stream ${label} failed${status ? ` (HTTP ${status})` : ''}.`);
+  error.status = status;
+  throw error;
+}
+
+async function createVideo(title) {
+  const { libraryId, apiKey } = config();
+  const response = await withRetry(() => axios.post(`${BASE_URL}/${libraryId}/videos`, { title }, { headers: { AccessKey: apiKey, 'Content-Type': 'application/json' }, timeout: 30000 }), 'placeholder creation');
+  if (!response.data?.guid) throw new Error('Bunny Stream did not return a video ID.');
+  return response.data.guid;
+}
+
+async function uploadVideoFile(videoGuid, data) {
+  const { libraryId, apiKey } = config();
+  // Buffers are safely repeatable across retries. Disk-stream uploads are handled by the
+  // dedicated controller route, which creates a new stream for each request.
+  return withRetry(() => axios.put(`${BASE_URL}/${libraryId}/videos/${videoGuid}`, data, { headers: { AccessKey: apiKey, 'Content-Type': 'application/octet-stream', 'Content-Length': data.length }, maxBodyLength: Infinity, maxContentLength: Infinity, timeout: 10 * 60 * 1000 }), 'video upload', 3);
 }
 
 async function getVideoStatus(videoGuid) {
-    try {
-        const response = await axios.get(`${BASE_URL}/${LIBRARY_ID}/videos/${videoGuid}`, {
-            headers: { AccessKey: API_KEY, Accept: 'application/json' }
-        });
-        // Status 4 = ready, 3 = processing, etc.
-        const statusMap = {
-            0: 'queued',
-            1: 'processing',
-            2: 'encoding',
-            3: 'resolving',
-            4: 'ready',
-            5: 'failed',
-            6: 'presigned_upload'
-        };
-        return {
-            guid: response.data.guid,
-            status: statusMap[response.data.status] || 'unknown',
-            statusCode: response.data.status,
-            progress: response.data.encodeProgress
-        };
-    } catch (err) {
-        console.error('[BunnyStream] Status check failed:', err.response?.data || err.message);
-        throw new Error('Failed to check Bunny Stream video status.');
-    }
+  const { libraryId, apiKey } = config();
+  const response = await withRetry(() => axios.get(`${BASE_URL}/${libraryId}/videos/${videoGuid}`, { headers: { AccessKey: apiKey, Accept: 'application/json' }, timeout: 30000 }), 'status check', 3);
+  const statusMap = { 0: 'queued', 1: 'processing', 2: 'encoding', 3: 'resolving', 4: 'ready', 5: 'failed', 6: 'presigned_upload' };
+  return { guid: response.data.guid, status: statusMap[response.data.status] || 'processing', statusCode: response.data.status, progress: Number(response.data.encodeProgress) || 0 };
 }
 
-module.exports = {
-    createVideo,
-    uploadVideoFile,
-    getVideoStatus
-};
+module.exports = { createVideo, uploadVideoFile, getVideoStatus };

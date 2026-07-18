@@ -28,9 +28,9 @@ const FOLDERS = {
 
 function hasBunnyConfig() {
     return Boolean(
-        process.env.BUNNY_STORAGE_ZONE &&
-        process.env.BUNNY_STORAGE_PASSWORD &&
-        process.env.BUNNY_CDN_URL
+        process.env.BUNNY_STORAGE_ZONE?.trim() &&
+        process.env.BUNNY_STORAGE_PASSWORD?.trim() &&
+        process.env.BUNNY_CDN_URL?.trim()
     );
 }
 
@@ -92,10 +92,10 @@ async function uploadBufferToBunny(file, folderKey) {
         throw new Error("No image received.");
     }
 
-    const storageZone = process.env.BUNNY_STORAGE_ZONE;
-    const accessKey = process.env.BUNNY_STORAGE_PASSWORD;
+    const storageZone = process.env.BUNNY_STORAGE_ZONE.trim();
+    const accessKey = process.env.BUNNY_STORAGE_PASSWORD.trim();
     const storageRegion = (process.env.BUNNY_STORAGE_REGION || "").trim();
-    const cdnUrl = process.env.BUNNY_CDN_URL.replace(/\/$/, "");
+    const cdnUrl = process.env.BUNNY_CDN_URL.trim().replace(/\/$/, "");
 
     const folder = normalizeFolder(folderKey);
 
@@ -120,35 +120,28 @@ async function uploadBufferToBunny(file, folderKey) {
     const uploadUrl =
         `${uploadHost}/${storageZone}/${folder}/${filename}`;
 
-    console.log("\n============================");
-    console.log("BUNNY IMAGE UPLOAD");
-    console.log("============================");
-    console.log("Storage Zone :", storageZone);
-    console.log("Region       :", storageRegion || "(default)");
-    console.log("Upload Host  :", uploadHost);
-    console.log("Folder       :", folder);
-    console.log("Filename     :", filename);
-    console.log("Upload URL   :", uploadUrl);
-    console.log("Content Type :", file.mimetype);
-    console.log("File Size    :", file.buffer.length);
-    console.log("============================\n");
+    console.info(`[BunnyStorage] Uploading ${file.buffer.length} bytes to ${folder}/${filename}`);
 
     try {
 
-        await axios.put(
-            uploadUrl,
-            file.buffer,
-            {
-                headers: {
-                    AccessKey: accessKey,
-                    "Content-Type": file.mimetype,
-                    "Content-Length": file.buffer.length,
-                },
-                maxBodyLength: Infinity,
-                maxContentLength: Infinity,
-                timeout: 60000,
+        let uploadError;
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+                await axios.put(uploadUrl, file.buffer, {
+                    headers: { AccessKey: accessKey, "Content-Type": file.mimetype, "Content-Length": file.buffer.length },
+                    maxBodyLength: Infinity, maxContentLength: Infinity, timeout: 120000,
+                    validateStatus: status => status >= 200 && status < 300,
+                });
+                uploadError = null;
+                break;
+            } catch (error) {
+                uploadError = error;
+                const status = error.response?.status;
+                if (attempt === 3 || (status && ![408, 429, 500, 502, 503, 504].includes(status))) break;
+                await new Promise(resolve => setTimeout(resolve, 400 * (2 ** (attempt - 1))));
             }
-        );
+        }
+        if (uploadError) throw uploadError;
 
         const publicUrl =
             `${cdnUrl}/${folder}/${filename}`;
@@ -165,11 +158,7 @@ async function uploadBufferToBunny(file, folderKey) {
 
     } catch (err) {
 
-        console.error("\n========== BUNNY ERROR ==========");
-        console.error("Status :", err.response?.status);
-        console.error("Data   :", err.response?.data);
-        console.error("Message:", err.message);
-        console.error("=================================\n");
+        console.error('[BunnyStorage] Upload failed:', err.response?.status || 'network', err.message);
 
         throw err;
     }
@@ -211,7 +200,8 @@ async function handleImageUpload(req, res, folderKey) {
 
         console.error("[bunnyUpload]", err);
 
-        return res.status(500).json({
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.response?.status >= 400 && err.response?.status < 500 ? 502 : 503);
+        return res.status(status).json({
             success: false,
             message:
                 err.response?.data?.Message ||
