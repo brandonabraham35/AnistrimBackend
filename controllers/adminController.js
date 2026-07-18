@@ -3,6 +3,22 @@ const bunnyStream = require('../utils/bunnyStream');
 
 const toBool = value => value === true || value === 1 || value === '1' || (Buffer.isBuffer(value) && value[0] === 1);
 const numberOrNull = value => value === '' || value === undefined || value === null ? null : Number(value);
+let schemaPromise;
+
+async function getSchema() {
+  if (!schemaPromise) {
+    schemaPromise = db.query('SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name FROM information_schema.columns WHERE table_schema = DATABASE()')
+      .then(([rows]) => rows.reduce((schema, row) => {
+        if (!schema[row.table_name]) schema[row.table_name] = new Set();
+        schema[row.table_name].add(row.column_name);
+        return schema;
+      }, {}))
+      .catch(error => { schemaPromise = null; throw error; });
+  }
+  return schemaPromise;
+}
+
+const hasColumn = (schema, table, column) => Boolean(schema[table]?.has(column));
 
 function clientIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim() || null;
@@ -37,21 +53,34 @@ function settingsResponse(settings) {
 const adminController = {
   async getDashboardOverview(req, res) {
     try {
-      const [results] = await Promise.all([
-        db.query('SELECT COUNT(*) total, SUM(is_premium = 1 OR premium_expires_at > NOW()) premium, SUM(status = "banned") banned FROM users'),
+      const schema = await getSchema();
+      const usersSql = `SELECT COUNT(*) total, COALESCE(SUM(is_premium = 1 OR premium_expires_at > NOW()), 0) premium${hasColumn(schema, 'users', 'status') ? ', COALESCE(SUM(status = "banned"), 0) banned' : ', 0 banned'} FROM users`;
+      const episodeSql = hasColumn(schema, 'episodes', 'bunny_video_id')
+        ? `SELECT COUNT(*) totalEpisodes, COALESCE(SUM(view_count), 0) episodeViews, COUNT(bunny_video_id) videoCount,
+             COALESCE(SUM(video_status = 'ready'), 0) bunnyReady, COALESCE(SUM(video_status IN ('queued','processing','encoding','resolving')), 0) bunnyProcessing, COALESCE(SUM(video_status = 'failed'), 0) bunnyFailed FROM episodes`
+        : 'SELECT COUNT(*) totalEpisodes, COALESCE(SUM(view_count), 0) episodeViews, COALESCE(SUM(video_url IS NOT NULL AND video_url != ""), 0) videoCount, 0 bunnyReady, 0 bunnyProcessing, 0 bunnyFailed FROM episodes';
+      const logsSql = schema.activity_logs
+        ? 'SELECT l.action, l.created_at, l.ip_address, u.name user_name FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id ORDER BY l.created_at DESC LIMIT 10'
+        : 'SELECT l.action, l.created_at, NULL ip_address, u.name user_name FROM admin_logs l LEFT JOIN users u ON u.id = l.admin_id ORDER BY l.created_at DESC LIMIT 10';
+      const recentEpisodesSql = hasColumn(schema, 'episodes', 'video_status')
+        ? 'SELECT e.id, e.episode_number, e.title, e.thumbnail_url, e.video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5'
+        : "SELECT e.id, e.episode_number, e.title, e.thumbnail_url, CASE WHEN e.video_url IS NULL OR e.video_url = '' THEN 'missing' ELSE 'available' END video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5";
+      const results = await Promise.all([
+        db.query(usersSql),
         db.query('SELECT COUNT(*) totalAnime, COALESCE(SUM(view_count), 0) totalViews, COALESCE(AVG(rating), 0) avgRating FROM anime'),
-        db.query('SELECT COUNT(*) totalEpisodes, COALESCE(SUM(view_count), 0) episodeViews, COUNT(bunny_video_id) videoCount, SUM(video_status = "ready") bunnyReady, SUM(video_status IN ("queued", "processing", "encoding", "resolving")) bunnyProcessing, SUM(video_status = "failed") bunnyFailed FROM episodes'),
-        db.query('SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_history WHERE DATE(watched_at) = CURDATE()').catch(() => [[{ activeToday: 0, dailyViews: 0 }]]),
+        db.query(episodeSql),
+        db.query('SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_history WHERE DATE(watched_at) = CURDATE()'),
         db.query('SELECT id, title, cover_image, status, year AS release_year, created_at FROM anime ORDER BY created_at DESC LIMIT 5'),
-        db.query('SELECT e.id, e.episode_number, e.title, e.thumbnail_url, e.video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5'),
-        db.query('SELECT a.action, a.created_at, a.ip_address, u.name user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 10').catch(() => [[]]),
+        db.query(recentEpisodesSql),
+        db.query(logsSql),
         db.query('SELECT id, title, cover_image, view_count FROM anime ORDER BY view_count DESC, created_at DESC LIMIT 5'),
-        db.query('SELECT COALESCE(SUM(amount), 0) revenue FROM payments WHERE status = "successful"').catch(() => [[{ revenue: 0 }]]),
+        db.query('SELECT COALESCE(SUM(amount), 0) revenue FROM payments WHERE status = "successful"'),
+        db.query('SELECT id, name, email, avatar_url, created_at FROM users ORDER BY created_at DESC LIMIT 5'),
       ]);
-      const users = results[0][0];
-      const content = results[1][0];
-      const episodes = results[2][0];
-      const activity = results[3][0];
+      const users = results[0][0][0];
+      const content = results[1][0][0];
+      const episodes = results[2][0][0];
+      const activity = results[3][0][0];
       res.json({
         overview: {
           users: { total: Number(users.total) || 0, premium: Number(users.premium) || 0, activeToday: Number(activity.activeToday) || 0, banned: Number(users.banned) || 0 },
@@ -59,9 +88,9 @@ const adminController = {
           // Bunny Stream does not expose stored-byte totals in this API. Do not invent an estimate.
           storage: { usageGB: null, videoCount: Number(episodes.videoCount) || 0 },
           bunny: { ready: Number(episodes.bunnyReady) || 0, processing: Number(episodes.bunnyProcessing) || 0, failed: Number(episodes.bunnyFailed) || 0 },
-          revenue: Number(results[8][0].revenue) || 0,
+          revenue: Number(results[8][0][0].revenue) || 0,
         },
-        recentAnime: results[4][0], recentEpisodes: results[5][0], activityLogs: results[6][0], topAnime: results[7][0],
+        recentAnime: results[4][0], recentEpisodes: results[5][0], activityLogs: results[6][0], topAnime: results[7][0], latestUsers: results[9][0],
       });
     } catch (error) {
       console.error('Dashboard overview error:', error);
@@ -157,7 +186,16 @@ const adminController = {
 
   async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); res.json({ message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
   async getVideoStatus(req, res) { try { const status = await bunnyStream.getVideoStatus(req.params.videoId); res.json({ ...status, video_status: status.status, encodeProgress: status.progress ?? 0 }); } catch (error) { res.status(502).json({ message: error.message }); } },
-  async getActivityLogs(req, res) { try { const [rows] = await db.query('SELECT a.action, a.created_at, a.ip_address, u.name user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50'); res.json(rows); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getActivityLogs(req, res) {
+    try {
+      const schema = await getSchema();
+      const sql = schema.activity_logs
+        ? 'SELECT a.action, a.created_at, a.ip_address, u.name user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50'
+        : 'SELECT a.action, a.created_at, NULL ip_address, u.name user_name FROM admin_logs a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 50';
+      const [rows] = await db.query(sql);
+      res.json(rows);
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
 };
 
 module.exports = adminController;
