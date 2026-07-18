@@ -20,6 +20,15 @@ async function getSchema() {
 
 const hasColumn = (schema, table, column) => Boolean(schema[table]?.has(column));
 
+async function insertExistingColumns(table, values) {
+  const schema = await getSchema();
+  const entries = Object.entries(values).filter(([column]) => hasColumn(schema, table, column));
+  const columns = entries.map(([column]) => column);
+  const placeholders = columns.map(() => '?').join(', ');
+  const [result] = await db.query(`INSERT INTO \`${table}\` (${columns.map(column => `\`${column}\``).join(', ')}) VALUES (${placeholders})`, entries.map(([, value]) => value));
+  return result;
+}
+
 async function dashboardQuery(label, sql) {
   try {
     return await db.query(sql);
@@ -131,7 +140,7 @@ const adminController = {
     const { title, title_japanese, description, cover_image, banner_image, trailer_url, rating, year, studio, status = 'completed', is_premium = 0, is_featured = 0, tags, genres = [] } = req.body;
     if (!title?.trim()) return res.status(400).json({ message: 'Anime title is required.' });
     try {
-      const [result] = await db.query('INSERT INTO anime (title, title_japanese, description, cover_image, banner_image, trailer_url, rating, year, studio, status, is_premium, is_featured, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), title_japanese || null, description || null, cover_image || null, banner_image || null, trailer_url || null, numberOrNull(rating), numberOrNull(year), studio || null, status, toBool(is_premium) ? 1 : 0, toBool(is_featured) ? 1 : 0, tags || null]);
+      const result = await insertExistingColumns('anime', { title: title.trim(), title_japanese: title_japanese || null, description: description || null, cover_image: cover_image || null, banner_image: banner_image || null, trailer_url: trailer_url || null, rating: numberOrNull(rating), year: numberOrNull(year), studio: studio || null, status, is_premium: toBool(is_premium) ? 1 : 0, is_featured: toBool(is_featured) ? 1 : 0, tags: tags || null });
       await adminController.replaceGenres(result.insertId, genres);
       await logActivity(req, `Created anime: ${title.trim()}`, 'anime', result.insertId);
       res.status(201).json({ id: result.insertId, message: 'Anime created.' });
@@ -143,7 +152,10 @@ const adminController = {
     try {
       const [existing] = await db.query('SELECT id FROM anime WHERE id = ?', [req.params.id]);
       if (!existing.length) return res.status(404).json({ message: 'Anime not found.' });
-      await db.query('UPDATE anime SET title = COALESCE(?, title), title_japanese = ?, description = ?, cover_image = ?, banner_image = ?, trailer_url = ?, rating = ?, year = ?, studio = ?, status = COALESCE(?, status), is_premium = COALESCE(?, is_premium), is_featured = COALESCE(?, is_featured), tags = ? WHERE id = ?', [title?.trim() || null, title_japanese ?? null, description ?? null, cover_image ?? null, banner_image ?? null, trailer_url ?? null, numberOrNull(rating), numberOrNull(year), studio ?? null, status || null, is_premium === undefined ? null : (toBool(is_premium) ? 1 : 0), is_featured === undefined ? null : (toBool(is_featured) ? 1 : 0), tags ?? null, req.params.id]);
+      const schema = await getSchema();
+      const values = { title: title?.trim(), title_japanese, description, cover_image, banner_image, trailer_url, rating: numberOrNull(rating), year: numberOrNull(year), studio, status, is_premium: is_premium === undefined ? undefined : (toBool(is_premium) ? 1 : 0), is_featured: is_featured === undefined ? undefined : (toBool(is_featured) ? 1 : 0), tags };
+      const entries = Object.entries(values).filter(([field, value]) => hasColumn(schema, 'anime', field) && value !== undefined);
+      if (entries.length) await db.query(`UPDATE anime SET ${entries.map(([field]) => `\`${field}\` = ?`).join(', ')} WHERE id = ?`, [...entries.map(([, value]) => value), req.params.id]);
       if (Array.isArray(genres)) await adminController.replaceGenres(req.params.id, genres);
       await logActivity(req, `Updated anime #${req.params.id}`, 'anime', req.params.id);
       res.json({ message: 'Anime updated.' });
@@ -173,13 +185,13 @@ const adminController = {
   async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
   async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); res.json({ ...rows[0], is_premium: toBool(rows[0].is_premium) }); } catch (error) { res.status(500).json({ message: error.message }); } },
   async addEpisode(req, res) {
-    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, video_url, duration_sec, is_premium = 0, bunny_video_id, video_status, playback_url, embed_url } = req.body;
+    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, video_url, duration_sec, is_premium = 0, bunny_video_id, video_status, playback_url, embed_url, intro_start_time, intro_end_time } = req.body;
     if (!Number.isInteger(animeId) || !Number.isInteger(Number(episode_number))) return res.status(400).json({ message: 'A valid episode number is required.' });
-    try { const [r] = await db.query('INSERT INTO episodes (anime_id, episode_number, title, description, thumbnail_url, video_url, duration_sec, is_premium, bunny_video_id, video_status, playback_url, embed_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, "ready"), ?, ?)', [animeId, Number(episode_number), title || null, description || null, thumbnail_url || null, video_url || null, numberOrNull(duration_sec), toBool(is_premium) ? 1 : 0, bunny_video_id || null, video_status || null, playback_url || null, embed_url || null]); await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); res.status(201).json({ id: r.insertId, message: 'Episode created.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+    try { const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, bunny_video_id: bunny_video_id || null, video_status: video_status || 'ready', playback_url: playback_url || null, embed_url: embed_url || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) }); await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); res.status(201).json({ id: r.insertId, message: 'Episode created.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
   async updateEpisode(req, res) {
-    const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'video_url', 'duration_sec', 'is_premium', 'bunny_video_id', 'video_status', 'playback_url', 'embed_url']; const updates = []; const values = [];
-    for (const field of fields) if (Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : field === 'duration_sec' || field === 'episode_number' ? numberOrNull(req.body[field]) : req.body[field] || null); }
+    const schema = await getSchema(); const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'video_url', 'duration_sec', 'is_premium', 'bunny_video_id', 'video_status', 'playback_url', 'embed_url', 'intro_start_time', 'intro_end_time']; const updates = []; const values = [];
+    for (const field of fields) if (hasColumn(schema, 'episodes', field) && Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : ['duration_sec', 'episode_number', 'intro_start_time', 'intro_end_time'].includes(field) ? numberOrNull(req.body[field]) : req.body[field] || null); }
     if (!updates.length) return res.status(400).json({ message: 'No episode fields were supplied.' });
     try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); res.json({ message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
