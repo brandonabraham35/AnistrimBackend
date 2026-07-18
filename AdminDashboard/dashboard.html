@@ -192,6 +192,9 @@
             font-size: 0.9rem;
         }
         .timeline-item .time { color: var(--accent); font-weight: bold; min-width: 65px; }
+        .page-error { color: #fca5a5; margin: -1rem 0 1rem; min-height: 1.25rem; }
+        [data-section-panel][hidden] { display: none; }
+        .page-section { max-width: 1200px; }
     </style>
 </head>
 <body>
@@ -199,20 +202,22 @@
     <div class="sidebar">
         <h2><i class="fas fa-film"></i> AniStrim</h2>
         <ul class="nav-links">
-            <li><a href="#" class="active"><i class="fas fa-chart-pie"></i> Dashboard</a></li>
-            <li><a href="#"><i class="fas fa-tv"></i> Anime List</a></li>
-            <li><a href="#"><i class="fas fa-users"></i> Users Management</a></li>
-            <li><a href="#"><i class="fas fa-wallet"></i> Payments</a></li>
+            <li><a href="#dashboard" class="active" data-section="dashboard"><i class="fas fa-chart-pie"></i> Dashboard</a></li>
+            <li><a href="#anime" data-section="anime"><i class="fas fa-tv"></i> Anime List</a></li>
+            <li><a href="#users" data-section="users"><i class="fas fa-users"></i> Users Management</a></li>
+            <li><a href="#payments" data-section="payments"><i class="fas fa-wallet"></i> Payments</a></li>
             <li><a href="#" class="logout-btn" onclick="window.logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
         </ul>
     </div>
 
     <div class="main-content">
         <div class="header">
-            <h2>Administrative Overview</h2>
+            <h2 id="page-title">Administrative Overview</h2>
             <div id="active-user-badge"><i class="fas fa-circle" style="color: var(--success);"></i> Live Testing Environment</div>
         </div>
 
+        <p class="page-error" id="dashboard-error" role="alert"></p>
+        <section data-section-panel="dashboard">
         <div class="grid-stats">
             <div class="card">
                 <div class="card-info"><h3>Total Users</h3><div class="value" id="total-users">0</div></div>
@@ -310,6 +315,23 @@
                 </div>
             </div>
         </div>
+        </section>
+
+        <section class="page-section" data-section-panel="anime" hidden>
+            <div class="section-box"><h4><i class="fas fa-tv"></i> Anime Catalogue</h4>
+                <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th>Title</th><th>Status</th><th>Year</th><th>Episodes</th><th>Views</th><th>Genres</th></tr></thead><tbody></tbody></table></div>
+            </div>
+        </section>
+        <section class="page-section" data-section-panel="users" hidden>
+            <div class="section-box"><h4><i class="fas fa-users"></i> Registered Users</h4>
+                <div style="overflow-x:auto"><table id="users-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
+            </div>
+        </section>
+        <section class="page-section" data-section-panel="payments" hidden>
+            <div class="section-box"><h4><i class="fas fa-wallet"></i> Payment Records</h4>
+                <div style="overflow-x:auto"><table id="payments-table"><thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+            </div>
+        </section>
     </div>
 
     <script src="js/api.js"></script>

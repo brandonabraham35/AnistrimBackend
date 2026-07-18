@@ -104,10 +104,11 @@ const adminController = {
 
   async getAllAnime(req, res) {
     try {
+      const filters = req.query || {};
       const params = [];
       const where = [];
-      if (req.query.q) { where.push('(a.title LIKE ? OR a.title_japanese LIKE ?)'); params.push(`%${req.query.q}%`, `%${req.query.q}%`); }
-      if (req.query.status) { where.push('a.status = ?'); params.push(req.query.status); }
+      if (filters.q) { where.push('(a.title LIKE ? OR a.title_japanese LIKE ?)'); params.push(`%${filters.q}%`, `%${filters.q}%`); }
+      if (filters.status) { where.push('a.status = ?'); params.push(filters.status); }
       const [anime] = await db.query(`SELECT a.*, COUNT(DISTINCT e.id) episode_count, GROUP_CONCAT(DISTINCT g.name ORDER BY g.name SEPARATOR ', ') genres
         FROM anime a LEFT JOIN episodes e ON e.anime_id = a.id LEFT JOIN anime_genres ag ON ag.anime_id = a.id LEFT JOIN genres g ON g.id = ag.genre_id
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''} GROUP BY a.id ORDER BY a.created_at DESC`, params);
@@ -173,7 +174,14 @@ const adminController = {
   },
   async deleteEpisode(req, res) { try { const [r] = await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); res.json({ message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  async getAllUsers(req, res) { try { const [rows] = await db.query('SELECT id, name, email, is_admin, is_premium, premium_expires_at, status, created_at FROM users ORDER BY created_at DESC'); res.json(rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAllUsers(req, res) {
+    try {
+      const schema = await getSchema();
+      const status = hasColumn(schema, 'users', 'status') ? 'status' : "'unavailable' AS status";
+      const [rows] = await db.query(`SELECT id, name, email, is_admin, is_premium, premium_expires_at, ${status}, created_at FROM users ORDER BY created_at DESC`);
+      res.json(rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) })));
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
   async updateUser(req, res) { const allowed = ['status', 'is_premium', 'premium_expires_at']; const updates = []; const values = []; for (const field of allowed) if (Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : req.body[field]); } if (!updates.length) return res.status(400).json({ message: 'No editable user fields were supplied.' }); try { const [r] = await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'User not found.' }); await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id); res.json({ message: 'User updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
   async getSettings(req, res) { try { res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
