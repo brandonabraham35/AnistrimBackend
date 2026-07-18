@@ -204,6 +204,7 @@
         <ul class="nav-links">
             <li><a href="#dashboard" class="active" data-section="dashboard"><i class="fas fa-chart-pie"></i> Dashboard</a></li>
             <li><a href="#anime" data-section="anime"><i class="fas fa-tv"></i> Anime List</a></li>
+            <li><a href="#episodes" data-section="episodes"><i class="fas fa-video"></i> Episodes</a></li>
             <li><a href="#users" data-section="users"><i class="fas fa-users"></i> Users Management</a></li>
             <li><a href="#payments" data-section="payments"><i class="fas fa-wallet"></i> Payments</a></li>
             <li><a href="#" class="logout-btn" onclick="window.logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
@@ -325,6 +326,11 @@
         <section class="page-section" data-section-panel="users" hidden>
             <div class="section-box"><h4><i class="fas fa-users"></i> Registered Users</h4>
                 <div style="overflow-x:auto"><table id="users-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
+            </div>
+        </section>
+        <section class="page-section" data-section-panel="episodes" hidden>
+            <div class="section-box"><h4><i class="fas fa-video"></i> Episodes</h4>
+                <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th>Anime</th><th>Episode</th><th>Title</th><th>Duration</th><th>Views</th><th>Premium</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
         <section class="page-section" data-section-panel="payments" hidden>

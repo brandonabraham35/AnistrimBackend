@@ -20,6 +20,17 @@ async function getSchema() {
 
 const hasColumn = (schema, table, column) => Boolean(schema[table]?.has(column));
 
+async function dashboardQuery(label, sql) {
+  try {
+    return await db.query(sql);
+  } catch (error) {
+    // Dashboard widgets are independent. An optional table that has not been
+    // migrated must not make users/anime/episode analytics disappear as well.
+    console.error(`Dashboard query failed (${label}):`, error.message);
+    return [[]];
+  }
+}
+
 function clientIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim() || null;
 }
@@ -66,21 +77,21 @@ const adminController = {
         ? 'SELECT e.id, e.episode_number, e.title, e.thumbnail_url, e.video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5'
         : "SELECT e.id, e.episode_number, e.title, e.thumbnail_url, CASE WHEN e.video_url IS NULL OR e.video_url = '' THEN 'missing' ELSE 'available' END video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5";
       const results = await Promise.all([
-        db.query(usersSql),
-        db.query('SELECT COUNT(*) totalAnime, COALESCE(SUM(view_count), 0) totalViews, COALESCE(AVG(rating), 0) avgRating FROM anime'),
-        db.query(episodeSql),
-        db.query('SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_history WHERE DATE(watched_at) = CURDATE()'),
-        db.query('SELECT id, title, cover_image, status, year AS release_year, created_at FROM anime ORDER BY created_at DESC LIMIT 5'),
-        db.query(recentEpisodesSql),
-        db.query(logsSql),
-        db.query('SELECT id, title, cover_image, view_count FROM anime ORDER BY view_count DESC, created_at DESC LIMIT 5'),
-        db.query('SELECT COALESCE(SUM(amount), 0) revenue FROM payments WHERE status = "successful"'),
-        db.query('SELECT id, name, email, avatar_url, created_at FROM users ORDER BY created_at DESC LIMIT 5'),
+        dashboardQuery('users', usersSql),
+        dashboardQuery('anime totals', 'SELECT COUNT(*) totalAnime, COALESCE(SUM(view_count), 0) totalViews, COALESCE(AVG(rating), 0) avgRating FROM anime'),
+        dashboardQuery('episode totals', episodeSql),
+        dashboardQuery('daily activity', 'SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_history WHERE DATE(watched_at) = CURDATE()'),
+        dashboardQuery('recent anime', 'SELECT id, title, cover_image, status, year AS release_year, created_at FROM anime ORDER BY created_at DESC LIMIT 5'),
+        dashboardQuery('recent episodes', recentEpisodesSql),
+        dashboardQuery('activity logs', logsSql),
+        dashboardQuery('top anime', 'SELECT id, title, cover_image, view_count FROM anime ORDER BY view_count DESC, created_at DESC LIMIT 5'),
+        dashboardQuery('revenue', 'SELECT COALESCE(SUM(amount), 0) revenue FROM payments WHERE status = "successful"'),
+        dashboardQuery('latest users', 'SELECT id, name, email, avatar_url, created_at FROM users ORDER BY created_at DESC LIMIT 5'),
       ]);
-      const users = results[0][0][0];
-      const content = results[1][0][0];
-      const episodes = results[2][0][0];
-      const activity = results[3][0][0];
+      const users = results[0][0][0] || {};
+      const content = results[1][0][0] || {};
+      const episodes = results[2][0][0] || {};
+      const activity = results[3][0][0] || {};
       res.json({
         overview: {
           users: { total: Number(users.total) || 0, premium: Number(users.premium) || 0, activeToday: Number(activity.activeToday) || 0, banned: Number(users.banned) || 0 },
@@ -88,7 +99,7 @@ const adminController = {
           // Bunny Stream does not expose stored-byte totals in this API. Do not invent an estimate.
           storage: { usageGB: null, videoCount: Number(episodes.videoCount) || 0 },
           bunny: { ready: Number(episodes.bunnyReady) || 0, processing: Number(episodes.bunnyProcessing) || 0, failed: Number(episodes.bunnyFailed) || 0 },
-          revenue: Number(results[8][0][0].revenue) || 0,
+          revenue: Number(results[8][0][0]?.revenue) || 0,
         },
         recentAnime: results[4][0], recentEpisodes: results[5][0], activityLogs: results[6][0], topAnime: results[7][0], latestUsers: results[9][0],
       });
