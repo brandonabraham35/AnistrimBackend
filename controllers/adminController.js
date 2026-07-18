@@ -46,10 +46,12 @@ function clientIp(req) {
 
 async function logActivity(req, action, targetType = null, targetId = null, details = null) {
   try {
-    await db.query(
-      'INSERT INTO activity_logs (user_id, action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, action, targetType, targetId, details, clientIp(req)]
-    );
+    const schema = await getSchema();
+    if (schema.activity_logs) {
+      await db.query('INSERT INTO activity_logs (user_id, action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)', [req.user.id, action, targetType, targetId, details, clientIp(req)]);
+    } else if (schema.admin_logs) {
+      await db.query('INSERT INTO admin_logs (admin_id, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)', [req.user.id, action, targetType, targetId, details]);
+    }
   } catch (error) {
     // Activity logging must never turn a completed admin operation into a failure.
     console.warn('Activity log was not recorded:', error.message);
