@@ -4,7 +4,7 @@
 - [ ] GET `/api/admin/dashboard/overview` returns 200 OK with correct JSON structure.
 - [ ] Stats (total users, anime, etc.) match database counts.
 - [ ] Revenue calculations (today, monthly, total) are accurate.
-- [ ] Bunny Stream counts are correctly aggregated from the `episodes` table.
+- [ ] Cloudinary video counts are correctly aggregated from the `episodes` table.
 - [ ] Activity logs and latest users return the most recent entries.
 - [ ] Error handling: Dashboard still loads even if one table is missing or query fails.
 
@@ -22,10 +22,10 @@
 - [ ] Login still works correctly for admin users.
 - [ ] Access denied for non-admin users.
 - [ ] Anime CRUD (Create, Read, Update, Delete) still works.
-- [ ] Episode management and Bunny Stream video uploads still work.
+- [ ] Episode management and Cloudinary video uploads still work.
 - [ ] Settings and Ads management still work.
 - [ ] Activity logging still works for all admin actions.
 
-## Bunny Integration
-- [ ] Image uploads to Bunny Storage are unaffected.
-- [ ] Video uploads and status checks for Bunny Stream are unaffected.
+## Cloudinary Integration
+- [ ] Image uploads to Cloudinary succeed.
+- [ ] Video uploads, metadata checks, and asset deletion succeed.

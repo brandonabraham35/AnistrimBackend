@@ -131,39 +131,28 @@ async function uploadVideoIfSelected() {
 
   const data = await uploadVideoWithProgress(fileInput.files[0], title);
 
-  const bunnyId =
-    data.bunny_video_id ||
-    data.videoId ||
-    data.video_id;
+  const publicId = data.public_id || data.videoId || data.video_id;
 
-  const playbackUrl =
-    data.playback_url ||
-    data.playbackUrl ||
-    "";
+  const playbackUrl = data.video_url || data.secure_url || "";
 
-  const embedUrl =
-    data.embed_url ||
-    data.embedUrl ||
-    "";
+  const embedUrl = playbackUrl;
 
-  if (!bunnyId) {
-    throw new Error("Video uploaded, but Bunny video ID was not returned.");
+  if (!publicId) {
+    throw new Error("Video uploaded, but Cloudinary public ID was not returned.");
   }
 
-  document.getElementById("ep-bunny-id").value = bunnyId;
+  document.getElementById("ep-bunny-id").value = publicId;
   document.getElementById("ep-playback-url").value = playbackUrl;
   document.getElementById("ep-embed-url").value = embedUrl;
 
   setVideoProgress(30);
-  setVideoStatus("Upload complete. Bunny Stream is now encoding...", "processing");
-
-  // pollVideoStatus(bunnyId);
+  setVideoProgress(100);
+  setVideoStatus("Video uploaded and ready to stream.", "ready");
 
   return {
-    bunny_video_id: bunnyId,
-    video_status: "processing",
-    playback_url: playbackUrl,
-    embed_url: embedUrl,
+    public_id: publicId,
+    video_url: playbackUrl,
+    duration: data.duration || null,
   };
 }
 
@@ -370,20 +359,13 @@ async function saveEpisode(event) {
       description: document.getElementById("ep-description").value,
       is_premium: document.getElementById("ep-is-premium").checked ? 1 : 0,
       thumbnail_url: thumbnailUrl,
-      bunny_video_id:
-        uploadedVideo?.bunny_video_id ||
+      cloudinary_public_id:
+        uploadedVideo?.public_id ||
         document.getElementById("ep-bunny-id").value ||
         null,
-      video_status:
-        uploadedVideo?.video_status ||
-        (document.getElementById("ep-bunny-id").value ? "processing" : null),
-      playback_url:
-        uploadedVideo?.playback_url ||
+      video_url:
+        uploadedVideo?.video_url ||
         document.getElementById("ep-playback-url").value ||
-        null,
-      embed_url:
-        uploadedVideo?.embed_url ||
-        document.getElementById("ep-embed-url").value ||
         null,
     };
 

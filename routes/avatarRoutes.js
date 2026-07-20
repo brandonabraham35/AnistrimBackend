@@ -48,7 +48,7 @@ async function updateAvatarIfDbExists(userId, avatarUrl) {
 }
 
 router.post('/avatar', protect, async (req, res) => {
-  // Use the handleImageUpload from bunnyUpload utility
+  // Use the shared Cloudinary-backed image upload utility.
   // We need to intercept the response to update the database
   const originalJson = res.json;
   res.json = async function (data) {
@@ -66,7 +66,7 @@ router.post('/avatar', protect, async (req, res) => {
   try {
     await handleImageUpload(req, res, 'avatars');
   } catch (err) {
-    console.error('[avatarRoutes] Bunny upload error:', err);
+    console.error('[avatarRoutes] Cloudinary upload error:', err);
     res.status(500).json({
       success: false,
       message: 'Avatar upload failed.',

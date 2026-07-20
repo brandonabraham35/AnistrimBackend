@@ -11,12 +11,12 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const {
   handleImageUpload,
-  hasBunnyConfig,
+  hasCloudinaryConfig,
   FIELD_NAMES,
   FOLDERS,
   MAX_FILE_SIZE,
 } = require('../utils/bunnyUpload');
-const bunnyStreamController = require('../controllers/bunnyStreamController');
+const cloudinaryVideoController = require('../controllers/bunnyStreamController');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
@@ -62,11 +62,9 @@ router.get('/_ping', (_req, res) => {
   res.json({
     ok: true,
     route: '/api/admin/upload',
-    provider: 'bunny',
-    uploadEngine: 'multer-memory-storage + axios-put-bunny',
-    bunnyConfigured: hasBunnyConfig(),
-    storageZone: process.env.BUNNY_STORAGE_ZONE,
-    cdnUrl: process.env.BUNNY_CDN_URL,
+    provider: 'cloudinary',
+    uploadEngine: 'multer-memory-storage + cloudinary-upload-stream',
+    cloudinaryConfigured: hasCloudinaryConfig(),
     maxFileSizeMb: Math.round(MAX_FILE_SIZE / 1024 / 1024),
     acceptedFields: FIELD_NAMES,
     folders: FOLDERS,
@@ -77,8 +75,8 @@ router.get('/_ping', (_req, res) => {
 router.get('/_health', protect, (_req, res) => {
   res.json({
     ok: true,
-    provider: 'bunny',
-    bunnyConfigured: hasBunnyConfig(),
+    provider: 'cloudinary',
+    cloudinaryConfigured: hasCloudinaryConfig(),
     maxFileSizeMb: Math.round(MAX_FILE_SIZE / 1024 / 1024),
     acceptedFields: FIELD_NAMES,
     folders: FOLDERS,
@@ -101,9 +99,9 @@ router.post('/avatar', protect, uploadTo('avatars'));
 router.post('/profile', protect, uploadTo('profiles'));
 router.post('/profile/avatar', protect, uploadTo('avatars'));
 
-// Admin Video Uploads (Bunny Stream)
-router.post('/video', protect, adminOnly, videoUpload.single('video'), bunnyStreamController.uploadVideo);
+router.post('/video', protect, adminOnly, videoUpload.single('video'), cloudinaryVideoController.uploadVideo);
 
-router.get('/video/:videoId/status', protect, adminOnly, bunnyStreamController.getVideoStatus);
+router.get('/video/:videoId/status', protect, adminOnly, cloudinaryVideoController.getVideoStatus);
+router.delete('/video/:videoId', protect, adminOnly, cloudinaryVideoController.deleteVideo);
 
 module.exports = router;

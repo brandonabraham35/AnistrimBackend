@@ -8,6 +8,7 @@ const router = express.Router();
 const {
   uploadVideo,
   getVideoStatus,
+  deleteVideo,
 } = require('../controllers/bunnyStreamController');
 
 const { protect, adminOnly } = require('../middleware/auth');
@@ -62,6 +63,13 @@ router.get(
   protect,
   adminOnly,
   getVideoStatus
+);
+
+router.delete(
+  '/videos/:videoId',
+  protect,
+  adminOnly,
+  deleteVideo
 );
 
 module.exports = router;

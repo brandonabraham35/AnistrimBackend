@@ -27,9 +27,12 @@
       setText('total-anime', overview.content.totalAnime.toLocaleString());
       setText('total-episodes', overview.content.totalEpisodes.toLocaleString());
       setText('total-views', overview.content.totalViews.toLocaleString());
-      setText('bunny-ready', overview.bunny.ready);
-      setText('bunny-processing', overview.bunny.processing);
-      setText('bunny-failed', overview.bunny.failed);
+      // Accept the legacy response during a rolling backend deployment, then use
+      // Cloudinary metrics once the new backend version is live.
+      const media = overview.cloudinary || overview.bunny || { ready: 0, processing: 0, failed: 0 };
+      setText('cloudinary-ready', media.ready || 0);
+      setText('cloudinary-processing', media.processing || 0);
+      setText('cloudinary-failed', media.failed || 0);
       setText('active-users-today', overview.users.activeToday);
       setText('banned-users', overview.users.banned);
 
@@ -97,7 +100,7 @@
     if (!file) return '';
     const payload = new FormData(); payload.append('image', file);
     const result = await window.apiRequest(`/admin/upload/${folder}`, { method: 'POST', body: payload });
-    return result.url || result.imageUrl || result.image_url || '';
+    return { url: result.secure_url || result.url || result.imageUrl || result.image_url || '', publicId: result.public_id || '' };
   }
 
   async function openAnimeEditor(id = null) {
@@ -112,13 +115,13 @@
       <label><input name="is_premium" type="checkbox" ${anime.is_premium ? 'checked' : ''}> Premium only</label><label><input name="is_featured" type="checkbox" ${anime.is_featured ? 'checked' : ''}> Hero featured</label>
       <div class="wide"><button class="btn" type="submit">${id ? 'Save changes' : 'Create anime'}</button></div></form>`);
     modal.querySelector('[name=status]').value = anime.status || 'completed';
-    modal.querySelector('#anime-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = Object.fromEntries(new FormData(form)); data.is_premium = form.is_premium.checked; data.is_featured = form.is_featured.checked; if (form.cover_file.files[0]) data.cover_image = await uploadImage(form.cover_file.files[0], 'anime'); if (form.banner_file.files[0]) data.banner_image = await uploadImage(form.banner_file.files[0], 'banners'); delete data.cover_file; delete data.banner_file; await window.apiRequest(id ? `/admin/anime/${id}` : '/admin/anime', { method: id ? 'PUT' : 'POST', body: data }); modal.remove(); await loadAnime(); await loadOverview(); } catch (error) { alert(`Anime was not saved: ${error.message}`); } finally { submit.disabled = false; } });
+    modal.querySelector('#anime-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = Object.fromEntries(new FormData(form)); data.is_premium = form.is_premium.checked; data.is_featured = form.is_featured.checked; if (form.cover_file.files[0]) { const upload = await uploadImage(form.cover_file.files[0], 'anime'); data.cover_image = upload.url; data.cover_public_id = upload.publicId; } if (form.banner_file.files[0]) { const upload = await uploadImage(form.banner_file.files[0], 'banners'); data.banner_image = upload.url; data.banner_public_id = upload.publicId; } delete data.cover_file; delete data.banner_file; await window.apiRequest(id ? `/admin/anime/${id}` : '/admin/anime', { method: id ? 'PUT' : 'POST', body: data }); modal.remove(); await loadAnime(); await loadOverview(); } catch (error) { alert(`Anime was not saved: ${error.message}`); } finally { submit.disabled = false; } });
   }
 
   async function openEpisodeEditor() {
     const anime = await window.apiRequest('/admin/anime');
     const modal = openModal('Add Episode', `<form id="episode-form" class="form-grid"><label>Anime<select name="anime_id" required>${anime.map(a => `<option value="${a.id}">${escapeHtml(a.title)}</option>`).join('')}</select></label><label>Episode number<input name="episode_number" type="number" min="1" required></label><label>Title<input name="title"></label><label>Duration (seconds)<input name="duration_sec" type="number"></label><label>Video URL<input name="video_url"></label><label>Thumbnail URL<input name="thumbnail_url"><input name="thumbnail_file" type="file" accept="image/*"></label><label>Intro start<input name="intro_start_time" type="number" min="0"></label><label>Intro end<input name="intro_end_time" type="number" min="0"></label><label><input name="is_premium" type="checkbox"> Premium episode</label><div class="wide"><button class="btn" type="submit">Publish episode</button></div></form>`);
-    modal.querySelector('#episode-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = Object.fromEntries(new FormData(form)); data.is_premium = form.is_premium.checked; if (form.thumbnail_file.files[0]) data.thumbnail_url = await uploadImage(form.thumbnail_file.files[0], 'thumbnails'); delete data.thumbnail_file; const animeId = data.anime_id; delete data.anime_id; await window.apiRequest(`/admin/anime/${animeId}/episodes`, { method: 'POST', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not published: ${error.message}`); } finally { submit.disabled = false; } });
+    modal.querySelector('#episode-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = Object.fromEntries(new FormData(form)); data.is_premium = form.is_premium.checked; if (form.thumbnail_file.files[0]) { const upload = await uploadImage(form.thumbnail_file.files[0], 'thumbnails'); data.thumbnail_url = upload.url; data.thumbnail_public_id = upload.publicId; } delete data.thumbnail_file; const animeId = data.anime_id; delete data.anime_id; await window.apiRequest(`/admin/anime/${animeId}/episodes`, { method: 'POST', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not published: ${error.message}`); } finally { submit.disabled = false; } });
   }
 
   async function openEpisodeEdit(id) {

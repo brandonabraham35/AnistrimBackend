@@ -214,7 +214,7 @@ Password: `admin123`
 ## 🎥 Adding Video Content
 
 In the Admin Dashboard → Episodes tab, paste your video URL:
-- **Bunny.net CDN** (recommended for Africa): `https://your-zone.b-cdn.net/ep1.mp4`
+- **Cloudinary**: upload and deliver videos through the Cloudinary media library.
 - **Cloudinary**: `https://res.cloudinary.com/your-cloud/video/upload/v1/ep1.mp4`
 - **AWS S3**: `https://your-bucket.s3.amazonaws.com/ep1.mp4`
 

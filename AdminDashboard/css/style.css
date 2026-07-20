@@ -147,15 +147,15 @@ body {
 .rev-item label { display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; }
 .rev-item p { font-size: 1.2rem; font-weight: 700; }
 
-/* Bunny Stats */
-.bunny-stats { display: flex; gap: 1rem; padding: 1.5rem; flex-wrap: wrap; }
-.bunny-badge {
+/* Cloudinary stats */
+.cloudinary-stats { display: flex; gap: 1rem; padding: 1.5rem; flex-wrap: wrap; }
+.cloudinary-badge {
     padding: 0.6rem 1rem; border-radius: 8px; font-size: 0.9rem; font-weight: 600;
     display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 120px;
 }
-.bunny-badge.ready { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-.bunny-badge.processing { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
-.bunny-badge.failed { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+.cloudinary-badge.ready { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+.cloudinary-badge.processing { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
+.cloudinary-badge.failed { background: rgba(239, 68, 68, 0.1); color: var(--error); }
 
 /* List Items (Generic for Top Anime, Uploads, etc) */
 .list-item {

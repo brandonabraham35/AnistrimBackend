@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   title         VARCHAR(255)        DEFAULT NULL,
   description   TEXT                DEFAULT NULL,
   thumbnail_url VARCHAR(500)        DEFAULT NULL,
-  video_url     VARCHAR(1000)       DEFAULT NULL,     -- S3 / Bunny CDN / Cloudinary URL
+  video_url     VARCHAR(1000)       DEFAULT NULL,     -- Cloudinary / S3 URL
   duration_sec  INT                 DEFAULT 1440,     -- 24 min default
   is_premium    TINYINT(1)          NOT NULL DEFAULT 0,
   view_count    INT                 NOT NULL DEFAULT 0,
