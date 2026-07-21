@@ -1,19 +1,14 @@
 const fs = require('fs');
-const { uploadVideo, getVideo, deleteVideo } = require('../utils/bunnyStream');
+const { uploadVideo, deleteVideo } = require('../utils/bunnyStream');
 
 function responsePayload(video) {
   return {
     success: true,
+    secure_url: video.secure_url,
     video_url: video.secure_url,
     public_id: video.public_id,
     duration: video.duration,
     bytes: video.bytes,
-    status: 'ready',
-    video_status: 'ready',
-    // Compatibility aliases for older dashboard builds. They contain Cloudinary data.
-    bunny_video_id: video.public_id,
-    playback_url: video.secure_url,
-    embed_url: video.secure_url,
   };
 }
 
@@ -28,15 +23,6 @@ exports.uploadVideo = async (req, res) => {
     return res.status(502).json({ success: false, message: error.message || 'Video upload failed.' });
   } finally {
     if (temporaryPath) fs.promises.unlink(temporaryPath).catch(() => undefined);
-  }
-};
-
-exports.getVideoStatus = async (req, res) => {
-  try {
-    const video = await getVideo(req.params.videoId);
-    return res.json({ ...responsePayload(video), progress: 100, encodeProgress: 100 });
-  } catch (error) {
-    return res.status(error.http_code === 404 ? 404 : 502).json({ success: false, message: error.message || 'Unable to retrieve video.' });
   }
 };
 

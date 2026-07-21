@@ -1,6 +1,7 @@
 // File Path: Frontend/js/api.js
 
 const API_BASE = 'https://anistrimbackend.onrender.com/api';
+window.API_BASE = API_BASE;
 
 async function apiRequest(endpoint, options = {}) {
     const token = localStorage.getItem('admin_token');

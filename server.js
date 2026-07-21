@@ -55,7 +55,6 @@ app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/admin/upload', require('./routes/uploadRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
-app.use('/api/admin', require('./routes/bunnyStreamRoutes'));
 
 // ─── Health check ─────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date() }));

@@ -48,9 +48,6 @@ router.delete('/ads/:id',                   admin.deleteAd);
 // Payments
 router.put('/payments/:id',                 admin.updatePaymentStatus);
 
-// Videos
-router.get('/videos/:videoId/status',       admin.getVideoStatus);
-
 // Logs
 router.get('/logs',                         admin.getActivityLogs);
 

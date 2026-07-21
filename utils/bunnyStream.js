@@ -20,10 +20,9 @@ function toVideo(result) {
 async function uploadVideo(filePath, options = {}) {
   requireConfiguration();
   const result = await new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_large(filePath, {
+    cloudinary.uploader.upload(filePath, {
       resource_type: 'video',
       folder: 'episodes',
-      chunk_size: 20 * 1024 * 1024,
       use_filename: true,
       unique_filename: true,
       overwrite: false,

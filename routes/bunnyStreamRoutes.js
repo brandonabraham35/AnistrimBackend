@@ -7,7 +7,6 @@ const router = express.Router();
 
 const {
   uploadVideo,
-  getVideoStatus,
   deleteVideo,
 } = require('../controllers/bunnyStreamController');
 
@@ -56,13 +55,6 @@ router.post(
   adminOnly,
   upload.single('video'),
   uploadVideo
-);
-
-router.get(
-  '/videos/:videoId/status',
-  protect,
-  adminOnly,
-  getVideoStatus
 );
 
 router.delete(

@@ -101,7 +101,6 @@ router.post('/profile/avatar', protect, uploadTo('avatars'));
 
 router.post('/video', protect, adminOnly, videoUpload.single('video'), cloudinaryVideoController.uploadVideo);
 
-router.get('/video/:videoId/status', protect, adminOnly, cloudinaryVideoController.getVideoStatus);
 router.delete('/video/:videoId', protect, adminOnly, cloudinaryVideoController.deleteVideo);
 
 module.exports = router;
