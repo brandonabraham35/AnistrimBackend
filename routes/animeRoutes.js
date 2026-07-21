@@ -6,6 +6,7 @@ const { protect } = require('../middleware/auth');
 
 // Public (but protect adds user context if token present — optional auth)
 router.get('/trending', anime.getTrending);
+router.get('/latest',   anime.getLatest);
 router.get('/featured', anime.getFeatured);
 router.get('/search',   anime.search);
 

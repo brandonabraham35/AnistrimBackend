@@ -1,6 +1,19 @@
 // controllers/animeController.js
 const db = require('../config/db');
 
+// Keep the public catalogue contract stable for both the current client
+// (cover_image) and older React clients (poster_url/thumbnail_url).
+function publicAnime(anime) {
+  const cover = anime.cover_image || anime.poster_url || anime.thumbnail_url || null;
+  return {
+    ...anime,
+    cover_image: cover,
+    poster_url: cover,
+    thumbnail_url: cover,
+    banner_url: anime.banner_image || null,
+  };
+}
+
 // Helper — fetch genres for a list of anime IDs
 async function attachGenres(animeList) {
   if (!animeList.length) return animeList;
@@ -15,7 +28,7 @@ async function attachGenres(animeList) {
     if (!map[r.anime_id]) map[r.anime_id] = [];
     map[r.anime_id].push(r.name);
   });
-  return animeList.map(a => ({ ...a, genres: map[a.id] || [] }));
+  return animeList.map(a => publicAnime({ ...a, genres: map[a.id] || [] }));
 }
 
 // GET /api/anime/trending  — returns all anime (used as main feed)
@@ -23,14 +36,33 @@ exports.getTrending = async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
-              rating, year, studio, status, is_premium, is_featured, view_count
-       FROM anime ORDER BY rating DESC, view_count DESC`
+              rating, year, studio, status, is_premium, is_featured, view_count, created_at
+       FROM anime ORDER BY rating DESC, view_count DESC, created_at DESC`
     );
     const result = await attachGenres(rows);
     res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch anime.' });
+  }
+};
+
+// GET /api/anime/latest — newest administrator uploads, independent of rating,
+// status, or featured state. This is the source for the homepage Latest Uploads row.
+exports.getLatest = async (req, res) => {
+  try {
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 10, 1), 50);
+    const [rows] = await db.query(
+      `SELECT id, title, title_japanese, description, cover_image, banner_image,
+              rating, year, studio, status, is_premium, is_featured, view_count, created_at
+       FROM anime ORDER BY created_at DESC, id DESC LIMIT ?`,
+      [limit]
+    );
+    res.json(await attachGenres(rows));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch latest anime.' });
   }
 };
 
