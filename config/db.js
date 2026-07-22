@@ -9,7 +9,7 @@ const pool = mysql.createPool({
   password:           process.env.DB_PASSWORD || '',
   database:           process.env.DB_NAME     || 'anistrim2',
   waitForConnections: true,
-  connectionLimit:    10,
+  connectionLimit:    4, // MUST be 4 or less to stay under your limit of 5
   queueLimit:         0,
   charset:            'utf8mb4',
 });
