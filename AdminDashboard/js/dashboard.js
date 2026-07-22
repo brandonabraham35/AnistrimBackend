@@ -118,6 +118,19 @@
           return;
         }
         searchResults.innerHTML = '';
+
+        // ─── "Import All Results" toolbar ──────────────────────
+        const importAllBar = document.createElement('div');
+        importAllBar.className = 'import-all-bar';
+        importAllBar.style.cssText = 'display:flex;justify-content:flex-end;gap:.75rem;margin-bottom:.75rem;';
+        const importAllBtn = document.createElement('button');
+        importAllBtn.className = 'btn import-all-btn';
+        importAllBtn.textContent = '📥 Import All Results';
+        importAllBtn.type = 'button';
+        importAllBar.appendChild(importAllBtn);
+        searchResults.appendChild(importAllBar);
+
+        // ─── Build result cards ─────────────────────────────────
         results.forEach(anime => {
           const card = document.createElement('div');
           card.className = 'kitsu-result';
@@ -133,26 +146,50 @@
           searchResults.appendChild(card);
         });
 
-        searchResults.querySelectorAll('.import-btn').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const kitsuId = btn.getAttribute('data-kitsu-id');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Importing...';
+        // ─── Helper: import a single kitus-result card by button ─
+        async function importSingle(btn) {
+          const kitsuId = btn.getAttribute('data-kitsu-id');
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner"></span> Importing...';
 
-            try {
-              await window.apiRequest('/admin/import-anime', { method: 'POST', body: { kitsuId } });
-              closeModal();
-              await loadAnime();
-              await loadOverview();
-            } catch (err) {
-              btn.disabled = false;
-              btn.textContent = 'Import';
-              const errEl = document.createElement('p');
-              errEl.style.cssText = 'color:#ef4444;font-size:.85rem;margin-top:.5rem;grid-column:1/-1';
-              errEl.textContent = `Import failed: ${err.message}`;
-              btn.closest('.kitsu-result')?.appendChild(errEl);
-            }
+          try {
+            await window.apiRequest('/admin/import-anime', { method: 'POST', body: { kitsuId } });
+            btn.innerHTML = '✅ Imported';
+            btn.className = 'btn imported-btn';
+            btn.disabled = true;
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Import';
+            const errEl = document.createElement('p');
+            errEl.style.cssText = 'color:#ef4444;font-size:.85rem;margin-top:.5rem;grid-column:1/-1';
+            errEl.textContent = `Import failed: ${err.message}`;
+            btn.closest('.kitsu-result')?.appendChild(errEl);
+          }
+        }
+
+        // ─── Wire individual import buttons ─────────────────────
+        const allImportBtns = [...searchResults.querySelectorAll('.import-btn')];
+        allImportBtns.forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await importSingle(btn);
           });
+        });
+
+        // ─── Wire "Import All Results" button ───────────────────
+        importAllBtn.addEventListener('click', async () => {
+          importAllBtn.disabled = true;
+          importAllBtn.innerHTML = '<span class="spinner"></span> Importing all...';
+
+          for (const btn of allImportBtns) {
+            // Skip already-imported buttons
+            if (btn.disabled && btn.classList.contains('imported-btn')) continue;
+            await importSingle(btn);
+          }
+
+          importAllBtn.innerHTML = '✅ All Imported';
+          importAllBtn.className = 'btn imported-btn';
+          importAllBtn.disabled = true;
         });
       }
 
