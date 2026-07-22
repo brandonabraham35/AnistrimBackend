@@ -32,10 +32,13 @@ async function replaceGenres(animeId, names) {
 async function importKitsuAnime(metadata) {
   const [existing] = await db.query('SELECT * FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', ['kitsu', metadata.kitsu_id]);
   if (existing.length) return publicAnime(existing[0]);
+  // Keep the normal Anime create contract intact. Provider identifiers are
+  // internal catalogue metadata; the content fields are the same strict set
+  // accepted by the existing admin create endpoint.
   const [result] = await db.query(
-    `INSERT INTO anime (title, title_japanese, description, cover_image, banner_image, rating, year, status, tags, source_provider, source_id, source_slug)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'kitsu', ?, ?)`,
-    [metadata.title, metadata.title_japanese, metadata.description, metadata.cover_image, metadata.banner_image, metadata.rating, metadata.year, metadata.status, metadata.age_rating, metadata.kitsu_id, metadata.slug]
+    `INSERT INTO anime (title, description, cover_image, banner_image, year, studio, status, is_premium, is_featured, source_provider, source_id, source_slug)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'kitsu', ?, ?)`,
+    [metadata.title, metadata.description, metadata.cover_image, metadata.banner_image, metadata.year, metadata.studio || null, metadata.status, metadata.kitsu_id, metadata.slug]
   );
   await replaceGenres(result.insertId, metadata.genres);
   const [rows] = await db.query('SELECT * FROM anime WHERE id = ?', [result.insertId]);
