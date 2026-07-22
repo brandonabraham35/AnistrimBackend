@@ -141,8 +141,8 @@ exports.getById = async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: 'Anime not found.' });
     const [anime] = await attachGenres(rows);
 
-    // Increment view counter
-    await db.query('UPDATE anime SET view_count = view_count + 1 WHERE id = ?', [id]);
+    // Increment view counters (lifetime + daily for Viral Threshold premium automation)
+    await db.query('UPDATE anime SET view_count = view_count + 1, daily_views = daily_views + 1 WHERE id = ?', [id]);
 
     // Fetch episodes — hide video_url for premium eps if user not premium
     const isPremium = req.user?.isPremium || req.user?.isAdmin;
