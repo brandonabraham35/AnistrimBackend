@@ -201,6 +201,27 @@
         .modal-backdrop { position:fixed; inset:0; z-index:10; background:rgba(2,6,23,.75); display:grid; place-items:center; padding:1rem; }
         .modal-card { width:min(720px,100%); max-height:90vh; overflow:auto; background:var(--bg-card); border:1px solid #475569; border-radius:.75rem; padding:1.25rem; }
         .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; } .form-grid label { display:grid; gap:.35rem; color:var(--text-sub); font-size:.85rem; } .form-grid input,.form-grid select,.form-grid textarea { background:#0f172a; color:var(--text-main); border:1px solid #475569; border-radius:.35rem; padding:.55rem; } .form-grid .wide { grid-column:1/-1; } @media(max-width:600px){.form-grid{grid-template-columns:1fr}}
+        .anime-import-modal { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:1rem; background:rgba(2,6,23,.8); }
+        .anime-import-modal[hidden] { display:none; }
+        .anime-import-dialog { width:min(860px,100%); max-height:90vh; overflow:auto; background:#121927; color:#f8fafc; border:1px solid #334155; border-radius:14px; box-shadow:0 24px 80px rgba(0,0,0,.55); }
+        .anime-import-header { display:flex; align-items:center; justify-content:space-between; padding:1.1rem 1.25rem; border-bottom:1px solid #334155; }
+        .anime-import-tabs { display:flex; gap:.5rem; padding:1rem 1.25rem 0; }
+        .anime-import-tab { border:1px solid #334155; border-radius:8px; background:#182234; color:#94a3b8; padding:.65rem .9rem; cursor:pointer; }
+        .anime-import-tab[aria-selected="true"] { color:#fff; border-color:#6366f1; background:#263456; }
+        .anime-import-panel { padding:1.25rem; } .anime-import-panel[hidden] { display:none; }
+        .kitsu-search-bar { display:flex; gap:.65rem; } .kitsu-search-bar input { flex:1; min-width:0; background:#182234; color:#fff; border:1px solid #475569; border-radius:8px; padding:.7rem; }
+        .kitsu-search-results { display:grid; gap:.75rem; margin-top:1rem; }
+        .kitsu-result { display:grid; grid-template-columns:72px 1fr auto; gap:.9rem; align-items:center; padding:.8rem; background:#182234; border:1px solid #334155; border-radius:10px; }
+        .kitsu-result img { width:72px; height:100px; object-fit:cover; border-radius:6px; background:#0f172a; } .kitsu-result h4 { margin:0; color:#fff; } .kitsu-result p { margin:.3rem 0 0; color:#94a3b8; font-size:.85rem; } .kitsu-result .synopsis { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .anime-import-close { background:transparent; color:#94a3b8; border:0; font-size:1.4rem; cursor:pointer; }
+        .action-btn { border:0; border-radius:.35rem; padding:.4rem .6rem; cursor:pointer; font-size:.85rem; }
+        .edit-btn { background:var(--accent); color:#fff; }
+        .delete-btn { background:var(--danger); color:#fff; }
+        .image-preview { margin-top:.35rem; border:1px dashed #475569; border-radius:6px; min-height:80px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.2); }
+        .image-preview img { max-height:100px; border-radius:4px; }
+        .spinner { width:18px; height:18px; border:2px solid #94a3b8; border-top-color:#6366f1; border-radius:50%; animation:spin .6s linear infinite; display:inline-block; vertical-align:middle; margin-right:.4rem; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        @media(max-width:620px){.kitsu-result{grid-template-columns:60px 1fr}.kitsu-result button{grid-column:1/-1}.kitsu-result img{width:60px;height:84px}}
     </style>
 </head>
 <body>
@@ -325,9 +346,18 @@
         </section>
 
         <section class="page-section" data-section-panel="anime" hidden>
-            <div class="toolbar"><button class="btn" id="add-anime-button">Add Anime</button></div>
+            <div class="toolbar">
+                <input type="search" id="anime-search" placeholder="Search anime..." style="flex:1;max-width:300px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <select id="anime-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                    <option value="">All Status</option>
+                    <option value="completed">Completed</option>
+                    <option value="airing">Airing</option>
+                    <option value="upcoming">Upcoming</option>
+                </select>
+                <button class="btn" id="add-anime-button">Add Anime</button>
+            </div>
             <div class="section-box"><h4><i class="fas fa-tv"></i> Anime Catalogue</h4>
-                <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th>Title</th><th>Status</th><th>Year</th><th>Episodes</th><th>Views</th><th>Genres</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th>Cover</th><th>Title</th><th>Status</th><th>Premium</th><th>Featured</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
         <section class="page-section" data-section-panel="users" hidden>
@@ -346,6 +376,32 @@
                 <div style="overflow-x:auto"><table id="payments-table"><thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
+    </div>
+
+    <div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
+        <div class="anime-import-dialog">
+            <div class="anime-import-header"><h3 id="add-anime-modal-title">Add Anime</h3><button type="button" class="anime-import-close" id="close-add-anime-modal" aria-label="Close">×</button></div>
+            <div class="anime-import-tabs" role="tablist" aria-label="Anime source">
+                <button type="button" class="anime-import-tab" data-anime-tab="kitsu" role="tab" aria-selected="true">⚡ Auto-Import (Kitsu)</button>
+                <button type="button" class="anime-import-tab" data-anime-tab="manual" role="tab" aria-selected="false">📝 Manual Upload</button>
+            </div>
+            <section class="anime-import-panel" data-anime-panel="kitsu">
+                <form id="kitsu-search-form" class="kitsu-search-bar"><input id="kitsu-search-input" type="search" placeholder="Search Kitsu, e.g. Frieren" required><button class="btn" type="submit">Search</button></form>
+                <div id="kitsu-search-results" class="kitsu-search-results" aria-live="polite"></div>
+            </section>
+            <section class="anime-import-panel" data-anime-panel="manual" hidden>
+                <form id="manual-add-anime-form" class="form-grid">
+                    <label>Title<input id="manual-title" name="title" required></label><label>Year<input id="manual-year" name="year" type="number" min="1900" max="2100"></label>
+                    <label>Studio<input id="manual-studio" name="studio"></label><label>Status<select id="manual-status" name="status"><option value="completed">Completed</option><option value="airing">Airing</option><option value="upcoming">Upcoming</option></select></label>
+                    <label>Cover image<input id="manual-cover-file" name="cover_file" type="file" accept="image/*"><input id="manual-cover-url" name="cover_url" type="hidden"><div id="manual-cover-preview" class="image-preview"></div></label>
+                    <label>Banner image<input id="manual-banner-file" name="banner_file" type="file" accept="image/*"><input id="manual-banner-url" name="banner_url" type="hidden"><div id="manual-banner-preview" class="image-preview"></div></label>
+                    <label class="wide">Description<textarea id="manual-description" name="description" rows="4"></textarea></label>
+                    <label><input id="manual-is-premium" name="is_premium" type="checkbox"> Premium only</label>
+                    <label><input id="manual-is-featured" name="is_featured" type="checkbox"> Hero featured</label>
+                    <div class="wide" style="display:flex;gap:.75rem"><button class="btn" type="submit">Create Anime</button></div>
+                </form>
+            </section>
+        </div>
     </div>
 
     <script src="js/api.js"></script>

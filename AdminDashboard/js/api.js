@@ -1,6 +1,7 @@
 // File Path: Frontend/js/api.js
 
-const API_BASE = 'https://anistrimbackend.onrender.com/api';
+// Use localhost for development; override via localStorage or env
+const API_BASE = localStorage.getItem('api_base') || 'http://localhost:5000/api';
 window.API_BASE = API_BASE;
 
 async function apiRequest(endpoint, options = {}) {

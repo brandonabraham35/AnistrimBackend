@@ -2,6 +2,7 @@
 const express = require('express');
 const router  = express.Router();
 const admin   = require('../controllers/adminController');
+const imports = require('../controllers/adminImportController');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.use(protect, adminOnly);
@@ -21,6 +22,7 @@ router.get('/anime',                        admin.getAllAnime);
 router.post('/anime',                       admin.createAnime);
 router.put('/anime/:id',                    admin.updateAnime);
 router.delete('/anime/:id',                 admin.deleteAnime);
+router.post('/import-anime',                imports.importAnime);
 
 // Genres
 router.get('/genres',                       admin.getAllGenres);

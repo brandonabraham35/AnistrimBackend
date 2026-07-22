@@ -13,7 +13,7 @@ const STREAM_TTL = 30 * 60;
 
 function publicAnime(row) {
   const cover = row.cover_image || null;
-  return { ...row, cover_image: cover, poster_url: cover, thumbnail_url: cover, banner_url: row.banner_image || null, source: row.source_provider || 'admin' };
+  return { ...row, kitsu_id: row.source_provider === 'kitsu' ? row.source_id : null, cover_image: cover, poster_url: cover, thumbnail_url: cover, banner_url: row.banner_image || null, source: row.source_provider || 'admin' };
 }
 
 async function replaceGenres(animeId, names) {
@@ -51,6 +51,19 @@ async function search(query, limit = 20) {
   const imported = [];
   for (const item of remote) imported.push(await importKitsuAnime(item));
   return cache.set(cacheKey, imported, METADATA_TTL);
+}
+
+async function importFromKitsu(kitsuId) {
+  const metadata = await kitsu.getAnimeInfo(kitsuId);
+  let anime = await importKitsuAnime(metadata);
+  const [rows] = await db.query('SELECT * FROM anime WHERE id = ?', [anime.id]);
+  const slug = await getMapping(rows[0]);
+  if (slug) {
+    await db.query('UPDATE anime SET source_slug = ? WHERE id = ?', [slug, anime.id]);
+    anime = { ...anime, source_slug: slug };
+  }
+  await cache.delByPrefix('catalogue:');
+  return { anime, mapping: { provider: 'gogoanime', slug: slug || null, resolved: Boolean(slug) } };
 }
 
 async function getAnime(id) {
@@ -92,4 +105,4 @@ async function getStream(animeId, episodeId) {
 
 async function invalidate(animeId) { await Promise.all([cache.delByPrefix('catalogue:search:'), cache.delByPrefix(`catalogue:anime:${animeId}`), cache.delByPrefix(`catalogue:episodes:${animeId}`), cache.delByPrefix(`catalogue:stream:${animeId}:`)]); }
 
-module.exports = { search, getAnime, getEpisodes, getStream, invalidate };
+module.exports = { search, importFromKitsu, getAnime, getEpisodes, getStream, invalidate };
