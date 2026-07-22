@@ -293,18 +293,102 @@ async function uploadImg(file, folder) {
     return data.url || data.secure_url || data;
 }
 
-// ─── Edit Anime (placeholder for existing edit modal) ────────
-// Your existing edit modal logic goes here if you have one.
-// If not, this is a placeholder that opens a simple prompt-based edit.
+// ─── Edit Anime Modal ────────────────────────────────────────
 function editAnime(id) {
-    const a = allAnime.find(x => x.id === id);
+    var a = allAnime.find(function(x) { return x.id === id; });
     if (!a) return;
-    // Open the manual tab pre-filled for editing?
-    // For now, use the existing edit modal if it exists, or alert.
-    alert(`Edit anime #${id}: "${a.title}"\n\nOpen your edit modal here.`);
-    // If you have an existing edit modal, show it and pre-fill:
-    // document.getElementById('anime-id').value = a.id;
-    // ... show the modal ...
+    var backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(2,6,23,.75);display:grid;place-items:center;padding:1rem;';
+    var modal = document.createElement('div');
+    modal.className = 'modal-card';
+    modal.style.cssText = 'width:min(480px,100%);background:#1e293b;border:1px solid #475569;border-radius:.75rem;padding:1.5rem;color:#f8fafc;';
+    var t = (a.title || '').replace(/"/g, '"');
+    var d = (a.description || '').replace(/"/g, '"');
+    modal.innerHTML = [
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">',
+          '<h3 style="font-size:1.15rem;">Edit Anime</h3>',
+          '<button type="button" class="close-edit-btn" style="background:transparent;color:#94a3b8;border:0;font-size:1.5rem;cursor:pointer;">\u00d7</button>',
+        '</div>',
+        '<form style="display:grid;gap:1rem;">',
+          '<label style="display:grid;gap:.35rem;color:#94a3b8;font-size:.85rem;">Title',
+            '<input name="title" value="' + t + '" required style="background:#0f172a;color:#f8fafc;border:1px solid #475569;border-radius:.35rem;padding:.55rem;">',
+          '</label>',
+          '<label style="display:grid;gap:.35rem;color:#94a3b8;font-size:.85rem;">Description',
+            '<textarea name="description" rows="3" style="background:#0f172a;color:#f8fafc;border:1px solid #475569;border-radius:.35rem;padding:.55rem;">' + d + '</textarea>',
+          '</label>',
+          '<label style="display:grid;gap:.35rem;color:#94a3b8;font-size:.85rem;">Status',
+            '<select name="status" style="background:#0f172a;color:#f8fafc;border:1px solid #475569;border-radius:.35rem;padding:.55rem;">',
+              '<option value="airing"' + (a.status === 'airing' ? ' selected' : '') + '>Airing</option>',
+              '<option value="completed"' + (a.status === 'completed' ? ' selected' : '') + '>Completed</option>',
+              '<option value="upcoming"' + (a.status === 'upcoming' ? ' selected' : '') + '>Upcoming</option>',
+            '</select>',
+          '</label>',
+          '<label style="display:flex;align-items:center;gap:.5rem;color:#94a3b8;font-size:.85rem;cursor:pointer;">',
+            '<input type="checkbox" name="is_premium"' + (a.is_premium ? ' checked' : '') + ' style="width:auto;"> Premium only',
+          '</label>',
+          '<div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:.5rem;">',
+            '<button type="button" class="close-edit-btn" style="background:#334155;border:0;border-radius:.45rem;padding:.55rem .8rem;color:white;cursor:pointer;font-weight:600;">Cancel</button>',
+            '<button type="submit" class="save-edit-btn" style="background:#3b82f6;border:0;border-radius:.45rem;padding:.55rem .8rem;color:white;cursor:pointer;font-weight:600;">Save Changes</button>',
+          '</div>',
+        '</form>'
+    ].join('');
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    var closeEdit = function() { backdrop.remove(); };
+    backdrop.querySelectorAll('.close-edit-btn').forEach(function(el) { el.addEventListener('click', closeEdit); });
+    backdrop.addEventListener('click', function(e) { if (e.target === backdrop) closeEdit(); });
+    var form = modal.querySelector('form');
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var btn = form.querySelector('.save-edit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+            var body = {
+                title: form.title.value.trim(),
+                description: form.description.value.trim(),
+                status: form.status.value,
+                is_premium: form.is_premium.checked ? 1 : 0
+            };
+            await window.apiRequest('/admin/anime/' + a.id, { method: 'PUT', body: body });
+            closeEdit();
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:#059669;color:#fff;padding:.75rem 1.25rem;border-radius:.5rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);';
+            toast.textContent = '\u2705 "' + body.title + '" updated';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 3000);
+            var idx = allAnime.findIndex(function(x) { return x.id === a.id; });
+            if (idx !== -1) {
+                allAnime[idx] = Object.assign({}, allAnime[idx], body);
+                var tbody = document.querySelector('#anime-table tbody');
+                if (tbody) {
+                    var rows = tbody.querySelectorAll('tr');
+                    if (rows[idx]) {
+                        var u = allAnime[idx];
+                        var ta = (u.title || '').replace(/'/g, "\\'");
+                        rows[idx].innerHTML = [
+                            '<td><img src="' + (u.cover_image || 'placeholder.jpg') + '" width="50" style="border-radius:4px;aspect-ratio:3/4;object-fit:cover"></td>',
+                            '<td>' + (window.escapeHtml ? window.escapeHtml(u.title) : u.title) + '</td>',
+                            '<td><span class="status-badge ' + (u.status || 'unknown') + '">' + (u.status || 'unknown') + '</span></td>',
+                            '<td>' + (u.is_premium ? '\uD83D\uDC8E' : 'Free') + '</td>',
+                            '<td>' + (u.is_featured ? '\u2B50' : '-') + '</td>',
+                            '<td>',
+                              '<button class="action-btn edit-btn" onclick="editAnime(' + u.id + ')" title="Edit"><i class="fas fa-edit"></i></button> ',
+                              '<button class="action-btn edit-btn" style="background:#10b981" onclick="window.manageEpisodes && manageEpisodes(' + u.id + ', \'' + ta + '\')" title="Episodes"><i class="fas fa-list"></i></button> ',
+                              '<button class="action-btn delete-btn" onclick="deleteAnime(' + u.id + ')" title="Delete"><i class="fas fa-trash"></i></button>',
+                            '</td>'
+                        ].join('');
+                    }
+                }
+            }
+        } catch (err) {
+            alert('Failed to update: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save Changes';
+        }
+    });
 }
 
 // ─── Delete Anime ────────────────────────────────────────────

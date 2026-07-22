@@ -72,3 +72,6 @@ app.listen(PORT, () => {
   console.log('  ╚═══════════════════════════════════════╝');
   console.log('');
 });
+
+// Start background jobs
+require('./utils/premiumAutomation');
