@@ -66,6 +66,31 @@ exports.getLatest = async (req, res) => {
   }
 };
 
+// GET /api/anime/recommendations/:id — local recommendations use overlapping
+// genres first and fall back to popular catalogue titles.
+exports.getRecommendations = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ message: 'Invalid anime id.' });
+    const [rows] = await db.query(
+      `SELECT DISTINCT a.id, a.title, a.title_japanese, a.description, a.cover_image, a.banner_image,
+              a.rating, a.year, a.studio, a.status, a.is_premium, a.is_featured, a.view_count, a.created_at,
+              COUNT(ag2.genre_id) AS matching_genres
+       FROM anime a
+       LEFT JOIN anime_genres ag2 ON ag2.anime_id = a.id
+       WHERE a.id <> ? AND (NOT EXISTS (SELECT 1 FROM anime_genres WHERE anime_id = ?) OR ag2.genre_id IN (SELECT genre_id FROM anime_genres WHERE anime_id = ?))
+       GROUP BY a.id
+       ORDER BY matching_genres DESC, a.rating DESC, a.view_count DESC, a.created_at DESC
+       LIMIT 12`,
+      [id, id, id]
+    );
+    res.json(await attachGenres(rows));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch recommendations.' });
+  }
+};
+
 // GET /api/anime/featured  — hero slider only
 exports.getFeatured = async (req, res) => {
   try {

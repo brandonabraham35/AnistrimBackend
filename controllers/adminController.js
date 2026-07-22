@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const cloudinaryVideo = require('../utils/bunnyStream');
 const { deleteImage } = require('../utils/bunnyUpload');
+const cache = require('../utils/cacheService');
 
 const toBool = value => value === true || value === 1 || value === '1' || (Buffer.isBuffer(value) && value[0] === 1);
 const numberOrNull = value => value === '' || value === undefined || value === null ? null : Number(value);
@@ -20,6 +21,7 @@ async function getSchema() {
 }
 
 const hasColumn = (schema, table, column) => Boolean(schema[table]?.has(column));
+const invalidateCatalogue = animeId => cache.delByPrefix('catalogue:').catch(error => console.warn('Catalogue cache invalidation failed:', error.message));
 
 async function insertExistingColumns(table, values) {
   const schema = await getSchema();
@@ -138,7 +140,8 @@ const adminController = {
     if (!title?.trim()) return res.status(400).json({ message: 'Anime title is required.' });
     try {
       const result = await insertExistingColumns('anime', { title: title.trim(), title_japanese: title_japanese || null, description: description || null, cover_image: cover_image || null, banner_image: banner_image || null, cover_public_id: cover_public_id || null, banner_public_id: banner_public_id || null, trailer_url: trailer_url || null, rating: numberOrNull(rating), year: numberOrNull(year), studio: studio || null, status, is_premium: toBool(is_premium) ? 1 : 0, is_featured: toBool(is_featured) ? 1 : 0, tags: tags || null });
-      await adminController.replaceGenres(result.insertId, genres);
+       await adminController.replaceGenres(result.insertId, genres);
+       invalidateCatalogue(result.insertId);
       await logActivity(req, `Created anime: ${title.trim()}`, 'anime', result.insertId);
       res.status(201).json({ id: result.insertId, message: 'Anime created.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
@@ -153,7 +156,8 @@ const adminController = {
       const values = { title: title?.trim(), title_japanese, description, cover_image, banner_image, cover_public_id, banner_public_id, trailer_url, rating: numberOrNull(rating), year: numberOrNull(year), studio, status, is_premium: is_premium === undefined ? undefined : (toBool(is_premium) ? 1 : 0), is_featured: is_featured === undefined ? undefined : (toBool(is_featured) ? 1 : 0), tags };
       const entries = Object.entries(values).filter(([field, value]) => hasColumn(schema, 'anime', field) && value !== undefined);
       if (entries.length) await db.query(`UPDATE anime SET ${entries.map(([field]) => `\`${field}\` = ?`).join(', ')} WHERE id = ?`, [...entries.map(([, value]) => value), req.params.id]);
-      if (Array.isArray(genres)) await adminController.replaceGenres(req.params.id, genres);
+       if (Array.isArray(genres)) await adminController.replaceGenres(req.params.id, genres);
+       invalidateCatalogue(req.params.id);
       await logActivity(req, `Updated anime #${req.params.id}`, 'anime', req.params.id);
       res.json({ message: 'Anime updated.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
@@ -171,7 +175,8 @@ const adminController = {
       if (!result.affectedRows) return res.status(404).json({ message: 'Anime not found.' });
       for (const publicId of [assets[0]?.cover_public_id, assets[0]?.banner_public_id]) if (publicId) deleteImage(publicId).catch(error => console.error('Cloudinary image cleanup failed:', error.message));
       for (const asset of episodeAssets) { if (asset.video_public_id) cloudinaryVideo.deleteVideo(asset.video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (asset.thumbnail_public_id) deleteImage(asset.thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); }
-      await logActivity(req, `Deleted anime #${req.params.id}`, 'anime', req.params.id);
+       await logActivity(req, `Deleted anime #${req.params.id}`, 'anime', req.params.id);
+       invalidateCatalogue(req.params.id);
       res.json({ message: 'Anime deleted.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
@@ -192,15 +197,15 @@ const adminController = {
   async addEpisode(req, res) {
     const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, thumbnail_public_id, video_url, duration_sec, is_premium = 0, public_id, cloudinary_public_id, intro_start_time, intro_end_time } = req.body;
     if (!Number.isInteger(animeId) || !Number.isInteger(Number(episode_number))) return res.status(400).json({ message: 'A valid episode number is required.' });
-    try { const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) }); await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); res.status(201).json({ id: r.insertId, message: 'Episode created.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+    try { const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) }); await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); invalidateCatalogue(animeId); res.status(201).json({ id: r.insertId, message: 'Episode created.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
   async updateEpisode(req, res) {
     const schema = await getSchema(); const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'thumbnail_public_id', 'video_url', 'duration_sec', 'is_premium', 'cloudinary_public_id', 'intro_start_time', 'intro_end_time']; const updates = []; const values = [];
     for (const field of fields) if (hasColumn(schema, 'episodes', field) && Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : ['duration_sec', 'episode_number', 'intro_start_time', 'intro_end_time'].includes(field) ? numberOrNull(req.body[field]) : req.body[field] || null); }
     if (!updates.length) return res.status(400).json({ message: 'No episode fields were supplied.' });
-    try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); res.json({ message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+    try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); res.json({ message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
-  async deleteEpisode(req, res) { try { const schema = await getSchema(); const videoColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null; const thumbnailColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null; const [rows] = await db.query(`SELECT ${videoColumn || 'NULL AS video_public_id'}, ${thumbnailColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id = ?`, [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (rows[0].video_public_id) cloudinaryVideo.deleteVideo(rows[0].video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (rows[0].thumbnail_public_id) deleteImage(rows[0].thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); res.json({ message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async deleteEpisode(req, res) { try { const schema = await getSchema(); const videoColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null; const thumbnailColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null; const [rows] = await db.query(`SELECT ${videoColumn || 'NULL AS video_public_id'}, ${thumbnailColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id = ?`, [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (rows[0].video_public_id) cloudinaryVideo.deleteVideo(rows[0].video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (rows[0].thumbnail_public_id) deleteImage(rows[0].thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); res.json({ message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
   async getAllUsers(req, res) {
     try {

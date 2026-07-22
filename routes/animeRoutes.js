@@ -2,13 +2,19 @@
 const express = require('express');
 const router  = express.Router();
 const anime   = require('../controllers/animeController');
+const catalogue = require('../controllers/catalogueController');
 const { protect } = require('../middleware/auth');
 
 // Public (but protect adds user context if token present — optional auth)
 router.get('/trending', anime.getTrending);
 router.get('/latest',   anime.getLatest);
+router.get('/recent',   anime.getLatest);
+router.get('/popular',  anime.getTrending);
 router.get('/featured', anime.getFeatured);
-router.get('/search',   anime.search);
+router.get('/search',   catalogue.search);
+router.get('/recommendations/:id', anime.getRecommendations);
+router.get('/:id/episodes', catalogue.getEpisodes);
+router.get('/:id/stream/:episode', catalogue.getStream);
 
 // Optional auth — episodes show video_url only for premium users
 router.get('/:id', (req, res, next) => {
