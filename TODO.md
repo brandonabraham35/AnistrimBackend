@@ -10,3 +10,6 @@
 - [x] **dashboard.js**: Rewrite `renderKitsuSearchResults()` - added "Import All Results" button, individual button changes to "✅ Imported" (green, disabled, no refresh), sequential `for...of` for Import All
 - [x] **anime.js**: Same rewrite for `renderKitsuResults()`
 - [x] **dashboard.html**: Added CSS for `.imported-btn` and `.import-all-btn` styles
+- [x] **animeRoutes.js**: Added two new Consumet streaming routes:
+  - `GET /api/anime/kitsu/:kitsuId/episodes` — fetches episode list from Consumet using MalSync slug from `anime_mappings`
+  - `GET /api/anime/stream/:episodeId` — fetches .m3u8 streaming sources from Consumet
