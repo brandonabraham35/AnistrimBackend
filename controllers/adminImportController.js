@@ -6,18 +6,16 @@ const consumet = require('@consumet/extensions');
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
-if (!META || !META.Anilist || !ANIME || !ANIME.AnimePahe) {
+if (!META || !META.Anilist || !ANIME) {
   console.error('Available META providers:', Object.keys(META || {}));
   console.error('Available ANIME providers:', Object.keys(ANIME || {}));
-  throw new Error('Failed to extract required providers (META.Anilist + ANIME.AnimePahe) from @consumet/extensions.');
+  throw new Error('Failed to extract required providers from @consumet/extensions.');
 }
 
-console.log('✅ Successfully loaded META.Anilist with ANIME.AnimePahe fallback');
+console.log('✅ Successfully loaded providers (META.Anilist + ANIME fallbacks)');
 
-// Inject AnimePahe as the dedicated episode scraper for Anilist
-// This prevents Consumet from defaulting to Hianime (which is blocked on Render)
-const fallbackProvider = new ANIME.AnimePahe();
-const anilist = new META.Anilist(fallbackProvider);
+// Base Anilist instance for search operations (search uses Anilist GraphQL directly)
+const anilist = new META.Anilist();
 
 /**
  * Helper function to bulk-insert episodes into MySQL
@@ -72,15 +70,36 @@ exports.importAnime = async (req, res) => {
     const anilistId = searchResults.results[0].id;
     console.log(`[IMPORT MAPPER] Found Anilist ID: ${anilistId}`);
 
-    // Step 3: Fetch episode list from Anilist aggregator (no Cloudflare issues)
-    console.log(`[IMPORT FETCH] Scraping episode list via Anilist...`);
-    const animeDetails = await anilist.fetchAnimeInfo(anilistId);
+    // Step 3: Robust fallback loop — try injecting different ANIME providers into Anilist
+    const fallbackProviderNames = ['AnimeSama', 'AnimeKai', 'AnimeUnity', 'AnimeSaturn'];
+    let animeDetails = null;
 
-    if (!animeDetails || !animeDetails.episodes || animeDetails.episodes.length === 0) {
-      throw new Error('Anilist returned no episodes for this ID.');
+    console.log(`[IMPORT FETCH] Starting robust Anilist episode fetch loop...`);
+
+    for (const providerName of fallbackProviderNames) {
+      if (!ANIME[providerName]) continue;
+
+      try {
+        console.log(`[IMPORT FETCH] Injecting ${providerName} into Anilist...`);
+        const injectedProvider = new ANIME[providerName]();
+        const anilistInstance = new META.Anilist(injectedProvider);
+
+        const result = await anilistInstance.fetchAnimeInfo(anilistId);
+
+        if (result && result.episodes && result.episodes.length > 0) {
+          animeDetails = result;
+          console.log(`✅ [IMPORT SUCCESS] Successfully scraped ${result.episodes.length} episodes using Anilist + ${providerName}!`);
+          break; // Stop the loop, we got the episodes!
+        }
+      } catch (err) {
+        console.log(`⚠️ [SCRAPER WARN] Anilist with ${providerName} failed: ${err.message}. Trying next...`);
+      }
     }
 
-    console.log(`[IMPORT FETCH] Found ${animeDetails.episodes.length} episodes.`);
+    // Final Guard Clause
+    if (!animeDetails || !animeDetails.episodes || animeDetails.episodes.length === 0) {
+      throw new Error('All injected Anilist providers failed. Cloudflare or DNS is blocking all current scrapers.');
+    }
 
     // Step 4: Bulk Save Episodes to Database in a single query
     const insertedCount = await bulkInsertEpisodes(animeId, animeDetails.episodes);
