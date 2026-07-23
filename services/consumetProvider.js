@@ -1,15 +1,17 @@
 const consumet = require('@consumet/extensions');
-const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
+// Fallback safely in case of export changes
+const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 
-if (!ANIME || !ANIME.Hianime) {
-  console.error('Available ANIME providers in package:', Object.keys(ANIME));
-  throw new Error('Failed to extract ANIME.Hianime from @consumet/extensions.');
+if (!META || !META.Anilist) {
+  console.error('Available META providers in package:', Object.keys(META || {}));
+  throw new Error('Failed to extract META.Anilist from @consumet/extensions.');
 }
 
-console.log('✅ Successfully mapped provider to: ANIME.Hianime');
+console.log('✅ Successfully mapped provider to: META.Anilist');
 
-// Initialize the Hianime provider
-const provider = new ANIME.Hianime();
+// Initialize the Anilist aggregator — uses Anilist's GraphQL API which is
+// much more resilient for cloud environments (no Cloudflare blocking).
+const provider = new META.Anilist();
 
 class ConsumetProvider {
   configured() {
