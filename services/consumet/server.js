@@ -1,25 +1,31 @@
 const express = require('express');
 const cors = require('cors');
 
-// Robust import pattern for @consumet/extensions — handles CommonJS vs ESM mismatches
 const consumet = require('@consumet/extensions');
-
-// Safely resolve the ANIME object regardless of the package version / export structure.
-// Latest versions may export under: consumet.ANIME, consumet.default.ANIME, or consumet.PROVIDERS.ANIME.
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
-if (!ANIME || !ANIME.Gogoanime) {
-  console.error('Consumet Export Object:', Object.keys(consumet));
-  throw new Error(
-    'Failed to extract ANIME.Gogoanime from @consumet/extensions. See logs above for available exports.'
-  );
+if (!ANIME) {
+  throw new Error('Failed to extract ANIME object from @consumet/extensions.');
 }
+
+// Dynamically find the provider key regardless of exact casing or renaming
+const providerKey = Object.keys(ANIME).find(key =>
+  key.toLowerCase().includes('gogo') ||
+  key.toLowerCase().includes('anitaku')
+);
+
+if (!providerKey) {
+  console.error('Available ANIME providers in package:', Object.keys(ANIME));
+  throw new Error('Could not find Gogoanime or Anitaku in ANIME exports. Check the Render logs for the available providers.');
+}
+
+console.log(`✅ Successfully mapped provider to: ANIME.${providerKey}`);
 
 const app = express();
 app.use(cors());
 
-// Initialize the Gogoanime provider
-const gogoanime = new ANIME.Gogoanime("https://anitaku.pe");
+// Initialize the dynamically found class (passing the custom URL to be safe)
+const gogoanime = new ANIME[providerKey]("https://anitaku.pe");
 
 // Route 1: Get Anime Info and Episode List
 app.get('/anime/gogoanime/:id', async (req, res) => {
