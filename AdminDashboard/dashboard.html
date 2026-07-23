@@ -358,20 +358,27 @@
                     <option value="upcoming">Upcoming</option>
                 </select>
                 <button class="btn" id="add-anime-button">Add Anime</button>
+                <button id="bulkDeleteBtn-anime" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-anime">0</span>)</button>
             </div>
             <div class="section-box"><h4><i class="fas fa-tv"></i> Anime Catalogue</h4>
-                <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th>Cover</th><th>Title</th><th>Status</th><th>Premium</th><th>Featured</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-anime" title="Select all"></th><th>Cover</th><th>Title</th><th>Status</th><th>Premium</th><th>Featured</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
         <section class="page-section" data-section-panel="users" hidden>
+            <div class="toolbar">
+                <button id="bulkDeleteBtn-users" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-users">0</span>)</button>
+            </div>
             <div class="section-box"><h4><i class="fas fa-users"></i> Registered Users</h4>
-                <div style="overflow-x:auto"><table id="users-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto"><table id="users-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
         <section class="page-section" data-section-panel="episodes" hidden>
-            <div class="toolbar"><button class="btn" id="add-episode-button">Add Episode</button></div>
+            <div class="toolbar">
+                <button class="btn" id="add-episode-button">Add Episode</button>
+                <button id="bulkDeleteBtn-episodes" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-episodes">0</span>)</button>
+            </div>
             <div class="section-box"><h4><i class="fas fa-video"></i> Episodes</h4>
-                <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th>Anime</th><th>Episode</th><th>Title</th><th>Duration</th><th>Views</th><th>Premium</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-episodes" title="Select all"></th><th>Anime</th><th>Episode</th><th>Title</th><th>Duration</th><th>Views</th><th>Premium</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
         <section class="page-section" data-section-panel="payments" hidden>

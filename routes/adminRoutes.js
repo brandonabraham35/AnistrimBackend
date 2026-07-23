@@ -16,12 +16,14 @@ router.get('/users',                        admin.getAllUsers);
 router.put('/users/:id',                    admin.updateUser);
 // Deprecated: keeping togglePremium for compatibility if needed, but updateUser covers it
 router.put('/users/:id/premium',            admin.updateUser);
+router.post('/users/bulk-delete',           admin.bulkDeleteUsers);
 
 // Anime CMS
 router.get('/anime',                        admin.getAllAnime);
 router.post('/anime',                       admin.createAnime);
 router.put('/anime/:id',                    admin.updateAnime);
 router.delete('/anime/:id',                 admin.deleteAnime);
+router.post('/anime/bulk-delete',           admin.bulkDeleteAnime);
 router.post('/import-anime',                imports.importAnime);
 
 // Genres
@@ -36,6 +38,7 @@ router.get('/episodes',                     admin.getAllEpisodes);
 router.get('/episodes/:id',                 admin.getEpisode);
 router.put('/episodes/:id',                 admin.updateEpisode);
 router.delete('/episodes/:id',              admin.deleteEpisode);
+router.post('/episodes/bulk-delete',        admin.bulkDeleteEpisodes);
 
 // Settings
 router.get('/settings',                     admin.getSettings);

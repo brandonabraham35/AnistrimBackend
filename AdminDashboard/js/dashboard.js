@@ -32,10 +32,59 @@
     text('revenue-total', money(stats.total_revenue, currency)); text('revenue-today', money(stats.revenue_today, currency)); text('revenue-monthly', stats.monthly_subs ? `${stats.monthly_subs} subscriptions` : 'No subscriptions'); text('rev-avg-daily', money(Number(stats.total_revenue || 0) / Math.max(1, new Date().getDate()), currency));
     document.querySelector('#recent-payments-table tbody').innerHTML = (data.recent || []).slice(0, 5).map(p => `<tr><td>${esc(p.name || p.email)}</td><td>${esc(money(p.amount, p.currency || currency))}</td><td>${esc(p.status)}</td></tr>`).join('') || '<tr><td colspan="3">No payment records.</td></tr>';
   }
-    async function loadAnime() { const body = document.querySelector('#anime-table tbody'); body.innerHTML = '<tr><td colspan="6">Loading anime...</td></tr>'; try { const anime = await window.apiRequest('/admin/anime'); body.innerHTML = anime.map(a => `<tr data-id="${a.id}"><td><img src="${esc(a.cover_image || 'placeholder.jpg')}" width="50" style="border-radius:4px;aspect-ratio:3/4;object-fit:cover"></td><td>${esc(a.title)}</td><td><span class="status-badge ${esc(a.status || 'unknown')}">${esc(a.status || 'unknown')}</span></td><td>${a.is_premium ? '💎' : 'Free'}</td><td>${a.is_featured ? '⭐' : '-'}</td><td><button class="action-btn edit-btn" data-edit-anime="${a.id}" title="Edit"><i class="fas fa-edit"></i></button> <button class="action-btn edit-btn" style="background:#10b981" data-manage-episodes="${a.id}" data-anime-title="${esc(a.title)}" title="Episodes"><i class="fas fa-list"></i></button> <button class="action-btn delete-btn" data-delete-anime="${a.id}" title="Delete"><i class="fas fa-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="6">No anime records.</td></tr>'; } catch (error) { body.innerHTML = `<tr><td colspan="6">${esc(error.message)}</td></tr>`; } }
-  async function loadUsers() { const body = document.querySelector('#users-table tbody'); body.innerHTML = '<tr><td colspan="6">Loading users...</td></tr>'; try { const users = await window.apiRequest('/admin/users'); body.innerHTML = users.map(u => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${u.is_admin ? 'Admin' : 'User'}</td><td>${u.is_premium ? 'Premium' : 'Free'}</td><td>${esc(u.status)}</td><td>${date(u.created_at)}<br>${u.is_admin ? '' : `<button class="btn secondary" data-premium-user="${u.id}" data-premium-value="${u.is_premium ? '0' : '1'}">${u.is_premium ? 'Revoke Premium' : 'Grant Premium'}</button>`}</td></tr>`).join('') || '<tr><td colspan="6">No user records.</td></tr>'; } catch (error) { body.innerHTML = `<tr><td colspan="6">${esc(error.message)}</td></tr>`; } }
-  async function loadEpisodes() { const body = document.querySelector('#episodes-table tbody'); body.innerHTML = '<tr><td colspan="6">Loading episodes...</td></tr>'; try { const episodes = await window.apiRequest('/admin/episodes'); body.innerHTML = episodes.map(e => `<tr><td>${esc(e.anime_title)}</td><td>${esc(e.episode_number)}</td><td>${esc(e.title || 'Untitled')}</td><td>${e.duration_sec ? `${Number(e.duration_sec)} sec` : '-'}</td><td>${Number(e.view_count || 0).toLocaleString()}</td><td>${e.is_premium ? 'Premium' : 'Free'}<br><button class="btn secondary" data-edit-episode="${e.id}">Edit</button> <button class="btn danger" data-delete-episode="${e.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6">No episode records.</td></tr>'; } catch (error) { body.innerHTML = `<tr><td colspan="6">${esc(error.message)}</td></tr>`; } }
+    async function loadAnime() { const body = document.querySelector('#anime-table tbody'); body.innerHTML = '<tr><td colspan="7">Loading anime...</td></tr>'; try { const anime = await window.apiRequest('/admin/anime'); body.innerHTML = anime.map(a => `<tr data-id="${a.id}"><td><input type="checkbox" class="select-item" data-entity="anime" value="${a.id}"></td><td><img src="${esc(a.cover_image || 'placeholder.jpg')}" width="50" style="border-radius:4px;aspect-ratio:3/4;object-fit:cover"></td><td>${esc(a.title)}</td><td><span class="status-badge ${esc(a.status || 'unknown')}">${esc(a.status || 'unknown')}</span></td><td>${a.is_premium ? '💎' : 'Free'}</td><td>${a.is_featured ? '⭐' : '-'}</td><td><button class="action-btn edit-btn" data-edit-anime="${a.id}" title="Edit"><i class="fas fa-edit"></i></button> <button class="action-btn edit-btn" style="background:#10b981" data-manage-episodes="${a.id}" data-anime-title="${esc(a.title)}" title="Episodes"><i class="fas fa-list"></i></button> <button class="action-btn delete-btn" data-delete-anime="${a.id}" title="Delete"><i class="fas fa-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="7">No anime records.</td></tr>'; updateBulkDeleteButton('anime'); } catch (error) { body.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; } }
+   async function loadUsers() { const body = document.querySelector('#users-table tbody'); body.innerHTML = '<tr><td colspan="7">Loading users...</td></tr>'; try { const users = await window.apiRequest('/admin/users'); body.innerHTML = users.map(u => `<tr><td><input type="checkbox" class="select-item" data-entity="users" value="${u.id}"></td><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${u.is_admin ? 'Admin' : 'User'}</td><td>${u.is_premium ? 'Premium' : 'Free'}</td><td>${esc(u.status)}</td><td>${date(u.created_at)}<br>${u.is_admin ? '' : `<button class="btn secondary" data-premium-user="${u.id}" data-premium-value="${u.is_premium ? '0' : '1'}">${u.is_premium ? 'Revoke Premium' : 'Grant Premium'}</button>`}</td></tr>`).join('') || '<tr><td colspan="7">No user records.</td></tr>'; updateBulkDeleteButton('users'); } catch (error) { body.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; } }
+   async function loadEpisodes() { const body = document.querySelector('#episodes-table tbody'); body.innerHTML = '<tr><td colspan="7">Loading episodes...</td></tr>'; try { const episodes = await window.apiRequest('/admin/episodes'); body.innerHTML = episodes.map(e => `<tr><td><input type="checkbox" class="select-item" data-entity="episodes" value="${e.id}"></td><td>${esc(e.anime_title)}</td><td>${esc(e.episode_number)}</td><td>${esc(e.title || 'Untitled')}</td><td>${e.duration_sec ? `${Number(e.duration_sec)} sec` : '-'}</td><td>${Number(e.view_count || 0).toLocaleString()}</td><td>${e.is_premium ? 'Premium' : 'Free'}<br><button class="btn secondary" data-edit-episode="${e.id}">Edit</button> <button class="btn danger" data-delete-episode="${e.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="7">No episode records.</td></tr>'; updateBulkDeleteButton('episodes'); } catch (error) { body.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; } }
   async function loadPayments() { const body = document.querySelector('#payments-table tbody'); body.innerHTML = '<tr><td colspan="5">Loading payments...</td></tr>'; try { const data = await window.apiRequest('/payments/revenue'); body.innerHTML = (data.recent || []).map(p => `<tr><td>${esc(p.name || p.email)}</td><td>${esc(money(p.amount, p.currency || 'UGX'))}</td><td>${esc(p.plan)}</td><td>${esc(p.status)}</td><td>${date(p.paid_at || p.created_at)}</td></tr>`).join('') || '<tr><td colspan="5">No payment records.</td></tr>'; } catch (error) { body.innerHTML = `<tr><td colspan="5">${esc(error.message)}</td></tr>`; } }
+
+    // ─── Bulk Delete Helpers ──────────────────────────────────────
+    function updateBulkDeleteButton(entity) {
+      const btn = document.getElementById(`bulkDeleteBtn-${entity}`);
+      const countEl = document.getElementById(`selectedCount-${entity}`);
+      if (!btn || !countEl) return;
+      const checked = document.querySelectorAll(`.select-item[data-entity="${entity}"]:checked`);
+      const count = checked.length;
+      countEl.textContent = count;
+      btn.style.display = count > 0 ? 'inline-flex' : 'none';
+    }
+
+    async function bulkDeleteItems(entity) {
+      const checked = document.querySelectorAll(`.select-item[data-entity="${entity}"]:checked`);
+      const ids = Array.from(checked).map(cb => Number(cb.value));
+      if (ids.length === 0) return;
+
+      if (!confirm(`Are you sure you want to delete ${ids.length} ${entity}? This action cannot be undone.`)) return;
+
+      const btn = document.getElementById(`bulkDeleteBtn-${entity}`);
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Deleting...';
+
+      try {
+        const result = await window.apiRequest(`/admin/${entity}/bulk-delete`, {
+          method: 'POST',
+          body: { ids }
+        });
+
+        // Show success toast
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:#059669;color:#fff;padding:.75rem 1.25rem;border-radius:.5rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);';
+        toast.textContent = `✅ ${result.message || `Deleted ${ids.length} ${entity}.`}`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+
+        // Refresh the active section
+        const activeSection = document.querySelector('[data-section-panel]:not([hidden])')?.dataset?.sectionPanel;
+        if (activeSection === 'anime') { await loadAnime(); await loadOverview(); }
+        else if (activeSection === 'episodes') { await loadEpisodes(); await loadOverview(); }
+        else if (activeSection === 'users') { await loadUsers(); await loadOverview(); }
+      } catch (error) {
+        alert(`Bulk delete failed: ${error.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = `Delete Selected (${ids.length})`;
+        updateBulkDeleteButton(entity);
+      }
+    }
 
     function openModal(title, content) { const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop'; backdrop.innerHTML = `<div class="modal-card"><div class="toolbar"><h3 style="margin-right:auto">${esc(title)}</h3><button class="btn secondary" type="button">Close</button></div>${content}</div>`; backdrop.addEventListener('click', event => { if (event.target === backdrop || event.target.matches('button.secondary')) backdrop.remove(); }); document.body.append(backdrop); return backdrop; }
     async function uploadImage(file, folder) { const payload = new FormData(); payload.append('image', file); const result = await window.apiRequest(`/admin/upload/${folder}`, { method: 'POST', body: payload }); return { url: result.secure_url || result.url || result.imageUrl || '', publicId: result.public_id || '' }; }
@@ -265,5 +314,44 @@
   async function openEpisodeEdit(id) { const episode = await window.apiRequest(`/admin/episodes/${id}`); const modal = openModal('Edit Episode', `<form id="episode-edit-form" class="form-grid"><label>Episode number<input name="episode_number" type="number" min="1" value="${esc(episode.episode_number)}"></label><label>Title<input name="title" value="${esc(episode.title || '')}"></label><label>Replace video (optional)<input id="ep-video-file" name="video_file" type="file" accept="video/*"></label><label>Replace thumbnail (optional)<input id="ep-thumb-file" name="thumbnail_file" type="file" accept="image/*"></label><input id="ep-video-url" name="video_url" type="hidden" value="${esc(episode.video_url || '')}"><input id="ep-cloudinary-id" name="cloudinary_public_id" type="hidden" value="${esc(episode.cloudinary_public_id || '')}"><input id="ep-thumb-url" name="thumbnail_url" type="hidden" value="${esc(episode.thumbnail_url || '')}"><label>Intro start<input name="intro_start_time" type="number" value="${esc(episode.intro_start_time || '')}"></label><label>Intro end<input name="intro_end_time" type="number" value="${esc(episode.intro_end_time || '')}"></label><label><input name="is_premium" type="checkbox" ${episode.is_premium ? 'checked' : ''}> Premium episode</label><div class="wide"><progress data-upload-progress hidden value="0" max="100"></progress><div data-upload-status aria-live="polite"></div><button class="btn" type="submit">Save Episode</button></div></form>`); modal.querySelector('#episode-edit-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = await prepareEpisodeMedia(form); await window.apiRequest(`/admin/episodes/${id}`, { method: 'PUT', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not saved: ${error.message}`); } finally { submit.disabled = false; } }); }
   function showSection(section) { document.querySelectorAll('[data-section-panel]').forEach(panel => { panel.hidden = panel.dataset.sectionPanel !== section; }); document.querySelectorAll('[data-section]').forEach(link => link.classList.toggle('active', link.dataset.section === section)); text('page-title', ({ dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments' })[section]); window.location.hash = section; ({ dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments })[section]?.(); }
   window.manageEpisodes = (animeId) => { showSection('episodes'); openEpisodeEditor(animeId); }; window.logout = () => { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_user'); window.location.replace('index.html'); };
-  document.addEventListener('DOMContentLoaded', () => { if (!requireAdmin()) return; document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); showSection(link.dataset.section); })); wireHybridModal(); document.getElementById('add-episode-button').addEventListener('click', () => openEpisodeEditor()); document.addEventListener('click', async event => { const edit = event.target.closest('[data-edit-anime]'); const remove = event.target.closest('[data-delete-anime]'); const manage = event.target.closest('[data-manage-episodes]'); const premium = event.target.closest('[data-premium-user]'); const editEpisode = event.target.closest('[data-edit-episode]'); const deleteEpisode = event.target.closest('[data-delete-episode]'); try { if (edit) return openAnimeEditor(edit.dataset.editAnime); if (manage) return window.manageEpisodes(manage.dataset.manageEpisodes, manage.dataset.animeTitle); if (remove && confirm('Delete this anime and its episodes?')) { await window.apiRequest(`/admin/anime/${remove.dataset.deleteAnime}`, { method: 'DELETE' }); await loadAnime(); await loadOverview(); } if (premium) { await window.apiRequest(`/admin/users/${premium.dataset.premiumUser}/premium`, { method: 'PUT', body: { is_premium: premium.dataset.premiumValue === '1' } }); await loadUsers(); await loadOverview(); } if (editEpisode) return openEpisodeEdit(editEpisode.dataset.editEpisode); if (deleteEpisode && confirm('Delete this episode?')) { await window.apiRequest(`/admin/episodes/${deleteEpisode.dataset.deleteEpisode}`, { method: 'DELETE' }); await loadEpisodes(); await loadOverview(); } } catch (error) { alert(error.message || 'Operation failed.'); } }); const section = location.hash.slice(1); showSection(['dashboard', 'anime', 'episodes', 'users', 'payments'].includes(section) ? section : 'dashboard'); window.setInterval(() => { if (!document.querySelector('[data-section-panel="dashboard"]').hidden) loadOverview(); }, 30000); });
+  document.addEventListener('DOMContentLoaded', () => { if (!requireAdmin()) return; document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); showSection(link.dataset.section); })); wireHybridModal(); document.getElementById('add-episode-button').addEventListener('click', () => openEpisodeEditor());
+
+    // ─── Select All / Checkbox Change Handling ─────────────────
+    document.addEventListener('change', event => {
+      // Select All checkbox
+      const selectAll = event.target.closest('[id^="selectAll-"]');
+      if (selectAll) {
+        const entity = selectAll.id.replace('selectAll-', '');
+        const checkboxes = document.querySelectorAll(`.select-item[data-entity="${entity}"]`);
+        checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        updateBulkDeleteButton(entity);
+        return;
+      }
+      // Individual checkbox
+      const item = event.target.closest('.select-item');
+      if (item) {
+        const entity = item.dataset.entity;
+        // Update "select all" state
+        const selectAllEl = document.getElementById(`selectAll-${entity}`);
+        if (selectAllEl) {
+          const all = document.querySelectorAll(`.select-item[data-entity="${entity}"]`);
+          const checked = document.querySelectorAll(`.select-item[data-entity="${entity}"]:checked`);
+          selectAllEl.checked = all.length > 0 && checked.length === all.length;
+        }
+        updateBulkDeleteButton(entity);
+        return;
+      }
+    });
+
+    // ─── Bulk Delete Button Clicks ──────────────────────────────
+    document.addEventListener('click', event => {
+      const bulkBtn = event.target.closest('[id^="bulkDeleteBtn-"]');
+      if (bulkBtn) {
+        const entity = bulkBtn.id.replace('bulkDeleteBtn-', '');
+        bulkDeleteItems(entity);
+        return;
+      }
+    });
+
+    document.addEventListener('click', async event => { const edit = event.target.closest('[data-edit-anime]'); const remove = event.target.closest('[data-delete-anime]'); const manage = event.target.closest('[data-manage-episodes]'); const premium = event.target.closest('[data-premium-user]'); const editEpisode = event.target.closest('[data-edit-episode]'); const deleteEpisode = event.target.closest('[data-delete-episode]'); try { if (edit) return openAnimeEditor(edit.dataset.editAnime); if (manage) return window.manageEpisodes(manage.dataset.manageEpisodes, manage.dataset.animeTitle); if (remove && confirm('Delete this anime and its episodes?')) { await window.apiRequest(`/admin/anime/${remove.dataset.deleteAnime}`, { method: 'DELETE' }); await loadAnime(); await loadOverview(); } if (premium) { await window.apiRequest(`/admin/users/${premium.dataset.premiumUser}/premium`, { method: 'PUT', body: { is_premium: premium.dataset.premiumValue === '1' } }); await loadUsers(); await loadOverview(); } if (editEpisode) return openEpisodeEdit(editEpisode.dataset.editEpisode); if (deleteEpisode && confirm('Delete this episode?')) { await window.apiRequest(`/admin/episodes/${deleteEpisode.dataset.deleteEpisode}`, { method: 'DELETE' }); await loadEpisodes(); await loadOverview(); } } catch (error) { alert(error.message || 'Operation failed.'); } }); const section = location.hash.slice(1); showSection(['dashboard', 'anime', 'episodes', 'users', 'payments'].includes(section) ? section : 'dashboard'); window.setInterval(() => { if (!document.querySelector('[data-section-panel="dashboard"]').hidden) loadOverview(); }, 30000); });
 })();

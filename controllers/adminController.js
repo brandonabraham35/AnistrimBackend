@@ -227,6 +227,102 @@ const adminController = {
 
   async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); res.json({ message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
   async getVideoStatus(req, res) { try { const video = await cloudinaryVideo.getVideo(req.params.videoId); res.json({ success: true, ...video, status: 'ready', video_status: 'ready', encodeProgress: 100 }); } catch (error) { res.status(502).json({ message: error.message }); } },
+
+  // ─── Bulk Delete Operations ─────────────────────────────────────
+
+  async bulkDeleteAnime(req, res) {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'No anime IDs provided.' });
+    try {
+      const schema = await getSchema();
+
+      // 1. Collect Cloudinary assets for cleanup
+      const coverField = hasColumn(schema, 'anime', 'cover_public_id') ? 'cover_public_id' : 'NULL AS cover_public_id';
+      const bannerField = hasColumn(schema, 'anime', 'banner_public_id') ? 'banner_public_id' : 'NULL AS banner_public_id';
+      const [animeAssets] = await db.query(`SELECT id, ${coverField}, ${bannerField} FROM anime WHERE id IN (?)`, [ids]);
+
+      const videoIdColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null;
+      const thumbIdColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null;
+      const [episodeAssets] = (videoIdColumn || thumbIdColumn)
+        ? await db.query(`SELECT ${videoIdColumn || 'NULL AS video_public_id'}, ${thumbIdColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE anime_id IN (?)`, [ids])
+        : [[]];
+
+      // 2. Delete episodes (foreign key safety)
+      await db.query('DELETE FROM episodes WHERE anime_id IN (?)', [ids]);
+
+      // 3. Delete anime
+      const [result] = await db.query('DELETE FROM anime WHERE id IN (?)', [ids]);
+
+      // 4. Cloudinary cleanup (async, non-blocking)
+      for (const asset of animeAssets) {
+        if (asset.cover_public_id) deleteImage(asset.cover_public_id).catch(err => console.error('Cover cleanup failed:', err.message));
+        if (asset.banner_public_id) deleteImage(asset.banner_public_id).catch(err => console.error('Banner cleanup failed:', err.message));
+      }
+      for (const asset of (episodeAssets || [])) {
+        if (asset.video_public_id) cloudinaryVideo.deleteVideo(asset.video_public_id).catch(err => console.error('Video cleanup failed:', err.message));
+        if (asset.thumbnail_public_id) deleteImage(asset.thumbnail_public_id).catch(err => console.error('Thumbnail cleanup failed:', err.message));
+      }
+
+      // 5. Log activity
+      await logActivity(req, `Bulk deleted ${result.affectedRows} anime`, 'anime', null, JSON.stringify(ids));
+      invalidateCatalogue();
+
+      res.json({ success: true, message: `Successfully deleted ${result.affectedRows} anime.` });
+    } catch (error) {
+      console.error('Bulk delete anime error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  async bulkDeleteEpisodes(req, res) {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'No episode IDs provided.' });
+    try {
+      const schema = await getSchema();
+      const videoIdColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null;
+      const thumbIdColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null;
+
+      // 1. Fetch assets for cleanup
+      const [assets] = await db.query(`SELECT ${videoIdColumn || 'NULL AS video_public_id'}, ${thumbIdColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id IN (?)`, [ids]);
+
+      // 2. Delete episodes
+      const [result] = await db.query('DELETE FROM episodes WHERE id IN (?)', [ids]);
+
+      // 3. Cloudinary cleanup
+      for (const asset of assets) {
+        if (asset.video_public_id) cloudinaryVideo.deleteVideo(asset.video_public_id).catch(err => console.error('Video cleanup failed:', err.message));
+        if (asset.thumbnail_public_id) deleteImage(asset.thumbnail_public_id).catch(err => console.error('Thumbnail cleanup failed:', err.message));
+      }
+
+      // 4. Log activity
+      await logActivity(req, `Bulk deleted ${result.affectedRows} episodes`, 'episode', null, JSON.stringify(ids));
+      invalidateCatalogue();
+
+      res.json({ success: true, message: `Successfully deleted ${result.affectedRows} episodes.` });
+    } catch (error) {
+      console.error('Bulk delete episodes error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  async bulkDeleteUsers(req, res) {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'No user IDs provided.' });
+    try {
+      // Prevent admin from deleting themselves
+      const safeIds = ids.filter(id => Number(id) !== Number(req.user.id));
+      if (safeIds.length === 0) return res.status(400).json({ message: 'Cannot delete your own account. No other valid users selected.' });
+
+      const [result] = await db.query('DELETE FROM users WHERE id IN (?)', [safeIds]);
+
+      await logActivity(req, `Bulk deleted ${result.affectedRows} users`, 'user', null, JSON.stringify(safeIds));
+
+      res.json({ success: true, message: `Successfully deleted ${result.affectedRows} user(s).` });
+    } catch (error) {
+      console.error('Bulk delete users error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
   async getActivityLogs(req, res) {
     try {
       const schema = await getSchema();
