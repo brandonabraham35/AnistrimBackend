@@ -68,6 +68,31 @@ router.get('/stream/:episodeId', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/anime/:animeId/episodes
+ * Fetches the episode list instantly from our local database.
+ * This is the "Fast Lane" — no external Consumet calls.
+ */
+router.get('/:animeId/episodes', async (req, res) => {
+    try {
+        const { animeId } = req.params;
+
+        // Fetch directly from MySQL, sorted Episode 1 upward
+        const [episodes] = await pool.query(
+            'SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number ASC',
+            [animeId]
+        );
+
+        return res.json({
+            success: true,
+            episodes
+        });
+    } catch (error) {
+        console.error('[Local Episode Fetch Error]:', error.message);
+        return res.status(500).json({ error: 'Failed to fetch episodes from database' });
+    }
+});
+
 // Public (but protect adds user context if token present — optional auth)
 router.get('/trending', anime.getTrending);
 router.get('/latest',   anime.getLatest);
@@ -76,7 +101,6 @@ router.get('/popular',  anime.getTrending);
 router.get('/featured', anime.getFeatured);
 router.get('/search',   catalogue.search);
 router.get('/recommendations/:id', anime.getRecommendations);
-router.get('/:id/episodes', catalogue.getEpisodes);
 router.get('/:id/stream/:episode', catalogue.getStream);
 
 // Optional auth — episodes show video_url only for premium users
