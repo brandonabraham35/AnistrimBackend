@@ -1,12 +1,22 @@
 const express = require('express');
 const cors = require('cors');
-const { ANIME } = require('@consumet/extensions');
+
+// Robust import pattern for @consumet/extensions — handles variations across versions
+const consumet = require('@consumet/extensions');
+const Gogoanime = consumet.ANIME?.Gogoanime;
+
+if (!Gogoanime) {
+  throw new Error(
+    'Failed to initialize @consumet/extensions: ANIME.Gogoanime is not available. ' +
+    'Run `npm install @consumet/extensions@latest` and try again.'
+  );
+}
 
 const app = express();
 app.use(cors());
 
 // Initialize the Gogoanime provider
-const gogoanime = new ANIME.Gogoanime("https://anitaku.pe");
+const gogoanime = new Gogoanime("https://anitaku.pe");
 
 // Route 1: Get Anime Info and Episode List
 app.get('/anime/gogoanime/:id', async (req, res) => {

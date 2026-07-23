@@ -1,8 +1,17 @@
-const { ANIME } = require('@consumet/extensions');
+// Robust import pattern for @consumet/extensions — handles variations across versions
+const consumet = require('@consumet/extensions');
+const Gogoanime = consumet.ANIME?.Gogoanime;
+
+if (!Gogoanime) {
+  throw new Error(
+    'Failed to initialize @consumet/extensions: ANIME.Gogoanime is not available. ' +
+    'Run `npm install @consumet/extensions@latest` and try again.'
+  );
+}
 
 // In-memory Gogoanime provider — no more HTTP calls to a separate microservice.
 // Falls back to HTTP if CONSUMET_BASE_URL is explicitly set (legacy mode).
-const gogoanime = new ANIME.Gogoanime("https://anitaku.pe");
+const gogoanime = new Gogoanime("https://anitaku.pe");
 
 class ConsumetProvider {
   configured() {

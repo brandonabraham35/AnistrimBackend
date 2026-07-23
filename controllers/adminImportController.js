@@ -1,9 +1,19 @@
 const db = require('../config/db');
 const catalogue = require('../services/catalogueService');
-const { ANIME } = require('@consumet/extensions');
+
+// Robust import pattern for @consumet/extensions — handles variations across versions
+const consumet = require('@consumet/extensions');
+const Gogoanime = consumet.ANIME?.Gogoanime;
+
+if (!Gogoanime) {
+  throw new Error(
+    'Failed to initialize @consumet/extensions: ANIME.Gogoanime is not available. ' +
+    'Run `npm install @consumet/extensions@latest` and try again.'
+  );
+}
 
 // Initialize the Gogoanime provider directly in memory
-const gogoanime = new ANIME.Gogoanime();
+const gogoanime = new Gogoanime();
 
 /**
  * Helper function to bulk-insert episodes into MySQL
