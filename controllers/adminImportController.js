@@ -1,21 +1,6 @@
+const axios = require('axios');
 const db = require('../config/db');
 const catalogue = require('../services/catalogueService');
-
-const consumet = require('@consumet/extensions');
-// Fallback safely in case of export changes
-const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
-const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
-
-if (!META || !META.Anilist || !ANIME) {
-  console.error('Available META providers:', Object.keys(META || {}));
-  console.error('Available ANIME providers:', Object.keys(ANIME || {}));
-  throw new Error('Failed to extract required providers from @consumet/extensions.');
-}
-
-console.log('✅ Successfully loaded providers (META.Anilist + ANIME fallbacks)');
-
-// Base Anilist instance for search operations (search uses Anilist GraphQL directly)
-const anilist = new META.Anilist();
 
 /**
  * Helper function to bulk-insert episodes into MySQL
@@ -28,7 +13,7 @@ const bulkInsertEpisodes = async (animeId, episodes) => {
     animeId,
     ep.number || null,
     ep.title || `Episode ${ep.number}`,
-    ep.id || null // Consumet episode ID (e.g. "naruto-episode-1")
+    ep.id || null
   ]);
 
   const sql = `
@@ -54,66 +39,43 @@ exports.importAnime = async (req, res) => {
     // Step 1: Import anime metadata from Kitsu + resolve MalSync slug
     const result = await catalogue.importFromKitsu(kitsuId);
     const animeId = result.anime.id;
-    const animeTitle = result.anime?.title;
 
     console.log(`[IMPORT CHECKPOINT 1] Anime ID ${animeId} resolved.`);
-    console.log(`[IMPORT CHECKPOINT 2] Title: "${animeTitle}"`);
 
-    // Step 2: Search Anilist by title to get the Anilist ID
-    console.log(`[IMPORT MAPPER] Searching Anilist provider for title: "${animeTitle}"...`);
-    const searchResults = await anilist.search(animeTitle);
+    // Step 2: Fetch episodes directly from the official Kitsu API (no Cloudflare, always works)
+    console.log(`[IMPORT FETCH] Bypassing Consumet. Fetching episodes directly from Kitsu API...`);
 
-    if (!searchResults || !searchResults.results || searchResults.results.length === 0) {
-      throw new Error('Anilist search returned no results.');
+    const kitsuResponse = await axios.get(
+      `https://kitsu.io/api/edge/anime/${kitsuId}/episodes?page[limit]=100`
+    );
+
+    if (!kitsuResponse.data || !kitsuResponse.data.data || kitsuResponse.data.data.length === 0) {
+      throw new Error('Kitsu returned no episodes for this anime.');
     }
 
-    const anilistId = searchResults.results[0].id;
-    console.log(`[IMPORT MAPPER] Found Anilist ID: ${anilistId}`);
+    // Map the Kitsu response to match the database bulk insert structure
+    const episodes = kitsuResponse.data.data.map(ep => ({
+      number: ep.attributes.number,
+      title: ep.attributes.titles?.en_jp || ep.attributes.canonicalTitle || `Episode ${ep.attributes.number}`,
+      id: null // Kept null for dynamic stream resolving later
+    }));
 
-    // Step 3: Robust fallback loop — try injecting different ANIME providers into Anilist
-    const fallbackProviderNames = ['AnimeSama', 'AnimeKai', 'AnimeUnity', 'AnimeSaturn'];
-    let animeDetails = null;
+    const episodesCount = episodes.length;
+    console.log(`✅ [IMPORT SUCCESS] Fetched ${episodesCount} episodes safely from Kitsu API!`);
 
-    console.log(`[IMPORT FETCH] Starting robust Anilist episode fetch loop...`);
-
-    for (const providerName of fallbackProviderNames) {
-      if (!ANIME[providerName]) continue;
-
-      try {
-        console.log(`[IMPORT FETCH] Injecting ${providerName} into Anilist...`);
-        const injectedProvider = new ANIME[providerName]();
-        const anilistInstance = new META.Anilist(injectedProvider);
-
-        const result = await anilistInstance.fetchAnimeInfo(anilistId);
-
-        if (result && result.episodes && result.episodes.length > 0) {
-          animeDetails = result;
-          console.log(`✅ [IMPORT SUCCESS] Successfully scraped ${result.episodes.length} episodes using Anilist + ${providerName}!`);
-          break; // Stop the loop, we got the episodes!
-        }
-      } catch (err) {
-        console.log(`⚠️ [SCRAPER WARN] Anilist with ${providerName} failed: ${err.message}. Trying next...`);
-      }
-    }
-
-    // Final Guard Clause
-    if (!animeDetails || !animeDetails.episodes || animeDetails.episodes.length === 0) {
-      throw new Error('All injected Anilist providers failed. Cloudflare or DNS is blocking all current scrapers.');
-    }
-
-    // Step 4: Bulk Save Episodes to Database in a single query
-    const insertedCount = await bulkInsertEpisodes(animeId, animeDetails.episodes);
+    // Step 3: Bulk Save Episodes to Database in a single query
+    const insertedCount = await bulkInsertEpisodes(animeId, episodes);
     console.log(`[IMPORT SUCCESS] Saved ${insertedCount} new episodes to MySQL database.`);
 
     return res.status(201).json({
       success: true,
-      message: `Successfully imported anime and saved ${insertedCount} episodes via META.Anilist.`,
+      message: `Successfully imported anime and saved ${insertedCount} episodes via Kitsu API.`,
       anime: result.anime,
       mapping: result.mapping,
       episodes: {
         count: insertedCount,
-        total: animeDetails.episodes.length,
-        source: 'anilist'
+        total: episodesCount,
+        source: 'kitsu'
       }
     });
 
