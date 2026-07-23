@@ -1,93 +1,115 @@
 const db = require('../config/db');
 const catalogue = require('../services/catalogueService');
-const { ConsumetProvider } = require('../services/consumetProvider');
+const { ANIME } = require('@consumet/extensions');
 
-const consumet = new ConsumetProvider();
+// Initialize the Gogoanime provider directly in memory
+const gogoanime = new ANIME.Gogoanime();
 
-// Protected by router.use(protect, adminOnly) in routes/adminRoutes.js.
+/**
+ * Helper function to bulk-insert episodes into MySQL
+ */
+const bulkInsertEpisodes = async (animeId, episodes) => {
+  if (!episodes || episodes.length === 0) return 0;
+
+  // Format array for MySQL multi-row insert: [[anime_id, episode_number, title, consumet_id], ...]
+  const values = episodes.map((ep) => [
+    animeId,
+    ep.number || null,
+    ep.title || `Episode ${ep.number}`,
+    ep.id || null // Consumet episode ID (e.g. "naruto-episode-1")
+  ]);
+
+  const sql = `
+    INSERT IGNORE INTO episodes (anime_id, episode_number, title, consumet_id)
+    VALUES ?
+  `;
+
+  const [result] = await db.query(sql, [values]);
+  return result.affectedRows;
+};
+
+/**
+ * Admin Import Anime & Bulk Episode Fetch Controller
+ * Protected by router.use(protect, adminOnly) in routes/adminRoutes.js.
+ */
 exports.importAnime = async (req, res) => {
   const kitsuId = String(req.body?.kitsuId || '').trim();
   if (!kitsuId) return res.status(400).json({ message: 'kitsuId is required.' });
 
   try {
-    // ============ CHECKPOINT 1: Anime & Mapping Insertion ============
+    console.log(`[IMPORT START] Processing Kitsu ID: ${kitsuId}`);
+
+    // Step 1: Import anime metadata from Kitsu + resolve gogoanime slug via MalSync
     const result = await catalogue.importFromKitsu(kitsuId);
     const animeId = result.anime.id;
     const slug = result.mapping?.slug || null;
-    console.log(`[IMPORT CHECKPOINT 1] Anime inserted — ID: ${animeId}, Title: "${result.anime.title}"`);
-    console.log(`[IMPORT CHECKPOINT 1] Mapping resolved — Provider: ${result.mapping?.provider || 'none'}, Slug: "${slug}", Resolved: ${result.mapping?.resolved}`);
 
-    let episodesInserted = 0;
+    console.log(`[IMPORT CHECKPOINT 1] Anime ID ${animeId} resolved.`);
+    console.log(`[IMPORT CHECKPOINT 2] Gogoanime slug: ${slug || 'NONE — will attempt fallback search'}`);
 
-    // ============ CHECKPOINT 2: Slug & Consumet Configuration Check ============
-    if (!slug) {
-      console.log(`[IMPORT CHECKPOINT 2] SKIPPING episode fetch — No gogoanime slug resolved for kitsuId ${kitsuId}`);
-    } else if (!consumet.configured()) {
-      console.log(`[IMPORT CHECKPOINT 2] SKIPPING episode fetch — Consumet is NOT configured (CONSUMET_BASE_URL missing)`);
-    } else {
-      console.log(`[IMPORT CHECKPOINT 2] PROCEEDING to fetch episodes — Slug: "${slug}", Consumet URL: ${process.env.CONSUMET_BASE_URL || 'http://localhost:3001'}`);
-
-      // ============ CHECKPOINT 3: Fetch from Consumet ============
-      let episodeList;
-      try {
-        episodeList = await consumet.getEpisodes(slug);
-        console.log(`[IMPORT CHECKPOINT 3] Consumet returned ${Array.isArray(episodeList) ? episodeList.length : typeof episodeList} episodes`);
-        if (!Array.isArray(episodeList)) {
-          console.log(`[IMPORT CHECKPOINT 3] WARNING — expected array, got ${typeof episodeList}:`, JSON.stringify(episodeList).substring(0, 200));
-        }
-      } catch (fetchError) {
-        console.error(`[IMPORT CHECKPOINT 3] FAILED to fetch episodes from Consumet:`, fetchError.message);
-        console.error(`[IMPORT CHECKPOINT 3] Endpoint attempted: ${(process.env.CONSUMET_BASE_URL || 'http://localhost:3001')}/anime/gogoanime/${slug}`);
-        throw fetchError; // Re-throw — we want to see this in the outer catch
-      }
-
-      if (Array.isArray(episodeList) && episodeList.length > 0) {
-        // Map to 2D array: (anime_id, episode_number, consumet_id, title)
-        const values = episodeList.map((ep, index) => {
-          const epNum = ep.number || index + 1;
-          const epId  = ep.id || null;
-          const epTitle = ep.title || `Episode ${epNum}`;
-          // Log first 3 episodes for debugging
-          if (index < 3) {
-            console.log(`[IMPORT DEBUG] Episode ${index + 1}: number=${epNum}, consumet_id="${epId}", title="${epTitle}"`);
-          }
-          return [animeId, epNum, epId, epTitle];
-        });
-
-        console.log(`[IMPORT CHECKPOINT 4] Mapped ${values.length} episodes for bulk insert — first row sample:`, JSON.stringify(values[0]));
-
-        // ============ CHECKPOINT 5: Execute Bulk Insert ============
-        try {
-          const [insertResult] = await db.query(
-            'INSERT IGNORE INTO episodes (anime_id, episode_number, consumet_id, title) VALUES ?',
-            [values]
-          );
-          episodesInserted = insertResult.affectedRows;
-          console.log(`[IMPORT CHECKPOINT 5] Bulk insert succeeded — affectedRows: ${insertResult.affectedRows}, insertId: ${insertResult.insertId}`);
-        } catch (sqlError) {
-          console.error(`[IMPORT CHECKPOINT 5] SQL Episode Insert Error:`, sqlError.message);
-          console.error(`[IMPORT CHECKPOINT 5] SQL Error code:`, sqlError.code);
-          console.error(`[IMPORT CHECKPOINT 5] SQL Error number:`, sqlError.errno);
-          console.error(`[IMPORT CHECKPOINT 5] SQL State:`, sqlError.sqlState);
-          console.error(`[IMPORT CHECKPOINT 5] SQL:`, sqlError.sql);
-          // Do NOT re-throw — episode failure should not kill the anime import
-        }
-      } else {
-        console.log(`[IMPORT CHECKPOINT 4] No episodes to insert — episodeList is ${Array.isArray(episodeList) ? 'empty array' : 'not an array'}`);
+    // Step 2: Determine Gogoanime Slug — fallback: search Consumet by title
+    let resolvedSlug = slug;
+    if (!resolvedSlug && result.anime?.title) {
+      console.log(`[IMPORT MAPPER] Searching Consumet provider for title: "${result.anime.title}"...`);
+      const searchResults = await gogoanime.search(result.anime.title);
+      if (searchResults && searchResults.results && searchResults.results.length > 0) {
+        resolvedSlug = searchResults.results[0].id;
+        console.log(`[IMPORT MAPPER] Fallback search matched slug: "${resolvedSlug}"`);
       }
     }
 
+    // Guard Clause: If still no slug, skip episode scraping safely
+    if (!resolvedSlug) {
+      console.log(`[IMPORT CHECKPOINT 2] SKIPPING episode fetch – No valid Gogoanime slug found.`);
+      return res.status(200).json({
+        success: true,
+        message: 'Anime imported successfully, but no episode mapping could be found.',
+        anime: result.anime,
+        mapping: result.mapping,
+        episodes: { count: 0, source: 'consumet' }
+      });
+    }
+
+    // Step 3: In-Memory Episode Scraping via Consumet (no HTTP fetch)
+    console.log(`[IMPORT FETCH] Scraping episode list for slug: "${resolvedSlug}" directly in memory...`);
+    const animeDetails = await gogoanime.fetchAnimeInfo(resolvedSlug);
+
+    if (!animeDetails || !animeDetails.episodes || animeDetails.episodes.length === 0) {
+      console.log(`[IMPORT FETCH] Provider returned 0 episodes for slug: "${resolvedSlug}"`);
+      return res.status(200).json({
+        success: true,
+        message: 'Anime imported, but provider returned no episodes.',
+        anime: result.anime,
+        mapping: result.mapping,
+        episodes: { count: 0, source: 'consumet' }
+      });
+    }
+
+    console.log(`[IMPORT FETCH] Found ${animeDetails.episodes.length} episodes.`);
+
+    // Step 4: Bulk Save Episodes to Database in a single query
+    const insertedCount = await bulkInsertEpisodes(animeId, animeDetails.episodes);
+    console.log(`[IMPORT SUCCESS] Saved ${insertedCount} new episodes to MySQL database.`);
+
     return res.status(201).json({
       success: true,
+      message: `Successfully imported anime and saved ${insertedCount} episodes.`,
       anime: result.anime,
       mapping: result.mapping,
       episodes: {
-        count: episodesInserted,
-        source: 'consumet',
-      },
+        count: insertedCount,
+        total: animeDetails.episodes.length,
+        source: 'consumet'
+      }
     });
+
   } catch (error) {
-    console.error('Kitsu anime import failed:', error.message);
-    return res.status(502).json({ success: false, message: 'Unable to import anime metadata right now.' });
+    console.error('[IMPORT ERROR]', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to complete anime import.',
+      error: error.message
+    });
   }
 };
+

@@ -1,57 +1,48 @@
-// server.js — AniStrim2 Main Server
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ─── Middleware ────────────────────────────────────────────
-// File Path: server.js
-
-// ─── Middleware ────────────────────────────────────────────
+// ─── CORS Configuration ────────────────────────────────────
 const allowedOrigins = new Set([
-  'http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.50.55:3000',
-  ...(process.env.FRONTEND_URL || '').split(',').map(origin => origin.trim()).filter(Boolean),
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://10.5.50.55:3000',
+  ...(process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean),
 ]);
-// `npx serve` is commonly opened from another device on the same private network.
-// Keep that development flow working without having to add each changing LAN IP to
-// Render. Public production origins must still be declared in FRONTEND_URL.
-const localDevelopmentOrigin = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
+const localDevOrigin = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin) || localDevelopmentOrigin.test(origin)) return callback(null, true);
-    // Do not throw here: throwing turns a rejected browser origin into a noisy 500
-    // and fills Render logs. The CORS middleware simply omits CORS headers instead.
+    if (!origin || allowedOrigins.has(origin) || localDevOrigin.test(origin)) return callback(null, true);
     return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  credentials: true
+  credentials: true,
 }));
 
+// ─── Standard Middleware ───────────────────────────────────
 // Webhook route MUST come before express.json() so it gets raw body
 app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── Static files ──────────────────────────────────────────
-// Serve the Vanilla JS / Capacitor frontend from the Frontend directory
+// ─── Static Files ──────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'Frontend')));
-
-// Serve uploaded images/avatars with permissive CORS so <img> previews
-// load cross-origin from the frontend without being blocked.
+app.use('/admin', express.static(path.join(__dirname, 'AdminDashboard')));
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
-// ─── API Routes ────────────────────────────────────────────
+// ─── Main API Endpoints ────────────────────────────────────
 app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/auth', require('./routes/avatarRoutes'));   // POST /api/auth/avatar
+app.use('/api/auth', require('./routes/avatarRoutes'));
 app.use('/api/anime', require('./routes/animeRoutes'));
 app.use('/api/watchlist', require('./routes/watchlistRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
@@ -59,29 +50,33 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/admin/upload', require('./routes/uploadRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
 
-// Backward-compatible Consumet API — serves the same routes that the
-// standalone Consumet microservice used to run on port 3001, now in-memory.
-// External tools that previously fetched http://localhost:3001/anime/gogoanime/...
-// can now use http://your-server:5000/consumet-api/anime/gogoanime/...
-app.use('/consumet-api', require('./services/consumet/server'));
+// ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
+try {
+  const consumetApp = require('./services/consumet/server');
+  app.use('/consumet-api', consumetApp);
+  console.log('✅ Consumet microservice mounted at /consumet-api');
+} catch (err) {
+  console.log('ℹ️ Consumet running purely in-memory via @consumet/extensions');
+}
 
-// ─── Health check ─────────────────────────────────────────
-app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date() }));
+// ─── Health Check ──────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development' });
+});
 
-// Root route — serve the frontend entry point (index.html)
+// Root route — serve the frontend entry point
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
 });
 
-// ─── Start ────────────────────────────────────────────────
+// ─── Start Server ──────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log('');
-  console.log('  ╔═══════════════════════════════════════╗');
-  console.log(`  ║  🎬 AniStrim2 running on port ${PORT}   ║`);
-  console.log(`  ║  http://localhost:${PORT}               ║`);
-  console.log('  ╚═══════════════════════════════════════╝');
-  console.log('');
+  console.log('==================================================');
+  console.log(`🚀 AniStrim2 running on port ${PORT}`);
+  console.log(`   http://localhost:${PORT}`);
+  console.log('==================================================');
 });
 
 // Start background jobs
 require('./utils/premiumAutomation');
+
