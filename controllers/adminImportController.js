@@ -11,8 +11,12 @@ if (!ANIME || !ANIME.Hianime) {
 
 console.log('✅ Successfully mapped provider to: ANIME.Hianime');
 
-// Initialize the Hianime provider
-const provider = new ANIME.Hianime();
+// Multi-provider fallback array — providers tried in order until one succeeds
+const providers = [
+  { instance: new ANIME.Hianime(),      name: 'Hianime' },
+  { instance: new ANIME.AnimePahe(),    name: 'AnimePahe' },
+  { instance: new ANIME.KickAssAnime(), name: 'KickAssAnime' },
+];
 
 /**
  * Helper function to bulk-insert episodes into MySQL
@@ -38,6 +42,53 @@ const bulkInsertEpisodes = async (animeId, episodes) => {
 };
 
 /**
+ * Try to resolve a slug and fetch episodes across all available providers.
+ * Returns { slug, episodes, providerName } or null if all fail.
+ */
+async function scrapeEpisodesWithFallback(animeTitle, existingSlug) {
+  // If a slug was already resolved via MalSync, try it directly first
+  if (existingSlug) {
+    for (const { instance, name } of providers) {
+      try {
+        console.log(`[SCRAPER] Trying ${name} with slug: "${existingSlug}"...`);
+        const info = await instance.fetchAnimeInfo(existingSlug);
+        if (info && info.episodes && info.episodes.length > 0) {
+          console.log(`[SCRAPER] ${name} returned ${info.episodes.length} episodes.`);
+          return { slug: existingSlug, episodes: info.episodes, providerName: name };
+        }
+      } catch (err) {
+        console.warn(`[SCRAPER WARN] ${name} failed for slug "${existingSlug}": ${err.message}. Trying next provider...`);
+      }
+    }
+  }
+
+  // No slug or all providers failed with the given slug — try searching by title
+  if (animeTitle) {
+    for (const { instance, name } of providers) {
+      try {
+        console.log(`[SCRAPER] Searching ${name} for title: "${animeTitle}"...`);
+        const searchResults = await instance.search(animeTitle);
+        if (searchResults && searchResults.results && searchResults.results.length > 0) {
+          const foundSlug = searchResults.results[0].id;
+          console.log(`[SCRAPER] ${name} matched slug: "${foundSlug}"`);
+
+          const info = await instance.fetchAnimeInfo(foundSlug);
+          if (info && info.episodes && info.episodes.length > 0) {
+            console.log(`[SCRAPER] ${name} returned ${info.episodes.length} episodes.`);
+            return { slug: foundSlug, episodes: info.episodes, providerName: name };
+          }
+        }
+      } catch (err) {
+        console.warn(`[SCRAPER WARN] ${name} search failed: ${err.message}. Trying next provider...`);
+      }
+    }
+  }
+
+  // All providers exhausted
+  return null;
+}
+
+/**
  * Admin Import Anime & Bulk Episode Fetch Controller
  * Protected by router.use(protect, adminOnly) in routes/adminRoutes.js.
  */
@@ -48,67 +99,43 @@ exports.importAnime = async (req, res) => {
   try {
     console.log(`[IMPORT START] Processing Kitsu ID: ${kitsuId}`);
 
-    // Step 1: Import anime metadata from Kitsu + resolve gogoanime slug via MalSync
+    // Step 1: Import anime metadata from Kitsu + resolve MalSync slug
     const result = await catalogue.importFromKitsu(kitsuId);
     const animeId = result.anime.id;
     const slug = result.mapping?.slug || null;
 
     console.log(`[IMPORT CHECKPOINT 1] Anime ID ${animeId} resolved.`);
-    console.log(`[IMPORT CHECKPOINT 2] Gogoanime slug: ${slug || 'NONE — will attempt fallback search'}`);
+    console.log(`[IMPORT CHECKPOINT 2] MalSync slug: ${slug || 'NONE'}`);
 
-    // Step 2: Determine slug — fallback: search Hianime by title
-    let resolvedSlug = slug;
-    if (!resolvedSlug && result.anime?.title) {
-      console.log(`[IMPORT MAPPER] Searching Hianime provider for title: "${result.anime.title}"...`);
-      const searchResults = await provider.search(result.anime.title);
-      if (searchResults && searchResults.results && searchResults.results.length > 0) {
-        resolvedSlug = searchResults.results[0].id;
-        console.log(`[IMPORT MAPPER] Fallback search matched slug: "${resolvedSlug}"`);
-      }
-    }
+    // Step 2: Multi-provider episode scraping with fallback
+    const scraped = await scrapeEpisodesWithFallback(result.anime?.title, slug);
 
-    // Guard Clause: If still no slug, skip episode scraping safely
-    if (!resolvedSlug) {
-      console.log(`[IMPORT CHECKPOINT 2] SKIPPING episode fetch – No valid slug found.`);
+    if (!scraped) {
+      console.log(`[IMPORT CHECKPOINT 3] All providers failed — returning metadata-only import.`);
       return res.status(200).json({
         success: true,
-        message: 'Anime imported successfully, but no episode mapping could be found.',
+        message: 'Anime metadata imported successfully, but episode scraping timed out across all providers.',
         anime: result.anime,
         mapping: result.mapping,
-        episodes: { count: 0, source: 'hianime' }
+        episodes: { count: 0, source: 'none', note: 'All scrapers timed out' }
       });
     }
 
-    // Step 3: In-Memory Episode Scraping via Hianime (no HTTP fetch)
-    console.log(`[IMPORT FETCH] Scraping episode list for slug: "${resolvedSlug}" directly in memory...`);
-    const animeDetails = await provider.fetchAnimeInfo(resolvedSlug);
+    console.log(`[IMPORT FETCH] Using ${scraped.providerName} — ${scraped.episodes.length} episodes found for slug: "${scraped.slug}"`);
 
-    if (!animeDetails || !animeDetails.episodes || animeDetails.episodes.length === 0) {
-      console.log(`[IMPORT FETCH] Provider returned 0 episodes for slug: "${resolvedSlug}"`);
-      return res.status(200).json({
-        success: true,
-        message: 'Anime imported, but provider returned no episodes.',
-        anime: result.anime,
-        mapping: result.mapping,
-        episodes: { count: 0, source: 'hianime' }
-      });
-    }
-
-    console.log(`[IMPORT FETCH] Found ${animeDetails.episodes.length} episodes.`);
-
-    // Step 4: Bulk Save Episodes to Database in a single query
-    const insertedCount = await bulkInsertEpisodes(animeId, animeDetails.episodes);
+    // Step 3: Bulk Save Episodes to Database in a single query
+    const insertedCount = await bulkInsertEpisodes(animeId, scraped.episodes);
     console.log(`[IMPORT SUCCESS] Saved ${insertedCount} new episodes to MySQL database.`);
 
     return res.status(201).json({
       success: true,
-      message: `Successfully imported anime and saved ${insertedCount} episodes.`,
+      message: `Successfully imported anime and saved ${insertedCount} episodes via ${scraped.providerName}.`,
       anime: result.anime,
       mapping: result.mapping,
       episodes: {
         count: insertedCount,
-        total: animeDetails.episodes.length,
-        source: 'hianime'
+        total: scraped.episodes.length,
+        source: scraped.providerName.toLowerCase()
       }
     });
 
