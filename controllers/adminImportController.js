@@ -5,25 +5,22 @@ const catalogue = require('../services/catalogueService');
 /**
  * Helper function to bulk-insert episodes into MySQL
  */
-const bulkInsertEpisodes = async (animeId, episodes) => {
-  if (!episodes || episodes.length === 0) return 0;
-
-  // Format array for MySQL multi-row insert: [[anime_id, episode_number, title, consumet_id], ...]
-  const values = episodes.map((ep) => [
-    animeId,
-    ep.number || null,
-    ep.title || `Episode ${ep.number}`,
-    ep.id || null
-  ]);
+async function bulkInsertEpisodes(animeId, episodes) {
+  if (!episodes || episodes.length === 0) return;
 
   const sql = `
-    INSERT IGNORE INTO episodes (anime_id, episode_number, title, consumet_id)
+    INSERT IGNORE INTO episodes (anime_id, episode_number, title)
     VALUES ?
   `;
 
-  const [result] = await db.query(sql, [values]);
-  return result.affectedRows;
-};
+  const values = episodes.map(ep => [
+    animeId,
+    ep.number,
+    ep.title
+  ]);
+
+  await db.query(sql, [values]);
+}
 
 /**
  * Admin Import Anime & Bulk Episode Fetch Controller
@@ -80,16 +77,16 @@ exports.importAnime = async (req, res) => {
     console.log(`✅ [IMPORT SUCCESS] Fetched ${episodesCount} episodes safely from Kitsu API!`);
 
     // Step 3: Bulk Save Episodes to Database in a single query
-    const insertedCount = await bulkInsertEpisodes(animeId, episodes);
-    console.log(`[IMPORT SUCCESS] Saved ${insertedCount} new episodes to MySQL database.`);
+    await bulkInsertEpisodes(animeId, episodes);
+    console.log(`[IMPORT SUCCESS] Saved ${episodesCount} new episodes to MySQL database.`);
 
     return res.status(201).json({
       success: true,
-      message: `Successfully imported anime and saved ${insertedCount} episodes via Kitsu API.`,
+      message: `Successfully imported anime and saved ${episodesCount} episodes via Kitsu API.`,
       anime: result.anime,
       mapping: result.mapping,
       episodes: {
-        count: insertedCount,
+        count: episodesCount,
         total: episodesCount,
         source: 'kitsu'
       }
