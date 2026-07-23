@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AniStrim</string>
+    <string name="title_activity_main">AniStrim</string>
+    <string name="package_name">com.anistrim.render</string>
+    <string name="custom_url_scheme">com.anistrim.render</string>
+</resources>
