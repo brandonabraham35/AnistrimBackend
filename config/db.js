@@ -9,9 +9,13 @@ const pool = mysql.createPool({
   password:           process.env.DB_PASSWORD || '',
   database:           process.env.DB_NAME     || 'anistrim2',
   waitForConnections: true,
-  connectionLimit:    4, // MUST be 4 or less to stay under your limit of 5
-  queueLimit:         0,
+  connectionLimit:    3,  // Never exceed your host's limit of 5 — 3 is safe headroom
+  queueLimit:         0,  // Unlimited queuing (requests wait for a free connection)
   charset:            'utf8mb4',
+  // Destroy connections that have been idle for 10s to free up pool slots
+  idleTimeout:        10000,
+  // If a connection is acquired for > 60s, log a warning (helps catch leaks)
+  acquireTimeout:     60000,
 });
 
 // Test connection on startup
