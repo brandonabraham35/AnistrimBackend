@@ -38,6 +38,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Static files ──────────────────────────────────────────
+// Serve the Vanilla JS / Capacitor frontend from the Frontend directory
+app.use(express.static(path.join(__dirname, 'Frontend')));
+
 // Serve uploaded images/avatars with permissive CORS so <img> previews
 // load cross-origin from the frontend without being blocked.
 app.use('/uploads', (req, res, next) => {
@@ -59,8 +62,9 @@ app.use('/api/download', require('./routes/downloadRoutes'));
 // ─── Health check ─────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date() }));
 
+// Root route — serve the frontend entry point (index.html)
 app.get('/', (req, res) => {
-  res.json({ message: 'AniStrim API is running!', version: '2.0' });
+  res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
 });
 
 // ─── Start ────────────────────────────────────────────────

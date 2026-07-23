@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upgrade | AniStrim</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mobile-native.css">
+</head>
+
+<body>
+  <div id="side-menu" class="side-nav">
+    <div class="menu-header"><button class="close-btn" onclick="toggleMenu()">✕</button></div>
+    <ul class="menu-links">
+      <li onclick="location.href='index.html'">🏠 Home</li>
+      <li onclick="location.href='browse.html'">🔍 Browse</li>
+      <li onclick="location.href='watchlist.html'">📋 My List</li>
+      <li class="active">👑 Premium</li>
+      <li onclick="location.href='profile.html'">👤 Profile</li>
+      <li onclick="handleSignOut()" style="color:#ef4444;">🚪 Sign Out</li>
+    </ul>
+  </div>
+  <div id="menu-overlay" class="overlay" onclick="toggleMenu()"></div>
+
+  <nav class="navbar">
+    <div class="logo" onclick="location.href='index.html'">
+      <div class="logo-icon">A</div>
+      <span class="logo-text">Ani<span>Strim</span></span>
+    </div>
+    <div class="nav-icons">
+      <button class="nav-icon-btn" onclick="location.href='browse.html'">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+      </button>
+      <button class="nav-icon-btn" onclick="toggleMenu()">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <div class="upgrade-page">
+    <div class="upgrade-header">
+      <h1>👑 Go Premium</h1>
+      <p>Unlock the full AniStrim experience</p>
+    </div>
+
+    <!-- Plan Toggle -->
+    <div style="display:flex;gap:8px;padding:0 20px 20px;justify-content:center;">
+      <div class="plan-option selected" data-plan="monthly" onclick="selectPlan('monthly')"
+        style="flex:1;padding:14px;background:var(--card-bg);border:2px solid var(--purple);border-radius:12px;text-align:center;cursor:pointer;transition:all 0.2s;">
+        <div style="font-weight:700;font-size:1rem;">Monthly</div>
+        <div style="font-size:1.5rem;font-weight:800;margin:4px 0;">UGX 15,000</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">per month</div>
+      </div>
+      <div class="plan-option" data-plan="yearly" onclick="selectPlan('yearly')"
+        style="flex:1;padding:14px;background:var(--card-bg);border:2px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:all 0.2s;position:relative;">
+        <div
+          style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--orange);padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:700;white-space:nowrap;">
+          Save 91%</div>
+        <div style="font-weight:700;font-size:1rem;">Yearly</div>
+        <div style="font-size:1.5rem;font-weight:800;margin:4px 0;">UGX 180,000</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">per year</div>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div class="plan-card">
+      <span class="plan-badge">Most Popular</span>
+      <ul class="features-list">
+        <li><span class="feat-check">✓</span> Access to all anime series</li>
+        <li><span class="feat-check">✓</span> Unlimited watchlists &amp; favorites</li>
+        <li><span class="feat-check">✓</span> HD &amp; 4K video quality</li>
+        <li><span class="feat-check">✓</span> Completely ad-free</li>
+        <li><span class="feat-check">✓</span> Early access to new episodes</li>
+        <li><span class="feat-check">✓</span> Premium exclusive content</li>
+        <li><span class="feat-check">✓</span> Download for offline viewing</li>
+        <li><span class="feat-check">✓</span> Priority support</li>
+      </ul>
+    </div>
+
+    <!-- Confirm Button — Pesapal only, no payment method badges -->
+    <div style="padding:0 20px 40px;">
+      <button class="btn-primary" id="upgrade-btn" style="width:100%;padding:18px;font-size:1rem;font-weight:700;"
+        onclick="handleUpgrade()">
+        Confirm Upgrade
+      </button>
+      <p style="text-align:center;font-size:0.75rem;color:var(--text-muted);margin-top:10px;">
+        Cancel anytime · Secure · Encrypted
+      </p>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-logo">
+      <div class="logo-icon" style="width:32px;height:32px;font-size:0.9rem;">A</div>
+      <span class="footer-logo-text">Ani<span>Strim</span></span>
+    </div>
+    <p class="footer-copy">© 2026 AniStrim. Your ultimate anime streaming hub.</p>
+  </footer>
+
+  <style>
+    .plan-option.selected {
+      border-color: var(--purple) !important;
+    }
+
+    .plan-option:not(.selected) {
+      border-color: var(--border) !important;
+      opacity: 0.75;
+    }
+  </style>
+
+  <script src="scrpt.js"></script>
+  <script src="upgrade.js"></script>
+</body>
+
+</html>

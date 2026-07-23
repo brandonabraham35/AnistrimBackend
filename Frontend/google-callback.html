@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signing you in... | AniStrim</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg, #0a0a0f);
+      flex-direction: column;
+      gap: 16px;
+      font-family: sans-serif;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid rgba(108, 43, 217, 0.2);
+      border-top-color: #6c2bd9;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    p {
+      color: #aaa;
+      font-size: 0.9rem;
+      margin: 0;
+    }
+    .error-box {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid #ef4444;
+      border-radius: 12px;
+      padding: 20px 24px;
+      text-align: center;
+      max-width: 320px;
+    }
+    .error-box h2 { color: #ef4444; margin: 0 0 8px; font-size: 1rem; }
+    .error-box p  { color: #aaa; font-size: 0.85rem; margin-bottom: 16px; }
+    .error-box a  {
+      display: inline-block;
+      background: #6c2bd9;
+      color: white;
+      padding: 10px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="spinner" id="spinner"></div>
+<p id="status-text">Signing you in with Google...</p>
+
+<script>
+// This page receives ?token=xxx&user=xxx from the backend after Google login
+// It saves them to localStorage exactly the same way the email login does
+
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('token');
+  const error  = params.get('error');
+  const userRaw = params.get('user');
+
+  // ── Handle errors ────────────────────────────────────────
+  if (error || !token || !userRaw) {
+    const messages = {
+      google_denied:  'You cancelled the Google sign-in.',
+      google_failed:  'Google sign-in failed. Please try again.',
+      no_email:       'Could not get your email from Google.',
+      no_code:        'Something went wrong with Google sign-in.',
+    };
+    const msg = messages[error] || 'Google sign-in failed. Please try again.';
+
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('status-text').style.display = 'none';
+
+    document.body.innerHTML += `
+      <div class="error-box">
+        <h2>Sign-in Failed</h2>
+        <p>${msg}</p>
+        <a href="login.html">Back to Login</a>
+      </div>
+    `;
+    return;
+  }
+
+  // ── Save token and user to localStorage ─────────────────
+  // Same format as email/password login uses
+  try {
+    const user = JSON.parse(decodeURIComponent(userRaw));
+
+    localStorage.setItem('token', decodeURIComponent(token));
+    localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('isFirstVisit', 'true');
+
+    document.getElementById('status-text').textContent = 'Signed in! Redirecting...';
+
+    // Redirect based on role — same logic as login.js
+    if (user.isAdmin) {
+      window.location.href = 'admin.html';
+    } else {
+      window.location.href = 'index.html';
+    }
+
+  } catch (e) {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('status-text').style.display = 'none';
+
+    document.body.innerHTML += `
+      <div class="error-box">
+        <h2>Sign-in Failed</h2>
+        <p>Something went wrong processing your login. Please try again.</p>
+        <a href="login.html">Back to Login</a>
+      </div>
+    `;
+  }
+})();
+</script>
+
+</body>
+</html>

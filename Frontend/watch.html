@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch | AniStrim</title>
+  <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="mobile-native.css">
+  <style>
+    /* Custom video player */
+    .player-wrap {
+      position: relative;
+      background: #000;
+      width: 100%;
+      aspect-ratio: 16/9;
+    }
+    .player-wrap video {
+      width: 100%; height: 100%;
+      display: block;
+    }
+    /* Custom controls overlay */
+    .player-controls {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 40px 16px 12px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      display: flex; flex-direction: column; gap: 8px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .player-wrap:hover .player-controls,
+    .player-wrap.paused .player-controls { opacity: 1; }
+
+    .progress-bar-wrap {
+      position: relative; height: 4px;
+      background: rgba(255,255,255,0.3); border-radius: 2px; cursor: pointer;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--purple);
+      border-radius: 2px; pointer-events: none;
+      transition: width 0.5s linear;
+    }
+    .progress-bar-wrap:hover { height: 6px; }
+
+    .controls-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .ctrl-btn {
+      background: none; border: none; color: white;
+      cursor: pointer; padding: 4px; display: flex; align-items: center;
+    }
+    .ctrl-btn svg { width: 22px; height: 22px; }
+    .ctrl-btn:hover { color: var(--purple); }
+
+    .time-display { font-size: 0.78rem; color: rgba(255,255,255,0.8); margin-left: 4px; }
+    .volume-slider { width: 70px; accent-color: var(--purple); cursor: pointer; }
+    .fullscreen-btn { margin-left: auto; }
+
+    /* Skip intro button */
+    .skip-intro-btn {
+      position: absolute; bottom: 70px; right: 16px;
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.4);
+      color: white; padding: 8px 18px; border-radius: 4px;
+      font-family: 'Outfit',sans-serif; font-size: 0.88rem; font-weight:600;
+      cursor: pointer; display: none;
+      transition: background 0.2s;
+    }
+    .skip-intro-btn:hover { background: rgba(255,255,255,0.2); }
+
+    /* Next episode banner */
+    .next-ep-banner {
+      position: absolute; bottom: 70px; right: 16px;
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 16px;
+      display: none; min-width: 220px;
+    }
+    .next-ep-banner p { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+    .next-ep-banner h4 { font-size: 0.9rem; font-weight: 700; margin-bottom: 10px; }
+
+    /* Premium lock overlay — FIX 3 */
+    .premium-lock-overlay {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; text-align: center; padding: 20px;
+    }
+    .premium-lock-overlay h3 { font-size: 1.2rem; font-weight: 700; }
+    .premium-lock-overlay p  { font-size: 0.85rem; color: var(--text-dim); }
+  </style>
+</head>
+<body>
+<div id="side-menu" class="side-nav">
+  <div class="menu-header"><button class="close-btn" onclick="toggleMenu()">✕</button></div>
+  <ul class="menu-links">
+    <li onclick="location.href='index.html'">🏠 Home</li>
+    <li onclick="location.href='browse.html'">🔍 Browse</li>
+    <li onclick="location.href='watchlist.html'">📋 My List</li>
+    <li onclick="location.href='upgrade.html'">👑 Premium</li>
+    <li onclick="location.href='profile.html'">👤 Profile</li>
+    <li onclick="handleSignOut()" style="color:#ef4444;">🚪 Sign Out</li>
+  </ul>
+</div>
+<div id="menu-overlay" class="overlay" onclick="toggleMenu()"></div>
+
+<nav class="navbar">
+  <div class="logo" onclick="location.href='index.html'">
+    <div class="logo-icon">A</div>
+    <span class="logo-text">Ani<span>Strim</span></span>
+  </div>
+  <div class="nav-icons">
+    <button class="nav-icon-btn" onclick="history.back()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
+    </button>
+    <button class="nav-icon-btn" onclick="toggleMenu()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- FIX 3: Premium lock + FIX 1: Custom player -->
+<div class="player-wrap" id="player-wrap">
+  <video id="main-video"></video>
+
+  <!-- Skip Intro -->
+  <button class="skip-intro-btn" id="skip-intro-btn" onclick="skipIntro()">Skip Intro ›</button>
+
+  <!-- Next Episode banner — countdown for premium, manual click for free -->
+  <div class="next-ep-banner" id="next-ep-banner">
+    <p id="next-ep-auto-label" style="display:none;font-size:0.75rem;margin-bottom:4px;">
+      Playing next in <strong id="autoplay-countdown-num">5</strong>s &nbsp;
+      <button onclick="cancelAutoplay();document.getElementById('next-ep-banner').style.display='none';"
+        style="background:none;border:1px solid rgba(255,255,255,0.3);color:white;padding:2px 8px;border-radius:4px;font-size:0.72rem;cursor:pointer;">Cancel</button>
+    </p>
+    <p id="next-ep-manual-label" style="display:none;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Up Next</p>
+    <h4 id="next-ep-title" style="font-size:0.9rem;font-weight:700;margin-bottom:10px;">Episode 2</h4>
+    <button class="btn-primary" style="padding:8px 16px;font-size:0.82rem;" onclick="playNextEp()">▶ Play Now</button>
+  </div>
+
+  <!-- Premium Lock Overlay — shown for premium episodes to free users -->
+  <div class="premium-lock-overlay" id="premium-lock" style="display:none;">
+    <div style="font-size:2.5rem;">🔒</div>
+    <h3>Premium Episode</h3>
+    <p>Upgrade to AniStrim Premium to watch this episode and unlock all content.</p>
+    <button class="btn-primary" style="padding:12px 28px;" onclick="location.href='upgrade.html'">👑 Upgrade Now</button>
+    <button class="btn-secondary" style="padding:10px 20px;" onclick="history.back()">Go Back</button>
+  </div>
+
+  <!-- No video placeholder -->
+  <div class="video-placeholder" id="video-placeholder">
+    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <path d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+    </svg>
+    <p>No video file linked yet</p>
+    <p style="font-size:0.78rem;margin-top:6px;">Add a video URL in Admin → Episodes</p>
+  </div>
+
+  <!-- Custom Controls -->
+  <div class="player-controls" id="player-controls">
+    <div class="progress-bar-wrap" id="progress-wrap" onclick="seekVideo(event)">
+      <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+    <div class="controls-row">
+      <button class="ctrl-btn" onclick="togglePlay()" id="play-btn">
+        <svg id="play-icon" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+      <button class="ctrl-btn" onclick="skipBack()">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/><text x="8" y="15" font-size="7" fill="currentColor" stroke="none">10</text></svg>
+      </button>
+      <button class="ctrl-btn" onclick="skipForward()">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.51"/></svg>
+      </button>
+      <span class="time-display" id="time-display">0:00 / 0:00</span>
+      <input type="range" class="volume-slider" id="vol-slider" min="0" max="1" step="0.05" value="1" oninput="setVolume(this.value)">
+      <button class="ctrl-btn fullscreen-btn" onclick="toggleFullscreen()">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Episode info -->
+<div class="watch-info">
+  <div class="watch-ep-title" id="watch-ep-title">Episode 1</div>
+  <div class="watch-anime-title" id="watch-anime-title">Loading...</div>
+  <!-- FIX 2: Resume badge -->
+  <div id="resume-badge" style="display:none;margin-top:6px;">
+    <span style="background:rgba(139,92,246,0.15);color:var(--purple);padding:3px 10px;border-radius:4px;font-size:0.78rem;font-weight:600;">⏱ Resuming from last position</span>
+  </div>
+</div>
+
+<!-- More episodes -->
+<div style="padding:0 20px 100px;">
+  <h3 style="font-size:1rem;font-weight:700;margin-bottom:14px;color:#9ca3af;">More Episodes</h3>
+  <div class="episode-list" id="more-episodes"></div>
+</div>
+
+<nav class="mobile-bottom-nav">
+  <a href="index.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span>Home</span>
+  </a>
+  <a href="browse.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <span>Browse</span>
+  </a>
+  <a href="watchlist.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    <span>My List</span>
+  </a>
+  <a href="profile.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <span>Profile</span>
+  </a>
+</nav>
+
+<script src="scrpt.js"></script>
+<script src="watch.js"></script>
+</body>
+</html>

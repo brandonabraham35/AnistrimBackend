@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse | AniStrim</title>
+  <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="mobile-native.css">
+</head>
+<body>
+<div id="side-menu" class="side-nav">
+  <div class="menu-header"><button class="close-btn" onclick="toggleMenu()">✕</button></div>
+  <ul class="menu-links">
+    <li onclick="location.href='index.html'">🏠 Home</li>
+    <li class="active">🔍 Browse</li>
+    <li onclick="location.href='watchlist.html'">📋 My List</li>
+    <li onclick="location.href='upgrade.html'">👑 Premium</li>
+    <li onclick="location.href='profile.html'">👤 Profile</li>
+    <li onclick="handleSignOut()" style="color:#ef4444;">🚪 Sign Out</li>
+  </ul>
+</div>
+<div id="menu-overlay" class="overlay" onclick="toggleMenu()"></div>
+
+<nav class="navbar">
+  <div class="logo" onclick="location.href='index.html'">
+    <div class="logo-icon">A</div>
+    <span class="logo-text">Ani<span>Strim</span></span>
+  </div>
+  <div class="nav-icons">
+    <button class="nav-icon-btn" onclick="location.href='browse.html'">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    </button>
+    <button class="nav-icon-btn" onclick="toggleMenu()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<div class="browse-page-header">
+  <h1>Browse Anime</h1>
+  <p>Discover your next favorite series</p>
+</div>
+
+<!-- FIX 1: Search + Filter fully working -->
+<div class="search-filter-row">
+  <div class="search-wrap">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="text" id="search-input" placeholder="Search anime..." oninput="handleSearch(this.value)">
+  </div>
+</div>
+
+<!-- Genre filter pills — always visible -->
+<div class="genre-filters" id="genre-filters">
+  <button class="genre-tag-btn active" onclick="filterByGenre('All', this)">All</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Action', this)">Action</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Adventure', this)">Adventure</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Drama', this)">Drama</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Comedy', this)">Comedy</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Mystery', this)">Mystery</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Sci-Fi', this)">Sci-Fi</button>
+  <button class="genre-tag-btn" onclick="filterByGenre('Supernatural', this)">Supernatural</button>
+</div>
+
+<!-- Status filter row -->
+<div class="genre-filters" style="padding-top:0;">
+  <button class="genre-tag-btn active" id="status-all" onclick="filterByStatus('all', this)">All Status</button>
+  <button class="genre-tag-btn" onclick="filterByStatus('airing', this)">🟢 Airing</button>
+  <button class="genre-tag-btn" onclick="filterByStatus('completed', this)">✅ Completed</button>
+  <button class="genre-tag-btn" onclick="filterByStatus('upcoming', this)">🔜 Upcoming</button>
+</div>
+
+<div class="results-count" id="results-count">Loading...</div>
+
+<div class="browse-grid" id="browse-grid">
+  <div class="no-results" id="no-results" style="display:none;">
+    <p>No anime found. Try a different search.</p>
+  </div>
+</div>
+
+<!-- Mobile bottom nav -->
+<nav class="mobile-bottom-nav">
+  <a href="index.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span>Home</span>
+  </a>
+  <a href="browse.html" class="mob-nav-item active">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <span>Browse</span>
+  </a>
+  <a href="watchlist.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    <span>My List</span>
+  </a>
+  <a href="profile.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <span>Profile</span>
+  </a>
+</nav>
+
+<script src="scrpt.js"></script>
+<script src="browse.js"></script>
+</body>
+</html>

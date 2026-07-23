@@ -1,0 +1,93 @@
+/* mobile-native.css — Added on top of style.css for native app */
+
+/* ── Safe area insets (iPhone notch, Android status bar) ── */
+:root {
+  --safe-top:    env(safe-area-inset-top,    0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left,   0px);
+  --safe-right:  env(safe-area-inset-right,  0px);
+}
+
+/* Push navbar down below status bar on native */
+.navbar {
+  padding-top: calc(14px + var(--safe-top));
+}
+
+/* Push bottom nav above home indicator on iPhone */
+.mobile-bottom-nav {
+  padding-bottom: calc(8px + var(--safe-bottom));
+}
+
+/* Make tap targets larger on mobile (44px minimum per Apple HIG) */
+.nav-icon-btn  { min-width: 44px; min-height: 44px; }
+.mob-nav-item  { min-height: 44px; }
+.btn-primary,
+.btn-secondary { min-height: 48px; }
+.episode-item  { min-height: 56px; }
+.wl-item       { min-height: 60px; }
+
+/* Prevent text selection on tap (feels more native) */
+.card, .mob-nav-item, .btn-primary, .btn-secondary,
+.episode-item, .wl-item, .browse-card {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Active state press feedback */
+.card:active, .browse-card:active, .episode-item:active {
+  opacity: 0.75;
+  transform: scale(0.98);
+  transition: all 0.1s;
+}
+
+/* Smooth scrolling everywhere */
+* { -webkit-overflow-scrolling: touch; }
+
+/* Disable double-tap zoom on buttons */
+button, a { touch-action: manipulation; }
+
+/* Full-screen hero on mobile */
+@media (max-width: 480px) {
+  .hero { height: 80vh; min-height: 520px; }
+  .hero h1 { font-size: 1.8rem; }
+}
+
+/* Video player full-width on mobile */
+.player-wrap {
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+/* Larger episode cards on mobile */
+@media (max-width: 480px) {
+  .browse-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 14px 100px; }
+  .card { width: 140px; }
+}
+
+/* Pull-to-refresh visual hint */
+.ptr-indicator {
+  text-align: center; padding: 12px; color: var(--text-muted);
+  font-size: 0.82rem; display: none;
+}
+
+/* Loading skeleton for images */
+.card-img-wrap img[src=""],
+.card-img-wrap img:not([src]) {
+  background: linear-gradient(90deg, var(--card-bg) 25%, var(--card-bg2) 50%, var(--card-bg) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Native keyboard avoidance — inputs scroll into view */
+input:focus, textarea:focus {
+  scroll-margin-bottom: 200px;
+}
+
+/* Splash-screen background match */
+body { background-color: #0d0d0f; }

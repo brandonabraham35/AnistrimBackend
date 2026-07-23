@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AniStrim | Experience Anime</title>
+  <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="mobile-native.css">
+</head>
+<body>
+
+<!-- Welcome Popup -->
+<div id="welcome-popup" class="popup-overlay" style="display:none;">
+  <div class="popup-content">
+    <div class="popup-icon">A</div>
+    <h2>Welcome to AniStrim!</h2>
+    <p>Your account is ready. Start exploring your favorite anime.</p>
+    <button class="btn-primary" style="margin-top:0;" onclick="closePopup()">Let's Go!</button>
+  </div>
+</div>
+
+<!-- Side Menu -->
+<div id="side-menu" class="side-nav">
+  <div class="menu-header"><button class="close-btn" onclick="toggleMenu()">✕</button></div>
+  <ul class="menu-links">
+    <li class="active" onclick="location.href='index.html'">🏠 Home</li>
+    <li onclick="location.href='browse.html'">🔍 Browse</li>
+    <li onclick="location.href='watchlist.html'">📋 My List</li>
+    <li onclick="location.href='upgrade.html'">👑 Premium</li>
+    <li onclick="location.href='profile.html'">👤 Profile</li>
+    <li onclick="handleSignOut()" style="color:#ef4444;">🚪 Sign Out</li>
+  </ul>
+</div>
+<div id="menu-overlay" class="overlay" onclick="toggleMenu()"></div>
+
+<nav class="navbar" id="navbar">
+  <div class="logo" onclick="location.href='index.html'">
+    <div class="logo-icon">A</div>
+    <span class="logo-text">Ani<span>Strim</span></span>
+  </div>
+  <div class="nav-icons">
+    <button class="nav-icon-btn" onclick="location.href='browse.html'">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    </button>
+    <button class="nav-icon-btn" onclick="toggleMenu()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<header class="hero" id="hero">
+  <div class="hero-slider-dots" id="hero-dots"></div>
+  <div class="hero-meta">
+    <span class="hero-rating" id="hero-rating">⭐ 9.0</span>
+    <span id="hero-year">2020</span>
+    <span id="hero-episodes">— Episodes</span>
+  </div>
+  <h1 id="hero-title">Loading...</h1>
+  <div class="hero-genres" id="hero-genres"></div>
+  <p class="hero-description" id="hero-desc"></p>
+  <div class="hero-btns">
+    <button class="btn-primary" id="hero-watch-btn">▶ Watch Now</button>
+    <button class="btn-secondary" id="hero-info-btn">ⓘ More Info</button>
+  </div>
+</header>
+
+<main class="content">
+
+  <!-- FIX 2: Continue Watching row — hidden until user has history -->
+  <section class="row" id="continue-section" style="display:none;">
+    <div class="row-header">
+      <div class="row-title">▶ Continue Watching</div>
+      <p class="row-subtitle">Pick up where you left off</p>
+    </div>
+    <div class="scroll-container" id="continue-row"></div>
+  </section>
+
+  <section class="row">
+    <div class="row-header">
+      <div class="row-title">🔥 Trending Now</div>
+      <p class="row-subtitle">Most watched this week</p>
+    </div>
+    <div class="scroll-container" id="trending-row"></div>
+  </section>
+
+  <section class="row">
+    <div class="row-header">
+      <div class="row-title">⭐ Popular</div>
+      <p class="row-subtitle">Fan favorites</p>
+    </div>
+    <div class="scroll-container" id="popular-row"></div>
+  </section>
+
+  <section class="row">
+    <div class="row-header">
+      <div class="row-title">✨ New Releases</div>
+      <p class="row-subtitle">Fresh arrivals</p>
+    </div>
+    <div class="scroll-container" id="new-row"></div>
+  </section>
+
+  <section class="row">
+    <div class="row-header">
+      <div class="row-title">🎬 Classics</div>
+      <p class="row-subtitle">Timeless masterpieces</p>
+    </div>
+    <div class="scroll-container" id="classics-row"></div>
+  </section>
+</main>
+
+<!-- FIX 6: Mobile bottom nav -->
+<nav class="mobile-bottom-nav">
+  <a href="index.html" class="mob-nav-item active">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span>Home</span>
+  </a>
+  <a href="browse.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <span>Browse</span>
+  </a>
+  <a href="watchlist.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    <span>My List</span>
+  </a>
+  <a href="profile.html" class="mob-nav-item">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <span>Profile</span>
+  </a>
+</nav>
+
+<footer class="site-footer">
+  <div class="footer-logo">
+    <div class="logo-icon" style="width:32px;height:32px;font-size:0.9rem;">A</div>
+    <span class="footer-logo-text">Ani<span>Strim</span></span>
+  </div>
+  <p class="footer-copy">© 2026 AniStrim. Your ultimate anime streaming hub.</p>
+</footer>
+
+<script src="scrpt.js"></script>
+<script src="google-auth-handler.js"></script>
+</body>
+</html>

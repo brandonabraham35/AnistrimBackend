@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment | AniStrim</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mobile-native.css">
+  <style>
+    .callback-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .callback-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 28px;
+      text-align: center;
+      max-width: 380px;
+      width: 100%;
+    }
+    .status-icon { font-size: 3.5rem; margin-bottom: 16px; display: block; }
+    .callback-box h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 8px; }
+    .callback-box p { font-size: 0.88rem; color: var(--text-dim); line-height: 1.6; margin-bottom: 24px; }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="callback-page">
+  <div class="callback-box" id="callback-box">
+    <span class="status-icon spin">⏳</span>
+    <h2>Verifying Payment…</h2>
+    <p>Please wait while we confirm your transaction.</p>
+  </div>
+</div>
+
+<script src="scrpt.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  const params = new URLSearchParams(window.location.search);
+
+  // Check if this was opened via deep link from payment bridge page
+  const status = params.get('status');
+  const txRef  = params.get('tx_ref') || localStorage.getItem('pending_tx_ref');
+
+  if (status === 'successful') {
+    // Payment confirmed by backend — update local state
+    await updatePremiumState(txRef);
+    showResult('success', '🎉', 'Payment Successful!',
+      'Welcome to AniStrim Premium! Enjoy unlimited anime!',
+      [{ text: 'Start Watching 🎬', href: 'index.html' }]
+    );
+    return;
+  }
+
+  if (status === 'failed' || status === 'error') {
+    showResult('error', '❌', 'Payment Failed',
+      'Your payment was not completed. You have not been charged.',
+      [{ text: 'Try Again', href: 'upgrade.html' },
+       { text: 'Go Home', href: 'index.html' }]
+    );
+    return;
+  }
+
+  if (status === 'pending' || !txRef) {
+    // Still pending — poll backend for status
+    await pollPaymentStatus(txRef);
+    return;
+  }
+
+  // Default: poll for status
+  await pollPaymentStatus(txRef);
+});
+
+// ── Poll backend every 3 seconds for up to 2 minutes ────────
+async function pollPaymentStatus(txRef) {
+  if (!txRef) {
+    showResult('error', '❌', 'Missing Transaction',
+      'No transaction reference found. If you were charged, contact support.',
+      [{ text: 'Go Home', href: 'index.html' }]
+    );
+    return;
+  }
+
+  let attempts = 0;
+  const maxAttempts = 40; // 40 × 3s = 2 minutes
+
+  const poll = setInterval(async () => {
+    attempts++;
+
+    if (attempts > maxAttempts) {
+      clearInterval(poll);
+      showResult('pending', '⏳', 'Still Processing',
+        'Your payment is taking longer than expected. Check back in a few minutes.',
+        [{ text: 'Check Again', href: `payment-callback.html?tx_ref=${txRef}&status=pending` },
+         { text: 'Go Home', href: 'index.html' }]
+      );
+      return;
+    }
+
+    try {
+      const res  = await fetch(`https://anistrimbackend.onrender.com/api/payments/verify?tx_ref=${txRef}`);
+      const data = await res.json();
+
+      if (data.status === 'successful') {
+        clearInterval(poll);
+        await updatePremiumState(txRef);
+        showResult('success', '🎉', 'Payment Successful!',
+          `Welcome to AniStrim Premium! Your ${data.plan === 'yearly' ? 'yearly' : 'monthly'} subscription is now active.`,
+          [{ text: 'Start Watching 🎬', href: 'index.html' }]
+        );
+      } else if (data.status === 'failed') {
+        clearInterval(poll);
+        showResult('error', '❌', 'Payment Failed',
+          'Your payment was not successful. You have not been charged.',
+          [{ text: 'Try Again', href: 'upgrade.html' },
+           { text: 'Go Home', href: 'index.html' }]
+        );
+      }
+      // If still pending, keep polling silently
+    } catch (e) {
+      // Network error — keep polling
+    }
+  }, 3000);
+}
+
+// ── Update local premium state ───────────────────────────────
+async function updatePremiumState(txRef) {
+  const user = State.user;
+  if (user) {
+    user.isPremium = true;
+    State.save(State.token, user);
+  }
+  if (txRef) localStorage.removeItem('pending_tx_ref');
+}
+
+// ── Show result card ─────────────────────────────────────────
+function showResult(type, icon, title, message, buttons = []) {
+  const colors = { success: '#22c55e', error: '#ef4444', pending: '#f97316' };
+  document.getElementById('callback-box').innerHTML = `
+    <span class="status-icon">${icon}</span>
+    <h2 style="color:${colors[type] || '#fff'}">${title}</h2>
+    <p>${message}</p>
+    <div style="display:flex;gap:10px;flex-direction:column;">
+      ${buttons.map(b => `
+        <a href="${b.href}" class="btn-primary"
+           style="text-decoration:none;justify-content:center;display:block;
+                  padding:14px;border-radius:10px;text-align:center;">
+          ${b.text}
+        </a>
+      `).join('')}
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
