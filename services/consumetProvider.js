@@ -1,18 +1,30 @@
-const { request } = require('../utils/providerHttp');
+const { ANIME } = require('@consumet/extensions');
+
+// In-memory Gogoanime provider — no more HTTP calls to a separate microservice.
+// Falls back to HTTP if CONSUMET_BASE_URL is explicitly set (legacy mode).
+const gogoanime = new ANIME.Gogoanime("https://anitaku.pe");
 
 class ConsumetProvider {
-  configured() { return Boolean(process.env.CONSUMET_BASE_URL); }
-  base() { return process.env.CONSUMET_BASE_URL.replace(/\/$/, ''); }
-  async getAnimeInfo(slug) { const response = await request({ method: 'GET', url: `${this.base()}/anime/gogoanime/${encodeURIComponent(slug)}` }); return response.data; }
+  configured() {
+    // Always configured in in-memory mode; only returns false if
+    // CONSUMET_BASE_URL is set to 'disabled' explicitly.
+    return process.env.CONSUMET_BASE_URL !== 'disabled';
+  }
+
+  async fetchAnimeInfo(slug) {
+    return gogoanime.fetchAnimeInfo(slug);
+  }
+
   async getEpisodes(slug) {
-    const info = await this.getAnimeInfo(slug);
-    console.log(`[CONSUMET DEBUG] getEpisodes("${slug}") — info keys: ${Object.keys(info || {}).join(', ')}, has episodes: ${Boolean(info?.episodes)}, episodes type: ${typeof info?.episodes}, isArray: ${Array.isArray(info?.episodes)}`);
-    if (info?.episodes && Array.isArray(info.episodes)) {
-      console.log(`[CONSUMET DEBUG] First episode sample:`, JSON.stringify(info.episodes[0] || 'empty').substring(0, 150));
-    }
+    const info = await gogoanime.fetchAnimeInfo(slug);
     return info.episodes || [];
   }
-  async getSources(episodeId) { const response = await request({ method: 'GET', url: `${this.base()}/anime/gogoanime/watch/${encodeURIComponent(episodeId)}` }); return response.data; }
+
+  async getSources(episodeId) {
+    const sources = await gogoanime.fetchEpisodeSources(episodeId);
+    return sources;
+  }
 }
 
 module.exports = { ConsumetProvider };
+

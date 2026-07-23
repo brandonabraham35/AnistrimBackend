@@ -59,6 +59,12 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/admin/upload', require('./routes/uploadRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
 
+// Backward-compatible Consumet API — serves the same routes that the
+// standalone Consumet microservice used to run on port 3001, now in-memory.
+// External tools that previously fetched http://localhost:3001/anime/gogoanime/...
+// can now use http://your-server:5000/consumet-api/anime/gogoanime/...
+app.use('/consumet-api', require('./services/consumet/server'));
+
 // ─── Health check ─────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date() }));
 
