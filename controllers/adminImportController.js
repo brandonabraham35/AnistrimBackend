@@ -45,21 +45,37 @@ exports.importAnime = async (req, res) => {
     // Step 2: Fetch episodes directly from the official Kitsu API (no Cloudflare, always works)
     console.log(`[IMPORT FETCH] Bypassing Consumet. Fetching episodes directly from Kitsu API...`);
 
-    const kitsuResponse = await axios.get(
-      `https://kitsu.io/api/edge/anime/${kitsuId}/episodes?page[limit]=100`
-    );
+    let allEpisodes = [];
+    let nextUrl = `https://kitsu.io/api/edge/anime/${kitsuId}/episodes?page[limit]=20&page[offset]=0`;
 
-    if (!kitsuResponse.data || !kitsuResponse.data.data || kitsuResponse.data.data.length === 0) {
+    // Loop through Kitsu's paginated responses until all episodes are fetched
+    while (nextUrl) {
+      const kitsuResponse = await axios.get(nextUrl);
+
+      if (!kitsuResponse.data || !kitsuResponse.data.data) {
+        break;
+      }
+
+      // Map the current batch of episodes
+      const episodesBatch = kitsuResponse.data.data.map(ep => ({
+        number: ep.attributes.number,
+        title: ep.attributes.titles?.en_jp || ep.attributes.canonicalTitle || `Episode ${ep.attributes.number}`,
+        id: null // Kept null for dynamic stream resolving later
+      }));
+
+      allEpisodes = allEpisodes.concat(episodesBatch);
+
+      // Check if Kitsu provided a URL for the next page of episodes
+      nextUrl = kitsuResponse.data.links && kitsuResponse.data.links.next
+        ? kitsuResponse.data.links.next
+        : null;
+    }
+
+    if (allEpisodes.length === 0) {
       throw new Error('Kitsu returned no episodes for this anime.');
     }
 
-    // Map the Kitsu response to match the database bulk insert structure
-    const episodes = kitsuResponse.data.data.map(ep => ({
-      number: ep.attributes.number,
-      title: ep.attributes.titles?.en_jp || ep.attributes.canonicalTitle || `Episode ${ep.attributes.number}`,
-      id: null // Kept null for dynamic stream resolving later
-    }));
-
+    const episodes = allEpisodes;
     const episodesCount = episodes.length;
     console.log(`✅ [IMPORT SUCCESS] Fetched ${episodesCount} episodes safely from Kitsu API!`);
 
