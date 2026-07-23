@@ -1,14 +1,17 @@
 const express = require('express');
 const cors = require('cors');
 
-// Robust import pattern for @consumet/extensions — handles variations across versions
+// Robust import pattern for @consumet/extensions — handles CommonJS vs ESM mismatches
 const consumet = require('@consumet/extensions');
-const Gogoanime = consumet.ANIME?.Gogoanime;
 
-if (!Gogoanime) {
+// Safely resolve the ANIME object regardless of the package version / export structure.
+// Latest versions may export under: consumet.ANIME, consumet.default.ANIME, or consumet.PROVIDERS.ANIME.
+const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
+
+if (!ANIME || !ANIME.Gogoanime) {
+  console.error('Consumet Export Object:', Object.keys(consumet));
   throw new Error(
-    'Failed to initialize @consumet/extensions: ANIME.Gogoanime is not available. ' +
-    'Run `npm install @consumet/extensions@latest` and try again.'
+    'Failed to extract ANIME.Gogoanime from @consumet/extensions. See logs above for available exports.'
   );
 }
 
@@ -16,7 +19,7 @@ const app = express();
 app.use(cors());
 
 // Initialize the Gogoanime provider
-const gogoanime = new Gogoanime("https://anitaku.pe");
+const gogoanime = new ANIME.Gogoanime("https://anitaku.pe");
 
 // Route 1: Get Anime Info and Episode List
 app.get('/anime/gogoanime/:id', async (req, res) => {
