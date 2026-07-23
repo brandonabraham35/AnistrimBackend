@@ -4,25 +4,15 @@ const catalogue = require('../services/catalogueService');
 const consumet = require('@consumet/extensions');
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
-if (!ANIME) {
-  throw new Error('Failed to extract ANIME object from @consumet/extensions.');
-}
-
-// Dynamically find the provider key regardless of exact casing or renaming
-const providerKey = Object.keys(ANIME).find(key =>
-  key.toLowerCase().includes('gogo') ||
-  key.toLowerCase().includes('anitaku')
-);
-
-if (!providerKey) {
+if (!ANIME || !ANIME.Hianime) {
   console.error('Available ANIME providers in package:', Object.keys(ANIME));
-  throw new Error('Could not find Gogoanime or Anitaku in ANIME exports. Check the Render logs for the available providers.');
+  throw new Error('Failed to extract ANIME.Hianime from @consumet/extensions.');
 }
 
-console.log(`✅ Successfully mapped provider to: ANIME.${providerKey}`);
+console.log('✅ Successfully mapped provider to: ANIME.Hianime');
 
-// Initialize the dynamically found class
-const gogoanime = new ANIME[providerKey]();
+// Initialize the Hianime provider
+const provider = new ANIME.Hianime();
 
 /**
  * Helper function to bulk-insert episodes into MySQL
@@ -66,11 +56,11 @@ exports.importAnime = async (req, res) => {
     console.log(`[IMPORT CHECKPOINT 1] Anime ID ${animeId} resolved.`);
     console.log(`[IMPORT CHECKPOINT 2] Gogoanime slug: ${slug || 'NONE — will attempt fallback search'}`);
 
-    // Step 2: Determine Gogoanime Slug — fallback: search Consumet by title
+    // Step 2: Determine slug — fallback: search Hianime by title
     let resolvedSlug = slug;
     if (!resolvedSlug && result.anime?.title) {
-      console.log(`[IMPORT MAPPER] Searching Consumet provider for title: "${result.anime.title}"...`);
-      const searchResults = await gogoanime.search(result.anime.title);
+      console.log(`[IMPORT MAPPER] Searching Hianime provider for title: "${result.anime.title}"...`);
+      const searchResults = await provider.search(result.anime.title);
       if (searchResults && searchResults.results && searchResults.results.length > 0) {
         resolvedSlug = searchResults.results[0].id;
         console.log(`[IMPORT MAPPER] Fallback search matched slug: "${resolvedSlug}"`);
@@ -79,19 +69,19 @@ exports.importAnime = async (req, res) => {
 
     // Guard Clause: If still no slug, skip episode scraping safely
     if (!resolvedSlug) {
-      console.log(`[IMPORT CHECKPOINT 2] SKIPPING episode fetch – No valid Gogoanime slug found.`);
+      console.log(`[IMPORT CHECKPOINT 2] SKIPPING episode fetch – No valid slug found.`);
       return res.status(200).json({
         success: true,
         message: 'Anime imported successfully, but no episode mapping could be found.',
         anime: result.anime,
         mapping: result.mapping,
-        episodes: { count: 0, source: 'consumet' }
+        episodes: { count: 0, source: 'hianime' }
       });
     }
 
-    // Step 3: In-Memory Episode Scraping via Consumet (no HTTP fetch)
+    // Step 3: In-Memory Episode Scraping via Hianime (no HTTP fetch)
     console.log(`[IMPORT FETCH] Scraping episode list for slug: "${resolvedSlug}" directly in memory...`);
-    const animeDetails = await gogoanime.fetchAnimeInfo(resolvedSlug);
+    const animeDetails = await provider.fetchAnimeInfo(resolvedSlug);
 
     if (!animeDetails || !animeDetails.episodes || animeDetails.episodes.length === 0) {
       console.log(`[IMPORT FETCH] Provider returned 0 episodes for slug: "${resolvedSlug}"`);
@@ -100,7 +90,7 @@ exports.importAnime = async (req, res) => {
         message: 'Anime imported, but provider returned no episodes.',
         anime: result.anime,
         mapping: result.mapping,
-        episodes: { count: 0, source: 'consumet' }
+        episodes: { count: 0, source: 'hianime' }
       });
     }
 
@@ -118,7 +108,7 @@ exports.importAnime = async (req, res) => {
       episodes: {
         count: insertedCount,
         total: animeDetails.episodes.length,
-        source: 'consumet'
+        source: 'hianime'
       }
     });
 
