@@ -63,14 +63,26 @@ class ConsumetProvider {
    */
   async resolveStreamUrl(animeTitle, episodeNumber) {
     // 1. Search for the anime
-    const searchResults = await this.searchAnime(animeTitle);
-    if (!Array.isArray(searchResults) || searchResults.length === 0) {
-      throw new Error(`No anime found for title: "${animeTitle}"`);
+    console.log(`[resolveStream] Searching Consumet for: "${animeTitle}"`);
+    let searchResponse = await provider.search(animeTitle);
+    let searchResults = searchResponse.results ? searchResponse.results : searchResponse;
+
+    // THE SMART RETRY: If 0 results, drop the last word (e.g., "Jujutsu Kaisen 0" -> "Jujutsu Kaisen")
+    if ((!Array.isArray(searchResults) || searchResults.length === 0) && animeTitle.includes(' ')) {
+      const simplifiedTitle = animeTitle.split(' ').slice(0, -1).join(' ');
+      console.log(`[resolveStream WARN] 0 results for exact title. Retrying with widened search: "${simplifiedTitle}"...`);
+      searchResponse = await provider.search(simplifiedTitle);
+      searchResults = searchResponse.results ? searchResponse.results : searchResponse;
     }
 
-    // 2. Pick the best match — flexible "includes" matcher
+    if (!Array.isArray(searchResults) || searchResults.length === 0) {
+      throw new Error(`Consumet search API returned 0 results for: "${animeTitle}"`);
+    }
+
+    // Normalize the original search string
     const targetTitle = animeTitle.toLowerCase().trim();
 
+    // 1. Flexible Matcher
     let targetAnime = searchResults.find(a => {
       const titleStr = typeof a.title === 'string'
         ? a.title.toLowerCase()
@@ -81,15 +93,16 @@ class ConsumetProvider {
              (a.id && a.id.toLowerCase().includes(targetTitle.replace(/\s+/g, '-')));
     });
 
-    // Ultimate Fallback: Trust the provider's search engine
+    // 2. Ultimate Fallback
     if (!targetAnime && searchResults.length > 0) {
-      console.log(`[resolveStream WARN] Exact match failed. Falling back to first result for "${animeTitle}".`);
+      console.log(`[resolveStream WARN] Fuzzy match failed. Trusting provider's first result.`);
       targetAnime = searchResults[0];
     }
 
-    if (!targetAnime) {
-      throw new Error(`No anime found for title: "${animeTitle}"`);
+    if (!targetAnime || !targetAnime.id) {
+      throw new Error(`Failed to resolve a valid anime ID from search results.`);
     }
+
     const slug = targetAnime.id;  // AniList ID
 
     // 3. Fetch full anime info (includes episodes)
