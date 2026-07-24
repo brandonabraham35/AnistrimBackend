@@ -68,18 +68,29 @@ class ConsumetProvider {
       throw new Error(`No anime found for title: "${animeTitle}"`);
     }
 
-    // 2. Pick the best match — prefer exact title match
-    const targetAnime = searchResults.find(
-      r => r.title?.romaji?.toLowerCase() === animeTitle.toLowerCase() ||
-           r.title?.english?.toLowerCase() === animeTitle.toLowerCase() ||
-           r.title?.native === animeTitle ||
-           (r.id && String(r.id).includes(animeTitle.toLowerCase().replace(/\s+/g, '-')))
-    );
-    const bestMatch = targetAnime || searchResults[0];
-    if (!bestMatch) {
-      throw new Error(`Anime not found in search results for: "${animeTitle}"`);
+    // 2. Pick the best match — flexible "includes" matcher
+    const targetTitle = animeTitle.toLowerCase().trim();
+
+    let targetAnime = searchResults.find(a => {
+      const titleStr = typeof a.title === 'string'
+        ? a.title.toLowerCase()
+        : (a.title?.english || a.title?.romaji || '').toLowerCase();
+
+      return titleStr.includes(targetTitle) ||
+             targetTitle.includes(titleStr) ||
+             (a.id && a.id.toLowerCase().includes(targetTitle.replace(/\s+/g, '-')));
+    });
+
+    // Ultimate Fallback: Trust the provider's search engine
+    if (!targetAnime && searchResults.length > 0) {
+      console.log(`[resolveStream WARN] Exact match failed. Falling back to first result for "${animeTitle}".`);
+      targetAnime = searchResults[0];
     }
-    const slug = bestMatch.id;  // AniList ID
+
+    if (!targetAnime) {
+      throw new Error(`No anime found for title: "${animeTitle}"`);
+    }
+    const slug = targetAnime.id;  // AniList ID
 
     // 3. Fetch full anime info (includes episodes)
     const info = await provider.fetchAnimeInfo(slug);
