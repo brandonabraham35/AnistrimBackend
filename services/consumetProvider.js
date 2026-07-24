@@ -1,25 +1,38 @@
 const consumet = require('@consumet/extensions');
-// Fallback safely in case of export changes
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
-if (!META || !META.Anilist || !ANIME) {
-  console.error('Available META providers:', Object.keys(META || {}));
-  console.error('Available ANIME providers:', Object.keys(ANIME || {}));
-  throw new Error('Failed to extract required providers (META.Anilist + ANIME) from @consumet/extensions.');
-}
+// 1. Log all available providers so we know what we are working with
+const availableProviders = Object.keys(ANIME);
+console.log(`[STREAM SETUP] Available ANIME providers in this package version:`, availableProviders.join(', '));
 
-// Dynamically find Gogoanime regardless of casing (e.g. GogoAnime vs Gogoanime)
-const gogoKey = Object.keys(ANIME).find(key => key.toLowerCase() === 'gogoanime');
+// 2. Try to find preferred providers flexibly
+const gogoKey = availableProviders.find(key => key.toLowerCase().includes('gogo'));
+const zoroKey = availableProviders.find(key => key.toLowerCase().includes('zoro'));
+const paheKey = availableProviders.find(key => key.toLowerCase().includes('pahe'));
 
 let fallbackProvider;
+
 if (gogoKey && typeof ANIME[gogoKey] === 'function') {
-    console.log(`[STREAM SETUP] Successfully loaded ANIME.${gogoKey} fallback`);
+    console.log(`[STREAM SETUP] Success: Using ${gogoKey}`);
     fallbackProvider = new ANIME[gogoKey]();
+} else if (zoroKey && typeof ANIME[zoroKey] === 'function') {
+    console.log(`[STREAM SETUP] Success: Using ${zoroKey}`);
+    fallbackProvider = new ANIME[zoroKey]();
+} else if (paheKey && typeof ANIME[paheKey] === 'function') {
+    console.log(`[STREAM SETUP] Success: Using ${paheKey}`);
+    fallbackProvider = new ANIME[paheKey]();
 } else {
-    console.log(`[STREAM SETUP] Gogoanime not found. Falling back to Zoro...`);
-    // Zoro is a highly reliable secondary provider for cloud environments
-    fallbackProvider = new ANIME.Zoro();
+    // 3. Ultimate Fallback: Grab the very first thing that is a function/constructor
+    console.log(`[STREAM SETUP] Preferred providers missing. Attempting blind fallback...`);
+    const firstValidKey = availableProviders.find(key => typeof ANIME[key] === 'function');
+    
+    if (firstValidKey) {
+        console.log(`[STREAM SETUP] Blind Fallback Success: Using ${firstValidKey}`);
+        fallbackProvider = new ANIME[firstValidKey]();
+    } else {
+        throw new Error("CRITICAL: No valid anime providers found in @consumet/extensions ANIME object.");
+    }
 }
 
 const provider = new META.Anilist(fallbackProvider);
