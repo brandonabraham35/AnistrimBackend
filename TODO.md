@@ -9,4 +9,5 @@
   - [x] Add safe fallback to `new ANIME.Zoro()`
   - [x] Update validation check to be provider-agnostic
   - [x] Update startup log messages
-- [ ] 4. Restart server and verify fix
+- [x] 4. Add Global Error Boundaries (`server.js`)
+- [x] 5. Add Smart Caching Layer for stream resolver (`controllers/animeController.js`)

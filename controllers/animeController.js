@@ -140,10 +140,28 @@ exports.resolveStream = async (req, res) => {
   if (!animeTitle || !episodeNumber) {
     return res.status(400).json({ error: 'Both animeTitle and episodeNumber query parameters are required.' });
   }
+
+  // Smart Cache: reduce external API calls, prevent rate-limiting
+  const cache = require('../utils/cacheService');
+  const cacheKey = `stream:${animeTitle.toLowerCase().replace(/\s+/g, '-')}:ep${episodeNumber}`;
+  const STREAM_CACHE_TTL = 300; // 5 minutes
+
   try {
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      console.log(`[resolveStream CACHE HIT] ${animeTitle} Episode ${episodeNumber}`);
+      return res.json(cached);
+    }
+
+    console.log(`[resolveStream CACHE MISS] ${animeTitle} Episode ${episodeNumber} — fetching from provider...`);
     const { ConsumetProvider } = require('../services/consumetProvider');
     const consumet = new ConsumetProvider();
     const result = await consumet.resolveStreamUrl(animeTitle, episodeNumber);
+
+    // Store in cache before responding
+    await cache.set(cacheKey, result, STREAM_CACHE_TTL);
+    console.log(`[resolveStream CACHED] ${animeTitle} Episode ${episodeNumber} for ${STREAM_CACHE_TTL}s`);
+
     res.json(result);
   } catch (err) {
     console.error('[resolveStream Error]:', err.message);

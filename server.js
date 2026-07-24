@@ -3,6 +3,15 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+// Global Error Boundaries to prevent Render crashes
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ [CRASH PREVENTION] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('💥 [CRASH PREVENTION] Critical Uncaught Exception:', error);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
