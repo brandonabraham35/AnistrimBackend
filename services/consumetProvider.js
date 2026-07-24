@@ -39,11 +39,17 @@ class ConsumetProvider {
 
   /**
    * Search for anime by title using AniList's built-in search.
-   * Returns the first matching result (as fetched from AniList).
+   * Returns an array of search results.
+   * NOTE: Consumet's search() returns a paginated object { results: [...], total, ... },
+   * so we extract the array before returning.
    */
   async searchAnime(query, limit = 10) {
-    const results = await provider.search(query, limit);
-    return results || [];
+    const searchResponse = await provider.search(query, limit);
+    // Safely extract the array (handling both paginated object and flat array returns)
+    const results = Array.isArray(searchResponse)
+      ? searchResponse
+      : (searchResponse.results || []);
+    return results;
   }
 
   /**
@@ -57,18 +63,22 @@ class ConsumetProvider {
    */
   async resolveStreamUrl(animeTitle, episodeNumber) {
     // 1. Search for the anime
-    const results = await this.searchAnime(animeTitle);
-    if (!results || results.length === 0) {
+    const searchResults = await this.searchAnime(animeTitle);
+    if (!Array.isArray(searchResults) || searchResults.length === 0) {
       throw new Error(`No anime found for title: "${animeTitle}"`);
     }
 
-    // 2. Pick the best match — prefer exact title match, otherwise first result
-    const exactMatch = results.find(
+    // 2. Pick the best match — prefer exact title match
+    const targetAnime = searchResults.find(
       r => r.title?.romaji?.toLowerCase() === animeTitle.toLowerCase() ||
            r.title?.english?.toLowerCase() === animeTitle.toLowerCase() ||
-           r.title?.native === animeTitle
+           r.title?.native === animeTitle ||
+           (r.id && String(r.id).includes(animeTitle.toLowerCase().replace(/\s+/g, '-')))
     );
-    const bestMatch = exactMatch || results[0];
+    const bestMatch = targetAnime || searchResults[0];
+    if (!bestMatch) {
+      throw new Error(`Anime not found in search results for: "${animeTitle}"`);
+    }
     const slug = bestMatch.id;  // AniList ID
 
     // 3. Fetch full anime info (includes episodes)
