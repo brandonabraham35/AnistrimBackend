@@ -2,13 +2,24 @@
 let currentAnime = null;
 
 // ── Robust image helper ──────────────────────────────────
-function safeImg(url, seed) {
-  if (!url || url.trim() === '') return `https://picsum.photos/seed/${seed}/300/450`;
+// Uses the same SVG-based fallback as scrpt.js to avoid random picsum images
+function makeFallbackImg(title) {
+  const letter = (title || '?').charAt(0).toUpperCase();
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'>
+    <rect width='300' height='450' fill='%231a1a2e'/>
+    <rect x='30' y='170' width='240' height='110' rx='8' fill='%23252540'/>
+    <text x='150' y='240' font-family='sans-serif' font-size='64' fill='%238b5cf6'
+          text-anchor='middle' dominant-baseline='middle'>${letter}</text>
+  </svg>`;
+  return `data:image/svg+xml,${svg}`;
+}
+function safeImg(url, seed, title) {
+  if (!url || url.trim() === '' || url === 'undefined') return makeFallbackImg(title || seed);
   return url;
 }
-function imgError(el, seed) {
+function imgError(el, title) {
   el.onerror = null;
-  el.src = `https://picsum.photos/seed/${seed}/300/450`;
+  el.src = makeFallbackImg(title || '?');
 }
 window.imgError = imgError;
 

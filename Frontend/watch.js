@@ -328,11 +328,20 @@ function renderMoreEpisodes(episodes, animeId) {
   container.innerHTML = others.map(e => {
     const isLocked = e.is_premium && !State.isPremium && !State.isAdmin;
     const displayNum = e.number || e.episode_number;
+    const epTitle = e.title && e.title !== 'undefined' ? e.title : `Episode ${displayNum}`;
+    const thumbSrc = e.thumbnail_url && e.thumbnail_url.trim() && e.thumbnail_url !== 'undefined'
+      ? e.thumbnail_url
+      : makeFallbackImg(epTitle);
     return `
       <div class="episode-item" onclick="location.href='watch.html?animeId=${animeId}&epId=${e.id}'">
+        <div class="ep-thumb-wrap">
+          <img src="${thumbSrc}" alt="${epTitle}" loading="lazy"
+               onerror="cardImgError(this,'${epTitle.replace(/'/g,"\\'")}')"
+               style="width:60px;height:40px;object-fit:cover;border-radius:4px;">
+        </div>
         <div class="ep-num" style="${isLocked ? 'color:var(--orange)' : ''}">${isLocked ? '🔒' : displayNum}</div>
         <div class="ep-info">
-          <div class="ep-title">${e.title || 'Episode ' + displayNum} ${e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : ''}</div>
+          <div class="ep-title">${epTitle} ${e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : ''}</div>
           <div class="ep-duration">${fmtTime(e.duration_sec || 1440)}</div>
         </div>
         <span class="ep-play" style="color:${isLocked ? 'var(--orange)' : 'var(--text-muted)'}">

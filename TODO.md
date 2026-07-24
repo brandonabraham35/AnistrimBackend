@@ -1,22 +1,8 @@
-# Bulk Delete Implementation - COMPLETE
+# Task: Dynamic On-Demand Stream Fetching & UI Fixes
 
-## Backend ✅
+## Steps
 
-- [x] Step 1: Added `bulkDeleteAnime`, `bulkDeleteEpisodes`, `bulkDeleteUsers` to `controllers/adminController.js`
-  - Anime: Deletes episodes first (FK safety), then anime, cleans up Cloudinary assets
-  - Episodes: Deletes episodes, cleans up Cloudinary video/thumbnail assets
-  - Users: Filters out the requesting admin's own ID, logs activity
-- [x] Step 2: Added routes to `routes/adminRoutes.js`
-  - `POST /admin/anime/bulk-delete`
-  - `POST /admin/episodes/bulk-delete`
-  - `POST /admin/users/bulk-delete`
-
-## Frontend ✅
-
-- [x] Step 3: Updated `dashboard.html` - Added selectAll checkboxes in table headers, bulk delete buttons in anime, episodes, and users sections
-- [x] Step 4: Updated `dashboard.js` - Added:
-  - Checkbox rendering in loadAnime(), loadUsers(), loadEpisodes()
-  - SelectAll checkbox toggle logic
-  - `updateBulkDeleteButton()` - shows/hides button based on selection count
-  - `bulkDeleteItems()` - confirmation modal, API POST, success toast, auto-refresh
-  - Event delegation for selectAll and bulkDeleteBtn clicks
+- [x] 1. **Plan approved** — Comprehensive plan created and confirmed with user
+- [x] 2. **Update `Frontend/watch.html`** — Replace "No video file linked yet" with "Stream unavailable" text
+- [x] 3. **Update `Frontend/watch.js`** — Fix undefined title fallback in renderMoreEpisodes, add episode thumbnails
+- [x] 4. **Update `Frontend/details.js`** — Replace picsum fallback with SVG-based fallback, fix undefined titles
