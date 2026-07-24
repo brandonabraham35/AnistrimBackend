@@ -111,6 +111,7 @@ router.get('/popular',  anime.getTrending);
 router.get('/featured', anime.getFeatured);
 router.get('/search',   catalogue.search);
 router.get('/recommendations/:id', anime.getRecommendations);
+router.get('/resolve/stream', anime.resolveStream);
 router.get('/:id/stream/:episode', catalogue.getStream);
 
 // Optional auth — episodes show video_url only for premium users

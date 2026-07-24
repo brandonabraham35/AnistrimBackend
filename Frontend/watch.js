@@ -34,11 +34,11 @@ async function loadWatch() {
       ep = episodes.find(e => String(e.id) === String(params.get('epId')));
     }
     if (!ep) {
-      // Legacy fallback: match by episode_number
-      ep = episodes.find(e => e.episode_number === currentEp);
+      // Legacy fallback: match by episode number
+      ep = episodes.find(e => (e.number || e.episode_number) === currentEp);
     }
     currentEpId  = ep?.id || null;
-    nextEpData   = episodes.find(e => e.episode_number === (ep?.episode_number || currentEp) + 1) || null;
+    nextEpData   = episodes.find(e => (e.number || e.episode_number) === ((ep?.number || ep?.episode_number || currentEp) + 1)) || null;
 
     // Premium content lock — free users can't watch premium episodes
     if (ep?.is_premium && !State.isPremium && !State.isAdmin) {
@@ -50,11 +50,50 @@ async function loadWatch() {
 
     const video = document.getElementById('main-video');
     if (ep?.video_url) {
+      // Static video URL (e.g. Cloudinary) — play directly
       video.src = ep.video_url;
       document.getElementById('video-placeholder').style.display = 'none';
       setupPlayer(video);
     } else {
-      document.getElementById('video-placeholder').style.display = 'flex';
+      // No static URL — resolve a fresh streaming link on demand
+      const placeholder = document.getElementById('video-placeholder');
+      const spinner = document.getElementById('stream-spinner');
+      const errorDiv = document.getElementById('stream-error');
+      placeholder.style.display = 'flex';
+      if (spinner) spinner.style.display = 'block';
+      if (errorDiv) errorDiv.style.display = 'none';
+
+      // Fetch the stream URL from our Consumet-powered endpoint
+      try {
+        const title = encodeURIComponent(currentAnime.title);
+        const epNum = currentEp;
+        const { data: streamData } = await apiFetch(`/api/anime/resolve/stream?animeTitle=${title}&episodeNumber=${epNum}`);
+
+        if (streamData?.streamUrl) {
+          placeholder.style.display = 'none';  // hide placeholder since video will play
+
+          // If HLS.js is available and the stream is .m3u8, use HLS for better playback
+          if (typeof Hls !== 'undefined' && streamData.streamUrl.includes('.m3u8')) {
+            const hls = new Hls();
+            hls.loadSource(streamData.streamUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              video.play().catch(() => {});
+            });
+          } else {
+            // Fallback: native HTML5 with direct URL
+            video.src = streamData.streamUrl;
+          }
+
+          setupPlayer(video);
+        } else {
+          throw new Error(streamData?.error || 'No stream URL returned');
+        }
+      } catch (err) {
+        console.error('Stream resolution failed:', err.message);
+        if (spinner) spinner.style.display = 'none';
+        if (errorDiv) errorDiv.style.display = 'block';
+      }
     }
 
     renderMoreEpisodes(episodes, animeId);
@@ -280,18 +319,20 @@ function fmtTime(s) {
 function renderMoreEpisodes(episodes, animeId) {
   const container = document.getElementById('more-episodes');
   if (!container) return;
-  const others = episodes.filter(e => e.episode_number !== currentEp).slice(0, 12);
+  const epNum = currentEp;
+  const others = episodes.filter(e => (e.number || e.episode_number) !== epNum).slice(0, 12);
   if (!others.length) {
     container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No other episodes available.</p>';
     return;
   }
   container.innerHTML = others.map(e => {
     const isLocked = e.is_premium && !State.isPremium && !State.isAdmin;
+    const displayNum = e.number || e.episode_number;
     return `
       <div class="episode-item" onclick="location.href='watch.html?animeId=${animeId}&epId=${e.id}'">
-        <div class="ep-num" style="${isLocked ? 'color:var(--orange)' : ''}">${isLocked ? '🔒' : e.episode_number}</div>
+        <div class="ep-num" style="${isLocked ? 'color:var(--orange)' : ''}">${isLocked ? '🔒' : displayNum}</div>
         <div class="ep-info">
-          <div class="ep-title">${e.title || 'Episode ' + e.episode_number} ${e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : ''}</div>
+          <div class="ep-title">${e.title || 'Episode ' + displayNum} ${e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : ''}</div>
           <div class="ep-duration">${fmtTime(e.duration_sec || 1440)}</div>
         </div>
         <span class="ep-play" style="color:${isLocked ? 'var(--orange)' : 'var(--text-muted)'}">

@@ -133,6 +133,24 @@ exports.search = async (req, res) => {
   }
 };
 
+// ─── Stream Resolver: Search by title + episode number ────────────────
+// GET /api/anime/resolve/stream?animeTitle=...&episodeNumber=...
+exports.resolveStream = async (req, res) => {
+  const { animeTitle, episodeNumber } = req.query;
+  if (!animeTitle || !episodeNumber) {
+    return res.status(400).json({ error: 'Both animeTitle and episodeNumber query parameters are required.' });
+  }
+  try {
+    const { ConsumetProvider } = require('../services/consumetProvider');
+    const consumet = new ConsumetProvider();
+    const result = await consumet.resolveStreamUrl(animeTitle, episodeNumber);
+    res.json(result);
+  } catch (err) {
+    console.error('[resolveStream Error]:', err.message);
+    res.status(502).json({ error: `Stream resolution failed: ${err.message}` });
+  }
+};
+
 // GET /api/anime/:id  — single anime with episodes
 exports.getById = async (req, res) => {
   try {

@@ -36,6 +36,74 @@ class ConsumetProvider {
     const sources = await provider.fetchEpisodeSources(episodeId);
     return sources;
   }
+
+  /**
+   * Search for anime by title using AniList's built-in search.
+   * Returns the first matching result (as fetched from AniList).
+   */
+  async searchAnime(query, limit = 10) {
+    const results = await provider.search(query, limit);
+    return results || [];
+  }
+
+  /**
+   * Resolve a streaming URL for a given anime title and episode number.
+   * Steps:
+   *   1. Search AniList by title to find the anime
+   *   2. Fetch full anime info (includes episode list)
+   *   3. Find the episode matching the given number
+   *   4. Resolve streaming sources for that episode
+   *   5. Return the highest quality .m3u8 URL
+   */
+  async resolveStreamUrl(animeTitle, episodeNumber) {
+    // 1. Search for the anime
+    const results = await this.searchAnime(animeTitle);
+    if (!results || results.length === 0) {
+      throw new Error(`No anime found for title: "${animeTitle}"`);
+    }
+
+    // 2. Pick the best match — prefer exact title match, otherwise first result
+    const exactMatch = results.find(
+      r => r.title?.romaji?.toLowerCase() === animeTitle.toLowerCase() ||
+           r.title?.english?.toLowerCase() === animeTitle.toLowerCase() ||
+           r.title?.native === animeTitle
+    );
+    const bestMatch = exactMatch || results[0];
+    const slug = bestMatch.id;  // AniList ID
+
+    // 3. Fetch full anime info (includes episodes)
+    const info = await provider.fetchAnimeInfo(slug);
+    const episodes = info?.episodes || [];
+    if (!episodes.length) {
+      throw new Error(`No episodes found for "${animeTitle}". The provider may not support this title.`);
+    }
+
+    // 4. Find the target episode by number
+    const targetEp = episodes.find(ep => ep.number === Number(episodeNumber));
+    if (!targetEp) {
+      throw new Error(`Episode ${episodeNumber} not found for "${animeTitle}".`);
+    }
+
+    // 5. Resolve streaming sources
+    const sources = await provider.fetchEpisodeSources(targetEp.id);
+    const streamList = sources?.sources || [];
+    if (!streamList.length) {
+      throw new Error(`No stream sources found for "${animeTitle}" Episode ${episodeNumber}.`);
+    }
+
+    // 6. Return the highest quality .m3u8 URL (last entry is usually highest)
+    const bestSource = streamList.reduce((best, src) =>
+      (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
+    , streamList[0]);
+
+    return {
+      streamUrl: bestSource?.url || streamList[0]?.url,
+      allSources: streamList,
+      subtitles: sources?.subtitles || [],
+      episodeTitle: targetEp.title || null,
+      episodeImage: targetEp.image || null,
+    };
+  }
 }
 
 module.exports = { ConsumetProvider };
