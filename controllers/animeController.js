@@ -135,26 +135,39 @@ exports.search = async (req, res) => {
 
 // GET /api/anime/:id  — single anime with episodes
 exports.getById = async (req, res) => {
-  const { id } = req.params;
   try {
-    const [rows] = await db.query('SELECT * FROM anime WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ message: 'Anime not found.' });
-    const [anime] = await attachGenres(rows);
+    const animeId = Number(req.params.id);
+    if (!Number.isInteger(animeId)) return res.status(400).json({ error: 'Invalid anime ID' });
 
-    // Increment view counters (lifetime + daily for Viral Threshold premium automation)
-    await db.query('UPDATE anime SET view_count = view_count + 1, daily_views = daily_views + 1 WHERE id = ?', [id]);
+    // 1. Fetch the anime details
+    const [animeRows] = await db.query('SELECT * FROM anime WHERE id = ?', [animeId]);
+    if (animeRows.length === 0) return res.status(404).json({ error: 'Anime not found' });
+    const [anime] = await attachGenres(animeRows);
 
-    // Fetch episodes — hide video_url for premium eps if user not premium
-    const isPremium = req.user?.isPremium || req.user?.isAdmin;
-    const [episodes] = await db.query(
-      `SELECT id, episode_number, title, description, thumbnail_url,
-              duration_sec, is_premium, view_count,
-              ${isPremium ? 'video_url' : 'IF(is_premium=0, video_url, NULL) AS video_url'}
-       FROM episodes WHERE anime_id = ? ORDER BY episode_number`,
-      [id]
+    // 2. Increment view counters (lifetime + daily for Viral Threshold premium automation)
+    await db.query('UPDATE anime SET view_count = view_count + 1, daily_views = daily_views + 1 WHERE id = ?', [animeId]);
+
+    // 3. FETCH THE EPISODES from the local database
+    const [episodeRows] = await db.query(
+      'SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number ASC',
+      [animeId]
     );
 
-    res.json({ ...anime, episodes });
+    // 4. Map the database columns to safe frontend keys
+    anime.episodes = episodeRows.map(ep => ({
+      id: ep.id,
+      number: ep.episode_number,
+      title: ep.title,
+      description: ep.description,
+      thumbnail_url: ep.thumbnail_url,
+      video_url: (ep.is_premium && !req.user?.isPremium && !req.user?.isAdmin) ? null : ep.video_url,
+      duration_sec: ep.duration_sec,
+      is_premium: Boolean(ep.is_premium),
+      view_count: ep.view_count,
+    }));
+
+    // 5. Send the combined payload
+    res.json(anime);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch anime details.' });

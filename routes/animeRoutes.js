@@ -71,6 +71,7 @@ router.get('/stream/:episodeId', async (req, res) => {
  * GET /api/anime/:animeId/episodes
  * Fetches the episode list instantly from our local database.
  * This is the "Fast Lane" — no external Consumet calls.
+ * Returns a plain array so the frontend can consume it directly.
  */
 router.get('/:animeId/episodes', async (req, res) => {
     try {
@@ -82,10 +83,20 @@ router.get('/:animeId/episodes', async (req, res) => {
             [animeId]
         );
 
-        return res.json({
-            success: true,
-            episodes
-        });
+        // Map database columns to frontend-friendly keys
+        const mapped = episodes.map(ep => ({
+            id: ep.id,
+            number: ep.episode_number,
+            title: ep.title,
+            description: ep.description,
+            thumbnail_url: ep.thumbnail_url,
+            video_url: ep.video_url,
+            duration_sec: ep.duration_sec,
+            is_premium: Boolean(ep.is_premium),
+            view_count: ep.view_count,
+        }));
+
+        return res.json(mapped);
     } catch (error) {
         console.error('[Local Episode Fetch Error]:', error.message);
         return res.status(500).json({ error: 'Failed to fetch episodes from database' });

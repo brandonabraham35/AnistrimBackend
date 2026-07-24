@@ -170,9 +170,9 @@ async function fetchAndRenderEpisodes(animeId) {
              onclick="${locked
                 ? "location.href='upgrade.html'"
                 : `location.href='watch.html?animeId=${animeId}&epId=${ep.id}'`}">
-          <span class="ep-num-badge">${ep.episode_number}</span>
+          <span class="ep-num-badge">${ep.number || ep.episode_number}</span>
           <span class="ep-row-title">
-            ${ep.title || 'Episode ' + ep.episode_number}
+            ${ep.title || 'Episode ' + (ep.number || ep.episode_number)}
             ${ep.is_premium ? ' <span style="color:var(--orange);font-size:0.75rem;">👑</span>' : ''}
           </span>
           ${locked
