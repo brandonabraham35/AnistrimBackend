@@ -9,11 +9,11 @@ if (!META || !META.Anilist || !ANIME || !ANIME.AnimePahe) {
   throw new Error('Failed to extract required providers (META.Anilist + ANIME.AnimePahe) from @consumet/extensions.');
 }
 
-console.log('✅ Successfully loaded META.Anilist with ANIME.AnimePahe fallback');
+console.log('✅ Successfully loaded META.Anilist with ANIME.Gogoanime fallback');
 
-// Inject AnimePahe as the dedicated episode scraper for Anilist
-// This prevents Consumet from defaulting to Hianime (which is blocked on Render)
-const fallbackProvider = new ANIME.AnimePahe();
+// Use Gogoanime as the underlying episode scraper for Anilist
+// Gogoanime is more reliable in cloud environments than AnimePahe (which blocks Render via Cloudflare DNS)
+const fallbackProvider = new ANIME.Gogoanime();
 const provider = new META.Anilist(fallbackProvider);
 
 class ConsumetProvider {
