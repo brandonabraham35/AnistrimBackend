@@ -3,17 +3,25 @@ const consumet = require('@consumet/extensions');
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
-if (!META || !META.Anilist || !ANIME || !ANIME.AnimePahe) {
+if (!META || !META.Anilist || !ANIME) {
   console.error('Available META providers:', Object.keys(META || {}));
   console.error('Available ANIME providers:', Object.keys(ANIME || {}));
-  throw new Error('Failed to extract required providers (META.Anilist + ANIME.AnimePahe) from @consumet/extensions.');
+  throw new Error('Failed to extract required providers (META.Anilist + ANIME) from @consumet/extensions.');
 }
 
-console.log('✅ Successfully loaded META.Anilist with ANIME.Gogoanime fallback');
+// Dynamically find Gogoanime regardless of casing (e.g. GogoAnime vs Gogoanime)
+const gogoKey = Object.keys(ANIME).find(key => key.toLowerCase() === 'gogoanime');
 
-// Use Gogoanime as the underlying episode scraper for Anilist
-// Gogoanime is more reliable in cloud environments than AnimePahe (which blocks Render via Cloudflare DNS)
-const fallbackProvider = new ANIME.Gogoanime();
+let fallbackProvider;
+if (gogoKey && typeof ANIME[gogoKey] === 'function') {
+    console.log(`[STREAM SETUP] Successfully loaded ANIME.${gogoKey} fallback`);
+    fallbackProvider = new ANIME[gogoKey]();
+} else {
+    console.log(`[STREAM SETUP] Gogoanime not found. Falling back to Zoro...`);
+    // Zoro is a highly reliable secondary provider for cloud environments
+    fallbackProvider = new ANIME.Zoro();
+}
+
 const provider = new META.Anilist(fallbackProvider);
 
 class ConsumetProvider {
