@@ -94,6 +94,24 @@ class ConsumetProvider {
   }
 
   /**
+   * Fetch trending anime from AniList (based on TRENDING_DESC sort).
+   * Returns a paginated response: { results: [...], total, page, perPage }.
+   */
+  async fetchTrendingAnime(page = 1, perPage = 15) {
+    const response = await provider.fetchTrendingAnime(page, perPage);
+    return response;
+  }
+
+  /**
+   * Fetch popular anime from AniList (based on POPULARITY_DESC sort).
+   * Returns a paginated response: { results: [...], total, page, perPage }.
+   */
+  async fetchPopularAnime(page = 1, perPage = 15) {
+    const response = await provider.fetchPopularAnime(page, perPage);
+    return response;
+  }
+
+  /**
    * Search for anime by title using AniList's built-in search.
    * Returns an array of search results.
    * NOTE: Consumet's search() returns a paginated object { results: [...], total, ... },
@@ -106,6 +124,38 @@ class ConsumetProvider {
       ? searchResponse
       : (searchResponse.results || []);
     return results;
+  }
+
+  /**
+   * Advanced search using AniList's filtering capabilities.
+   * Supported options:
+   *   query   - search text
+   *   page    - page number (default: 1)
+   *   perPage - results per page (default: 15)
+   *   genres  - array of genre strings (e.g. ["Action", "Drama"])
+   *   season  - "WINTER", "SPRING", "SUMMER", "FALL"
+   *   year    - release year (number)
+   *   status  - "RELEASING", "FINISHED", "NOT_YET_RELEASED", "CANCELLED"
+   *   sort    - array of sort strings (e.g. ["SCORE_DESC", "POPULARITY_DESC"])
+   */
+  async advancedSearch({ query, page = 1, perPage = 15, genres, season, year, status, sort }) {
+    try {
+      const options = { page, perPage };
+
+      if (query) options.query = query;
+      if (genres && Array.isArray(genres) && genres.length > 0) options.genres = genres;
+      if (season) options.season = season.toUpperCase();
+      if (year) options.year = parseInt(year, 10);
+      if (status) options.status = status.toUpperCase();
+      if (sort && Array.isArray(sort) && sort.length > 0) options.sort = sort;
+
+      // Anilist.advancedSearch() typically returns { results: [...], total, ... }
+      const response = await provider.advancedSearch(options.query, options);
+      return response;
+    } catch (err) {
+      console.error('[ConsumetProvider] advancedSearch error:', err.message);
+      throw err;
+    }
   }
 
   /**

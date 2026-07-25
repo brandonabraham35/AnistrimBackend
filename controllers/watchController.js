@@ -70,3 +70,56 @@ exports.getProgress = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/watch/continue-watching
+ * Returns up to 10 in-progress episodes for the authenticated user.
+ *
+ * Excludes:
+ *  - Episodes < 10 seconds watched (accidental clicks)
+ *  - Episodes >= 95% complete (practically finished)
+ *
+ * Ordered by most recently updated first.
+ * Returns anime metadata (title, cover_image) for frontend display.
+ */
+exports.getContinueWatching = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [rows] = await db.query(
+      `SELECT
+         wh.anime_id,
+         wh.episode_number,
+         wh.progress_seconds,
+         wh.total_duration_seconds,
+         wh.updated_at,
+         a.title       AS anime_title,
+         a.cover_image AS anime_cover_image
+       FROM watch_history wh
+       LEFT JOIN anime a ON a.id = CAST(wh.anime_id AS UNSIGNED)
+       WHERE wh.user_id = ?
+         AND wh.progress_seconds > 10
+         AND wh.total_duration_seconds > 0
+         AND wh.progress_seconds < (wh.total_duration_seconds * 0.95)
+       ORDER BY wh.updated_at DESC
+       LIMIT 10`,
+      [userId]
+    );
+
+    // Map to camelCase keys for the frontend
+    const mapped = rows.map(row => ({
+      animeId: row.anime_id,
+      episodeNumber: row.episode_number,
+      progressSeconds: row.progress_seconds,
+      totalDurationSeconds: row.total_duration_seconds,
+      updatedAt: row.updated_at,
+      animeTitle: row.anime_title,
+      animeCoverImage: row.anime_cover_image,
+    }));
+
+    res.json(mapped);
+  } catch (err) {
+    console.error('[WatchController] getContinueWatching error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch continue watching list.' });
+  }
+};
+

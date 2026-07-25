@@ -14,5 +14,8 @@ router.post('/progress', watchCtrl.saveProgress);
 // Get saved progress for a specific anime episode
 router.get('/progress/:animeId/:episodeNumber', watchCtrl.getProgress);
 
+// Get "Continue Watching" list (in-progress episodes)
+router.get('/continue-watching', watchCtrl.getContinueWatching);
+
 module.exports = router;
 

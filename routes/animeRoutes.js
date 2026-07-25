@@ -104,12 +104,13 @@ router.get('/:animeId/episodes', async (req, res) => {
 });
 
 // Public (but protect adds user context if token present — optional auth)
-router.get('/trending', anime.getTrending);
+router.get('/trending', catalogue.getTrendingAnime);
 router.get('/latest',   anime.getLatest);
 router.get('/recent',   anime.getLatest);
-router.get('/popular',  anime.getTrending);
+router.get('/popular',  catalogue.getPopularAnime);
 router.get('/featured', anime.getFeatured);
-router.get('/search',   catalogue.search);
+router.get('/search',           catalogue.search);
+router.get('/search/advanced',  catalogue.advancedSearch);
 router.get('/recommendations/:id', anime.getRecommendations);
 router.get('/resolve/stream', anime.resolveStream);
 router.get('/:id/stream/:episode', catalogue.getStream);

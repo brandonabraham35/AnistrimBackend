@@ -1,17 +1,22 @@
-// watchlistRoutes.js
+// routes/watchlistRoutes.js
+// Protected routes for user anime watchlist management.
+// Episode progress tracking routes live in routes/watchRoutes.js.
 const express   = require('express');
 const router    = express.Router();
 const wl        = require('../controllers/watchlistController');
 const { protect } = require('../middleware/auth');
 
+// All watchlist routes require authentication
 router.use(protect);
 
-router.get('/',                      wl.getWatchlist);
-router.get('/continue',              wl.getContinueWatching);   // FIX 2
-router.get('/progress/:episodeId',   wl.getProgress);            // FIX 2
-router.post('/add',                  wl.addToWatchlist);
-router.post('/progress',             wl.saveProgress);            // FIX 2
-router.put('/:animeId',              wl.updateWatchlist);
-router.delete('/:animeId',           wl.removeFromWatchlist);
+// Add or update an anime in the watchlist (UPSERT)
+router.post('/', wl.addOrUpdateWatchlist);
+
+// Get the user's watchlist (optional ?status= filter)
+router.get('/', wl.getWatchlist);
+
+// Remove an anime from the watchlist
+router.delete('/:animeId', wl.removeFromWatchlist);
 
 module.exports = router;
+
