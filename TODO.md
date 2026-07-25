@@ -1,10 +1,17 @@
-# Ads Config & Video Player Improvements
+# TODO: AniSkip Service + Ads Premium Enforcement
 
-## Steps
+## Status: ✅ Complete
+
+### ✅ Completed
 
 - [x] Plan approved by user
-- [x] **Step 1**: Fix Auto-Hide Controls in `watch.js` — 3s inactivity timer, mousemove/touchstart listeners
-- [x] **Step 2**: Fix Skip Intro Logic in `watch.js` — use fetched `introRange` instead of hardcoded 5-90s range
-- [x] **Step 3**: Add Ads Config Panel to Admin Dashboard — sidebar link, form panel, wiring
-- [x] **Step 4**: Ad system already exists in `Frontend/scrpt.js` — shows 15s interstitials every 10 min for free users. Ads config backend API is functional.
-- [x] **Step 5**: Implementation verified — all backend (SQL migration, controller, routes) and frontend (auto-hide controls, skip intro, admin ads config panel) are complete.
+- [x] **Step 1**: Updated `services/aniSkipService.js` — Added Anime-Skip fallback, 3s timeout on primary, graceful `{ found: false }` on dual failure
+- [x] **Step 2**: Updated `controllers/adsController.js` — Premium users get all ads disabled (`bannerEnabled: false`, `interstitialEnabled: false`, `preRollEnabled: false`)
+- [x] **Step 3**: Updated `routes/adsRoutes.js` — Added `auth.protect` to GET `/config` so `req.user` is populated
+
+### Notes
+
+- Frontend's `apiFetch()` in `scrpt.js` already passes Bearer token via `State.token` — no frontend changes needed for the ads route auth requirement
+- Frontend's `scrpt.js` ad system already checks `State.isPremium || State.isAdmin` client-side before showing interstitials; the backend change adds server-side enforcement as a second layer
+- Ensure `ANIMESKIP_API_KEY` is set in `.env` for the Anime-Skip fallback provider
+- AniSkip timeout reduced from 8s to 3s as specified

@@ -1,25 +1,60 @@
 const db = require('../config/db');
 
 const toBoolean = value => value === true || value === 1 || value === '1' || value === 'true';
-const serialize = row => ({
-  id: row.id,
-  bannerEnabled: toBoolean(row.banner_enabled),
-  interstitialEnabled: toBoolean(row.interstitial_enabled),
-  interstitialClicksBetween: Number(row.interstitial_clicks_between),
-  preRollEnabled: toBoolean(row.pre_roll_enabled),
-  updatedAt: row.updated_at,
-});
+const serialize = (row, isPremium) => {
+  // Premium users always get all ads disabled — never serve ads to paying users
+  if (isPremium) {
+    return {
+      id: row?.id || 1,
+      bannerEnabled: false,
+      interstitialEnabled: false,
+      interstitialClicksBetween: Number(row?.interstitial_clicks_between || 3),
+      preRollEnabled: false,
+      updatedAt: row?.updated_at || null,
+    };
+  }
+
+  // Basic / free users receive the normal ad configuration from the DB
+  return {
+    id: row.id,
+    bannerEnabled: toBoolean(row.banner_enabled),
+    interstitialEnabled: toBoolean(row.interstitial_enabled),
+    interstitialClicksBetween: Number(row.interstitial_clicks_between),
+    preRollEnabled: toBoolean(row.pre_roll_enabled),
+    updatedAt: row.updated_at,
+  };
+};
 
 async function fetchConfig() {
   const [rows] = await db.query('SELECT * FROM ads_config WHERE id = 1');
   return rows[0] || null;
 }
 
-exports.getAdConfig = async (_req, res) => {
+exports.getAdConfig = async (req, res) => {
   try {
     const config = await fetchConfig();
-    if (!config) return res.status(503).json({ message: 'Ads configuration has not been initialized.' });
-    return res.json(serialize(config));
+
+    // Determine if the user is premium — auth.protect sets req.user
+    const isPremium = req.user?.isPremium === true;
+
+    // If no config row exists at all, return a hard-coded disabled config for premium
+    // or a 503 for free users (admin should initialize it)
+    if (!config) {
+      if (isPremium) {
+        return res.json({
+          id: 1,
+          bannerEnabled: false,
+          interstitialEnabled: false,
+          interstitialClicksBetween: 3,
+          preRollEnabled: false,
+          updatedAt: null,
+        });
+      }
+      return res.status(503).json({ message: 'Ads configuration has not been initialized.' });
+    }
+
+    // Serialize the config with premium override
+    return res.json(serialize(config, isPremium));
   } catch (error) {
     console.error('Unable to read ads configuration:', error.message);
     return res.status(500).json({ message: 'Unable to load ads configuration.' });
