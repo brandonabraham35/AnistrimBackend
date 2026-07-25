@@ -6,7 +6,12 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const PESAPAL_BASE = 'https://pay.pesapal.com/v3';
+// ── Environment-aware base URL ──────────────────────────────
+// Set PESAPAL_ENV=sandbox to use test endpoints (cybqa)
+// Defaults to live (production) if not set.
+const PESAPAL_BASE = process.env.PESAPAL_ENV === 'sandbox'
+  ? 'https://cybqa.pesapal.com/pesapalv3'
+  : 'https://pay.pesapal.com/v3';
 
 // ── OAuth 2.0: Get Bearer Token ─────────────────────────────
 // POST /api/Auth/RequestToken

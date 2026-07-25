@@ -4,7 +4,6 @@ const db = require('../config/db');
 const pesapal = require('../services/pesapalService');
 require('dotenv').config();
 
-const PESAPAL_BASE = 'https://pay.pesapal.com/v3';
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 
 // ── CORRECTED PLANS (monthly = 15000 per spec) ──────────────
@@ -18,46 +17,6 @@ const PREMIUM_DURATION_DAYS = {
   monthly: 30,
   yearly: 365,
 };
-
-async function getPesapalToken() {
-  try {
-    const response = await axios.post(
-      `${PESAPAL_BASE}/api/Auth/RequestToken`,
-      {
-        consumer_key: process.env.PESAPAL_CONSUMER_KEY,
-        consumer_secret: process.env.PESAPAL_CONSUMER_SECRET,
-      },
-      { headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } }
-    );
-    if (!response.data.token) {
-      throw new Error('Pesapal did not return a token. Check PESAPAL_CONSUMER_KEY and PESAPAL_CONSUMER_SECRET.');
-    }
-    console.log('✅ Pesapal token obtained');
-    return response.data.token;
-  } catch (err) {
-    console.error('❌ Pesapal token error:', err.response?.data || err.message);
-    throw err;
-  }
-}
-
-async function getOrRegisterIPN(token) {
-  if (process.env.PESAPAL_IPN_ID) {
-    console.log('✅ Using existing IPN ID:', process.env.PESAPAL_IPN_ID);
-    return process.env.PESAPAL_IPN_ID;
-  }
-  try {
-    const response = await axios.post(
-      `${PESAPAL_BASE}/api/URLSetup/RegisterIPN`,
-      { url: `${BACKEND_URL}/api/payments/webhook`, ipn_notification_type: 'POST' },
-      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/json' } }
-    );
-    console.log('✅ IPN registered:', response.data.ipn_id);
-    return response.data.ipn_id;
-  } catch (err) {
-    console.error('❌ IPN registration error:', err.response?.data || err.message);
-    throw err;
-  }
-}
 
 // ──────────────────────────────────────────────────────────────
 //  NEW: POST /api/payments/checkout
@@ -272,41 +231,36 @@ exports.initiatePayment = async (req, res) => {
     );
     console.log(`✅ Payment record created: txRef=${txRef}`);
 
-    const token = await getPesapalToken();
-    const ipnId = await getOrRegisterIPN(token);
+    const token = await pesapal.getToken();
+    const ipnUrl = `${BACKEND_URL}/api/payments/ipn-listener`;
+    const ipnId = await pesapal.registerIPN(token, ipnUrl);
     const callbackUrl = `${BACKEND_URL}/api/payments/callback?tx_ref=${txRef}`;
 
     console.log(`📤 Submitting to Pesapal: amount=${amount}, plan=${plan}, txRef=${txRef}`);
 
-    const orderResponse = await axios.post(
-      `${PESAPAL_BASE}/api/Transactions/SubmitOrderRequest`,
-      {
-        id: txRef,
-        currency: 'UGX',
-        amount: amount,
-        description: label,
-        callback_url: callbackUrl,
-        notification_id: ipnId,
-        billing_address: {
-          email_address: user.email,
-          first_name: user.name.split(' ')[0],
-          last_name: user.name.split(' ')[1] || '',
-        }
-      },
-      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/json' } }
-    );
+    const orderResult = await pesapal.submitOrder(token, {
+      id: txRef,
+      currency: 'UGX',
+      amount: amount,
+      description: label,
+      callback_url: callbackUrl,
+      notification_id: ipnId,
+      email: user.email,
+      firstName: user.name.split(' ')[0] || user.name,
+      lastName: user.name.split(' ').slice(1).join(' ') || '',
+    });
 
-    if (!orderResponse.data.redirect_url) {
-      console.error('❌ Pesapal no redirect_url:', JSON.stringify(orderResponse.data));
+    if (!orderResult.redirect_url) {
+      console.error('❌ Pesapal no redirect_url in response');
       return res.status(502).json({ message: 'Payment provider error. Try again.' });
     }
 
     console.log(`✅ Pesapal redirect URL obtained for ${plan}`);
     res.json({
       message: 'Payment link created.',
-      payment_link: orderResponse.data.redirect_url,
+      payment_link: orderResult.redirect_url,
       tx_ref: txRef,
-      order_tracking_id: orderResponse.data.order_tracking_id,
+      order_tracking_id: orderResult.order_tracking_id,
     });
 
   } catch (err) {
@@ -340,11 +294,8 @@ exports.webhook = async (req, res) => {
   if (!orderTrackingId || !orderMerchantReference) return res.status(400).json({ message: 'Invalid webhook data.' });
 
   try {
-    const token = await getPesapalToken();
-    const verify = await axios.get(
-      `${PESAPAL_BASE}/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`,
-      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
-    );
+    const token = await pesapal.getToken();
+    const txnStatus = await pesapal.getTransactionStatus(token, orderTrackingId);
 
     const txRef = orderMerchantReference;
     const [payments] = await db.query(`SELECT * FROM payments WHERE flw_tx_ref = ? AND status = 'pending'`, [txRef]);
@@ -352,7 +303,7 @@ exports.webhook = async (req, res) => {
 
     const payment = payments[0];
 
-    if (verify.data.payment_status_description !== 'Completed') {
+    if (!pesapal.isPaymentCompleted(txnStatus.status)) {
       await db.query(`UPDATE payments SET status = 'failed', flw_tx_id = ? WHERE flw_tx_ref = ?`, [orderTrackingId, txRef]);
       return res.status(200).json({ received: true });
     }

@@ -1,18 +1,10 @@
-# TODO: Complete Pesapal Subscription Integration
+# Pesapal Integration - Refinement Plan
 
-## Status: ✅ Complete
+## Progress Tracking
 
-### Backend ✅
-
-- [x] **Step 1**: Added `verifySubscriptionPayment` endpoint to `controllers/paymentController.js`
-- [x] **Step 2**: Added `getSubscriptionRevenueStats` endpoint to `controllers/paymentController.js`
-- [x] **Step 3**: Added new routes to `routes/paymentRoutes.js`
-
-### Frontend ✅
-
-- [x] **Step 4**: Updated `Frontend/upgrade.js` to use new `/checkout` endpoint
-- [x] **Step 5**: Updated `Frontend/payment-callback.html` to poll new verify-subscription endpoint
-
-### Admin Dashboard ✅
-
-- [x] **Step 6**: Updated `AdminDashboard/js/dashboard.js` and `AdminDashboard/dashboard.html` to show combined legacy + subscription payment records with Pesapal badge
+- [x] Step 0: Analyze existing codebase (all files read)
+- [x] Step 1: Update `services/pesapalService.js` — Add sandbox/live environment switching
+- [x] Step 2: Update `controllers/paymentController.js` — Remove duplicated functions, refactor legacy methods to use pesapalService
+- [x] Step 3: Update `routes/paymentRoutes.js` — Route ordering already correct, no changes needed
+- [x] Step 4: Review `server.js` — Raw body parsing for webhook is already set up, IPN is GET so no raw body needed
+- [x] Step 5: Test — Syntax checks passed for all modified files

@@ -5,6 +5,22 @@ const { ConsumetProvider } = require('../services/consumetProvider');
 const kitsu = new KitsuProvider();
 const consumet = new ConsumetProvider();
 
+// ── In-memory cache for trending/popular (5 min TTL) ──────
+// Used as a fallback when external API returns 429 (rate limited)
+// or as a primary fast-path when cache is fresh.
+const memoryCache = {
+  trending: { data: null, timestamp: 0 },
+  popular:  { data: null, timestamp: 0 },
+};
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Check if in-memory cache is still fresh.
+ */
+function isCacheFresh(cacheEntry) {
+  return cacheEntry.data !== null && (Date.now() - cacheEntry.timestamp) < CACHE_TTL_MS;
+}
+
 exports.search = async (req, res) => {
   const query = String(req.query.q || '').trim();
   if (!query) return res.status(400).json({ message: 'A search query is required.' });
@@ -73,34 +89,98 @@ exports.advancedSearch = async (req, res) => {
 /**
  * GET /api/anime/trending
  * Fetches trending anime from the Consumet Anilist provider (TRENDING_DESC sort).
+ * Uses a two-tier cache: Redis (if available) → in-memory → API.
+ * On 429 rate limit, gracefully returns stale cache or fallback data.
  * Query params: page (default 1), perPage (default 15)
  */
 exports.getTrendingAnime = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const perPage = parseInt(req.query.perPage) || 15;
+    const cacheKey = `trending:${page}:${perPage}`;
+
+    // 1. Try Redis-backed cache first (5 min TTL)
+    const cachedResult = await cache.get(cacheKey);
+    if (cachedResult) {
+      return res.json(cachedResult);
+    }
+
+    // 2. Check in-memory cache (also acts as stale fallback)
+    if (isCacheFresh(memoryCache.trending)) {
+      return res.json(memoryCache.trending.data);
+    }
+
+    // 3. Fetch from external API
     const result = await consumet.fetchTrendingAnime(page, perPage);
+
+    // 4. Populate both caches
+    await cache.set(cacheKey, result, 5 * 60); // Redis: 5 min
+    memoryCache.trending = { data: result, timestamp: Date.now() };
+
     res.json(result);
   } catch (error) {
-    console.error('[CatalogueController] getTrendingAnime error:', error.message);
-    res.status(502).json({ message: 'Trending anime is temporarily unavailable.', error: error.message });
+    // Graceful handling for 429 (rate limit) or any network error
+    console.warn(`[CatalogueController] getTrendingAnime error: ${error.message}`);
+
+    // Return stale in-memory cache if available (even if expired)
+    if (memoryCache.trending.data) {
+      console.log('[CatalogueController] Returning stale trending cache due to upstream error');
+      return res.json(memoryCache.trending.data);
+    }
+
+    res.status(502).json({
+      message: 'Trending anime is temporarily unavailable.',
+      error: error.message,
+    });
   }
 };
 
 /**
  * GET /api/anime/popular
  * Fetches popular anime from the Consumet Anilist provider (POPULARITY_DESC sort).
+ * Uses a two-tier cache: Redis (if available) → in-memory → API.
+ * On 429 rate limit, gracefully returns stale cache or fallback data.
  * Query params: page (default 1), perPage (default 15)
  */
 exports.getPopularAnime = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const perPage = parseInt(req.query.perPage) || 15;
+    const cacheKey = `popular:${page}:${perPage}`;
+
+    // 1. Try Redis-backed cache first (5 min TTL)
+    const cachedResult = await cache.get(cacheKey);
+    if (cachedResult) {
+      return res.json(cachedResult);
+    }
+
+    // 2. Check in-memory cache (also acts as stale fallback)
+    if (isCacheFresh(memoryCache.popular)) {
+      return res.json(memoryCache.popular.data);
+    }
+
+    // 3. Fetch from external API
     const result = await consumet.fetchPopularAnime(page, perPage);
+
+    // 4. Populate both caches
+    await cache.set(cacheKey, result, 5 * 60); // Redis: 5 min
+    memoryCache.popular = { data: result, timestamp: Date.now() };
+
     res.json(result);
   } catch (error) {
-    console.error('[CatalogueController] getPopularAnime error:', error.message);
-    res.status(502).json({ message: 'Popular anime is temporarily unavailable.', error: error.message });
+    // Graceful handling for 429 (rate limit) or any network error
+    console.warn(`[CatalogueController] getPopularAnime error: ${error.message}`);
+
+    // Return stale in-memory cache if available (even if expired)
+    if (memoryCache.popular.data) {
+      console.log('[CatalogueController] Returning stale popular cache due to upstream error');
+      return res.json(memoryCache.popular.data);
+    }
+
+    res.status(502).json({
+      message: 'Popular anime is temporarily unavailable.',
+      error: error.message,
+    });
   }
 };
 
