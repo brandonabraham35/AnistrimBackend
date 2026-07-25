@@ -5,7 +5,17 @@ const router    = express.Router();
 const watchCtrl = require('../controllers/watchController');
 const { protect } = require('../middleware/auth');
 
-// All watch routes require authentication
+// ─── Public Routes (no auth required) ──────────────────────
+
+// GET /api/watch/next/:animeId/:currentEpisodeNumber
+// Resolves the next episode for auto-play / binge-watching
+router.get('/next/:animeId/:currentEpisodeNumber', watchCtrl.resolveNextEpisode);
+
+// GET /api/watch/skip-times/:malId/:episodeNumber
+// Fetches OP/ED skip timestamps from AniSkip for "Skip Intro" button
+router.get('/skip-times/:malId/:episodeNumber', watchCtrl.getEpisodeSkipTimes);
+
+// ─── Protected Routes (auth required) ──────────────────────
 router.use(protect);
 
 // Save/update video playback progress

@@ -1,6 +1,9 @@
 // controllers/watchController.js
 // Video playback progress tracking ("Resume Watching" feature)
+// Next episode resolver for auto-play / binge-watching
 const db = require('../config/db');
+const { ConsumetProvider } = require('../services/consumetProvider');
+const { fetchSkipTimes } = require('../services/aniSkipService');
 
 /**
  * POST /api/watch/progress
@@ -120,6 +123,135 @@ exports.getContinueWatching = async (req, res) => {
   } catch (err) {
     console.error('[WatchController] getContinueWatching error:', err.message);
     res.status(500).json({ message: 'Failed to fetch continue watching list.' });
+  }
+};
+
+/**
+ * GET /api/watch/next/:animeId/:currentEpisodeNumber
+ * Resolves the next episode for an anime to enable auto-play / binge-watching.
+ *
+ * Steps:
+ *   1. Fetch the anime info and full episode list from the Consumet Anilist provider.
+ *   2. Calculate targetEpisodeNumber = currentEpisodeNumber + 1.
+ *   3. Search the episode list for a matching episode.
+ *   4. If no next episode exists → { success: true, hasNextEpisode: false }.
+ *   5. If found → fetch streaming sources for that episode.
+ *   6. Return combined { success, hasNextEpisode, episode, sources }.
+ */
+exports.resolveNextEpisode = async (req, res) => {
+  try {
+    const { animeId, currentEpisodeNumber } = req.params;
+
+    if (!animeId || currentEpisodeNumber === undefined || currentEpisodeNumber === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'animeId and currentEpisodeNumber are required.',
+      });
+    }
+
+    const targetEpisodeNumber = parseInt(currentEpisodeNumber, 10) + 1;
+
+    // Instantiate the Consumet provider
+    const consumet = new ConsumetProvider();
+
+    // Fetch anime info including the full episode list
+    const info = await consumet.fetchAnimeInfo(animeId);
+    const episodes = info?.episodes || [];
+
+    if (episodes.length === 0) {
+      return res.json({
+        success: true,
+        hasNextEpisode: false,
+        message: 'No episode data available for this anime.',
+      });
+    }
+
+    // Find the next episode by number
+    const nextEpisode = episodes.find(ep => ep.number === targetEpisodeNumber);
+
+    if (!nextEpisode) {
+      return res.json({
+        success: true,
+        hasNextEpisode: false,
+        message: `Episode ${targetEpisodeNumber} not found. This may be the final released episode.`,
+      });
+    }
+
+    // Fetch streaming sources for the next episode
+    const sources = await consumet.getSources(nextEpisode.id);
+
+    return res.json({
+      success: true,
+      hasNextEpisode: true,
+      episode: {
+        id: nextEpisode.id,
+        number: nextEpisode.number,
+        title: nextEpisode.title || null,
+        image: nextEpisode.image || null,
+        description: nextEpisode.description || null,
+        airDate: nextEpisode.airDate || null,
+      },
+      sources: {
+        sources: sources?.sources || [],
+        subtitles: sources?.subtitles || [],
+        intro: sources?.intro || null,
+        outro: sources?.outro || null,
+      },
+    });
+  } catch (err) {
+    console.error('[WatchController] resolveNextEpisode error:', err.message);
+
+    // Gracefully handle upstream provider failures (502/404 etc.)
+    if (err.response) {
+      const status = err.response.status;
+      if (status === 502 || status === 404) {
+        return res.status(status).json({
+          success: false,
+          hasNextEpisode: false,
+          message: `Upstream provider returned ${status}. Unable to resolve next episode.`,
+        });
+      }
+    }
+
+    return res.status(502).json({
+      success: false,
+      hasNextEpisode: false,
+      message: `Failed to resolve next episode: ${err.message}`,
+    });
+  }
+};
+
+/**
+ * GET /api/watch/skip-times/:malId/:episodeNumber
+ * Fetches OP (opening) and ED (ending) skip timestamps from the AniSkip API.
+ *
+ * Used by the frontend "Skip Intro" / "Skip Outro" buttons during video playback.
+ *
+ * Response shape:
+ *   { found: true,  op: { start, end }, ed: { start, end } }   — timestamps exist
+ *   { found: false }                                             — no skip data
+ */
+exports.getEpisodeSkipTimes = async (req, res) => {
+  try {
+    const { malId, episodeNumber } = req.params;
+
+    if (!malId || !episodeNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'malId and episodeNumber are required.',
+      });
+    }
+
+    const result = await fetchSkipTimes(malId, episodeNumber);
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[WatchController] getEpisodeSkipTimes error:', err.message);
+
+    return res.status(502).json({
+      success: false,
+      message: `Failed to fetch skip timestamps: ${err.message}`,
+    });
   }
 };
 
