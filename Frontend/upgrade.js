@@ -1,4 +1,4 @@
-// upgrade.js — Pesapal Payment
+// upgrade.js — Pesapal Payment via new /checkout endpoint
 // Monthly: UGX 15,000 | Yearly: UGX 180,000
 let selectedPlan = 'monthly';
 
@@ -27,13 +27,17 @@ async function handleUpgrade() {
   btn.disabled = true;
 
   try {
-    const { ok, data } = await apiFetch('/api/payments/initiate', {
+    // Use the new checkout endpoint that saves to subscriptions table
+    const { ok, data } = await apiFetch('/api/payments/checkout', {
       method: 'POST',
       body: JSON.stringify({ plan: selectedPlan })
     });
 
     if (ok && data.payment_link) {
+      // Store the tx_ref (merchant reference) for the callback page to poll
       localStorage.setItem('pending_tx_ref', data.tx_ref);
+      // Also store the reference for the new verify-subscription polling
+      localStorage.setItem('pending_subscription_ref', data.tx_ref);
       window.location.href = data.payment_link;
     } else {
       alert(data.message || 'Could not start payment. Please try again.');

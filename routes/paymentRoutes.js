@@ -35,6 +35,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), (req, res, ne
 router.get('/callback', payments.paymentCallback);
 
 // ──────────────────────────────────────────────────────────────
+//  NEW: Verify subscription payment (public — used for polling)
+// ──────────────────────────────────────────────────────────────
+router.get('/verify-subscription', payments.verifySubscriptionPayment);
+
+// ──────────────────────────────────────────────────────────────
+//  NEW: Subscription revenue stats (admin only)
+// ──────────────────────────────────────────────────────────────
+router.get('/subscription-revenue', protect, adminOnly, payments.getSubscriptionRevenueStats);
+
+// ──────────────────────────────────────────────────────────────
 //  Authenticated routes (legacy)
 // ──────────────────────────────────────────────────────────────
 router.post('/initiate', protect, payments.initiatePayment);

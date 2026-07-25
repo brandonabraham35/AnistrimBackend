@@ -384,6 +384,49 @@ exports.verifyPayment = async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Verification error.' }); }
 };
 
+// ──────────────────────────────────────────────────────────────
+//  NEW: GET /api/payments/verify-subscription
+//  Public — Used by payment-callback.html to poll subscription
+//  status from the `subscriptions` table.
+// ──────────────────────────────────────────────────────────────
+exports.verifySubscriptionPayment = async (req, res) => {
+  const { reference } = req.query;
+  if (!reference) {
+    return res.status(400).json({ message: 'Transaction reference (reference) is required.' });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT s.status, s.plan, s.amount, s.currency, s.expires_at, s.paid_at,
+              u.is_premium, u.name, u.email
+       FROM subscriptions s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.reference = ?`,
+      [reference]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Subscription not found.' });
+    }
+
+    const sub = rows[0];
+    res.json({
+      status: sub.status,           // 'PENDING', 'COMPLETED', 'FAILED'
+      plan: sub.plan,
+      amount: sub.amount,
+      currency: sub.currency,
+      is_premium: sub.is_premium,
+      name: sub.name,
+      email: sub.email,
+      expires_at: sub.expires_at,
+      paid_at: sub.paid_at,
+    });
+  } catch (err) {
+    console.error('❌ verifySubscriptionPayment error:', err.message);
+    res.status(500).json({ message: 'Verification error.' });
+  }
+};
+
 // GET /api/payments/revenue
 exports.getRevenueStats = async (req, res) => {
   try {
@@ -399,6 +442,37 @@ exports.getRevenueStats = async (req, res) => {
       FROM payments p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC LIMIT 20`);
     res.json({ stats: stats[0], recent });
   } catch (err) { res.status(500).json({ message: 'Could not fetch revenue stats.' }); }
+};
+
+// ──────────────────────────────────────────────────────────────
+//  NEW: GET /api/payments/subscription-revenue
+//  Admin — Returns revenue stats from the `subscriptions` table
+// ──────────────────────────────────────────────────────────────
+exports.getSubscriptionRevenueStats = async (req, res) => {
+  try {
+    const [stats] = await db.query(`
+      SELECT
+        COUNT(*) AS total_transactions,
+        SUM(CASE WHEN status = 'COMPLETED' THEN amount ELSE 0 END) AS total_revenue,
+        SUM(CASE WHEN status = 'COMPLETED' AND plan = 'monthly' THEN 1 ELSE 0 END) AS monthly_subs,
+        SUM(CASE WHEN status = 'COMPLETED' AND plan = 'yearly' THEN 1 ELSE 0 END) AS yearly_subs,
+        SUM(CASE WHEN status = 'COMPLETED' AND DATE(paid_at) = CURDATE() THEN amount ELSE 0 END) AS revenue_today,
+        SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_count
+      FROM subscriptions`);
+
+    const [recent] = await db.query(`
+      SELECT s.id, u.name, u.email, s.amount, s.currency, s.status, s.plan, s.paid_at, s.created_at, s.reference
+      FROM subscriptions s
+      JOIN users u ON s.user_id = u.id
+      ORDER BY s.created_at DESC
+      LIMIT 20`);
+
+    res.json({ stats: stats[0], recent });
+  } catch (err) {
+    console.error('❌ getSubscriptionRevenueStats error:', err.message);
+    res.status(500).json({ message: 'Could not fetch subscription revenue stats.' });
+  }
 };
 
 function buildBridgePage(status, txRef, errorMsg) {

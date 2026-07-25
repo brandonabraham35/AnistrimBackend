@@ -47,6 +47,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check if this was opened via deep link from payment bridge page
   const status = params.get('status');
   const txRef  = params.get('tx_ref') || localStorage.getItem('pending_tx_ref');
+  // For new subscription flow, we also check for pending_subscription_ref
+  const subscriptionRef = localStorage.getItem('pending_subscription_ref') || txRef;
 
   if (status === 'successful') {
     // Payment confirmed by backend — update local state
@@ -69,17 +71,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (status === 'pending' || !txRef) {
     // Still pending — poll backend for status
-    await pollPaymentStatus(txRef);
+    await pollPaymentStatus(txRef, subscriptionRef);
     return;
   }
 
   // Default: poll for status
-  await pollPaymentStatus(txRef);
+  await pollPaymentStatus(txRef, subscriptionRef);
 });
 
 // ── Poll backend every 3 seconds for up to 2 minutes ────────
-async function pollPaymentStatus(txRef) {
-  if (!txRef) {
+async function pollPaymentStatus(txRef, subscriptionRef) {
+  if (!txRef && !subscriptionRef) {
     showResult('error', '❌', 'Missing Transaction',
       'No transaction reference found. If you were charged, contact support.',
       [{ text: 'Go Home', href: 'index.html' }]
@@ -104,17 +106,47 @@ async function pollPaymentStatus(txRef) {
     }
 
     try {
-      const res  = await fetch(`https://anistrimbackend.onrender.com/api/payments/verify?tx_ref=${txRef}`);
-      const data = await res.json();
+      // Step 1: Try the new subscription verification first (subscriptions table)
+      let data = null;
+      let found = false;
 
-      if (data.status === 'successful') {
+      if (subscriptionRef) {
+        const res = await fetch(
+          `${API || 'https://anistrimbackend.onrender.com'}/api/payments/verify-subscription?reference=${subscriptionRef}`
+        );
+        if (res.ok) {
+          data = await res.json();
+          found = true;
+        }
+      }
+
+      // Step 2: Fallback to legacy payments verification
+      if (!found && txRef) {
+        const res = await fetch(
+          `${API || 'https://anistrimbackend.onrender.com'}/api/payments/verify?tx_ref=${txRef}`
+        );
+        if (res.ok) {
+          data = await res.json();
+        }
+      }
+
+      if (!data) {
+        // Still pending — keep polling
+        return;
+      }
+
+      // Check for COMPLETED (new subscriptions table) or 'successful' (legacy payments table)
+      const isCompleted = data.status === 'COMPLETED' || data.status === 'successful';
+      const isFailed = data.status === 'FAILED' || data.status === 'failed';
+
+      if (isCompleted) {
         clearInterval(poll);
         await updatePremiumState(txRef);
         showResult('success', '🎉', 'Payment Successful!',
           `Welcome to AniStrim Premium! Your ${data.plan === 'yearly' ? 'yearly' : 'monthly'} subscription is now active.`,
           [{ text: 'Start Watching 🎬', href: 'index.html' }]
         );
-      } else if (data.status === 'failed') {
+      } else if (isFailed) {
         clearInterval(poll);
         showResult('error', '❌', 'Payment Failed',
           'Your payment was not successful. You have not been charged.',
@@ -122,7 +154,7 @@ async function pollPaymentStatus(txRef) {
            { text: 'Go Home', href: 'index.html' }]
         );
       }
-      // If still pending, keep polling silently
+      // If still PENDING/pending, keep polling silently
     } catch (e) {
       // Network error — keep polling
     }
@@ -136,7 +168,10 @@ async function updatePremiumState(txRef) {
     user.isPremium = true;
     State.save(State.token, user);
   }
-  if (txRef) localStorage.removeItem('pending_tx_ref');
+  if (txRef) {
+    localStorage.removeItem('pending_tx_ref');
+    localStorage.removeItem('pending_subscription_ref');
+  }
 }
 
 // ── Show result card ─────────────────────────────────────────
