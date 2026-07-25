@@ -1,15 +1,22 @@
 // controllers/paymentController.js
 const axios = require('axios');
 const db = require('../config/db');
+const pesapal = require('../services/pesapalService');
 require('dotenv').config();
 
 const PESAPAL_BASE = 'https://pay.pesapal.com/v3';
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 
-// ── CORRECTED PLANS (monthly = 180000 per spec) ──────────────
+// ── CORRECTED PLANS (monthly = 15000 per spec) ──────────────
 const PLANS = {
   monthly: { amount: 15000, label: 'AniStrim Premium Monthly' },
   yearly: { amount: 180000, label: 'AniStrim Premium Yearly' },
+};
+
+// ── Premium duration per plan ────────────────────────────────
+const PREMIUM_DURATION_DAYS = {
+  monthly: 30,
+  yearly: 365,
 };
 
 async function getPesapalToken() {
@@ -51,6 +58,190 @@ async function getOrRegisterIPN(token) {
     throw err;
   }
 }
+
+// ──────────────────────────────────────────────────────────────
+//  NEW: POST /api/payments/checkout
+//  Authenticates with Pesapal, registers IPN, submits order,
+//  saves a PENDING subscription record, returns redirect URL.
+// ──────────────────────────────────────────────────────────────
+exports.initializeCheckout = async (req, res) => {
+  const { plan } = req.body;
+  const userId = req.user.id;
+
+  console.log(`🛒 Checkout: plan=${plan}, userId=${userId}`);
+
+  // Validate plan
+  if (!plan || !PLANS[plan]) {
+    return res.status(400).json({
+      message: `Invalid plan "${plan}". Must be "monthly" or "yearly".`,
+    });
+  }
+
+  const { amount, label } = PLANS[plan];
+
+  try {
+    // Fetch user details
+    const [rows] = await db.query(
+      'SELECT id, name, email FROM users WHERE id = ?',
+      [userId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    const user = rows[0];
+
+    // Generate a unique merchant reference
+    const reference = `ANISTRIM-${userId}-${Date.now()}`;
+
+    // 1. Get Pesapal OAuth token
+    const token = await pesapal.getToken();
+
+    // 2. Register / retrieve IPN ID
+    const ipnUrl = `${BACKEND_URL}/api/payments/ipn-listener`;
+    const ipnId = await pesapal.registerIPN(token, ipnUrl);
+
+    // 3. Build callback URL (user lands here after payment)
+    const callbackUrl = `${BACKEND_URL}/api/payments/callback?tx_ref=${reference}`;
+
+    // 4. Submit order to Pesapal
+    const orderResult = await pesapal.submitOrder(token, {
+      id: reference,
+      currency: 'UGX',
+      amount: amount,
+      description: label,
+      callback_url: callbackUrl,
+      notification_id: ipnId,
+      email: user.email,
+      firstName: user.name.split(' ')[0] || user.name,
+      lastName: user.name.split(' ').slice(1).join(' ') || '',
+    });
+
+    // 5. Save a PENDING subscription record
+    await db.query(
+      `INSERT INTO subscriptions
+        (user_id, reference, amount, currency, status, plan, order_tracking_id)
+       VALUES (?, ?, ?, 'UGX', 'PENDING', ?, ?)`,
+      [userId, reference, amount, plan, orderResult.order_tracking_id]
+    );
+
+    console.log(
+      `✅ Checkout complete: ref=${reference}, trackingId=${orderResult.order_tracking_id}`
+    );
+
+    res.status(200).json({
+      message: 'Payment link created.',
+      payment_link: orderResult.redirect_url,
+      tx_ref: reference,
+      order_tracking_id: orderResult.order_tracking_id,
+    });
+  } catch (err) {
+    console.error('❌ initializeCheckout error:', err.response?.data || err.message);
+    res.status(500).json({
+      message: 'Could not initiate payment. Please try again.',
+    });
+  }
+};
+
+// ──────────────────────────────────────────────────────────────
+//  NEW: GET /api/payments/ipn-listener
+//  Public webhook called by Pesapal servers.
+//  Pesapal sends query params: OrderTrackingId, OrderMerchantReference
+//  We verify the status and update subscription + user record.
+// ──────────────────────────────────────────────────────────────
+exports.handlePesapalIPN = async (req, res) => {
+  const { OrderTrackingId, OrderMerchantReference } = req.query;
+
+  console.log(
+    `🔔 IPN received: trackingId=${OrderTrackingId}, ref=${OrderMerchantReference}`
+  );
+
+  if (!OrderTrackingId || !OrderMerchantReference) {
+    console.error('❌ IPN missing required params');
+    return res.status(200).json({ status: 200 }); // Return 200 to acknowledge
+  }
+
+  try {
+    // 1. Get Pesapal OAuth token
+    const token = await pesapal.getToken();
+
+    // 2. Query transaction status from Pesapal
+    const txnStatus = await pesapal.getTransactionStatus(token, OrderTrackingId);
+
+    // 3. Find the pending subscription
+    const [subs] = await db.query(
+      `SELECT * FROM subscriptions
+       WHERE reference = ? AND status = 'PENDING'`,
+      [OrderMerchantReference]
+    );
+
+    if (!subs.length) {
+      console.warn(
+        `⚠️ IPN: No pending subscription found for ref=${OrderMerchantReference}`
+      );
+      return res.status(200).json({ status: 200 });
+    }
+
+    const subscription = subs[0];
+
+    // 4. Check if payment is completed
+    if (!pesapal.isPaymentCompleted(txnStatus.status)) {
+      console.log(
+        `❌ IPN: Payment not completed (status: ${txnStatus.status}). Marking as FAILED.`
+      );
+      await db.query(
+        `UPDATE subscriptions
+         SET status = 'FAILED', payment_method = ?, order_tracking_id = ?
+         WHERE id = ?`,
+        [txnStatus.payment_method || null, OrderTrackingId, subscription.id]
+      );
+      return res.status(200).json({ status: 200 });
+    }
+
+    // 5. Payment is COMPLETED — calculate premium expiry
+    const days = PREMIUM_DURATION_DAYS[subscription.plan] || 30;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + days);
+
+    console.log(
+      `✅ IPN: Payment COMPLETED for user ${subscription.user_id}. Premium until ${expiresAt}`
+    );
+
+    // 6. Update subscription record
+    await db.query(
+      `UPDATE subscriptions
+       SET status = 'COMPLETED',
+           payment_method = ?,
+           order_tracking_id = ?,
+           paid_at = NOW(),
+           expires_at = ?
+       WHERE id = ?`,
+      [
+        txnStatus.payment_method || null,
+        OrderTrackingId,
+        expiresAt,
+        subscription.id,
+      ]
+    );
+
+    // 7. Grant premium to user
+    await db.query(
+      `UPDATE users
+       SET is_premium = 1, premium_expires_at = ?
+       WHERE id = ?`,
+      [expiresAt, subscription.user_id]
+    );
+
+    console.log(
+      `🎉 Premium granted to user ${subscription.user_id} until ${expiresAt}`
+    );
+
+    res.status(200).json({ status: 200 });
+  } catch (err) {
+    console.error('❌ IPN processing error:', err.message);
+    // Always return 200 so Pesapal knows we received it
+    res.status(200).json({ status: 200 });
+  }
+};
 
 // POST /api/payments/initiate
 exports.initiatePayment = async (req, res) => {
