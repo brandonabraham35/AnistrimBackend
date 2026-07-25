@@ -2,36 +2,34 @@ const consumet = require('@consumet/extensions');
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
-// 1. Log all available providers so we know what we are working with
 const availableProviders = Object.keys(ANIME);
 console.log(`[STREAM SETUP] Available ANIME providers in this package version:`, availableProviders.join(', '));
 
-// 2. Try to find preferred providers flexibly
-const gogoKey = availableProviders.find(key => key.toLowerCase().includes('gogo'));
-const zoroKey = availableProviders.find(key => key.toLowerCase().includes('zoro'));
-const paheKey = availableProviders.find(key => key.toLowerCase().includes('pahe'));
+// Prioritize HiAnime, then KickAssAnime
+const hiKey = availableProviders.find(key => key.toLowerCase().includes('hianime'));
+const kickKey = availableProviders.find(key => key.toLowerCase().includes('kickass'));
 
 let fallbackProvider;
 
-if (gogoKey && typeof ANIME[gogoKey] === 'function') {
-    console.log(`[STREAM SETUP] Success: Using ${gogoKey}`);
-    fallbackProvider = new ANIME[gogoKey]();
-} else if (zoroKey && typeof ANIME[zoroKey] === 'function') {
-    console.log(`[STREAM SETUP] Success: Using ${zoroKey}`);
-    fallbackProvider = new ANIME[zoroKey]();
-} else if (paheKey && typeof ANIME[paheKey] === 'function') {
-    console.log(`[STREAM SETUP] Success: Using ${paheKey}`);
-    fallbackProvider = new ANIME[paheKey]();
+if (hiKey && typeof ANIME[hiKey] === 'function') {
+    console.log(`[STREAM SETUP] Success: Using ${hiKey}`);
+    fallbackProvider = new ANIME[hiKey]();
+} else if (kickKey && typeof ANIME[kickKey] === 'function') {
+    console.log(`[STREAM SETUP] Success: Using ${kickKey}`);
+    fallbackProvider = new ANIME[kickKey]();
 } else {
-    // 3. Ultimate Fallback: Grab the very first thing that is a function/constructor
-    console.log(`[STREAM SETUP] Preferred providers missing. Attempting blind fallback...`);
-    const firstValidKey = availableProviders.find(key => typeof ANIME[key] === 'function');
+    // Blind Fallback: Grab the first valid function that is NOT AnimePahe
+    console.log(`[STREAM SETUP] Preferred providers missing. Attempting safe blind fallback...`);
+    const safeKey = availableProviders.find(key => 
+        typeof ANIME[key] === 'function' && 
+        !key.toLowerCase().includes('pahe')
+    );
     
-    if (firstValidKey) {
-        console.log(`[STREAM SETUP] Blind Fallback Success: Using ${firstValidKey}`);
-        fallbackProvider = new ANIME[firstValidKey]();
+    if (safeKey) {
+        console.log(`[STREAM SETUP] Blind Fallback Success: Using ${safeKey}`);
+        fallbackProvider = new ANIME[safeKey]();
     } else {
-        throw new Error("CRITICAL: No valid anime providers found in @consumet/extensions ANIME object.");
+        throw new Error("CRITICAL: No safe anime providers found in @consumet/extensions.");
     }
 }
 
