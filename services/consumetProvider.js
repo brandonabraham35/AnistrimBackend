@@ -3,26 +3,27 @@ const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
 const availableProviders = Object.keys(ANIME);
-console.log(`[STREAM SETUP] Available ANIME providers in this package version:`, availableProviders.join(', '));
+console.log(`[STREAM SETUP] Available ANIME providers:`, availableProviders.join(', '));
 
-// Prioritize HiAnime, then KickAssAnime
-const hiKey = availableProviders.find(key => key.toLowerCase().includes('hianime'));
+// Prioritize KickAssAnime, then AnimeSama
 const kickKey = availableProviders.find(key => key.toLowerCase().includes('kickass'));
+const samaKey = availableProviders.find(key => key.toLowerCase().includes('sama'));
 
 let fallbackProvider;
 
-if (hiKey && typeof ANIME[hiKey] === 'function') {
-    console.log(`[STREAM SETUP] Success: Using ${hiKey}`);
-    fallbackProvider = new ANIME[hiKey]();
-} else if (kickKey && typeof ANIME[kickKey] === 'function') {
+if (kickKey && typeof ANIME[kickKey] === 'function') {
     console.log(`[STREAM SETUP] Success: Using ${kickKey}`);
     fallbackProvider = new ANIME[kickKey]();
+} else if (samaKey && typeof ANIME[samaKey] === 'function') {
+    console.log(`[STREAM SETUP] Success: Using ${samaKey}`);
+    fallbackProvider = new ANIME[samaKey]();
 } else {
-    // Blind Fallback: Grab the first valid function that is NOT AnimePahe
+    // Blind Fallback: Exclude heavily blocked domains (Pahe, HiAnime)
     console.log(`[STREAM SETUP] Preferred providers missing. Attempting safe blind fallback...`);
     const safeKey = availableProviders.find(key => 
         typeof ANIME[key] === 'function' && 
-        !key.toLowerCase().includes('pahe')
+        !key.toLowerCase().includes('pahe') &&
+        !key.toLowerCase().includes('hianime')
     );
     
     if (safeKey) {
