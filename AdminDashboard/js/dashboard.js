@@ -312,7 +312,78 @@
   async function openAnimeEditor(id = null) { let anime = {}; if (id) anime = (await window.apiRequest('/admin/anime')).find(item => Number(item.id) === Number(id)) || {}; const modal = openModal(id ? 'Edit Anime' : 'Add Anime', `<form id="anime-form" class="form-grid"><label>Title<input name="title" required value="${esc(anime.title || '')}"></label><label>Japanese title<input name="title_japanese" value="${esc(anime.title_japanese || '')}"></label><label>Year<input name="year" type="number" value="${esc(anime.year || '')}"></label><label>Studio<input name="studio" value="${esc(anime.studio || '')}"></label><label>Rating<input name="rating" type="number" min="0" max="10" step=".1" value="${esc(anime.rating || '')}"></label><label>Status<select name="status"><option value="airing">Airing</option><option value="completed">Completed</option><option value="upcoming">Upcoming</option></select></label><label>Cover URL<input name="cover_image" value="${esc(anime.cover_image || '')}"><input name="cover_file" type="file" accept="image/*"></label><label>Banner URL<input name="banner_image" value="${esc(anime.banner_image || '')}"><input name="banner_file" type="file" accept="image/*"></label><label class="wide">Description<textarea name="description">${esc(anime.description || '')}</textarea></label><label class="wide">Tags<input name="tags" value="${esc(anime.tags || '')}"></label><label><input name="is_premium" type="checkbox" ${anime.is_premium ? 'checked' : ''}> Premium only</label><label><input name="is_featured" type="checkbox" ${anime.is_featured ? 'checked' : ''}> Hero featured</label><div class="wide"><button class="btn" type="submit">${id ? 'Save changes' : 'Create anime'}</button></div></form>`); modal.querySelector('[name=status]').value = anime.status || 'completed'; modal.querySelector('#anime-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = Object.fromEntries(new FormData(form)); data.is_premium = form.is_premium.checked; data.is_featured = form.is_featured.checked; if (form.cover_file.files[0]) { const image = await uploadImage(form.cover_file.files[0], 'anime'); data.cover_image = image.url; data.cover_public_id = image.publicId; } if (form.banner_file.files[0]) { const image = await uploadImage(form.banner_file.files[0], 'banners'); data.banner_image = image.url; data.banner_public_id = image.publicId; } delete data.cover_file; delete data.banner_file; await window.apiRequest(id ? `/admin/anime/${id}` : '/admin/anime', { method: id ? 'PUT' : 'POST', body: data }); modal.remove(); await loadAnime(); await loadOverview(); } catch (error) { alert(`Anime was not saved: ${error.message}`); } finally { submit.disabled = false; } }); }
   async function openEpisodeEditor(animeId = '') { const anime = await window.apiRequest('/admin/anime'); const modal = openModal('Add Episode', `<form id="episode-form" class="form-grid"><label>Anime<select name="anime_id" required>${anime.map(a => `<option value="${a.id}" ${String(a.id) === String(animeId) ? 'selected' : ''}>${esc(a.title)}</option>`).join('')}</select></label><label>Episode number<input name="episode_number" type="number" min="1" required></label><label>Title<input name="title"></label><label>Video file<input id="ep-video-file" name="video_file" type="file" accept="video/*" required></label><label>Thumbnail image<input id="ep-thumb-file" name="thumbnail_file" type="file" accept="image/*" required></label><input id="ep-video-url" name="video_url" type="hidden"><input id="ep-cloudinary-id" name="cloudinary_public_id" type="hidden"><input id="ep-thumb-url" name="thumbnail_url" type="hidden"><label>Intro start<input name="intro_start_time" type="number" min="0"></label><label>Intro end<input name="intro_end_time" type="number" min="0"></label><label><input name="is_premium" type="checkbox"> Premium episode</label><div class="wide"><progress data-upload-progress hidden value="0" max="100"></progress><div data-upload-status aria-live="polite"></div><button class="btn" type="submit">Save Episode</button></div></form>`); modal.querySelector('#episode-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = await prepareEpisodeMedia(form); const selected = data.anime_id; delete data.anime_id; await window.apiRequest(`/admin/anime/${selected}/episodes`, { method: 'POST', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not published: ${error.message}`); } finally { submit.disabled = false; } }); }
   async function openEpisodeEdit(id) { const episode = await window.apiRequest(`/admin/episodes/${id}`); const modal = openModal('Edit Episode', `<form id="episode-edit-form" class="form-grid"><label>Episode number<input name="episode_number" type="number" min="1" value="${esc(episode.episode_number)}"></label><label>Title<input name="title" value="${esc(episode.title || '')}"></label><label>Replace video (optional)<input id="ep-video-file" name="video_file" type="file" accept="video/*"></label><label>Replace thumbnail (optional)<input id="ep-thumb-file" name="thumbnail_file" type="file" accept="image/*"></label><input id="ep-video-url" name="video_url" type="hidden" value="${esc(episode.video_url || '')}"><input id="ep-cloudinary-id" name="cloudinary_public_id" type="hidden" value="${esc(episode.cloudinary_public_id || '')}"><input id="ep-thumb-url" name="thumbnail_url" type="hidden" value="${esc(episode.thumbnail_url || '')}"><label>Intro start<input name="intro_start_time" type="number" value="${esc(episode.intro_start_time || '')}"></label><label>Intro end<input name="intro_end_time" type="number" value="${esc(episode.intro_end_time || '')}"></label><label><input name="is_premium" type="checkbox" ${episode.is_premium ? 'checked' : ''}> Premium episode</label><div class="wide"><progress data-upload-progress hidden value="0" max="100"></progress><div data-upload-status aria-live="polite"></div><button class="btn" type="submit">Save Episode</button></div></form>`); modal.querySelector('#episode-edit-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = await prepareEpisodeMedia(form); await window.apiRequest(`/admin/episodes/${id}`, { method: 'PUT', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not saved: ${error.message}`); } finally { submit.disabled = false; } }); }
-  function showSection(section) { document.querySelectorAll('[data-section-panel]').forEach(panel => { panel.hidden = panel.dataset.sectionPanel !== section; }); document.querySelectorAll('[data-section]').forEach(link => link.classList.toggle('active', link.dataset.section === section)); text('page-title', ({ dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments' })[section]); window.location.hash = section; ({ dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments })[section]?.(); }
+  // ─── Ads Configuration Management ────────────────────────────────
+  async function loadAdsConfig() {
+    try {
+      const config = await window.apiRequest('/ads/config');
+      if (!config) {
+        document.getElementById('ads-banner-enabled').checked = true;
+        document.getElementById('ads-interstitial-enabled').checked = true;
+        document.getElementById('ads-preroll-enabled').checked = false;
+        document.getElementById('ads-interstitial-clicks').value = 3;
+        document.getElementById('ads-interstitial-clicks-value').textContent = '3';
+      } else {
+        document.getElementById('ads-banner-enabled').checked = config.bannerEnabled;
+        document.getElementById('ads-interstitial-enabled').checked = config.interstitialEnabled;
+        document.getElementById('ads-preroll-enabled').checked = config.preRollEnabled;
+        document.getElementById('ads-interstitial-clicks').value = config.interstitialClicksBetween || 3;
+        document.getElementById('ads-interstitial-clicks-value').textContent = config.interstitialClicksBetween || 3;
+      }
+      updateAdsPreview();
+      const statusEl = document.getElementById('ads-config-status');
+      if (statusEl) { statusEl.style.display = 'none'; }
+    } catch (error) {
+      console.error('Failed to load ads config:', error.message);
+    }
+  }
+
+  function updateAdsPreview() {
+    const bannerEnabled = document.getElementById('ads-banner-enabled').checked;
+    const interstitialEnabled = document.getElementById('ads-interstitial-enabled').checked;
+    const preRollEnabled = document.getElementById('ads-preroll-enabled').checked;
+    const interstitialClicks = parseInt(document.getElementById('ads-interstitial-clicks').value) || 3;
+    document.getElementById('ads-interstitial-clicks-value').textContent = interstitialClicks;
+    const preview = {
+      bannerEnabled,
+      interstitialEnabled,
+      interstitialClicksBetween: interstitialClicks,
+      preRollEnabled,
+    };
+    document.getElementById('ads-config-preview').textContent = JSON.stringify(preview, null, 2);
+  }
+  window.updateAdsPreview = updateAdsPreview;
+
+  async function saveAdsConfig() {
+    const btn = document.getElementById('save-ads-config-btn');
+    const statusEl = document.getElementById('ads-config-status');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+    statusEl.style.display = 'none';
+    try {
+      const body = {
+        bannerEnabled: document.getElementById('ads-banner-enabled').checked,
+        interstitialEnabled: document.getElementById('ads-interstitial-enabled').checked,
+        preRollEnabled: document.getElementById('ads-preroll-enabled').checked,
+        interstitialClicksBetween: parseInt(document.getElementById('ads-interstitial-clicks').value) || 3,
+      };
+      await window.apiRequest('/ads/config', { method: 'PUT', body });
+      statusEl.style.cssText = 'margin-bottom:1rem;padding:0.75rem;border-radius:0.35rem;background:rgba(34,197,94,0.15);color:var(--success);font-weight:600;';
+      statusEl.textContent = '✅ Ads configuration saved successfully.';
+      statusEl.style.display = 'block';
+      updateAdsPreview();
+      setTimeout(() => { statusEl.style.display = 'none'; }, 4000);
+    } catch (error) {
+      statusEl.style.cssText = 'margin-bottom:1rem;padding:0.75rem;border-radius:0.35rem;background:rgba(239,68,68,0.15);color:var(--danger);font-weight:600;';
+      statusEl.textContent = `❌ Failed to save: ${error.message}`;
+      statusEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '💾 Save Changes';
+    }
+  }
+  window.saveAdsConfig = saveAdsConfig;
+
+  function showSection(section) { document.querySelectorAll('[data-section-panel]').forEach(panel => { panel.hidden = panel.dataset.sectionPanel !== section; }); document.querySelectorAll('[data-section]').forEach(link => link.classList.toggle('active', link.dataset.section === section)); text('page-title', ({ dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments', 'ads-config': 'Ads Configuration' })[section]); window.location.hash = section; ({ dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments, 'ads-config': loadAdsConfig })[section]?.(); }
   window.manageEpisodes = (animeId) => { showSection('episodes'); openEpisodeEditor(animeId); }; window.logout = () => { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_user'); window.location.replace('index.html'); };
   document.addEventListener('DOMContentLoaded', () => { if (!requireAdmin()) return; document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); showSection(link.dataset.section); })); wireHybridModal(); document.getElementById('add-episode-button').addEventListener('click', () => openEpisodeEditor());
 
@@ -353,5 +424,4 @@
       }
     });
 
-    document.addEventListener('click', async event => { const edit = event.target.closest('[data-edit-anime]'); const remove = event.target.closest('[data-delete-anime]'); const manage = event.target.closest('[data-manage-episodes]'); const premium = event.target.closest('[data-premium-user]'); const editEpisode = event.target.closest('[data-edit-episode]'); const deleteEpisode = event.target.closest('[data-delete-episode]'); try { if (edit) return openAnimeEditor(edit.dataset.editAnime); if (manage) return window.manageEpisodes(manage.dataset.manageEpisodes, manage.dataset.animeTitle); if (remove && confirm('Delete this anime and its episodes?')) { await window.apiRequest(`/admin/anime/${remove.dataset.deleteAnime}`, { method: 'DELETE' }); await loadAnime(); await loadOverview(); } if (premium) { await window.apiRequest(`/admin/users/${premium.dataset.premiumUser}/premium`, { method: 'PUT', body: { is_premium: premium.dataset.premiumValue === '1' } }); await loadUsers(); await loadOverview(); } if (editEpisode) return openEpisodeEdit(editEpisode.dataset.editEpisode); if (deleteEpisode && confirm('Delete this episode?')) { await window.apiRequest(`/admin/episodes/${deleteEpisode.dataset.deleteEpisode}`, { method: 'DELETE' }); await loadEpisodes(); await loadOverview(); } } catch (error) { alert(error.message || 'Operation failed.'); } }); const section = location.hash.slice(1); showSection(['dashboard', 'anime', 'episodes', 'users', 'payments'].includes(section) ? section : 'dashboard'); window.setInterval(() => { if (!document.querySelector('[data-section-panel="dashboard"]').hidden) loadOverview(); }, 30000); });
-})();
+    document.addEventListener('click', async event => { const edit = event.target.closest('[data-edit-anime]'); const remove = event.target.closest('[data-delete-anime]'); const manage = event.target.closest('[data-manage-episodes]'); const premium = event.target.closest('[data-premium-user]'); const editEpisode = event.target.closest('[data-edit-episode]'); const deleteEpisode = event.target.closest('[data-delete-episode]'); try { if (edit) return openAnimeEditor(edit.dataset.editAnime); if (manage) return window.manageEpisodes(manage.dataset.manageEpisodes, manage.dataset.animeTitle); if (remove && confirm('Delete this anime and its episodes?')) { await window.apiRequest(`/admin/anime/${remove.dataset.deleteAnime}`, { method: 'DELETE' }); await loadAnime(); await loadOverview(); } if (premium) { await window.apiRequest(`/admin/users/${premium.dataset.premiumUser}/premium`, { method: 'PUT', body: { is_premium: premium.dataset.premiumValue === '1' } }); await loadUsers(); await loadOverview(); } if (editEpisode) return openEpisodeEdit(editEpisode.dataset.editEpisode); if (deleteEpisode && confirm('Delete this episode?')) { await window.apiRequest(`/admin/episodes/${deleteEpisode.dataset.deleteEpisode}`, { method: 'DELETE' }); await loadEpisodes(); await loadOverview(); } } catch (error) { alert(error.message || 'Operation failed.'); } }); const section = location.hash.slice(1); showSection(['dashboard', 'anime', 'episodes', 'users', 'payments', 'ads-config'].includes(section) ? section : 'dashboard'); window.setInterval(() => { if (!document.querySelector('[data-section-panel="dashboard"]').hidden) loadOverview(); }, 30000); });

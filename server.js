@@ -59,6 +59,8 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/admin/upload', require('./routes/uploadRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
 app.use('/api/watch',    require('./routes/watchRoutes'));
+app.use('/api/ads',      require('./routes/adsRoutes'));
+app.use('/api/reports',  require('./routes/reportRoutes'));
 
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
 try {

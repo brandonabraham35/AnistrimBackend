@@ -237,6 +237,7 @@
             <li><a href="#episodes" data-section="episodes"><i class="fas fa-video"></i> Episodes</a></li>
             <li><a href="#users" data-section="users"><i class="fas fa-users"></i> Users Management</a></li>
             <li><a href="#payments" data-section="payments"><i class="fas fa-wallet"></i> Payments</a></li>
+            <li><a href="#ads-config" data-section="ads-config"><i class="fas fa-ad"></i> Ads Config</a></li>
             <li><a href="#" class="logout-btn" onclick="window.logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
         </ul>
     </div>
@@ -385,6 +386,73 @@
             <div class="section-box"><h4><i class="fas fa-wallet"></i> Payment Records</h4>
                 <div style="overflow-x:auto"><table id="payments-table"><thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
             </div>
+        </section>
+        <section class="page-section" data-section-panel="ads-config" hidden>
+            <div class="section-box">
+                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:0.5rem;margin-bottom:1.5rem;">
+                    <h4 style="border:none;margin:0;padding:0;"><i class="fas fa-ad"></i> Ads Configuration</h4>
+                    <button class="btn" id="save-ads-config-btn" onclick="saveAdsConfig()">💾 Save Changes</button>
+                </div>
+                <p style="color:var(--text-sub);font-size:0.85rem;margin-bottom:1.5rem;">Configure remote monetization rules. The mobile app fetches these settings on boot.</p>
+                <div id="ads-config-status" style="margin-bottom:1rem;display:none;" role="alert"></div>
+                <div style="display:flex;flex-direction:column;gap:1.25rem;">
+                    <div class="ads-toggle-row" style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:#0f172a;border-radius:0.5rem;border:1px solid #334155;">
+                        <div>
+                            <div style="font-weight:600;margin-bottom:0.25rem;">Banner Ads</div>
+                            <div style="font-size:0.8rem;color:var(--text-sub);">Show banner advertisements at the bottom of the screen</div>
+                        </div>
+                        <label class="ads-switch" style="position:relative;display:inline-block;width:46px;height:24px;">
+                            <input type="checkbox" id="ads-banner-enabled" onchange="updateAdsPreview()" style="opacity:0;width:0;height:0;">
+                            <span class="ads-slider" style="position:absolute;cursor:pointer;inset:0;background:#334155;border-radius:24px;transition:0.3s;"></span>
+                        </label>
+                    </div>
+                    <div class="ads-toggle-row" style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:#0f172a;border-radius:0.5rem;border:1px solid #334155;">
+                        <div>
+                            <div style="font-weight:600;margin-bottom:0.25rem;">Interstitial Ads</div>
+                            <div style="font-size:0.8rem;color:var(--text-sub);">Show a full-screen ad between episodes</div>
+                        </div>
+                        <label class="ads-switch" style="position:relative;display:inline-block;width:46px;height:24px;">
+                            <input type="checkbox" id="ads-interstitial-enabled" onchange="updateAdsPreview()" style="opacity:0;width:0;height:0;">
+                            <span class="ads-slider" style="position:absolute;cursor:pointer;inset:0;background:#334155;border-radius:24px;transition:0.3s;"></span>
+                        </label>
+                    </div>
+                    <div class="ads-toggle-row" style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:#0f172a;border-radius:0.5rem;border:1px solid #334155;">
+                        <div>
+                            <div style="font-weight:600;margin-bottom:0.25rem;">Pre-Roll Ads</div>
+                            <div style="font-size:0.8rem;color:var(--text-sub);">Play a short ad before the video starts</div>
+                        </div>
+                        <label class="ads-switch" style="position:relative;display:inline-block;width:46px;height:24px;">
+                            <input type="checkbox" id="ads-preroll-enabled" onchange="updateAdsPreview()" style="opacity:0;width:0;height:0;">
+                            <span class="ads-slider" style="position:absolute;cursor:pointer;inset:0;background:#334155;border-radius:24px;transition:0.3s;"></span>
+                        </label>
+                    </div>
+                    <div style="padding:0.75rem 1rem;background:#0f172a;border-radius:0.5rem;border:1px solid #334155;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <div>
+                                <div style="font-weight:600;margin-bottom:0.25rem;">Interstitial Frequency</div>
+                                <div style="font-size:0.8rem;color:var(--text-sub);">Show an interstitial ad every N episodes watched</div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:0.75rem;">
+                                <input type="range" id="ads-interstitial-clicks" min="1" max="10" value="3" oninput="updateAdsPreview()" style="width:120px;accent-color:var(--accent);cursor:pointer;">
+                                <span id="ads-interstitial-clicks-value" style="font-weight:700;font-size:1.1rem;min-width:1.5rem;text-align:center;color:var(--accent);">3</span>
+                            </div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-sub);margin-top:0.25rem;padding:0 0.25rem;">
+                            <span>Every episode</span>
+                            <span>Every 10 episodes</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:1.5rem;padding:1rem;background:#0f172a;border-radius:0.5rem;border:1px solid #334155;">
+                    <div style="font-weight:600;margin-bottom:0.75rem;">Preview — Current Configuration</div>
+                    <pre id="ads-config-preview" style="background:#1e293b;padding:0.75rem;border-radius:0.35rem;font-size:0.78rem;color:var(--text-sub);overflow-x:auto;white-space:pre-wrap;margin:0;"></pre>
+                </div>
+            </div>
+            <style>
+                .ads-switch input:checked + .ads-slider { background: var(--accent); }
+                .ads-switch input:checked + .ads-slider::before { transform: translateX(22px); }
+                .ads-slider::before { content:''; position:absolute; width:18px; height:18px; border-radius:50%; background:#fff; bottom:3px; left:3px; transition:0.3s; }
+            </style>
         </section>
     </div>
 

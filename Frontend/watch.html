@@ -6,6 +6,7 @@
   <title>Watch | AniStrim</title>
   <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="mobile-native.css">
+<link rel="stylesheet" href="css/watch.css">
   <style>
     /* Custom video player */
     .player-wrap {
@@ -118,16 +119,16 @@
 
 <!-- FIX 3: Premium lock + FIX 1: Custom player -->
 <div class="player-wrap" id="player-wrap">
-  <video id="main-video"></video>
+  <video id="animePlayer" width="100%" height="100%" playsinline></video>
 
   <!-- Skip Intro -->
-  <button class="skip-intro-btn" id="skip-intro-btn" onclick="skipIntro()">Skip Intro ›</button>
+  <button class="skip-intro-btn hidden" id="skipIntroBtn" onclick="skipIntro()">Skip Intro ›</button>
 
   <!-- Next Episode banner — countdown for premium, manual click for free -->
-  <div class="next-ep-banner" id="next-ep-banner">
+  <div class="next-ep-banner hidden" id="nextEpisodeBtn">
     <p id="next-ep-auto-label" style="display:none;font-size:0.75rem;margin-bottom:4px;">
       Playing next in <strong id="autoplay-countdown-num">5</strong>s &nbsp;
-      <button onclick="cancelAutoplay();document.getElementById('next-ep-banner').style.display='none';"
+      <button onclick="cancelAutoplay();document.getElementById('nextEpisodeBtn').style.display='none';"
         style="background:none;border:1px solid rgba(255,255,255,0.3);color:white;padding:2px 8px;border-radius:4px;font-size:0.72rem;cursor:pointer;">Cancel</button>
     </p>
     <p id="next-ep-manual-label" style="display:none;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Up Next</p>
@@ -163,7 +164,7 @@
   </div>
 
   <!-- Custom Controls -->
-  <div class="player-controls" id="player-controls">
+  <div class="player-controls" id="videoControls">
     <div class="progress-bar-wrap" id="progress-wrap" onclick="seekVideo(event)">
       <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
     </div>

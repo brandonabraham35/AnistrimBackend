@@ -1,15 +1,10 @@
-# TODO: Feature Implementations
+# Ads Config & Video Player Improvements
 
-## Next Episode Resolver
+## Steps
 
-- [x] Create plan & get approval
-- [x] **Step 1**: Add `resolveNextEpisode` controller to `controllers/watchController.js`
-- [x] **Step 2**: Add public route `GET /next/:animeId/:currentEpisodeNumber` to `routes/watchRoutes.js`
-- [x] **Step 3**: Verify implementation & test
-
-## AniSkip Integration (Skip Intro/Outro Timestamps)
-
-- [x] **Step 1**: Create `services/aniSkipService.js` with `fetchSkipTimes(malId, episodeNumber)`
-- [x] **Step 2**: Add `getEpisodeSkipTimes` controller to `controllers/watchController.js`
-- [x] **Step 3**: Add public route `GET /skip-times/:malId/:episodeNumber` to `routes/watchRoutes.js`
-- [x] **Step 4**: Verify implementation
+- [x] Plan approved by user
+- [x] **Step 1**: Fix Auto-Hide Controls in `watch.js` — 3s inactivity timer, mousemove/touchstart listeners
+- [x] **Step 2**: Fix Skip Intro Logic in `watch.js` — use fetched `introRange` instead of hardcoded 5-90s range
+- [x] **Step 3**: Add Ads Config Panel to Admin Dashboard — sidebar link, form panel, wiring
+- [x] **Step 4**: Ad system already exists in `Frontend/scrpt.js` — shows 15s interstitials every 10 min for free users. Ads config backend API is functional.
+- [x] **Step 5**: Implementation verified — all backend (SQL migration, controller, routes) and frontend (auto-hide controls, skip intro, admin ads config panel) are complete.

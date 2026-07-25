@@ -4,6 +4,9 @@ let currentEp    = 1;
 let nextEpData   = null;
 let currentEpId  = null;
 let autoplayCountdown = null;
+let introRange = null;
+let hlsInstance = null;
+let controlsTimer = null;
 
 async function loadWatch() {
   const params   = new URLSearchParams(window.location.search);
@@ -48,10 +51,10 @@ async function loadWatch() {
       return;
     }
 
-    const video = document.getElementById('main-video');
+    const video = document.getElementById('animePlayer');
     if (ep?.video_url) {
       // Static video URL (e.g. Cloudinary) — play directly
-      video.src = ep.video_url;
+      await attachStreamSource(video, ep.video_url);
       document.getElementById('video-placeholder').style.display = 'none';
       setupPlayer(video);
     } else {
@@ -65,24 +68,25 @@ async function loadWatch() {
 
       // Fetch the stream URL from our Consumet-powered endpoint
       try {
-        const title = encodeURIComponent(currentAnime.title);
-        const epNum = currentEp;
-        const { data: streamData } = await apiFetch(`/api/anime/resolve/stream?animeTitle=${title}&episodeNumber=${epNum}`);
+        const episodeKey = ep?.id || ep?.episode_number || currentEp;
+        const { data: streamData } = await apiFetch(`/api/anime/${animeId}/stream/${episodeKey}`);
 
-        if (streamData?.streamUrl) {
+        if (streamData?.video_url) {
           placeholder.style.display = 'none';  // hide placeholder since video will play
 
           // If HLS.js is available and the stream is .m3u8, use HLS for better playback
-          if (typeof Hls !== 'undefined' && streamData.streamUrl.includes('.m3u8')) {
+          if (typeof Hls !== 'undefined' && Hls.isSupported() && streamData.video_url.includes('.m3u8')) {
             const hls = new Hls();
-            hls.loadSource(streamData.streamUrl);
+            hlsInstance?.destroy();
+            hlsInstance = hls;
+            hls.loadSource(streamData.video_url);
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
               video.play().catch(() => {});
             });
           } else {
             // Fallback: native HTML5 with direct URL
-            video.src = streamData.streamUrl;
+            video.src = streamData.video_url;
           }
 
           setupPlayer(video);
@@ -96,6 +100,7 @@ async function loadWatch() {
       }
     }
 
+    loadSkipTimes(animeId, ep?.number || ep?.episode_number || currentEp);
     renderMoreEpisodes(episodes, animeId);
 
     // Show premium feature banner for free users
@@ -114,8 +119,9 @@ function setupPlayer(video) {
   const fill        = document.getElementById('progress-fill');
   const timeDisplay = document.getElementById('time-display');
   const playIcon    = document.getElementById('play-icon');
-  const skipBtn     = document.getElementById('skip-intro-btn');
-  const nextBanner  = document.getElementById('next-ep-banner');
+  const controls    = document.getElementById('videoControls');
+  const skipBtn     = document.getElementById('skipIntroBtn');
+  const nextBanner  = document.getElementById('nextEpisodeBtn');
   const isPremium   = State.isPremium || State.isAdmin;
 
   // Resume from saved position
@@ -126,11 +132,13 @@ function setupPlayer(video) {
     fill.style.width = pct + '%';
     timeDisplay.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration)}`;
 
-    // ── PREMIUM ONLY: Skip Intro button (shows 5s – 90s) ──────────────
-    if (isPremium) {
-      skipBtn.style.display = (video.currentTime > 5 && video.currentTime < 90) ? 'block' : 'none';
+    // ── Skip Intro button based on fetched introRange ──────────────
+    if (introRange && video.currentTime >= introRange.start && video.currentTime < introRange.end) {
+      skipBtn.style.display = 'block';
+      skipBtn.classList.remove('hidden');
     } else {
-      skipBtn.style.display = 'none'; // Free users never see skip intro
+      skipBtn.style.display = 'none';
+      skipBtn.classList.add('hidden');
     }
 
     // ── PREMIUM ONLY: Autoplay next episode countdown ─────────────────
@@ -138,8 +146,7 @@ function setupPlayer(video) {
       const remaining = video.duration - video.currentTime;
       if (remaining <= 30 && remaining > 0) {
         nextBanner.style.display = 'block';
-        // Update countdown seconds
-        const secEl = document.getElementById('next-ep-countdown');
+        const secEl = document.getElementById('autoplay-countdown-num');
         if (secEl) secEl.textContent = Math.ceil(remaining);
       } else if (remaining > 30) {
         nextBanner.style.display = 'none';
@@ -170,20 +177,65 @@ function setupPlayer(video) {
   video.addEventListener('play', () => {
     playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
     wrap.classList.remove('paused');
+    // Show controls briefly on play, start hide timer
+    showControls(controls);
   });
   video.addEventListener('pause', () => {
     playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
     wrap.classList.add('paused');
-    // If user pauses, cancel any autoplay countdown
+    // Show controls when paused (always visible while paused)
+    showControls(controls);
     cancelAutoplay();
   });
+
+  // ── Auto-hide controls: 3s inactivity timer ─────────────────────
+  setupControlsAutoHide(wrap, controls);
 
   video.play().catch(() => wrap.classList.add('paused'));
 }
 
+// ── Auto-hide controls with 3-second inactivity timer ───────────────
+function setupControlsAutoHide(wrap, controls) {
+  function resetControlsTimer() {
+    showControls(controls);
+    if (controlsTimer) clearTimeout(controlsTimer);
+    controlsTimer = setTimeout(() => {
+      // Don't hide controls if video is paused
+      const video = document.getElementById('animePlayer');
+      if (video && !video.paused) {
+        hideControls(controls);
+      }
+    }, 3000);
+  }
+
+  // Mouse/touch activity shows controls and resets timer
+  wrap.addEventListener('mousemove', resetControlsTimer);
+  wrap.addEventListener('touchstart', resetControlsTimer);
+  // Also reset on mouse enter (e.g. coming back from another tab)
+  wrap.addEventListener('mouseenter', resetControlsTimer);
+
+  // When user clicks on the wrap (not on controls), toggle
+  wrap.addEventListener('click', (e) => {
+    // Don't toggle if clicking on controls or buttons
+    if (e.target.closest('#videoControls') || e.target.closest('.skip-intro-btn') || e.target.closest('.next-ep-banner')) return;
+    const video = document.getElementById('animePlayer');
+    if (video) togglePlay();
+  });
+}
+
+function showControls(controls) {
+  if (!controls) controls = document.getElementById('videoControls');
+  if (controls) controls.classList.remove('hidden');
+}
+
+function hideControls(controls) {
+  if (!controls) controls = document.getElementById('videoControls');
+  if (controls) controls.classList.add('hidden');
+}
+
 // ── PREMIUM: 5-second autoplay countdown ─────────────────────────────
 function startAutoplayCountdown() {
-  const nextBanner = document.getElementById('next-ep-banner');
+  const nextBanner = document.getElementById('nextEpisodeBtn');
   const countEl    = document.getElementById('autoplay-countdown-num');
   nextBanner.style.display = 'block';
   document.getElementById('next-ep-auto-label').style.display  = 'block';
@@ -259,28 +311,28 @@ async function saveProgress(epId, sec, completed) {
 
 // ── Player controls ───────────────────────────────────────────────────
 function togglePlay() {
-  const v = document.getElementById('main-video');
+  const v = document.getElementById('animePlayer');
   v.paused ? v.play() : v.pause();
 }
 window.togglePlay = togglePlay;
 
 function skipBack() {
-  const v = document.getElementById('main-video');
+  const v = document.getElementById('animePlayer');
   if (!isFinite(v.duration)) return;
   v.currentTime = Math.max(0, v.currentTime - 10);
 }
 function skipForward() {
-  const v = document.getElementById('main-video');
+  const v = document.getElementById('animePlayer');
   if (!isFinite(v.duration)) return;
   v.currentTime = Math.min(v.duration - 0.5, v.currentTime + 10);
 }
-function setVolume(v)  { document.getElementById('main-video').volume = parseFloat(v); }
+function setVolume(v)  { document.getElementById('animePlayer').volume = parseFloat(v); }
 window.skipBack    = skipBack;
 window.skipForward = skipForward;
 window.setVolume   = setVolume;
 
 function seekVideo(e) {
-  const v    = document.getElementById('main-video');
+  const v    = document.getElementById('animePlayer');
   const rect = e.currentTarget.getBoundingClientRect();
   v.currentTime = ((e.clientX - rect.left) / rect.width) * (v.duration || 0);
 }
@@ -299,8 +351,9 @@ window.toggleFullscreen = toggleFullscreen;
 function skipIntro() {
   // Only works for premium — button is hidden for free users anyway
   if (!State.isPremium && !State.isAdmin) return;
-  document.getElementById('main-video').currentTime = 90;
-  document.getElementById('skip-intro-btn').style.display = 'none';
+  const video = document.getElementById('animePlayer');
+  if (introRange) video.currentTime = introRange.end;
+  document.getElementById('skipIntroBtn').classList.add('hidden');
 }
 window.skipIntro = skipIntro;
 
@@ -438,5 +491,43 @@ async function downloadEpisode(ep) {
     console.error('Download error:', e);
     if (dlBtn) { dlBtn.disabled = false; dlBtn.innerHTML = 'Download'; }
     alert('Download failed. Please try again.');
+  }
+}
+
+function attachStreamSource(video, source) {
+  if (hlsInstance) {
+    hlsInstance.destroy();
+    hlsInstance = null;
+  }
+
+  const isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
+  return new Promise((resolve, reject) => {
+    if (isHlsStream && window.Hls?.isSupported()) {
+      hlsInstance = new window.Hls();
+      hlsInstance.loadSource(source);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, resolve);
+      hlsInstance.on(window.Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) reject(new Error('HLS playback could not start.'));
+      });
+      return;
+    }
+
+    video.src = source;
+    video.addEventListener('loadedmetadata', resolve, { once: true });
+    video.addEventListener('error', () => reject(new Error('Video source could not be loaded.')), { once: true });
+    video.load();
+  });
+}
+
+async function loadSkipTimes(animeId, episodeNumber) {
+  introRange = null;
+  try {
+    const { data } = await apiFetch(`/api/watch/skip-times/${encodeURIComponent(animeId)}/${encodeURIComponent(episodeNumber)}`);
+    if (data?.op && Number.isFinite(Number(data.op.start)) && Number.isFinite(Number(data.op.end))) {
+      introRange = { start: Number(data.op.start), end: Number(data.op.end) };
+    }
+  } catch (error) {
+    console.debug('No skip-intro marker available:', error.message);
   }
 }
