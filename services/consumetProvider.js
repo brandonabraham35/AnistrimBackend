@@ -1,36 +1,72 @@
+const axios = require('axios');
 const consumet = require('@consumet/extensions');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
 const availableProviders = Object.keys(ANIME);
 console.log(`[STREAM SETUP] Available ANIME providers:`, availableProviders.join(', '));
 
-// Prioritize KickAssAnime, then AnimeSama
-const kickKey = availableProviders.find(key => key.toLowerCase().includes('kickass'));
-const samaKey = availableProviders.find(key => key.toLowerCase().includes('sama'));
+// Load proxy configuration from environment variables
+const PROXY_HOST = process.env.PROXY_HOST || 'p.webshare.io';
+const PROXY_PORT = process.env.PROXY_PORT || '80';
+const PROXY_USER = process.env.PROXY_USER;
+const PROXY_PASS = process.env.PROXY_PASS;
 
-let fallbackProvider;
+let customAxios;
 
-if (kickKey && typeof ANIME[kickKey] === 'function') {
-    console.log(`[STREAM SETUP] Success: Using ${kickKey}`);
-    fallbackProvider = new ANIME[kickKey]();
-} else if (samaKey && typeof ANIME[samaKey] === 'function') {
-    console.log(`[STREAM SETUP] Success: Using ${samaKey}`);
-    fallbackProvider = new ANIME[samaKey]();
+if (PROXY_USER && PROXY_PASS) {
+    const proxyUrl = `http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`;
+    const proxyAgent = new HttpsProxyAgent(proxyUrl);
+    console.log(`[STREAM SETUP] Initializing Proxy Agent via ${PROXY_HOST}:${PROXY_PORT}...`);
+
+    customAxios = axios.create({
+        timeout: 10000,
+        httpsAgent: proxyAgent,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+        }
+    });
 } else {
-    // Blind Fallback: Exclude heavily blocked domains (Pahe, HiAnime)
-    console.log(`[STREAM SETUP] Preferred providers missing. Attempting safe blind fallback...`);
+    console.warn(`[STREAM SETUP] Proxy credentials missing. Falling back to direct connection.`);
+    customAxios = axios.create({ timeout: 8000 });
+}
+
+// Priority list excluding hard-blocked providers (AnimePahe / HiAnime)
+const preferredOrder = ['KickAssAnime', 'AnimeKai', 'AnimeSama', 'AnimeSaturn'];
+
+let fallbackProvider = null;
+
+for (const name of preferredOrder) {
+    const key = availableProviders.find(k => k.toLowerCase() === name.toLowerCase());
+    if (key && typeof ANIME[key] === 'function') {
+        try {
+            console.log(`[STREAM SETUP] Success: Using ${key}`);
+            fallbackProvider = new ANIME[key](customAxios);
+            break;
+        } catch (e) {
+            console.warn(`[STREAM SETUP] Failed to instantiate ${key}:`, e.message);
+        }
+    }
+}
+
+if (!fallbackProvider) {
     const safeKey = availableProviders.find(key => 
         typeof ANIME[key] === 'function' && 
         !key.toLowerCase().includes('pahe') &&
         !key.toLowerCase().includes('hianime')
     );
-    
     if (safeKey) {
         console.log(`[STREAM SETUP] Blind Fallback Success: Using ${safeKey}`);
-        fallbackProvider = new ANIME[safeKey]();
+        fallbackProvider = new ANIME[safeKey](customAxios);
     } else {
-        throw new Error("CRITICAL: No safe anime providers found in @consumet/extensions.");
+        throw new Error("CRITICAL: No safe anime providers found.");
     }
 }
 

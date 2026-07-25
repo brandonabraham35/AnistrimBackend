@@ -1,13 +1,14 @@
-# TODO: Fix Consumet Provider Casing Crash
+# Proxy Injection Plan — services/consumetProvider.js ✅ COMPLETE
 
 ## Steps
 
-- [x] 1. Explore repo and read relevant files (`services/consumetProvider.js`, `services/consumet/server.js`)
-- [x] 2. Create plan and get user approval
-- [x] 3. Edit `services/consumetProvider.js`:
-  - [x] Replace the hardcoded `new ANIME.Gogoanime()` with dynamic key finder
-  - [x] Add safe fallback to `new ANIME.Zoro()`
-  - [x] Update validation check to be provider-agnostic
-  - [x] Update startup log messages
-- [x] 4. Add Global Error Boundaries (`server.js`)
-- [x] 5. Add Smart Caching Layer for stream resolver (`controllers/animeController.js`)
+1. ✅ Read existing `services/consumetProvider.js` + all importers
+2. ✅ Identify all 3 callers: `animeController.js`, `animeRoutes.js`, `catalogueService.js` — all use `{ ConsumetProvider }` + `new ConsumetProvider()`
+3. ✅ Rewrote `services/consumetProvider.js`:
+   - Added `axios` + `HttpsProxyAgent` imports
+   - Added PROXY_HOST/PORT/USER/PASS env vars
+   - Conditionally creates proxy-enabled `customAxios` with `HttpsProxyAgent`
+   - Injects `customAxios` into all provider instantiations
+   - Updated preferred provider order: `['KickAssAnime', 'AnimeKai', 'AnimeSama', 'AnimeSaturn']`
+   - Preserved the `ConsumetProvider` class export (backwards-compatible)
+4. ✅ Verified: module loads, KickAssAnime instantiated, no errors
