@@ -40,16 +40,8 @@ app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── Static Files ──────────────────────────────────────────
-app.use(express.static(path.join(__dirname, 'Frontend')));
-app.use('/admin', express.static(path.join(__dirname, 'AdminDashboard')));
-app.use('/uploads', (req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  next();
-}, express.static(path.join(__dirname, 'uploads')));
-
 // ─── Main API Endpoints ────────────────────────────────────
+// API routes must be registered before static file handlers and SPA fallbacks
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/auth', require('./routes/avatarRoutes'));
 app.use('/api/anime', require('./routes/animeRoutes'));
@@ -58,10 +50,10 @@ app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/admin/upload', require('./routes/uploadRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
-app.use('/api/watch',    require('./routes/watchRoutes'));
-app.use('/api/stream',   require('./routes/streamRoutes'));
-app.use('/api/ads',      require('./routes/adsRoutes'));
-app.use('/api/reports',  require('./routes/reportRoutes'));
+app.use('/api/watch', require('./routes/watchRoutes'));
+app.use('/api/stream', require('./routes/streamRoutes'));
+app.use('/api/ads', require('./routes/adsRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
 
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
 try {
@@ -74,16 +66,25 @@ try {
 
 // ─── Health Check ──────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development' });
+  res.status(200).json({ status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development'
+  });
 });
 
-// Root route — serve the frontend entry point
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
-});
+// ─── Static Files ──────────────────────────────────────────
+// Serve static assets after API routes have been checked
+app.use(express.static(path.join(__dirname, 'Frontend')));
+app.use('/admin', express.static(path.join(__dirname, 'AdminDashboard')));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
-// Catch-all for Admin Dashboard SPA routes (e.g., /dashboard, /dashboard/users)
-// This must come AFTER API routes and specific static routes, but BEFORE the general frontend fallback.
+// ─── SPA Fallback Routes ───────────────────────────────────
+// These routes catch client-side paths and serve the correct HTML entry point.
+// They must come after all API and static asset routes.
+
+// Admin dashboard SPA fallback
 app.get('/dashboard*', (req, res) => {
   res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
 });
@@ -95,9 +96,13 @@ app.get('/admin*', (req, res) => {
 });
 
 // General Frontend SPA fallback:
-// For any other unmatched route (e.g., /browse, /details, /watchlist, or even /),
+// For any other unmatched route (e.g., /, /browse, /details, /watchlist),
 // serve the main frontend index.html, letting the client-side router handle it.
 // This must be the very last route handler.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
+});
+
 // ─── Start Server ──────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('==================================================');
