@@ -2,111 +2,15 @@
 
 // This module handles the "Anime List" section of the admin dashboard.
 
-let currentEditId = null;
-
 function initializeAnimeSection() {
     console.log('[Anime] Initializing Anime management section...');
     loadAnime();
 
-    // --- Event Listeners ---
     const searchInput = document.getElementById('anime-search');
     if (searchInput) {
-        let debounceTimer;
-        searchInput.addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => loadAnime({ query: searchInput.value }), 300);
-        });
+        searchInput.addEventListener('input', () => loadAnime({ query: searchInput.value }));
     }
-
-    document.getElementById('add-anime-button')?.addEventListener('click', openAddAnimeModal);
-    document.getElementById('close-add-anime-modal')?.addEventListener('click', closeAddAnimeModal);
-    document.getElementById('manual-add-anime-form')?.addEventListener('submit', handleAnimeFormSubmit);
-
-    // Use event delegation for edit/delete buttons in the table
-    document.getElementById('anime-table')?.addEventListener('click', (e) => {
-        if (e.target.classList.contains('edit')) {
-            const id = e.target.dataset.id;
-            openEditAnimeModal(id);
-        }
-        if (e.target.classList.contains('delete')) {
-            const id = e.target.dataset.id;
-            handleDeleteAnime(id);
-        }
-    });
-}
-
-function openAddAnimeModal() {
-    currentEditId = null;
-    document.getElementById('add-anime-modal-title').textContent = 'Add Anime';
-    document.getElementById('manual-add-anime-form').reset();
-    document.getElementById('manual-cover-preview').innerHTML = '';
-    document.getElementById('manual-banner-preview').innerHTML = '';
-    document.getElementById('add-anime-modal').hidden = false;
-}
-
-async function openEditAnimeModal(id) {
-    try {
-        const anime = await window.apiRequest(`/api/admin/anime/${id}`);
-        if (!anime) throw new Error('Anime not found');
-
-        currentEditId = id;
-        document.getElementById('add-anime-modal-title').textContent = `Edit Anime: ${anime.title}`;
-
-        // Populate the form
-        document.getElementById('manual-title').value = anime.title || '';
-        document.getElementById('manual-year').value = anime.year || '';
-        document.getElementById('manual-studio').value = anime.studio || '';
-        document.getElementById('manual-status').value = anime.status || 'completed';
-        document.getElementById('manual-description').value = anime.description || '';
-        document.getElementById('manual-is-premium').checked = anime.is_premium;
-        document.getElementById('manual-is-featured').checked = anime.is_featured;
-
-        // Display image previews
-        document.getElementById('manual-cover-preview').innerHTML = anime.cover_image ? `<img src="${anime.cover_image}" style="max-height:100px;">` : '';
-        document.getElementById('manual-banner-preview').innerHTML = anime.banner_image ? `<img src="${anime.banner_image}" style="max-height:100px;">` : '';
-
-        document.getElementById('add-anime-modal').hidden = false;
-    } catch (error) {
-        console.error(`[Anime] Failed to fetch anime for editing (ID: ${id}):`, error);
-        alert('Could not load anime data for editing.');
-    }
-}
-
-function closeAddAnimeModal() {
-    document.getElementById('add-anime-modal').hidden = true;
-}
-
-async function handleAnimeFormSubmit(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-    const data = Object.fromEntries(formData.entries());
-
-    // Convert checkbox values to boolean
-    data.is_premium = !!data.is_premium;
-    data.is_featured = !!data.is_featured;
-
-    try {
-        let response;
-        if (currentEditId) {
-            // Update existing anime
-            response = await window.apiRequest(`/api/admin/anime/${currentEditId}`, {
-                method: 'PUT',
-                body: data
-            });
-        } else {
-            // Create new anime
-            response = await window.apiRequest('/api/admin/anime', {
-                method: 'POST',
-                body: data
-            });
-        }
-        closeAddAnimeModal();
-        loadAnime(); // Refresh the list
-    } catch (error) {
-        console.error('[Anime] Failed to save anime:', error);
-        alert(`Error saving anime: ${error.message}`);
-    }
+    // Note: Event listeners for add, edit, delete buttons should be added here.
 }
 
 async function loadAnime(filters = {}) {
