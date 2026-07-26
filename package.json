@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
@@ -30,5 +32,9 @@
     "node-fetch": "^2.7.0",
     "redis": "^6.1.0",
     "uuid": "^14.0.1"
+  }
+,
+  "devDependencies": {
+    "eslint": "^8.57.0"
   }
 }

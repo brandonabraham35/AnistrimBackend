@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
-const jwt =jsonwebtoken');
+const jwt = require('jsonwebtoken');
 
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH_DEBUG] ${message}`);

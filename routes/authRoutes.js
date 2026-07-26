@@ -1,15 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const authMiddleware = require('../middleware/auth'); // Assuming you have this middleware
+const authMiddleware = require('../middleware/auth');
+const { handleImageUpload } = require('../utils/bunnyUpload');
 
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
 // @access  Public
 router.post('/login', authController.login);
 
-// NOTE: Other routes like /signup and /me would also be defined here.
-// router.post('/signup', authController.signup);
-// router.get('/me', authMiddleware.protect, authController.getMe);
+// @route   POST /api/auth/avatar
+// @desc    Upload user profile avatar
+// @access  Private
+router.post('/avatar', authMiddleware.protect, (req, res) => {
+    // The 'avatars' argument specifies the Cloudinary folder
+    handleImageUpload(req, res, 'avatars');
+});
 
 module.exports = router;
