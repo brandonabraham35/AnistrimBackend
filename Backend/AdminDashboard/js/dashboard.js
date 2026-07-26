@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const sections = document.querySelectorAll('.content-section');
-  const navLinks = document.querySelectorAll('.sidebar .nav-links a');
+  const navLinks = document.querySelectorAll('.sidebar .nav-link');
 
   // --- Helper Functions ---
   const safeInner = (selector, value, fallback = '0') => {

@@ -1,0 +1,118 @@
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+require('dotenv').config();
+
+// Global Error Boundaries to prevent Render crashes
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ [CRASH PREVENTION] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('💥 [CRASH PREVENTION] Critical Uncaught Exception:', error);
+});
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// ─── CORS Configuration ────────────────────────────────────
+const allowedOrigins = new Set([
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://10.5.50.55:3000',
+  ...(process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean),
+]);
+const localDevOrigin = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin) || localDevOrigin.test(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  credentials: true,
+}));
+
+// ─── Standard Middleware ───────────────────────────────────
+// Webhook route MUST come before express.json() so it gets raw body
+app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ─── Main API Endpoints ────────────────────────────────────
+// API routes must be registered before static file handlers and SPA fallbacks
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/anime', require('./routes/animeRoutes'));
+app.use('/api/watchlist', require('./routes/watchlistRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/admin/upload', require('./routes/uploadRoutes'));
+app.use('/api/download', require('./routes/downloadRoutes'));
+app.use('/api/watch', require('./routes/watchRoutes'));
+app.use('/api/stream', require('./routes/streamRoutes'));
+app.use('/api/ads', require('./routes/adsRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
+
+// ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
+try {
+  const consumetApp = require('./services/consumet/server');
+  app.use('/consumet-api', consumetApp);
+  console.log('✅ Consumet microservice mounted at /consumet-api');
+} catch (err) {
+  console.log('ℹ️ Consumet running purely in-memory via @consumet/extensions');
+}
+
+// ─── Health Check ──────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// ─── Static Files ──────────────────────────────────────────
+// Serve static assets after API routes have been checked
+app.use(express.static(path.join(__dirname, 'Frontend')));
+app.use('/admin', express.static(path.join(__dirname, 'AdminDashboard')));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
+// ─── SPA Fallback Routes ───────────────────────────────────
+// These routes catch client-side paths and serve the correct HTML entry point.
+// They must come after all API and static asset routes.
+
+// Admin dashboard SPA fallback
+// This regex matches /dashboard and any sub-path like /dashboard/users, fixing the crash.
+app.get(/^\/dashboard(\/.*)?$/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
+});
+
+// Catch-all for Admin Login SPA routes (e.g., /admin, /admin/forgot-password)
+// This ensures that client-side routing within the /admin path works.
+// This regex matches /admin and any sub-path like /admin/forgot-password, fixing the crash.
+app.get(/^\/admin(\/.*)?$/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'AdminDashboard', 'index.html'));
+});
+
+// General Frontend SPA fallback:
+// For any other unmatched route (e.g., /, /browse, /details, /watchlist),
+// serve the main frontend index.html, letting the client-side router handle it.
+// This must be the very last route handler.
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
+});
+
+// ─── Start Server ──────────────────────────────────────────
+// Bind to 0.0.0.0 to ensure the server is accessible from outside the container,
+// as required by hosting platforms like Render.
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('==================================================');
+  console.log(`🚀 AniStrim2 running on port ${PORT}`);
+  console.log(`   Listening on: http://0.0.0.0:${PORT}`);
+  console.log('==================================================');
+});
+
+// Start background jobs
+require('./utils/premiumAutomation');

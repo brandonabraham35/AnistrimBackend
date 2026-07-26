@@ -1,0 +1,59 @@
+// routes/adminRoutes.js
+const express = require('express');
+const router  = express.Router();
+const admin   = require('../controllers/adminController');
+const imports = require('../controllers/adminImportController');
+const { protect, adminOnly } = require('../middleware/auth');
+
+router.use(protect, adminOnly);
+
+// Dashboard
+router.get('/stats',                        admin.getDashboardStats);
+router.get('/dashboard/overview',           admin.getDashboardOverview);
+
+// Users
+router.get('/users',                        admin.getAllUsers);
+router.put('/users/:id',                    admin.updateUser);
+// Deprecated: keeping togglePremium for compatibility if needed, but updateUser covers it
+router.put('/users/:id/premium',            admin.updateUser);
+router.post('/users/bulk-delete',           admin.bulkDeleteUsers);
+
+// Anime CMS
+router.get('/anime',                        admin.getAllAnime);
+router.post('/anime',                       admin.createAnime);
+router.put('/anime/:id',                    admin.updateAnime);
+router.delete('/anime/:id',                 admin.deleteAnime);
+router.post('/anime/bulk-delete',           admin.bulkDeleteAnime);
+router.post('/import-anime',                imports.importAnime);
+
+// Genres
+router.get('/genres',                       admin.getAllGenres);
+router.post('/genres',                      admin.createGenre);
+router.delete('/genres/:id',                admin.deleteGenre);
+
+// Episodes
+router.post('/anime/:animeId/episodes',     admin.addEpisode);
+router.get('/anime/:animeId/episodes',      admin.getAnimeEpisodes);
+router.get('/episodes',                     admin.getAllEpisodes);
+router.get('/episodes/:id',                 admin.getEpisode);
+router.put('/episodes/:id',                 admin.updateEpisode);
+router.delete('/episodes/:id',              admin.deleteEpisode);
+router.post('/episodes/bulk-delete',        admin.bulkDeleteEpisodes);
+
+// Settings
+router.get('/settings',                     admin.getSettings);
+router.put('/settings',                     admin.updateSettings);
+
+// Ads
+router.get('/ads',                          admin.getAds);
+router.post('/ads',                         admin.createAd);
+router.put('/ads/:id',                      admin.updateAd);
+router.delete('/ads/:id',                   admin.deleteAd);
+
+// Payments
+router.put('/payments/:id',                 admin.updatePaymentStatus);
+
+// Logs
+router.get('/logs',                         admin.getActivityLogs);
+
+module.exports = router;

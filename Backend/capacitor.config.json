@@ -1,0 +1,20 @@
+{
+  "appId": "com.anistrim.render",
+  "appName": "AniStrim",
+  "webDir": "Frontend",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "DeepLinking": {
+      "customSchemes": ["anistrim"]
+    }
+  }
+}
+
