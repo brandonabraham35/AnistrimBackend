@@ -70,9 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const { users = {}, content = {}, cloudinary = {}, revenue = {} } = overview;
-      const { totalUsers = 0, premiumUsers = 0 } = users;
+      const { total: totalUsers = 0, premium: premiumUsers = 0 } = users;
       const { totalAnime = 0, totalEpisodes = 0 } = content;
-      const { videoCount = 0 } = cloudinary;
+      const { ready: videoCount = 0 } = cloudinary;
       const { today = 0, month = 0, total = 0 } = revenue;
 
       console.log('[Dashboard] Hydrating stats:', { totalUsers, premiumUsers, totalAnime, totalEpisodes, videoCount, revenueToday: today, revenueMonth: month });
