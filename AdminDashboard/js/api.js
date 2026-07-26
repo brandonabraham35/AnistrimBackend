@@ -8,11 +8,9 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
   // Dynamically determine BASE_URL for Admin Dashboard:
   // Use local backend for local development, otherwise use production Render backend.
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const BASE_URL = isLocalhost
-    ? 'http://localhost:5000' // Assuming your local backend runs on port 5000
-    : 'https://anistrimbackend.onrender.com';
-
-
+  // For production, use root-relative paths. For local, use the absolute path to the local backend.
+  const BASE_URL = isLocalhost ? 'http://localhost:5000' : '';
+  
   const url = `${BASE_URL}${endpoint}`;
   const token = localStorage.getItem('admin_token');
   const headers = {

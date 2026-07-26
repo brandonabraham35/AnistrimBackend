@@ -63,8 +63,8 @@ function googleLogin() {
     // Dynamically determine the base URL to support both local development and production,
     // matching the logic in api.js.
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const baseUrl = isLocalhost ? 'http://localhost:5000' : 'https://anistrimbackend.onrender.com';
-
+    // For production, use a root-relative path. For local, use the absolute path to the local backend.
+    const baseUrl = isLocalhost ? 'http://localhost:5000' : '';
     // Redirect to the backend's Google OAuth endpoint. The backend will handle
     // the redirect to Google's consent screen.
     // We use the 'state' parameter to signal the origin of the request.
