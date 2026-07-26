@@ -1,9 +1,7 @@
 // Frontend/src/utils/uploadImage.js
 
-const API =
-  window.API ||
-  window.BACKEND ||
-  'https://anistrimbackend.onrender.com';
+// API is globally available from scrpt.js (loaded via config.js)
+const API = window.API || 'https://anistrimbackend.onrender.com';
 
 export async function uploadImage(file, endpoint = '/api/admin/upload/anime', token) {
   if (!file) throw new Error('Please choose an image first.');

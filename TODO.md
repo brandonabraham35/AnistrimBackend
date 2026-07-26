@@ -26,6 +26,14 @@
 - [x] `Frontend/upgrade.html`
 - [x] `Frontend/admin.html`
 - [x] `Frontend/payment-callback.html`
+- [x] `Frontend/watch.js` — Replaced `BACKEND` with `API` in `downloadEpisode()`
+- [x] `Frontend/details.js` — Replaced hardcoded fallback URLs with `API` variable
+- [x] `Frontend/payment-callback.html` — Replaced hardcoded fallback URLs with `API` variable
+- [x] `Frontend/src/utils/uploadImage-frontend-helper.js` — Removed `window.BACKEND` fallback
+
+## ✅ All Tasks Complete
+
+All hardcoded URLs and deprecated `BACKEND` variable usage have been cleaned up. The entire frontend now consistently uses `API` (from `config.js` → `scrpt.js`) for all API calls.
 
 ## Key Changes
 

@@ -113,7 +113,7 @@ async function pollPaymentStatus(txRef, subscriptionRef) {
 
       if (subscriptionRef) {
         const res = await fetch(
-          `${API || 'https://anistrimbackend.onrender.com'}/api/payments/verify-subscription?reference=${subscriptionRef}`
+`${API}/api/payments/verify-subscription?reference=${subscriptionRef}`
         );
         if (res.ok) {
           data = await res.json();
@@ -124,7 +124,7 @@ async function pollPaymentStatus(txRef, subscriptionRef) {
       // Step 2: Fallback to legacy payments verification
       if (!found && txRef) {
         const res = await fetch(
-          `${API || 'https://anistrimbackend.onrender.com'}/api/payments/verify?tx_ref=${txRef}`
+`${API}/api/payments/verify?tx_ref=${txRef}`
         );
         if (res.ok) {
           data = await res.json();

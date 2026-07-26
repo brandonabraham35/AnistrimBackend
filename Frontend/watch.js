@@ -589,7 +589,7 @@ async function downloadEpisode(ep) {
   try {
     var token = State.token || localStorage.getItem('token') || '';
     var a = document.createElement('a');
-    a.href = BACKEND + '/api/download/' + ep.id + '?token=' + encodeURIComponent(token);
+a.href = API + '/api/download/' + ep.id + '?token=' + encodeURIComponent(token);
     a.download = (currentAnime && currentAnime.title || 'anime') + '_ep' + currentEp + '.mp4';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     if (dlBtn) { dlBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download'; dlBtn.disabled = false; }

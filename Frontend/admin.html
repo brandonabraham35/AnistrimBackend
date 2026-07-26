@@ -6,63 +6,63 @@
   <title>Admin Dashboard | AniStrim</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="mobile-native.css">
+  <script src="config.js"></script>
+  <script src="scrpt.js"></script>
   <style>
     /* ── Admin-specific styles ── */
     .admin-layout { display:flex; min-height:100vh; }
-
-    .admin-sidebar {
-      width: 240px; flex-shrink:0;
-      background: var(--bg2);
-      border-right: 1px solid var(--border);
-      padding: 20px 0;
-      position: sticky; top:0; height:100vh;
-      overflow-y: auto;
-    }
-    .admin-sidebar .sidebar-logo {
-      display:flex; align-items:center; gap:10px;
-      padding: 0 20px 20px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 12px;
-    }
-    .admin-nav-item {
-      display:flex; align-items:center; gap:10px;
-      padding: 12px 20px; cursor:pointer;
-      font-size:0.9rem; font-weight:500; color:var(--text-dim);
-      transition: all 0.2s; border-left: 3px solid transparent;
-    }
+    .admin-sidebar { width:240px; flex-shrink:0; background:var(--bg2); border-right:1px solid var(--border); padding:20px 0; position:sticky; top:0; height:100vh; overflow-y:auto; }
+    .admin-sidebar .sidebar-logo { display:flex; align-items:center; gap:10px; padding:0 20px 20px; border-bottom:1px solid var(--border); margin-bottom:12px; }
+    .admin-nav-item { display:flex; align-items:center; gap:10px; padding:12px 20px; cursor:pointer; font-size:0.9rem; font-weight:500; color:var(--text-dim); transition:all 0.2s; border-left:3px solid transparent; }
     .admin-nav-item:hover { color:var(--text); background:rgba(255,255,255,0.04); }
     .admin-nav-item.active { color:var(--purple); border-left-color:var(--purple); background:rgba(139,92,246,0.08); }
-
     .admin-main { flex:1; padding:28px 24px; overflow-y:auto; }
-    .admin-topbar {
-      display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:28px;
-    }
+    .admin-topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; }
     .admin-topbar h1 { font-size:1.5rem; font-weight:800; }
-
-
-    /* ── Edit Modals ── */
-    .modal-overlay {
-      display:none; position:fixed; inset:0;
-      background:rgba(0,0,0,0.7); z-index:2000;
-      align-items:center; justify-content:center; padding:16px;
-    }
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center; padding:16px; }
     .modal-overlay.open { display:flex; }
-    .modal-box {
-      background:var(--bg2); border:1px solid var(--border);
-      border-radius:16px; padding:24px; width:100%;
-      max-width:540px; max-height:90vh; overflow-y:auto;
-    }
+    .modal-box { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:24px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; }
     .modal-box h3 { font-size:1.1rem; font-weight:700; margin-bottom:16px; }
     .modal-footer { display:flex; gap:10px; margin-top:16px; justify-content:flex-end; }
-
-    /* Stat Cards */
     .stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-bottom:28px; }
-    .stat-card {
-      background:var(--card-bg); border-radius:var(--radius);
-      padding:20px; border:1px solid var(--border);
-    }
+    .stat-card { background:var(--card-bg); border-radius:var(--radius); padding:20px; border:1px solid var(--border); }
     .stat-card .sc-label { font-size:0.78rem; color:var(--text-muted); margin-bottom:6px; }
+    .stat-card .sc-value { font-size:1.8rem; font-weight:800; }
+    .stat-card .sc-sub { font-size:0.75rem; color:var(--text-muted); margin-top:4px; }
+    .stat-card.purple { border-color:rgba(139,92,246,0.3); }
+    .stat-card.green { border-color:rgba(34,197,94,0.3); }
+    .stat-card.orange { border-color:rgba(249,115,22,0.3); }
+    .stat-card.blue { border-color:rgba(96,165,250,0.3); }
+    .admin-section { background:var(--card-bg); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:20px; }
+    .admin-section-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); }
+    .admin-section-header h3 { font-size:1rem; font-weight:700; }
+    .admin-section-body { padding:16px 20px; }
+    .admin-table { width:100%; border-collapse:collapse; font-size:0.83rem; }
+    .admin-table th { text-align:left; padding:8px 10px; color:var(--text-muted); font-weight:600; border-bottom:1px solid var(--border); }
+    .admin-table td { padding:10px 10px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
+    .admin-table tr:last-child td { border-bottom:none; }
+    .admin-table tr:hover td { background:rgba(255,255,255,0.02); }
+    .badge-premium { background:rgba(249,115,22,0.15); color:var(--orange); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
+    .badge-free { background:rgba(107,114,128,0.15); color:var(--text-muted); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
+    .badge-success { background:rgba(34,197,94,0.15); color:var(--green); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
+    .badge-airing { background:rgba(34,197,94,0.12); color:var(--green); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
+    .admin-form { display:grid; gap:14px; }
+    .admin-form .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .admin-form label { display:block; font-size:0.78rem; font-weight:600; color:var(--text-dim); margin-bottom:5px; }
+    .admin-form input, .admin-form select, .admin-form textarea { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:'Outfit',sans-serif; font-size:0.88rem; outline:none; transition:border-color 0.2s; }
+    .admin-form input:focus, .admin-form select:focus, .admin-form textarea:focus { border-color:var(--purple); }
+    .admin-form textarea { resize:vertical; min-height:80px; }
+    .image-url-input { margin-top:8px; font-size:0.82rem; }
+    .btn-sm { padding:7px 14px; font-size:0.82rem; font-weight:600; border:none; border-radius:6px; cursor:pointer; }
+    .btn-sm-purple { background:var(--purple); color:#fff; }
+    .btn-sm-red { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
+    .btn-sm-gray { background:var(--card-bg2); color:var(--text-dim); border:1px solid var(--border); }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+    @media(max-width:600px) { .admin-sidebar { display:none; } .admin-main { padding:16px; } .stats-grid { grid-template-columns:repeat(2,1fr); } .admin-form .form-row { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
     .stat-card .sc-value { font-size:1.8rem; font-weight:800; }
     .stat-card .sc-sub   { font-size:0.75rem; color:var(--text-muted); margin-top:4px; }
     .stat-card.purple { border-color:rgba(139,92,246,0.3); }
@@ -409,26 +409,6 @@ function openSelectedEpisodesForEdit() {
   openEpisodesModal(sel.value, title.replace(/^#\d+\s+—\s+/, ''));
 }
 
-    setText('stat-today-rev',    `UGX ${Number(data.revenue.today||0).toLocaleString()} today`);
-    setText('stat-subs',         data.users.premium);
-
-    document.getElementById('recent-users-body').innerHTML =
-      (data.recentUsers||[]).map(u => `
-        <tr>
-          <td>${u.name}</td>
-          <td style="color:var(--text-muted)">${u.email}</td>
-          <td><span class="${u.is_premium ? 'badge-premium' : 'badge-free'}">${u.is_premium ? 'Premium' : 'Free'}</span></td>
-          <td style="color:var(--text-muted)">${new Date(u.created_at).toLocaleDateString()}</td>
-        </tr>
-      `).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">No users yet</td></tr>';
-
-    document.getElementById('top-anime-body').innerHTML =
-      (data.topAnime||[]).map((a,i) => `
-        <tr><td style="color:var(--text-muted)">${i+1}</td><td>${a.title}</td><td>${(a.view_count||0).toLocaleString()}</td></tr>
-      `).join('') || '<tr><td colspan="3" style="color:var(--text-muted)">No data</td></tr>';
-  } catch(e) { console.error(e); }
-}
-
 // ── Anime CMS ────────────────────────────────────────────
 async function loadAnimeList() {
   try {
@@ -596,6 +576,54 @@ async function loadRevenue() {
 }
 
 // ── Init ─────────────────────────────────────────────────
+// ── Load Dashboard Stats ──────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const { ok, data } = await apiFetch('/api/admin/dashboard/overview');
+    if (!ok || !data.overview) { throw new Error('Invalid dashboard response'); }
+
+    const overview = data.overview;
+
+    // Users
+    setText('stat-users',        Number(overview.users.total || 0).toLocaleString());
+    setText('stat-premium-users', `${Number(overview.users.premium || 0).toLocaleString()} premium`);
+
+    // Anime & Views
+    setText('stat-anime',        Number(overview.content.totalAnime || 0).toLocaleString());
+    setText('stat-views',        `${Number(overview.content.totalViews || 0).toLocaleString()} total views`);
+
+    // Revenue
+    const revenueAmount = Number(overview.revenue || 0);
+    setText('stat-revenue',     `UGX ${revenueAmount.toLocaleString()}`);
+    setText('stat-today-rev',   `UGX ${revenueAmount.toLocaleString()} total`);
+
+    // Subscriptions count = premium users
+    setText('stat-subs',        Number(overview.users.premium || 0).toLocaleString());
+
+    // Recent Users (from latestUsers)
+    document.getElementById('recent-users-body').innerHTML =
+      (data.latestUsers || []).map(u => `
+        <tr>
+          <td>${u.name}</td>
+          <td style="color:var(--text-muted)">${u.email}</td>
+          <td><span class="${u.is_premium ? 'badge-premium' : 'badge-free'}">${u.is_premium ? 'Premium' : 'Free'}</span></td>
+          <td style="color:var(--text-muted)">${new Date(u.created_at).toLocaleDateString()}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">No users yet</td></tr>';
+
+    // Top Anime by Views
+    document.getElementById('top-anime-body').innerHTML =
+      (data.topAnime || []).map((a,i) => `
+        <tr><td style="color:var(--text-muted)">${i+1}</td><td>${a.title}</td><td>${(a.view_count||0).toLocaleString()}</td></tr>
+      `).join('') || '<tr><td colspan="3" style="color:var(--text-muted)">No data</td></tr>';
+  } catch(e) {
+    console.error('Dashboard load error:', e);
+    setText('stat-users', '⚠');
+    setText('stat-anime', '⚠');
+    setText('stat-revenue', '⚠');
+  }
+}
+
 function setText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
 
 document.addEventListener('DOMContentLoaded', () => {

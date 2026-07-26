@@ -39,7 +39,7 @@ async function loadDetails() {
     const timer = setTimeout(() => controller.abort(), 7000);
 
     const res = await fetch(
-      `${window.getApiBaseUrl ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com'}/api/anime/${id}`,
+      `${API}/api/anime/${id}`,
       {
         signal: controller.signal,
         headers: {
@@ -72,7 +72,6 @@ async function loadDetails() {
 // ── Backup: scan trending list ──────────────────────────
 async function loadFromBackup(id) {
   try {
-    const API = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com';
     const res = await fetch(`${API}/api/anime/trending`);
     if (!res.ok) throw new Error(`Trending HTTP ${res.status}`);
     const all = await res.json();
@@ -211,7 +210,6 @@ window.fetchAndRenderEpisodes = fetchAndRenderEpisodes;
 async function addToListFromDetails() {
   if (!currentAnime) return;
   if (!localStorage.getItem('token')) { location.href = 'login.html'; return; }
-  const API = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com';
   try {
     const res = await fetch(
       `${API}/api/watchlist/add`,
