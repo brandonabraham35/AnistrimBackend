@@ -11,20 +11,60 @@
   const setError = message => text('dashboard-error', message || '');
 
   async function loadOverview() {
-    try {
-      const data = await window.apiRequest('/admin/dashboard/overview'); const overview = data.overview;
-      text('total-users', Number(overview.users.total || 0).toLocaleString()); text('premium-users', Number(overview.users.premium || 0).toLocaleString());
-      text('total-anime', Number(overview.content.totalAnime || 0).toLocaleString()); text('total-episodes', Number(overview.content.totalEpisodes || 0).toLocaleString()); text('total-views', Number(overview.content.totalViews || 0).toLocaleString());
-      const media = overview.cloudinary || { ready: 0, processing: 0, failed: 0 };
-      text('cloudinary-ready', media.ready || 0); text('cloudinary-processing', media.processing || 0); text('cloudinary-failed', media.failed || 0);
-      text('active-users-today', overview.users.activeToday || 0); text('banned-users', overview.users.banned || 0);
-      document.getElementById('top-anime-list').innerHTML = (data.topAnime || []).map(a => `<div class="list-item"><span class="item-title">${esc(a.title)}</span><span class="item-sub">${Number(a.view_count || 0).toLocaleString()} views</span></div>`).join('') || '<div class="item-sub">No anime records.</div>';
-      document.getElementById('recent-uploads').innerHTML = (data.recentEpisodes || []).map(e => `<div class="list-item"><span class="item-title">${esc(e.anime_title)} · Ep ${esc(e.episode_number)}</span><span class="item-sub">${esc(e.video_status || 'Available')}</span></div>`).join('') || '<div class="item-sub">No episode records.</div>';
-      document.getElementById('latest-users').innerHTML = (data.latestUsers || []).map(u => `<div class="list-item"><span class="item-title">${esc(u.name)}</span><span class="item-sub">Joined ${date(u.created_at)}</span></div>`).join('') || '<div class="item-sub">No user records.</div>';
-      document.getElementById('activity-logs').innerHTML = (data.activityLogs || []).map(log => `<div class="timeline-item"><span class="time">${new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span><strong>${esc(log.user_name || 'System')}</strong> ${esc(log.action)}</span></div>`).join('') || '<div class="item-sub">No activity records.</div>';
-      try { await loadPaymentSummary(); } catch (error) { console.error('Payment summary failed:', error); }
-      setError('');
-    } catch (error) { console.error('Dashboard overview failed:', error); setError(`Unable to load live dashboard data: ${error.message}`); }
+    // Retry once after 2s on failure
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const data = await window.apiRequest('/admin/dashboard/overview');
+        if (!data || !data.overview) throw new Error('Invalid dashboard response structure');
+
+        const overview = data.overview;
+        const users = overview.users || {};
+        const content = overview.content || {};
+        const media = overview.cloudinary || { ready: 0, processing: 0, failed: 0 };
+
+        text('total-users', Number(users.total || 0).toLocaleString());
+        text('premium-users', Number(users.premium || 0).toLocaleString());
+        text('total-anime', Number(content.totalAnime || 0).toLocaleString());
+        text('total-episodes', Number(content.totalEpisodes || 0).toLocaleString());
+        text('total-views', Number(content.totalViews || 0).toLocaleString());
+        text('cloudinary-ready', Number(media.ready || 0));
+        text('cloudinary-processing', Number(media.processing || 0));
+        text('cloudinary-failed', Number(media.failed || 0));
+        text('active-users-today', Number(users.activeToday || 0));
+        text('banned-users', Number(users.banned || 0));
+
+        // Safely set innerHTML with fallbacks
+        const safeInner = (id, items, fn, fallback) => {
+          const el = document.getElementById(id);
+          if (el) el.innerHTML = (items && items.length) ? items.map(fn).join('') : (fallback || '<div class="item-sub">No records found.</div>');
+        };
+
+        safeInner('top-anime-list', data.topAnime, a =>
+          `<div class="list-item"><span class="item-title">${esc(a.title)}</span><span class="item-sub">${Number(a.view_count || 0).toLocaleString()} views</span></div>`
+        );
+        safeInner('recent-uploads', data.recentEpisodes, e =>
+          `<div class="list-item"><span class="item-title">${esc(e.anime_title)} · Ep ${esc(e.episode_number)}</span><span class="item-sub">${esc(e.video_status || 'Available')}</span></div>`
+        );
+        safeInner('latest-users', data.latestUsers, u =>
+          `<div class="list-item"><span class="item-title">${esc(u.name)}</span><span class="item-sub">Joined ${date(u.created_at)}</span></div>`
+        );
+        safeInner('activity-logs', data.activityLogs, log =>
+          `<div class="timeline-item"><span class="time">${new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span><strong>${esc(log.user_name || 'System')}</strong> ${esc(log.action)}</span></div>`
+        );
+
+        try { await loadPaymentSummary(); } catch (error) { console.error('Payment summary failed:', error); }
+        setError('');
+        return; // Success — exit retry loop
+      } catch (error) {
+        console.error(`Dashboard overview failed (attempt ${attempt + 1}/2):`, error);
+        if (attempt === 0) {
+          // Wait before retry
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          setError(`Unable to load live dashboard data: ${error.message}`);
+        }
+      }
+    }
   }
 
   async function loadPaymentSummary() {
@@ -383,20 +423,50 @@
   }
   window.saveAdsConfig = saveAdsConfig;
 
-  function showSection(section) { document.querySelectorAll('[data-section-panel]').forEach(panel => { panel.hidden = panel.dataset.sectionPanel !== section; }); document.querySelectorAll('[data-section]').forEach(link => link.classList.toggle('active', link.dataset.section === section)); text('page-title', ({ dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments', 'ads-config': 'Ads Configuration' })[section]); window.location.hash = section; ({ dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments, 'ads-config': loadAdsConfig })[section]?.(); }
+  function showSection(section) {
+    // Hide all panels, show the target
+    document.querySelectorAll('[data-section-panel]').forEach(panel => {
+      panel.hidden = panel.dataset.sectionPanel !== section;
+    });
+    // Update active state on sidebar nav links
+    document.querySelectorAll('[data-section]').forEach(link => {
+      link.classList.toggle('active', link.dataset.section === section);
+    });
+    // Update page title
+    const titles = { dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments', 'ads-config': 'Ads Configuration' };
+    text('page-title', titles[section] || 'Administrative Overview');
+
+    // Update hash but avoid triggering hashchange loop in Capacitor
+    if (window.location.hash !== '#' + section) {
+      window.location.hash = section;
+    }
+
+    // Load section data
+    const loaders = { dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments, 'ads-config': loadAdsConfig };
+    loaders[section]?.();
+  }
   window.manageEpisodes = (animeId) => { showSection('episodes'); openEpisodeEditor(animeId); }; window.logout = () => { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_user'); window.location.replace('index.html'); };
   document.addEventListener('DOMContentLoaded', () => {
     if (!requireAdmin()) return;
 
-    // ─── Sidebar Navigation — let natural hash change work ────
+    // ─── Sidebar Navigation — click-based (no hash nav) ────
     document.querySelectorAll('[data-section]').forEach(link => {
-      link.addEventListener('click', () => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
         showSection(link.dataset.section);
       });
     });
 
     // ─── Hashchange listener — handles back/forward navigation ─
+    // In Capacitor, hashchange may not fire reliably, so we also poll via
+    // the sidebar click handlers above.
     window.addEventListener('hashchange', () => {
+      const section = location.hash.slice(1) || 'dashboard';
+      showSection(section);
+    });
+
+    // ─── Fallback: also handle popstate for Capacitor back button ─
+    window.addEventListener('popstate', () => {
       const section = location.hash.slice(1) || 'dashboard';
       showSection(section);
     });

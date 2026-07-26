@@ -63,71 +63,6 @@
   </style>
 </head>
 <body>
-    .stat-card .sc-value { font-size:1.8rem; font-weight:800; }
-    .stat-card .sc-sub   { font-size:0.75rem; color:var(--text-muted); margin-top:4px; }
-    .stat-card.purple { border-color:rgba(139,92,246,0.3); }
-    .stat-card.green  { border-color:rgba(34,197,94,0.3); }
-    .stat-card.orange { border-color:rgba(249,115,22,0.3); }
-    .stat-card.blue   { border-color:rgba(96,165,250,0.3); }
-
-    /* Section cards */
-    .admin-section {
-      background:var(--card-bg); border-radius:var(--radius);
-      border:1px solid var(--border); margin-bottom:20px;
-    }
-    .admin-section-header {
-      display:flex; justify-content:space-between; align-items:center;
-      padding:16px 20px; border-bottom:1px solid var(--border);
-    }
-    .admin-section-header h3 { font-size:1rem; font-weight:700; }
-    .admin-section-body { padding:16px 20px; }
-
-    /* Table */
-    .admin-table { width:100%; border-collapse:collapse; font-size:0.83rem; }
-    .admin-table th { text-align:left; padding:8px 10px; color:var(--text-muted); font-weight:600; border-bottom:1px solid var(--border); }
-    .admin-table td { padding:10px 10px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
-    .admin-table tr:last-child td { border-bottom:none; }
-    .admin-table tr:hover td { background:rgba(255,255,255,0.02); }
-
-    .badge-premium { background:rgba(249,115,22,0.15); color:var(--orange); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
-    .badge-free    { background:rgba(107,114,128,0.15); color:var(--text-muted); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
-    .badge-success { background:rgba(34,197,94,0.15); color:var(--green); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
-    .badge-airing  { background:rgba(34,197,94,0.12); color:var(--green); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; }
-
-    /* Form */
-    .admin-form { display:grid; gap:14px; }
-    .admin-form .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .admin-form label { display:block; font-size:0.78rem; font-weight:600; color:var(--text-dim); margin-bottom:5px; }
-    .admin-form input, .admin-form select, .admin-form textarea {
-      width:100%; padding:10px 12px;
-      background:var(--bg); border:1px solid var(--border);
-      border-radius:var(--radius-sm); color:var(--text);
-      font-family:'Outfit',sans-serif; font-size:0.88rem; outline:none;
-      transition:border-color 0.2s;
-    }
-    .admin-form input:focus, .admin-form select:focus, .admin-form textarea:focus { border-color:var(--purple); }
-    .admin-form textarea { resize:vertical; min-height:80px; }
-    .image-url-input { margin-top:8px; font-size:0.82rem; }
-
-    .btn-sm { padding:7px 14px; font-size:0.82rem; font-weight:600; border:none; border-radius:6px; cursor:pointer; }
-    .btn-sm-purple { background:var(--purple); color:#fff; }
-    .btn-sm-red    { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
-    .btn-sm-gray   { background:var(--card-bg2); color:var(--text-dim); border:1px solid var(--border); }
-
-    /* Tab panels */
-    .tab-panel { display:none; }
-    .tab-panel.active { display:block; }
-
-    /* Mobile — hide sidebar, show as menu */
-    @media(max-width:600px) {
-      .admin-sidebar { display:none; }
-      .admin-main { padding:16px; }
-      .stats-grid { grid-template-columns:repeat(2,1fr); }
-      .admin-form .form-row { grid-template-columns:1fr; }
-    }
-  </style>
-</head>
-<body>
 <div class="admin-layout">
 
   <!-- Sidebar -->
@@ -523,9 +458,11 @@ window.submitAddEpisode = submitAddEpisode;
 async function loadUsers() {
   const { ok, data } = await apiFetch('/api/admin/users');
   if (!ok) return;
-  setText('users-count', data.total);
+  // Backend returns a flat array of users (not { users: [], total: N })
+  const users = Array.isArray(data) ? data : (data.users || []);
+  setText('users-count', users.length);
   document.getElementById('users-table-body').innerHTML =
-    (data.users||[]).map(u => `
+    users.map(u => `
       <tr>
         <td style="color:var(--text-muted)">${u.id}</td>
         <td>${u.name}</td>
@@ -539,7 +476,7 @@ async function loadUsers() {
           </button>
         </td>
       </tr>
-    `).join('');
+    `).join('') || '<tr><td colspan="6" style="color:var(--text-muted)">No users found</td></tr>';
 }
 window.loadUsers = loadUsers;
 
@@ -578,49 +515,60 @@ async function loadRevenue() {
 // ── Init ─────────────────────────────────────────────────
 // ── Load Dashboard Stats ──────────────────────────────────────────
 async function loadDashboard() {
-  try {
-    const { ok, data } = await apiFetch('/api/admin/dashboard/overview');
-    if (!ok || !data.overview) { throw new Error('Invalid dashboard response'); }
+  // Retry once after 2s on failure
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { ok, data } = await apiFetch('/api/admin/dashboard/overview');
+      if (!ok || !data.overview) { throw new Error('Invalid dashboard response'); }
 
-    const overview = data.overview;
+      const overview = data.overview;
 
-    // Users
-    setText('stat-users',        Number(overview.users.total || 0).toLocaleString());
-    setText('stat-premium-users', `${Number(overview.users.premium || 0).toLocaleString()} premium`);
+      // Users
+      setText('stat-users',        Number(overview.users.total || 0).toLocaleString());
+      setText('stat-premium-users', `${Number(overview.users.premium || 0).toLocaleString()} premium`);
 
-    // Anime & Views
-    setText('stat-anime',        Number(overview.content.totalAnime || 0).toLocaleString());
-    setText('stat-views',        `${Number(overview.content.totalViews || 0).toLocaleString()} total views`);
+      // Anime & Views
+      setText('stat-anime',        Number(overview.content.totalAnime || 0).toLocaleString());
+      setText('stat-views',        `${Number(overview.content.totalViews || 0).toLocaleString()} total views`);
 
-    // Revenue
-    const revenueAmount = Number(overview.revenue || 0);
-    setText('stat-revenue',     `UGX ${revenueAmount.toLocaleString()}`);
-    setText('stat-today-rev',   `UGX ${revenueAmount.toLocaleString()} total`);
+      // Revenue
+      const revenueAmount = Number(overview.revenue || 0);
+      setText('stat-revenue',     `UGX ${revenueAmount.toLocaleString()}`);
+      setText('stat-today-rev',   `UGX ${revenueAmount.toLocaleString()} total`);
 
-    // Subscriptions count = premium users
-    setText('stat-subs',        Number(overview.users.premium || 0).toLocaleString());
+      // Subscriptions count = premium users
+      setText('stat-subs',        Number(overview.users.premium || 0).toLocaleString());
 
-    // Recent Users (from latestUsers)
-    document.getElementById('recent-users-body').innerHTML =
-      (data.latestUsers || []).map(u => `
-        <tr>
-          <td>${u.name}</td>
-          <td style="color:var(--text-muted)">${u.email}</td>
-          <td><span class="${u.is_premium ? 'badge-premium' : 'badge-free'}">${u.is_premium ? 'Premium' : 'Free'}</span></td>
-          <td style="color:var(--text-muted)">${new Date(u.created_at).toLocaleDateString()}</td>
-        </tr>
-      `).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">No users yet</td></tr>';
+      // Recent Users (from latestUsers)
+      document.getElementById('recent-users-body').innerHTML =
+        (data.latestUsers || []).map(u => `
+          <tr>
+            <td>${u.name}</td>
+            <td style="color:var(--text-muted)">${u.email}</td>
+            <td><span class="${u.is_premium ? 'badge-premium' : 'badge-free'}">${u.is_premium ? 'Premium' : 'Free'}</span></td>
+            <td style="color:var(--text-muted)">${new Date(u.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">No users yet</td></tr>';
 
-    // Top Anime by Views
-    document.getElementById('top-anime-body').innerHTML =
-      (data.topAnime || []).map((a,i) => `
-        <tr><td style="color:var(--text-muted)">${i+1}</td><td>${a.title}</td><td>${(a.view_count||0).toLocaleString()}</td></tr>
-      `).join('') || '<tr><td colspan="3" style="color:var(--text-muted)">No data</td></tr>';
-  } catch(e) {
-    console.error('Dashboard load error:', e);
-    setText('stat-users', '⚠');
-    setText('stat-anime', '⚠');
-    setText('stat-revenue', '⚠');
+      // Top Anime by Views
+      document.getElementById('top-anime-body').innerHTML =
+        (data.topAnime || []).map((a,i) => `
+          <tr><td style="color:var(--text-muted)">${i+1}</td><td>${a.title}</td><td>${(a.view_count||0).toLocaleString()}</td></tr>
+        `).join('') || '<tr><td colspan="3" style="color:var(--text-muted)">No data</td></tr>';
+
+      // Success — exit retry loop
+      return;
+    } catch(e) {
+      console.error('Dashboard load error (attempt ' + (attempt+1) + '):', e);
+      if (attempt === 0) {
+        // Wait 2s before retry
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        setText('stat-users', '⚠');
+        setText('stat-anime', '⚠');
+        setText('stat-revenue', '⚠');
+      }
+    }
   }
 }
 
