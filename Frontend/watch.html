@@ -54,6 +54,39 @@
     .time-display { font-size: 0.78rem; color: rgba(255,255,255,0.8); margin-left: 4px; }
     .volume-slider { width: 70px; accent-color: var(--purple); cursor: pointer; }
     .fullscreen-btn { margin-left: auto; }
+    .ctrl-group { display:flex; align-items:center; gap:6px; margin-left:auto; }
+
+    /* Server Switcher */
+    #serverSwitcher {
+      background:rgba(255,255,255,0.1);
+      border:1px solid rgba(255,255,255,0.2);
+      border-radius:4px; color:#fff; font-size:0.72rem;
+      padding:3px 6px; cursor:pointer; display:none;
+    }
+    #serverSwitcher option { background:#1a1a2e; color:#fff; }
+    .quality-badge {
+      background:rgba(255,255,255,0.1); border-radius:4px;
+      padding:2px 8px; font-size:0.7rem; font-weight:600;
+      color:#a1a1aa; display:none;
+    }
+
+    /* Ad mid-roll overlay */
+    .ad-overlay-video {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.9);
+      display: none; align-items: center; justify-content: center;
+      z-index: 10;
+    }
+    .ad-overlay-video .ad-card {
+      background:#13131a; border:1px solid #2a2a35; border-radius:14px;
+      max-width:380px; width:100%; padding:24px; text-align:center; color:#fff;
+    }
+    .ad-overlay-video h3 { margin:0 0 8px; font-size:1rem; color:#a78bfa; }
+    .ad-overlay-video p { color:#a1a1aa; font-size:0.85rem; margin:8px 0 14px; }
+    .ad-overlay-video .ad-skip-btn {
+      background:#27272f; border:0; border-radius:8px; padding:10px 18px;
+      color:#fff; font-weight:600; cursor:pointer; font-size:0.88rem;
+    }
+    .ad-overlay-video .ad-skip-btn[disabled] { opacity:0.5; cursor:not-allowed; }
 
     /* Skip intro button */
     .skip-intro-btn {
@@ -76,7 +109,7 @@
     .next-ep-banner p { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
     .next-ep-banner h4 { font-size: 0.9rem; font-weight: 700; margin-bottom: 10px; }
 
-    /* Premium lock overlay — FIX 3 */
+    /* Premium lock overlay */
     .premium-lock-overlay {
       position: absolute; inset: 0;
       background: rgba(0,0,0,0.85);
@@ -86,6 +119,32 @@
     }
     .premium-lock-overlay h3 { font-size: 1.2rem; font-weight: 700; }
     .premium-lock-overlay p  { font-size: 0.85rem; color: var(--text-dim); }
+
+    /* Offline Download Modal */
+    .offline-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: none; align-items: center; justify-content: center;
+      z-index: 9999; padding: 20px;
+    }
+    .offline-modal .modal-card {
+      background:#13131a; border:1px solid #2a2a35; border-radius:14px;
+      max-width:400px; width:100%; padding:24px; text-align:center; color:#fff;
+    }
+    .offline-modal h3 { margin:0 0 6px; font-size:1.05rem; }
+    .offline-modal p { color:#a1a1aa; font-size:0.85rem; margin:6px 0 16px; }
+    .offline-modal .progress-bar {
+      width:100%; height:6px; background:#2a2a35; border-radius:3px; overflow:hidden; margin:12px 0;
+    }
+    .offline-modal .progress-fill {
+      height:100%; background:var(--purple); width:0%; border-radius:3px; transition:width 0.3s;
+    }
+    .offline-modal .modal-actions { display:flex; gap:8px; justify-content:center; margin-top:14px; }
+    .offline-modal .modal-actions button {
+      border:0; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer;
+    }
+    .offline-modal .btn-primary-modal { background:var(--purple); color:#fff; }
+    .offline-modal .btn-secondary-modal { background:#27272f; color:#fff; }
+    .offline-modal .btn-danger-modal { background:#ef4444; color:#fff; }
   </style>
 </head>
 <body>
@@ -105,7 +164,7 @@
 <nav class="navbar">
   <div class="logo" onclick="location.href='index.html'">
     <div class="logo-icon">A</div>
-    <span class="logo-text">Ani<span>Strim</span></span>
+    <span class="logo-text">Ani<span>Strim</span>
   </div>
   <div class="nav-icons">
     <button class="nav-icon-btn" onclick="history.back()">
@@ -117,14 +176,27 @@
   </div>
 </nav>
 
-<!-- FIX 3: Premium lock + FIX 1: Custom player -->
 <div class="player-wrap" id="player-wrap">
   <video id="animePlayer" width="100%" height="100%" playsinline></video>
+
+  <!-- Ad Mid-Roll Overlay -->
+  <div class="ad-overlay-video" id="adOverlay">
+    <div class="ad-card">
+      <h3>📺 Sponsored Content</h3>
+      <div style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:10px;padding:24px 16px;margin:12px 0;font-weight:700;">
+        Enjoying AniStrim?<br>Go ad-free with Premium
+      </div>
+      <p>Your video will resume in <span id="adCountdownNum">15</span>s</p>
+      <button class="ad-skip-btn" id="adSkipBtn" disabled>Skip in 15s</button>
+      <div style="margin-top:8px;">
+        <button class="ad-skip-btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);" onclick="location.href='upgrade.html'">Go Premium</button>
+      </div>
+  </div>
 
   <!-- Skip Intro -->
   <button class="skip-intro-btn hidden" id="skipIntroBtn" onclick="skipIntro()">Skip Intro ›</button>
 
-  <!-- Next Episode banner — countdown for premium, manual click for free -->
+  <!-- Next Episode banner -->
   <div class="next-ep-banner hidden" id="nextEpisodeBtn">
     <p id="next-ep-auto-label" style="display:none;font-size:0.75rem;margin-bottom:4px;">
       Playing next in <strong id="autoplay-countdown-num">5</strong>s &nbsp;
@@ -136,7 +208,7 @@
     <button class="btn-primary" style="padding:8px 16px;font-size:0.82rem;" onclick="playNextEp()">▶ Play Now</button>
   </div>
 
-  <!-- Premium Lock Overlay — shown for premium episodes to free users -->
+  <!-- Premium Lock Overlay -->
   <div class="premium-lock-overlay" id="premium-lock" style="display:none;">
     <div style="font-size:2.5rem;">🔒</div>
     <h3>Premium Episode</h3>
@@ -145,7 +217,7 @@
     <button class="btn-secondary" style="padding:10px 20px;" onclick="history.back()">Go Back</button>
   </div>
 
-  <!-- No video placeholder — now replaced with Loading Stream -->
+  <!-- No video placeholder -->
   <div class="video-placeholder" id="video-placeholder">
     <div class="loading-spinner" id="stream-spinner" style="display:block;">
       <svg width="40" height="40" viewBox="0 0 40 40" style="animation:spin 1s linear infinite;margin-bottom:12px;">
@@ -161,13 +233,11 @@
       <p>Stream unavailable</p>
       <p style="font-size:0.78rem;margin-top:6px;">The stream could not be loaded. Please try again later.</p>
     </div>
-  </div>
 
   <!-- Custom Controls -->
   <div class="player-controls" id="videoControls">
     <div class="progress-bar-wrap" id="progress-wrap" onclick="seekVideo(event)">
       <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
-    </div>
     <div class="controls-row">
       <button class="ctrl-btn" onclick="togglePlay()" id="play-btn">
         <svg id="play-icon" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -180,28 +250,50 @@
       </button>
       <span class="time-display" id="time-display">0:00 / 0:00</span>
       <input type="range" class="volume-slider" id="vol-slider" min="0" max="1" step="0.05" value="1" oninput="setVolume(this.value)">
+
+      <!-- Quality Badge + Server Switcher + Download -->
+      <span class="quality-badge" id="qualityBadge">Auto</span>
+      <select id="serverSwitcher" onchange="switchProvider(this.value)">
+        <option value="">Auto</option>
+      </select>
+      <button class="ctrl-btn" id="download-btn" onclick="handleDownload()" title="Download (Premium)">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="18" height="18">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+
       <button class="ctrl-btn fullscreen-btn" onclick="toggleFullscreen()">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
       </button>
     </div>
-  </div>
+</div>
+
+<!-- Offline Download Modal -->
+<div class="offline-modal" id="offlineModal">
+  <div class="modal-card">
+    <h3>⬇️ Offline Download</h3>
+    <p id="offlineStatus">Preparing download...</p>
+    <div class="progress-bar"><div class="progress-fill" id="offlineProgress"></div>
+    <p id="offlineMeta" style="font-size:0.78rem;color:#71717a;"></p>
+    <div class="modal-actions">
+      <button class="btn-primary-modal" id="offlineStartBtn" onclick="startOfflineDownload()">Start Download</button>
+      <button class="btn-secondary-modal" onclick="closeOfflineModal()">Cancel</button>
+      <button class="btn-danger-modal" id="offlineDeleteBtn" style="display:none;" onclick="deleteOfflineDownload()">Delete</button>
+    </div>
 </div>
 
 <!-- Episode info -->
 <div class="watch-info">
   <div class="watch-ep-title" id="watch-ep-title">Episode 1</div>
   <div class="watch-anime-title" id="watch-anime-title">Loading...</div>
-  <!-- FIX 2: Resume badge -->
   <div id="resume-badge" style="display:none;margin-top:6px;">
     <span style="background:rgba(139,92,246,0.15);color:var(--purple);padding:3px 10px;border-radius:4px;font-size:0.78rem;font-weight:600;">⏱ Resuming from last position</span>
   </div>
-</div>
 
 <!-- More episodes -->
 <div style="padding:0 20px 100px;">
   <h3 style="font-size:1rem;font-weight:700;margin-bottom:14px;color:#9ca3af;">More Episodes</h3>
   <div class="episode-list" id="more-episodes"></div>
-</div>
 
 <nav class="mobile-bottom-nav">
   <a href="index.html" class="mob-nav-item">

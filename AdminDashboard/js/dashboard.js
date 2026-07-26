@@ -385,7 +385,27 @@
 
   function showSection(section) { document.querySelectorAll('[data-section-panel]').forEach(panel => { panel.hidden = panel.dataset.sectionPanel !== section; }); document.querySelectorAll('[data-section]').forEach(link => link.classList.toggle('active', link.dataset.section === section)); text('page-title', ({ dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments', 'ads-config': 'Ads Configuration' })[section]); window.location.hash = section; ({ dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments, 'ads-config': loadAdsConfig })[section]?.(); }
   window.manageEpisodes = (animeId) => { showSection('episodes'); openEpisodeEditor(animeId); }; window.logout = () => { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_user'); window.location.replace('index.html'); };
-  document.addEventListener('DOMContentLoaded', () => { if (!requireAdmin()) return; document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); showSection(link.dataset.section); })); wireHybridModal(); document.getElementById('add-episode-button').addEventListener('click', () => openEpisodeEditor());
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!requireAdmin()) return;
+
+    // ─── Sidebar Navigation — let natural hash change work ────
+    document.querySelectorAll('[data-section]').forEach(link => {
+      link.addEventListener('click', () => {
+        showSection(link.dataset.section);
+      });
+    });
+
+    // ─── Hashchange listener — handles back/forward navigation ─
+    window.addEventListener('hashchange', () => {
+      const section = location.hash.slice(1) || 'dashboard';
+      showSection(section);
+    });
+
+    wireHybridModal();
+
+    // ─── Guard: add-episode-button may not exist in all views ──
+    const addEpBtn = document.getElementById('add-episode-button');
+    if (addEpBtn) addEpBtn.addEventListener('click', () => openEpisodeEditor());
 
     // ─── Select All / Checkbox Change Handling ─────────────────
     document.addEventListener('change', event => {

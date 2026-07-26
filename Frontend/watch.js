@@ -1,4 +1,4 @@
-// watch.js — Premium skip intro + autoplay next episode
+// watch.js — Premium skip intro + autoplay next episode + Multi-API streaming
 let currentAnime = null;
 let currentEp    = 1;
 let nextEpData   = null;
@@ -8,91 +8,77 @@ let introRange = null;
 let hlsInstance = null;
 let controlsTimer = null;
 
+// ── Multi-API / Provider Switching State ────────────────────
+let availableProviders = [];
+let currentProvider = '';
+let currentStreamUrl = '';
+let currentAnimeTitle = '';
+
+// ── Ad Mid-Roll Tracking ────────────────────────────────────
+let adPlayInterval = null;
+let lastAdPlayedAt = 0;
+const AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
 async function loadWatch() {
   const params   = new URLSearchParams(window.location.search);
-  // Support both new (animeId / epId) and legacy (id / ep) param names
   const animeId  = params.get('animeId') || params.get('id');
   const epIdRaw  = params.get('epId') || params.get('ep');
   currentEp      = parseInt(epIdRaw) || 1;
   if (!animeId) { showWatchError('Missing anime ID. Please go back and try again.'); return; }
 
   try {
-    // Fetch anime metadata
-    const { data: animeData } = await apiFetch(`/api/anime/${animeId}`);
+    const { data: animeData } = await apiFetch('/api/anime/' + animeId);
     currentAnime = animeData;
-    if (!animeData || !animeData.id) { showWatchError('Could not load anime data. It may have been removed.'); return; }
+    if (!animeData || !animeData.id) { showWatchError('Could not load anime data.'); return; }
 
-    document.title = `Ep ${currentEp} - ${animeData.title} | AniStrim`;
-    document.getElementById('watch-ep-title').textContent   = `Episode ${currentEp}`;
+    currentAnimeTitle = animeData.title;
+    document.title = 'Ep ' + currentEp + ' - ' + animeData.title + ' | AniStrim';
+    document.getElementById('watch-ep-title').textContent = 'Episode ' + currentEp;
     document.getElementById('watch-anime-title').textContent = animeData.title;
 
-    // Fetch episodes from the dedicated endpoint
-    const { data: episodesData } = await apiFetch(`/api/anime/${animeId}/episodes`);
+    const { data: episodesData } = await apiFetch('/api/anime/' + animeId + '/episodes');
     const episodes = Array.isArray(episodesData) ? episodesData : [];
 
-    // Find the target episode — by epId (DB id) or by episode_number fallback
     let ep;
     if (params.get('epId')) {
-      // New format: epId is the DB primary key
-      ep = episodes.find(e => String(e.id) === String(params.get('epId')));
+      ep = episodes.find(function(e) { return String(e.id) === String(params.get('epId')); });
     }
     if (!ep) {
-      // Legacy fallback: match by episode number
-      ep = episodes.find(e => (e.number || e.episode_number) === currentEp);
+      ep = episodes.find(function(e) { return (e.number || e.episode_number) === currentEp; });
     }
-    currentEpId  = ep?.id || null;
-    nextEpData   = episodes.find(e => (e.number || e.episode_number) === ((ep?.number || ep?.episode_number || currentEp) + 1)) || null;
+    currentEpId  = ep && ep.id ? ep.id : null;
+    nextEpData   = episodes.find(function(e) { return (e.number || e.episode_number) === ((ep && (ep.number || ep.episode_number)) || currentEp) + 1; }) || null;
 
-    // Premium content lock — free users can't watch premium episodes
-    if (ep?.is_premium && !State.isPremium && !State.isAdmin) {
-      document.getElementById('premium-lock').style.display     = 'flex';
+    if (nextEpData) {
+      document.getElementById('next-ep-title').textContent = 'Episode ' + (nextEpData.number || nextEpData.episode_number);
+    }
+
+    if (ep && ep.is_premium && !State.isPremium && !State.isAdmin) {
+      document.getElementById('premium-lock').style.display = 'flex';
       document.getElementById('video-placeholder').style.display = 'none';
       renderMoreEpisodes(episodes, animeId);
       return;
     }
 
-    const video = document.getElementById('animePlayer');
-    if (ep?.video_url) {
-      // Static video URL (e.g. Cloudinary) — play directly
+    var video = document.getElementById('animePlayer');
+
+    if (ep && ep.video_url) {
       await attachStreamSource(video, ep.video_url);
       document.getElementById('video-placeholder').style.display = 'none';
       setupPlayer(video);
     } else {
-      // No static URL — resolve a fresh streaming link on demand
-      const placeholder = document.getElementById('video-placeholder');
-      const spinner = document.getElementById('stream-spinner');
-      const errorDiv = document.getElementById('stream-error');
+      var placeholder = document.getElementById('video-placeholder');
+      var spinner = document.getElementById('stream-spinner');
+      var errorDiv = document.getElementById('stream-error');
       placeholder.style.display = 'flex';
       if (spinner) spinner.style.display = 'block';
       if (errorDiv) errorDiv.style.display = 'none';
 
-      // Fetch the stream URL from our Consumet-powered endpoint
       try {
-        const episodeKey = ep?.id || ep?.episode_number || currentEp;
-        const { data: streamData } = await apiFetch(`/api/anime/${animeId}/stream/${episodeKey}`);
-
-        if (streamData?.video_url) {
-          placeholder.style.display = 'none';  // hide placeholder since video will play
-
-          // If HLS.js is available and the stream is .m3u8, use HLS for better playback
-          if (typeof Hls !== 'undefined' && Hls.isSupported() && streamData.video_url.includes('.m3u8')) {
-            const hls = new Hls();
-            hlsInstance?.destroy();
-            hlsInstance = hls;
-            hls.loadSource(streamData.video_url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              video.play().catch(() => {});
-            });
-          } else {
-            // Fallback: native HTML5 with direct URL
-            video.src = streamData.video_url;
-          }
-
-          setupPlayer(video);
-        } else {
-          throw new Error(streamData?.error || 'No stream URL returned');
-        }
+        await fetchAvailableProviders(animeData.title, currentEp);
+        await resolveAndPlayStream(animeData.title, currentEp, video);
+        placeholder.style.display = 'none';
+        setupPlayer(video);
       } catch (err) {
         console.error('Stream resolution failed:', err.message);
         if (spinner) spinner.style.display = 'none';
@@ -100,12 +86,14 @@ async function loadWatch() {
       }
     }
 
-    loadSkipTimes(animeId, ep?.number || ep?.episode_number || currentEp);
+    loadSkipTimes(animeId, (ep && (ep.number || ep.episode_number)) || currentEp);
     renderMoreEpisodes(episodes, animeId);
 
-    // Show premium feature banner for free users
-    if (!State.isPremium && !State.isAdmin) {
+    if (State.isPremium || State.isAdmin) {
+      document.getElementById('download-btn').style.display = 'flex';
+    } else {
       showPremiumFeatureBanner();
+      startMidRollAdTracker(video);
     }
 
   } catch(e) {
@@ -114,25 +102,164 @@ async function loadWatch() {
   }
 }
 
-function setupPlayer(video) {
-  const wrap        = document.getElementById('player-wrap');
-  const fill        = document.getElementById('progress-fill');
-  const timeDisplay = document.getElementById('time-display');
-  const playIcon    = document.getElementById('play-icon');
-  const controls    = document.getElementById('videoControls');
-  const skipBtn     = document.getElementById('skipIntroBtn');
-  const nextBanner  = document.getElementById('nextEpisodeBtn');
-  const isPremium   = State.isPremium || State.isAdmin;
+// ── Multi-API: Fetch available providers ─────────────────────
+async function fetchAvailableProviders(animeTitle, episodeNumber) {
+  try {
+    var { data } = await apiFetch('/api/stream/providers/' + encodeURIComponent(animeTitle) + '/' + episodeNumber);
+    if (data && data.providers && data.providers.length > 0) {
+      availableProviders = data.providers;
+      populateServerSwitcher();
+    }
+  } catch (e) {
+    console.debug('Could not fetch provider list:', e.message);
+  }
+}
 
-  // Resume from saved position
+// ── Multi-API: Populate server switcher dropdown ─────────────
+function populateServerSwitcher() {
+  var select = document.getElementById('serverSwitcher');
+  if (!select || !availableProviders.length) {
+    if (select) select.style.display = 'none';
+    return;
+  }
+
+  select.style.display = 'inline-block';
+  select.innerHTML = '<option value="">Auto</option>';
+  availableProviders.forEach(function(p) {
+    var opt = document.createElement('option');
+    opt.value = p.provider;
+    var name = p.provider.charAt(0).toUpperCase() + p.provider.slice(1).replace('-', ' ');
+    if (p.bestQuality) name += ' (' + p.bestQuality + ')';
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+}
+
+// ── Multi-API: Resolve and play stream ──────────────────────
+async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredProvider) {
+  var url = '/api/stream/' + encodeURIComponent(animeTitle) + '/' + episodeNumber;
+  if (preferredProvider) {
+    url += '?preferredProvider=' + preferredProvider;
+  }
+
+  var { data } = await apiFetch(url);
+
+  if (data && data.streamUrl) {
+    currentStreamUrl = data.streamUrl;
+    currentProvider = data.provider || 'unknown';
+
+    var badge = document.getElementById('qualityBadge');
+    if (badge && data.bestQuality) {
+      badge.textContent = data.bestQuality;
+      badge.style.display = 'inline-block';
+    }
+
+    await attachStreamSource(video, data.streamUrl);
+  } else {
+    throw new Error((data && data.error) || 'No stream URL returned');
+  }
+}
+
+// ── Multi-API: Switch provider ──────────────────────────────
+async function switchProvider(providerName) {
+  if (!currentAnimeTitle) return;
+
+  var video = document.getElementById('animePlayer');
+  var currentTime = video.currentTime;
+  var wasPlaying = !video.paused;
+
+  var placeholder = document.getElementById('video-placeholder');
+  var spinner = document.getElementById('stream-spinner');
+  placeholder.style.display = 'flex';
+  if (spinner) spinner.style.display = 'block';
+
+  try {
+    await resolveAndPlayStream(currentAnimeTitle, currentEp, video, providerName || undefined);
+
+    video.addEventListener('loadedmetadata', function() {
+      if (currentTime > 5 && currentTime < (video.duration || Infinity)) {
+        video.currentTime = currentTime;
+      }
+      if (wasPlaying) video.play()['catch'](function() {});
+    }, { once: true });
+
+    placeholder.style.display = 'none';
+  } catch (err) {
+    console.error('Provider switch failed:', err.message);
+    if (spinner) spinner.style.display = 'none';
+    document.getElementById('stream-error').style.display = 'block';
+  }
+}
+window.switchProvider = switchProvider;
+
+// ── Mid-Roll Ad Tracker (Free users only) ──────────────────
+function startMidRollAdTracker(video) {
+  if (State.isPremium || State.isAdmin) return;
+  if (adPlayInterval) clearInterval(adPlayInterval);
+  lastAdPlayedAt = Date.now();
+
+  adPlayInterval = setInterval(function() {
+    if (video.paused || video.ended) return;
+    var elapsed = Date.now() - lastAdPlayedAt;
+    if (elapsed >= AD_INTERVAL_MS) {
+      showMidRollAd(video);
+    }
+  }, 30000);
+}
+
+function showMidRollAd(video) {
+  var overlay = document.getElementById('adOverlay');
+  if (!overlay) return;
+
+  var wasPlaying = !video.paused;
+  if (wasPlaying) video.pause();
+
+  overlay.style.display = 'flex';
+  lastAdPlayedAt = Date.now();
+
+  var sec = 15;
+  var cdEl = document.getElementById('adCountdownNum');
+  var skipBtn = document.getElementById('adSkipBtn');
+  if (skipBtn) {
+    skipBtn.disabled = true;
+    skipBtn.textContent = 'Skip in 15s';
+  }
+
+  var tick = setInterval(function() {
+    sec--;
+    if (cdEl) cdEl.textContent = Math.max(0, sec);
+    if (skipBtn) skipBtn.textContent = sec > 0 ? 'Skip in ' + sec + 's' : 'Skip Ad';
+    if (sec <= 0) {
+      clearInterval(tick);
+      if (skipBtn) { skipBtn.disabled = false; skipBtn.onclick = function() { closeAd(); }; }
+    }
+  }, 1000);
+
+  function closeAd() {
+    clearInterval(tick);
+    overlay.style.display = 'none';
+    if (wasPlaying) video.play()['catch'](function() {});
+  }
+}
+
+// ── Player Setup ───────────────────────────────────────────
+function setupPlayer(video) {
+  var wrap = document.getElementById('player-wrap');
+  var fill = document.getElementById('progress-fill');
+  var timeDisplay = document.getElementById('time-display');
+  var playIcon = document.getElementById('play-icon');
+  var controls = document.getElementById('videoControls');
+  var skipBtn = document.getElementById('skipIntroBtn');
+  var nextBanner = document.getElementById('nextEpisodeBtn');
+  var isPremium = State.isPremium || State.isAdmin;
+
   if (currentEpId) loadProgress(video, currentEpId);
 
-  video.addEventListener('timeupdate', () => {
-    const pct = (video.currentTime / (video.duration || 1)) * 100;
+  video.addEventListener('timeupdate', function() {
+    var pct = (video.currentTime / (video.duration || 1)) * 100;
     fill.style.width = pct + '%';
-    timeDisplay.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration)}`;
+    timeDisplay.textContent = fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration);
 
-    // ── Skip Intro button — premium-only feature ───────────────────
     if (isPremium && introRange && video.currentTime >= introRange.start && video.currentTime < introRange.end) {
       skipBtn.style.display = 'block';
       skipBtn.classList.remove('hidden');
@@ -141,84 +268,64 @@ function setupPlayer(video) {
       skipBtn.classList.add('hidden');
     }
 
-    // ── PREMIUM ONLY: Autoplay next episode countdown ─────────────────
     if (isPremium && nextEpData && video.duration) {
-      const remaining = video.duration - video.currentTime;
+      var remaining = video.duration - video.currentTime;
       if (remaining <= 30 && remaining > 0) {
         nextBanner.style.display = 'block';
-        const secEl = document.getElementById('autoplay-countdown-num');
+        var secEl = document.getElementById('autoplay-countdown-num');
         if (secEl) secEl.textContent = Math.ceil(remaining);
       } else if (remaining > 30) {
         nextBanner.style.display = 'none';
       }
     }
 
-    // Save progress every 10 seconds
     if (currentEpId && Math.floor(video.currentTime) % 10 === 0 && video.currentTime > 0) {
       saveProgress(currentEpId, Math.floor(video.currentTime), false);
     }
   });
 
-  // When video ends
-  video.addEventListener('ended', () => {
+  video.addEventListener('ended', function() {
     if (currentEpId) saveProgress(currentEpId, Math.floor(video.duration || 0), true);
-
     if (isPremium && nextEpData) {
-      // Premium: auto-play next episode after 5 seconds
       startAutoplayCountdown();
     } else if (!isPremium && nextEpData) {
-      // Free users: show "next episode" but require them to click
       nextBanner.style.display = 'block';
       document.getElementById('next-ep-auto-label').style.display = 'none';
       document.getElementById('next-ep-manual-label').style.display = 'block';
     }
   });
 
-  video.addEventListener('play', () => {
+  video.addEventListener('play', function() {
     playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
     wrap.classList.remove('paused');
-    // Show controls briefly on play, start hide timer
     showControls(controls);
   });
-  video.addEventListener('pause', () => {
+  video.addEventListener('pause', function() {
     playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
     wrap.classList.add('paused');
-    // Show controls when paused (always visible while paused)
     showControls(controls);
     cancelAutoplay();
   });
 
-  // ── Auto-hide controls: 3s inactivity timer ─────────────────────
   setupControlsAutoHide(wrap, controls);
-
-  video.play().catch(() => wrap.classList.add('paused'));
+  video.play()['catch'](function() { wrap.classList.add('paused'); });
 }
 
-// ── Auto-hide controls with 3-second inactivity timer ───────────────
 function setupControlsAutoHide(wrap, controls) {
   function resetControlsTimer() {
     showControls(controls);
     if (controlsTimer) clearTimeout(controlsTimer);
-    controlsTimer = setTimeout(() => {
-      // Don't hide controls if video is paused
-      const video = document.getElementById('animePlayer');
-      if (video && !video.paused) {
-        hideControls(controls);
-      }
+    controlsTimer = setTimeout(function() {
+      var video = document.getElementById('animePlayer');
+      if (video && !video.paused) hideControls(controls);
     }, 3000);
   }
-
-  // Mouse/touch activity shows controls and resets timer
   wrap.addEventListener('mousemove', resetControlsTimer);
   wrap.addEventListener('touchstart', resetControlsTimer);
-  // Also reset on mouse enter (e.g. coming back from another tab)
   wrap.addEventListener('mouseenter', resetControlsTimer);
-
-  // When user clicks on the wrap (not on controls), toggle
-  wrap.addEventListener('click', (e) => {
-    // Don't toggle if clicking on controls or buttons
+  wrap.addEventListener('click', function(e) {
     if (e.target.closest('#videoControls') || e.target.closest('.skip-intro-btn') || e.target.closest('.next-ep-banner')) return;
-    const video = document.getElementById('animePlayer');
+    var video = document.getElementById('animePlayer');
     if (video) togglePlay();
   });
 }
@@ -233,24 +340,18 @@ function hideControls(controls) {
   if (controls) controls.classList.add('hidden');
 }
 
-// ── PREMIUM: 5-second autoplay countdown ─────────────────────────────
 function startAutoplayCountdown() {
-  const nextBanner = document.getElementById('nextEpisodeBtn');
-  const countEl    = document.getElementById('autoplay-countdown-num');
+  var nextBanner = document.getElementById('nextEpisodeBtn');
+  var countEl = document.getElementById('autoplay-countdown-num');
   nextBanner.style.display = 'block';
-  document.getElementById('next-ep-auto-label').style.display  = 'block';
+  document.getElementById('next-ep-auto-label').style.display = 'block';
   document.getElementById('next-ep-manual-label').style.display = 'none';
-
-  let sec = 5;
+  var sec = 5;
   if (countEl) countEl.textContent = sec;
-
-  autoplayCountdown = setInterval(() => {
+  autoplayCountdown = setInterval(function() {
     sec--;
     if (countEl) countEl.textContent = sec;
-    if (sec <= 0) {
-      cancelAutoplay();
-      playNextEp();
-    }
+    if (sec <= 0) { cancelAutoplay(); playNextEp(); }
   }, 1000);
 }
 
@@ -259,42 +360,25 @@ function cancelAutoplay() {
 }
 window.cancelAutoplay = cancelAutoplay;
 
-// ── FREE USER: Show a teaser banner about premium features ───────────
 function showPremiumFeatureBanner() {
-  const existing = document.getElementById('premium-feature-hint');
+  var existing = document.getElementById('premium-feature-hint');
   if (existing) return;
-  const banner = document.createElement('div');
+  var banner = document.createElement('div');
   banner.id = 'premium-feature-hint';
-  banner.style.cssText = `
-    background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(249,115,22,0.1));
-    border: 1px solid rgba(139,92,246,0.3);
-    border-radius: 10px; padding: 12px 16px; margin: 12px 20px;
-    display: flex; align-items: center; gap: 12px;
-  `;
-  banner.innerHTML = `
-    <span style="font-size:1.4rem;">👑</span>
-    <div style="flex:1;">
-      <div style="font-size:0.88rem;font-weight:600;margin-bottom:2px;">Upgrade for Skip Intro, Autoplay &amp; Downloads</div>
-      <div style="font-size:0.78rem;color:var(--text-muted);">Premium members skip intros, auto-play next episodes, download offline, and more.</div>
-    </div>
-    <a href="upgrade.html" style="background:var(--purple);color:#fff;padding:7px 14px;border-radius:6px;font-size:0.8rem;font-weight:700;text-decoration:none;white-space:nowrap;">Upgrade</a>
-  `;
-  const watchInfo = document.querySelector('.watch-info');
+
+
+  var watchInfo = document.querySelector('.watch-info');
   if (watchInfo) watchInfo.after(banner);
 }
 
-// ── Progress helpers ──────────────────────────────────────────────────
 async function loadProgress(video, epId) {
   try {
-    const { data } = await apiFetch(`/api/watchlist/progress/${epId}`);
-    if (data?.progress_sec > 10 && !data.completed) {
-      video.addEventListener('loadedmetadata', () => {
+    var { data } = await apiFetch('/api/watchlist/progress/' + epId);
+    if (data && data.progress_sec > 10 && !data.completed) {
+      video.addEventListener('loadedmetadata', function() {
         video.currentTime = data.progress_sec;
-        const badge = document.getElementById('resume-badge');
-        if (badge) {
-          badge.style.display = 'block';
-          setTimeout(() => badge.style.display = 'none', 4000);
-        }
+        var badge = document.getElementById('resume-badge');
+        if (badge) { badge.style.display = 'block'; setTimeout(function() { badge.style.display = 'none'; }, 4000); }
       }, { once: true });
     }
   } catch(e) {}
@@ -302,191 +386,213 @@ async function loadProgress(video, epId) {
 
 async function saveProgress(epId, sec, completed) {
   try {
-    await apiFetch('/api/watchlist/progress', {
-      method: 'POST',
-      body: JSON.stringify({ episodeId: epId, progressSec: sec, completed })
-    });
+    await apiFetch('/api/watchlist/progress', { method: 'POST', body: JSON.stringify({ episodeId: epId, progressSec: sec, completed: completed }) });
   } catch(e) {}
 }
 
-// ── Player controls ───────────────────────────────────────────────────
-function togglePlay() {
-  const v = document.getElementById('animePlayer');
-  v.paused ? v.play() : v.pause();
-}
+function togglePlay() { var v = document.getElementById('animePlayer'); v.paused ? v.play() : v.pause(); }
 window.togglePlay = togglePlay;
-
-function skipBack() {
-  const v = document.getElementById('animePlayer');
-  if (!isFinite(v.duration)) return;
-  v.currentTime = Math.max(0, v.currentTime - 10);
-}
-function skipForward() {
-  const v = document.getElementById('animePlayer');
-  if (!isFinite(v.duration)) return;
-  v.currentTime = Math.min(v.duration - 0.5, v.currentTime + 10);
-}
-function setVolume(v)  { document.getElementById('animePlayer').volume = parseFloat(v); }
-window.skipBack    = skipBack;
-window.skipForward = skipForward;
-window.setVolume   = setVolume;
-
-function seekVideo(e) {
-  const v    = document.getElementById('animePlayer');
-  const rect = e.currentTarget.getBoundingClientRect();
-  v.currentTime = ((e.clientX - rect.left) / rect.width) * (v.duration || 0);
-}
+function skipBack() { var v = document.getElementById('animePlayer'); if (!isFinite(v.duration)) return; v.currentTime = Math.max(0, v.currentTime - 10); }
+function skipForward() { var v = document.getElementById('animePlayer'); if (!isFinite(v.duration)) return; v.currentTime = Math.min(v.duration - 0.5, v.currentTime + 10); }
+function setVolume(v) { document.getElementById('animePlayer').volume = parseFloat(v); }
+window.skipBack = skipBack; window.skipForward = skipForward; window.setVolume = setVolume;
+function seekVideo(e) { var v = document.getElementById('animePlayer'); var rect = e.currentTarget.getBoundingClientRect(); v.currentTime = ((e.clientX - rect.left) / rect.width) * (v.duration || 0); }
 window.seekVideo = seekVideo;
-
 function toggleFullscreen() {
-  const wrap = document.getElementById('player-wrap');
-  if (!document.fullscreenElement) {
-    (wrap.requestFullscreen || wrap.webkitRequestFullscreen).call(wrap);
-  } else {
-    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  }
+  var wrap = document.getElementById('player-wrap');
+  if (!document.fullscreenElement) { (wrap.requestFullscreen || wrap.webkitRequestFullscreen).call(wrap); }
+  else { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
 }
 window.toggleFullscreen = toggleFullscreen;
-
-function skipIntro() {
-  // Premium-only feature — only works for premium/admin users
-  if (!State.isPremium && !State.isAdmin) return;
-  const video = document.getElementById('animePlayer');
-  if (introRange) video.currentTime = introRange.end;
-  document.getElementById('skipIntroBtn').classList.add('hidden');
-}
+function skipIntro() { if (!State.isPremium && !State.isAdmin) return; var video = document.getElementById('animePlayer'); if (introRange) video.currentTime = introRange.end; document.getElementById('skipIntroBtn').classList.add('hidden'); }
 window.skipIntro = skipIntro;
-
-function playNextEp() {
-  cancelAutoplay();
-  if (!nextEpData || !currentAnime) return;
-  location.href = `watch.html?animeId=${currentAnime.id}&epId=${nextEpData.id}`;
-}
+function playNextEp() { cancelAutoplay(); if (!nextEpData || !currentAnime) return; location.href = 'watch.html?animeId=' + currentAnime.id + '&epId=' + nextEpData.id; }
 window.playNextEp = playNextEp;
-
-function fmtTime(s) {
-  if (!s || isNaN(s)) return '0:00';
-  return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;
-}
+function fmtTime(s) { if (!s || isNaN(s)) return '0:00'; return Math.floor(s/60) + ':' + Math.floor(s%60).toString().padStart(2,'0'); }
 
 function renderMoreEpisodes(episodes, animeId) {
-  const container = document.getElementById('more-episodes');
+  var container = document.getElementById('more-episodes');
   if (!container) return;
-  const epNum = currentEp;
-  const others = episodes.filter(e => (e.number || e.episode_number) !== epNum).slice(0, 12);
-  if (!others.length) {
-    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No other episodes available.</p>';
-    return;
-  }
-  container.innerHTML = others.map(e => {
-    const isLocked = e.is_premium && !State.isPremium && !State.isAdmin;
-    const displayNum = e.number || e.episode_number;
-    const epTitle = e.title && e.title !== 'undefined' ? e.title : `Episode ${displayNum}`;
-    const thumbSrc = e.thumbnail_url && e.thumbnail_url.trim() && e.thumbnail_url !== 'undefined'
-      ? e.thumbnail_url
-      : makeFallbackImg(epTitle);
-    return `
-      <div class="episode-item" onclick="location.href='watch.html?animeId=${animeId}&epId=${e.id}'">
-        <div class="ep-thumb-wrap">
-          <img src="${thumbSrc}" alt="${epTitle}" loading="lazy"
-               onerror="cardImgError(this,'${epTitle.replace(/'/g,"\\'")}')"
-               style="width:60px;height:40px;object-fit:cover;border-radius:4px;">
-        </div>
-        <div class="ep-num" style="${isLocked ? 'color:var(--orange)' : ''}">${isLocked ? '🔒' : displayNum}</div>
-        <div class="ep-info">
-          <div class="ep-title">${epTitle} ${e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : ''}</div>
-          <div class="ep-duration">${fmtTime(e.duration_sec || 1440)}</div>
-        </div>
-        <span class="ep-play" style="color:${isLocked ? 'var(--orange)' : 'var(--text-muted)'}">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            ${isLocked
-              ? '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
-              : '<polygon points="5 3 19 12 5 21 5 3"/>'}
-          </svg>
-        </span>
-      </div>`;
+  var epNum = currentEp;
+  var others = episodes.filter(function(e) { return (e.number || e.episode_number) !== epNum; }).slice(0, 12);
+  if (!others.length) { container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No other episodes available.</p>'; return; }
+  container.innerHTML = others.map(function(e) {
+    var isLocked = e.is_premium && !State.isPremium && !State.isAdmin;
+    var displayNum = e.number || e.episode_number;
+    var epTitle = e.title && e.title !== 'undefined' ? e.title : 'Episode ' + displayNum;
+    var thumbSrc = e.thumbnail_url && e.thumbnail_url.trim() && e.thumbnail_url !== 'undefined' ? e.thumbnail_url : makeFallbackImg(epTitle);
+    var lockIcon = isLocked ? '🔒' : displayNum;
+    var lockColor = isLocked ? 'color:var(--orange)' : '';
+    var premiumTag = e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : '';
+    var playSvg = isLocked ? '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>' : '<polygon points="5 3 19 12 5 21 5 3"/>';
+    var playColor = isLocked ? 'var(--orange)' : 'var(--text-muted)';
+    return '<div class="episode-item" onclick="location.href=\'watch.html?animeId=' + animeId + '&epId=' + e.id + '\'"><div class="ep-thumb-wrap"><img src="' + thumbSrc + '" alt="' + epTitle.replace(/'/g,"\\'") + '" loading="lazy" onerror="cardImgError(this,\'' + epTitle.replace(/'/g,"\\'") + '\')" style="width:60px;height:40px;object-fit:cover;border-radius:4px;"></div><div class="ep-num" style="' + lockColor + '">' + lockIcon + '</div><div class="ep-info"><div class="ep-title">' + epTitle + premiumTag + '</div><div class="ep-duration">' + fmtTime(e.duration_sec || 1440) + '</div><span class="ep-play" style="color:' + playColor + '"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + playSvg + '</svg></span></div>';
   }).join('');
 }
 
-// ── Error state (replaces redirect to browse) ─────────────────────────
 function showWatchError(msg) {
-  const wrap = document.getElementById('player-wrap');
-  const info = document.querySelector('.watch-info');
-  const moreEp = document.getElementById('more-episodes');
+  var wrap = document.getElementById('player-wrap');
+  var info = document.querySelector('.watch-info');
+  var moreEp = document.getElementById('more-episodes');
   if (wrap) wrap.style.display = 'none';
   if (info) info.style.display = 'none';
   if (moreEp) moreEp.style.display = 'none';
-
-  let errEl = document.getElementById('watch-error');
+  var errEl = document.getElementById('watch-error');
   if (!errEl) {
     errEl = document.createElement('div');
     errEl.id = 'watch-error';
-    errEl.style.cssText = `
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      padding:60px 20px; text-align:center; min-height:50vh;
-    `;
-    const main = document.querySelector('.player-wrap + .watch-info')?.parentNode || document.body;
-    // Insert after the navbar
-    const nav = document.querySelector('.navbar');
-    if (nav && nav.parentNode) {
-      nav.parentNode.insertBefore(errEl, nav.nextSibling);
-    } else {
-      document.body.prepend(errEl);
-    }
+    errEl.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;min-height:50vh;';
+    var nav = document.querySelector('.navbar');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(errEl, nav.nextSibling);
+    else document.body.prepend(errEl);
   }
   errEl.style.display = 'flex';
-
-  // Get animeId from URL for the detail link
-  const urlParams = new URLSearchParams(window.location.search);
-  const animeId = urlParams.get('animeId') || urlParams.get('id');
-  errEl.innerHTML = `
-    <div style="font-size:3rem;margin-bottom:12px;">⚠️</div>
-    <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:8px;">Something went wrong</h3>
-    <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px;max-width:360px;">${msg}</p>
-    <div style="display:flex;gap:10px;">
-      <button class="btn-primary" onclick="location.reload()">↺ Retry</button>
-      ${animeId ? `<button class="btn-secondary" onclick="location.href='details.html?id=${animeId}'">← Back to Details</button>` : ''}
-      <button class="btn-secondary" onclick="location.href='browse.html'">🔍 Browse Anime</button>
-    </div>
-  `;
+  var urlParams = new URLSearchParams(window.location.search);
+  var animeId = urlParams.get('animeId') || urlParams.get('id');
+  var backBtn = animeId ? '<button class="btn-secondary" onclick="location.href=\'details.html?id=' + animeId + '\'">&#8592; Back to Details</button>' : '';
+  errEl.innerHTML = '<div style="font-size:3rem;margin-bottom:12px;">&#9888;&#65039;</div><h3 style="font-size:1.1rem;font-weight:700;margin-bottom:8px;">Something went wrong</h3><p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px;max-width:360px;">' + msg + '</p><div style="display:flex;gap:10px;"><button class="btn-primary" onclick="location.reload()">&#8635; Retry</button>' + backBtn + '<button class="btn-secondary" onclick="location.href=\'browse.html\'">&#128269; Browse Anime</button></div>';
 }
 window.showWatchError = showWatchError;
 
 document.addEventListener('DOMContentLoaded', loadWatch);
 
-async function downloadEpisode(ep) {
-  if (!State.isPremium && !State.isAdmin) {
-    if (confirm('Offline downloads are available for premium users only. Upgrade now?')) {
-      location.href = 'upgrade.html';
-    }
+// ── Sandboxed Offline Download via IndexedDB ──────────────────
+var OFFLINE_STORAGE_KEY = 'anistrim_offline_episodes';
+function getOfflineList() { try { return JSON.parse(localStorage.getItem(OFFLINE_STORAGE_KEY) || '[]'); } catch(e) { return []; } }
+function saveOfflineList(list) { localStorage.setItem(OFFLINE_STORAGE_KEY, JSON.stringify(list)); }
+function isEpisodeDownloaded(animeTitle, epNum) { return getOfflineList().some(function(e) { return e.animeTitle === animeTitle && e.episodeNumber === epNum; }); }
+
+async function handleDownload() {
+  if (!State.isPremium && !State.isAdmin) { if (confirm('Offline downloads are for premium users only. Upgrade now?')) location.href = 'upgrade.html'; return; }
+  if (!currentAnimeTitle || !currentEp) { alert('Cannot download this episode.'); return; }
+  if (isEpisodeDownloaded(currentAnimeTitle, currentEp)) {
+    document.getElementById('offlineDeleteBtn').style.display = 'inline-block';
+    document.getElementById('offlineStatus').textContent = '✅ Already downloaded.';
+    document.getElementById('offlineStartBtn').textContent = 'Re-download';
+    document.getElementById('offlineModal').style.display = 'flex';
     return;
   }
-
-  if (!ep?.id) {
-    alert('Cannot download this episode.');
-    return;
-  }
-
-  const dlBtn = document.getElementById('download-btn');
-  if (dlBtn) { dlBtn.textContent = 'Starting download...'; dlBtn.disabled = true; }
-
+  document.getElementById('offlineDeleteBtn').style.display = 'none';
+  document.getElementById('offlineStartBtn').textContent = 'Start Download';
   try {
-    // Use server-side proxy — avoids CORS, streams with auth
-    const token = State.token || localStorage.getItem('token') || '';
-    const a     = document.createElement('a');
-    a.href      = `${BACKEND}/api/download/${ep.id}?token=${encodeURIComponent(token)}`;
-    a.download  = `${currentAnime?.title || 'anime'}_ep${currentEp}.mp4`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    var { data } = await apiFetch('/api/stream/offline-download', { method: 'POST', body: JSON.stringify({ animeTitle: currentAnimeTitle, episodeNumber: currentEp, provider: currentProvider || undefined }) });
+    if (!data || !data.authorized || !data.streamUrl) { alert('Download authorization failed.'); return; }
+    var downloadInfo = { animeTitle: currentAnimeTitle, episodeNumber: currentEp, streamUrl: data.streamUrl, quality: data.quality || 'auto', provider: data.provider || currentProvider };
+    document.getElementById('offlineMeta').textContent = currentAnimeTitle + ' - Ep ' + currentEp + ' (' + downloadInfo.quality + ')';
+    document.getElementById('offlineStatus').textContent = 'Ready to start download.';
+    document.getElementById('offlineModal').style.display = 'flex';
+    window.__pendingDownload = downloadInfo;
+  } catch (e) { console.error('Download error:', e); alert('Download failed: ' + e.message); }
+}
+window.handleDownload = handleDownload;
 
-    saveDownloadRecord(ep);
+function closeOfflineModal() { document.getElementById('offlineModal').style.display = 'none'; document.getElementById('offlineProgress').style.width = '0%'; window.__pendingDownload = null; }
+window.closeOfflineModal = closeOfflineModal;
 
-    if (dlBtn) {
-      dlBtn.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download`;
-      dlBtn.disabled = false;
+async function startOfflineDownload() {
+  var info = window.__pendingDownload;
+  if (!info) return;
+  var progressFill = document.getElementById('offlineProgress');
+  var statusEl = document.getElementById('offlineStatus');
+  var startBtn = document.getElementById('offlineStartBtn');
+  startBtn.disabled = true;
+  startBtn.textContent = 'Downloading...';
+  statusEl.textContent = 'Downloading episode (sandboxed)...';
+  try {
+    var response = await fetch(info.streamUrl);
+    var contentLength = response.headers.get('content-length');
+    var total = contentLength ? parseInt(contentLength, 10) : 0;
+    var reader = response.body.getReader();
+    var chunks = [];
+    var received = 0;
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      chunks.push(result.value);
+      received += result.value.length;
+      if (total > 0) { var pct = Math.min(100, Math.round((received / total) * 100)); progressFill.style.width = pct + '%'; statusEl.textContent = 'Downloading... ' + pct + '% (' + (received / 1024 / 1024).toFixed(1) + ' MB)'; }
+      else { progressFill.style.width = '50%'; statusEl.textContent = 'Downloading... ' + (received / 1024 / 1024).toFixed(1) + ' MB'; }
     }
+    var blob = new Blob(chunks, { type: 'video/mp4' });
+    var offlineList = getOfflineList();
+    offlineList.push({ animeTitle: info.animeTitle, episodeNumber: info.episodeNumber, quality: info.quality, provider: info.provider, downloadedAt: new Date().toISOString(), blobSize: blob.size, blobType: blob.type });
+    saveOfflineList(offlineList);
+    await storeBlobInIndexedDB(info.animeTitle, info.episodeNumber, blob);
+    progressFill.style.width = '100%';
+    statusEl.textContent = '✅ Download complete! (Sandboxed storage)';
+    startBtn.textContent = 'Downloaded ✓';
+    startBtn.disabled = false;
+    setTimeout(closeOfflineModal, 2000);
+  } catch (e) { console.error('Offline download failed:', e); statusEl.textContent = '❌ Download failed: ' + e.message; startBtn.textContent = 'Retry'; startBtn.disabled = false; }
+}
+window.startOfflineDownload = startOfflineDownload;
 
+function deleteOfflineDownload() {
+  var list = getOfflineList();
+  var filtered = list.filter(function(e) { return !(e.animeTitle === currentAnimeTitle && e.episodeNumber === currentEp); });
+  saveOfflineList(filtered);
+  deleteBlobFromIndexedDB(currentAnimeTitle, currentEp);
+  document.getElementById('offlineStatus').textContent = '🗑️ Deleted from offline storage.';
+  document.getElementById('offlineDeleteBtn').style.display = 'none';
+  document.getElementById('offlineStartBtn').textContent = 'Start Download';
+  document.getElementById('offlineProgress').style.width = '0%';
+}
+window.deleteOfflineDownload = deleteOfflineDownload;
+
+// ── IndexedDB Sandboxed Storage ──────────────────────────────
+var DB_NAME = 'AnistrimOfflineDB';
+var DB_VERSION = 1;
+var STORE_NAME = 'episodes';
+
+function openOfflineDB() {
+  return new Promise(function(resolve, reject) {
+    var request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = function(event) {
+      var db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+    };
+    request.onsuccess = function() { resolve(request.result); };
+    request.onerror = function() { reject(request.error); };
+  });
+}
+
+async function storeBlobInIndexedDB(animeTitle, episodeNumber, blob) {
+  var db = await openOfflineDB();
+  var tx = db.transaction(STORE_NAME, 'readwrite');
+  var store = tx.objectStore(STORE_NAME);
+  store.put({ id: animeTitle + '_ep' + episodeNumber, animeTitle: animeTitle, episodeNumber: episodeNumber, blob: blob, storedAt: new Date().toISOString() });
+  return new Promise(function(resolve, reject) { tx.oncomplete = function() { resolve(); }; tx.onerror = function() { reject(tx.error); }; });
+}
+
+async function getBlobFromIndexedDB(animeTitle, episodeNumber) {
+  var db = await openOfflineDB();
+  var tx = db.transaction(STORE_NAME, 'readonly');
+  var store = tx.objectStore(STORE_NAME);
+  var request = store.get(animeTitle + '_ep' + episodeNumber);
+  return new Promise(function(resolve, reject) { request.onsuccess = function() { resolve(request.result ? request.result.blob : null); }; request.onerror = function() { reject(request.error); }; });
+}
+
+async function deleteBlobFromIndexedDB(animeTitle, episodeNumber) {
+  var db = await openOfflineDB();
+  var tx = db.transaction(STORE_NAME, 'readwrite');
+  var store = tx.objectStore(STORE_NAME);
+  store.delete(animeTitle + '_ep' + episodeNumber);
+  return new Promise(function(resolve, reject) { tx.oncomplete = function() { resolve(); }; tx.onerror = function() { reject(tx.error); }; });
+}
+
+// ── HLS / Stream Source Attacher ─────────────────────────────
+async function downloadEpisode(ep) {
+  if (!State.isPremium && !State.isAdmin) { if (confirm('Offline downloads are available for premium users only. Upgrade now?')) location.href = 'upgrade.html'; return; }
+  if (!ep || !ep.id) { alert('Cannot download this episode.'); return; }
+  var dlBtn = document.getElementById('download-btn');
+  if (dlBtn) { dlBtn.textContent = 'Starting download...'; dlBtn.disabled = true; }
+  try {
+    var token = State.token || localStorage.getItem('token') || '';
+    var a = document.createElement('a');
+    a.href = BACKEND + '/api/download/' + ep.id + '?token=' + encodeURIComponent(token);
+    a.download = (currentAnime && currentAnime.title || 'anime') + '_ep' + currentEp + '.mp4';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    if (dlBtn) { dlBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download'; dlBtn.disabled = false; }
   } catch(e) {
     console.error('Download error:', e);
     if (dlBtn) { dlBtn.disabled = false; dlBtn.innerHTML = 'Download'; }
@@ -500,22 +606,22 @@ function attachStreamSource(video, source) {
     hlsInstance = null;
   }
 
-  const isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
-  return new Promise((resolve, reject) => {
-    if (isHlsStream && window.Hls?.isSupported()) {
+  var isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
+  return new Promise(function(resolve, reject) {
+    if (isHlsStream && window.Hls && window.Hls.isSupported()) {
       hlsInstance = new window.Hls();
       hlsInstance.loadSource(source);
       hlsInstance.attachMedia(video);
-      hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, resolve);
-      hlsInstance.on(window.Hls.Events.ERROR, (_event, data) => {
+      hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function() { resolve(); });
+      hlsInstance.on(window.Hls.Events.ERROR, function(_event, data) {
         if (data.fatal) reject(new Error('HLS playback could not start.'));
       });
       return;
     }
 
     video.src = source;
-    video.addEventListener('loadedmetadata', resolve, { once: true });
-    video.addEventListener('error', () => reject(new Error('Video source could not be loaded.')), { once: true });
+    video.addEventListener('loadedmetadata', function() { resolve(); }, { once: true });
+    video.addEventListener('error', function() { reject(new Error('Video source could not be loaded.')); }, { once: true });
     video.load();
   });
 }
@@ -523,8 +629,8 @@ function attachStreamSource(video, source) {
 async function loadSkipTimes(animeId, episodeNumber) {
   introRange = null;
   try {
-    const { data } = await apiFetch(`/api/watch/skip-times/${encodeURIComponent(animeId)}/${encodeURIComponent(episodeNumber)}`);
-    if (data?.op && Number.isFinite(Number(data.op.start)) && Number.isFinite(Number(data.op.end))) {
+    var { data } = await apiFetch('/api/watch/skip-times/' + encodeURIComponent(animeId) + '/' + encodeURIComponent(episodeNumber));
+    if (data && data.op && Number.isFinite(Number(data.op.start)) && Number.isFinite(Number(data.op.end))) {
       introRange = { start: Number(data.op.start), end: Number(data.op.end) };
     }
   } catch (error) {

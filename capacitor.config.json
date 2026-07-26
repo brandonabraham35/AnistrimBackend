@@ -11,6 +11,10 @@
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "DeepLinking": {
+      "customSchemes": ["anistrim"]
     }
   }
 }
+
