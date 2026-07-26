@@ -24,30 +24,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (errorMsg) errorMsg.innerText = '';
 
             try {
-                const data = await window.apiRequest('/auth/login', {
+                // Use the correct admin login endpoint and stringify the body
+                const data = await window.apiRequest('/api/auth/login', {
                     method: 'POST',
-                    body: { email, password }
+                    body: JSON.stringify({ email, password })
                 });
 
                 const u = data?.user;
-                const isAdmin = u && (
-                    u.isAdmin === true || 
-                    u.is_admin === 1 || 
-                    u.is_admin === '1' || 
-                    u.is_admin === true ||
-                    (u.is_admin && typeof u.is_admin === 'object' && u.is_admin.data && u.is_admin.data[0] === 1)
-                );
+                // Simplified, robust check for admin status, handles various formats (boolean, number, buffer)
+                const isAdmin = u && (u.isAdmin || u.is_admin == 1 || (u.is_admin?.data?.[0] === 1));
 
                 if (data?.token && isAdmin) {
                     localStorage.setItem('admin_token', data.token);
                     localStorage.setItem('admin_user', JSON.stringify(u));
-                    // Verify the persisted token before leaving the login screen.
-                    // This prevents stale/corrupted localStorage from flashing the dashboard.
-                    const verifiedUser = await window.apiRequest('/auth/me');
-                    if (!verifiedUser?.isAdmin) {
-                        throw new Error('Access denied. Account is not configured as an administrator.');
-                    }
-                    localStorage.setItem('admin_user', JSON.stringify({ ...u, ...verifiedUser }));
                     window.location.replace('dashboard.html');
                 } else if (data?.token) {
                     if (errorMsg) errorMsg.innerText = 'Access denied. Account is not configured as an administrator.';

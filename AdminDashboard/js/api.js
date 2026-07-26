@@ -46,3 +46,6 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
     throw error;
   }
 }
+
+// Expose the function globally for other scripts (auth.js, anime.js, etc.)
+window.apiRequest = apiFetch;
