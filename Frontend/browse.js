@@ -6,14 +6,99 @@ let currentSearch = '';
 
 async function initBrowse() {
   try {
-    const { data } = await apiFetch('/api/anime/trending');
+    const { data, ok } = await apiFetch('/api/anime/trending');
     allAnime = Array.isArray(data) ? data : [];
+    if (!ok || !allAnime.length) throw new Error('Empty or invalid response');
     applyFilters();
+    // Hide any existing error banner
+    hideBrowseError();
   } catch(e) {
-    document.getElementById('browse-grid').innerHTML =
-      '<p style="color:#9ca3af;padding:40px;text-align:center;grid-column:1/-1;">Could not load anime. Is the server running?</p>';
+    console.error('Browse init error:', e.message);
+    showBrowseError('Could not load anime catalog. Please check your connection.');
   }
 }
+
+// ── Browse Error UI & Reload ─────────────────────────
+function showBrowseError(message) {
+  hideBrowseError();
+  const grid = document.getElementById('browse-grid');
+  if (!grid) return;
+  grid.innerHTML = `
+    <div id="browse-error-banner" style="
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      padding:60px 20px; text-align:center; gap:14px; grid-column:1/-1;
+    ">
+      <div style="font-size:3rem;line-height:1;">⚠️</div>
+      <h3 style="margin:0;font-size:1.05rem;font-weight:600;color:var(--text);">
+        Could not load catalog
+      </h3>
+      <p style="margin:0;color:var(--text-muted);font-size:0.88rem;max-width:300px;">
+        ${message || 'Check your connection and try again.'}
+      </p>
+      <button id="browse-reload-btn" onclick="reloadBrowse()"
+        style="
+          background:#8b5cf6; color:#fff; border:0; border-radius:8px;
+          padding:10px 28px; font-size:0.92rem; font-weight:600; cursor:pointer;
+          display:inline-flex; align-items:center; gap:8px;
+        "
+      >
+        <span id="browse-reload-icon">↻</span>
+        <span id="browse-reload-text">Reload</span>
+      </button>
+    </div>`;
+}
+
+function hideBrowseError() {
+  const el = document.getElementById('browse-error-banner');
+  if (el) el.remove();
+}
+
+/**
+ * Reload browse catalog with retry logic and exponential backoff.
+ */
+async function reloadBrowse() {
+  const btn = document.getElementById('browse-reload-btn');
+  const icon = document.getElementById('browse-reload-icon');
+  const text = document.getElementById('browse-reload-text');
+
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; }
+  if (icon) icon.textContent = '⏳';
+  if (text) text.textContent = 'Loading...';
+  hideBrowseError();
+
+  const MAX_RETRIES = 3;
+  const BASE_DELAY = 1000;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const { data, ok } = await apiFetch('/api/anime/trending');
+      if (!ok || !Array.isArray(data)) throw new Error('Invalid response');
+      allAnime = data;
+      applyFilters();
+      if (icon) icon.textContent = '✓';
+      if (text) text.textContent = 'Loaded!';
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+      setTimeout(() => {
+        if (icon) icon.textContent = '↻';
+        if (text) text.textContent = 'Reload';
+      }, 2000);
+      return;
+    } catch (err) {
+      console.warn(`[Browse Reload] Attempt ${attempt}/${MAX_RETRIES}:`, err.message);
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+        if (text) text.textContent = `Retrying in ${delay/1000}s...`;
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        if (icon) icon.textContent = '⚠️';
+        if (text) text.textContent = 'Try Again';
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        showBrowseError('Could not reach server after multiple attempts. Please check your connection.');
+      }
+    }
+  }
+}
+window.reloadBrowse = reloadBrowse;
 
 // Search
 function handleSearch(query) {

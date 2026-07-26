@@ -1,5 +1,5 @@
-// scrpt.js — AniStrim2 Global Script v2
- const API = 'https://anistrimbackend.onrender.com';
+// scrpt.js — AniStrim2 Global Script v3
+const API = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com';
 const BACKEND = API; // alias used by login.js, signup.js, google-auth-handler.js
 
 // ===================== GLOBAL STATE =====================
@@ -92,8 +92,10 @@ async function loadHomeContent() {
   loadContinueWatching();
 
   try {
-    const { data: all } = await apiFetch('/api/anime/trending');
-    if (!Array.isArray(all)) return;
+    const { data: all, ok } = await apiFetch('/api/anime/trending');
+    if (!ok || !Array.isArray(all)) {
+      throw new Error('Invalid response from server');
+    }
 
     heroAnime = all.filter(a => a.is_featured).slice(0,5);
     if (!heroAnime.length) heroAnime = [...all].sort((a,b) => b.rating - a.rating).slice(0,5);
@@ -103,7 +105,10 @@ async function loadHomeContent() {
     renderRow('popular-row',  [...all].sort((a,b) => b.rating - a.rating).slice(0,8));
     renderRow('new-row',      all.filter(a => (a.year||0) >= 2020).slice(0,8));
     renderRow('classics-row', all.filter(a => (a.year||9999) < 2015).slice(0,8));
-  } catch(e) { console.error('Home load error:', e); }
+  } catch(e) {
+    console.error('Home load error:', e);
+    showCatalogError('Could not connect to the server. The catalog data is currently unavailable.');
+  }
 }
 
 // FIX 2: Continue Watching
@@ -227,6 +232,156 @@ function renderRow(containerId, list) {
     </div>`;
   }).join('');
 }
+
+// ===================== ERROR UI & CATALOG RELOAD =====================
+/**
+ * Injects or shows an error banner on the home page with a reload button.
+ * This provides visual feedback when the catalog fails to load.
+ */
+function showCatalogError(message) {
+  // Remove any existing error banner
+  hideCatalogError();
+
+  // Find the main content container
+  const main = document.querySelector('main.content') || document.querySelector('main') || document.body;
+  if (!main) return;
+
+  const errorDiv = document.createElement('div');
+  errorDiv.id = 'catalog-error-banner';
+  errorDiv.style.cssText = `
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:40px 20px; text-align:center; gap:12px;
+    background:var(--card-bg); border:1px solid var(--border);
+    border-radius:12px; margin:20px auto; max-width:420px;
+  `;
+  errorDiv.innerHTML = `
+    <div style="font-size:3rem;line-height:1;">⚠️</div>
+    <h3 style="margin:0;font-size:1.05rem;font-weight:600;color:var(--text);">
+      Could not load catalog
+    </h3>
+    <p style="margin:0;color:var(--text-muted);font-size:0.88rem;max-width:300px;">
+      ${message || 'Check your connection and try again.'}
+    </p>
+    <button id="catalog-reload-btn" onclick="reloadCatalog()"
+      style="
+        background:var(--purple); color:#fff; border:0; border-radius:8px;
+        padding:10px 28px; font-size:0.92rem; font-weight:600; cursor:pointer;
+        display:inline-flex; align-items:center; gap:8px;
+        transition:opacity 0.2s;
+      "
+      onmouseover="this.style.opacity='0.85'"
+      onmouseout="this.style.opacity='1'"
+    >
+      <span id="reload-btn-icon">↻</span>
+      <span id="reload-btn-text">Reload Catalog</span>
+    </button>
+  `;
+
+  // Insert at the top of main content (after the first child)
+  const firstChild = main.firstChild;
+  if (firstChild) {
+    main.insertBefore(errorDiv, firstChild);
+  } else {
+    main.appendChild(errorDiv);
+  }
+}
+
+function hideCatalogError() {
+  const existing = document.getElementById('catalog-error-banner');
+  if (existing) existing.remove();
+}
+
+/**
+ * Reload catalog — clears caches and re-fetches all data.
+ * Implements a retry loop with exponential backoff.
+ * Called by the reload button in the error UI.
+ */
+async function reloadCatalog() {
+  const btnIcon = document.getElementById('reload-btn-icon');
+  const btnText = document.getElementById('reload-btn-text');
+  const btn = document.getElementById('catalog-reload-btn');
+
+  // Visual feedback: spinning icon
+  if (btnIcon) btnIcon.textContent = '⏳';
+  if (btnText) btnText.textContent = 'Loading...';
+  if (btn) {
+    btn.style.opacity = '0.7';
+    btn.disabled = true;
+  }
+
+  // Clear existing content to show loading state
+  const rows = ['trending-row', 'popular-row', 'new-row', 'classics-row'];
+  rows.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div style="color:var(--text-muted);padding:10px;font-size:0.85rem;">⟳ Reloading...</div>';
+  });
+
+  // Hide any existing error banner
+  hideCatalogError();
+
+  // Retry loop with exponential backoff
+  const MAX_RETRIES = 3;
+  const BASE_DELAY = 1000; // 1 second
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const { data: all, ok } = await apiFetch('/api/anime/trending');
+
+      if (!ok || !Array.isArray(all)) {
+        throw new Error('Invalid response from server');
+      }
+
+      // Success — populate the page
+      heroAnime = all.filter(a => a.is_featured).slice(0,5);
+      if (!heroAnime.length) heroAnime = [...all].sort((a,b) => b.rating - a.rating).slice(0,5);
+      setupHeroSlider();
+
+      renderRow('trending-row', all.filter(a => a.status === 'airing').slice(0,8));
+      renderRow('popular-row',  [...all].sort((a,b) => b.rating - a.rating).slice(0,8));
+      renderRow('new-row',      all.filter(a => (a.year||0) >= 2020).slice(0,8));
+      renderRow('classics-row', all.filter(a => (a.year||9999) < 2015).slice(0,8));
+
+      // Also reload continue watching
+      loadContinueWatching();
+
+      // Reset button
+      if (btnIcon) btnIcon.textContent = '✓';
+      if (btnText) btnText.textContent = 'Loaded!';
+      if (btn) {
+        btn.style.opacity = '1';
+        btn.disabled = false;
+      }
+
+      showToast('Catalog refreshed successfully!');
+      setTimeout(() => {
+        if (btnIcon) btnIcon.textContent = '↻';
+        if (btnText) btnText.textContent = 'Reload Catalog';
+      }, 2000);
+
+      return; // Success — exit
+    } catch (err) {
+      console.warn(`[Reload] Attempt ${attempt}/${MAX_RETRIES} failed:`, err.message);
+
+      if (attempt < MAX_RETRIES) {
+        // Wait with exponential backoff before retrying
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+        if (btnText) btnText.textContent = `Retrying in ${delay/1000}s...`;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // All attempts exhausted — show error
+        if (btnIcon) btnIcon.textContent = '⚠️';
+        if (btnText) btnText.textContent = 'Try Again';
+        if (btn) {
+          btn.style.opacity = '1';
+          btn.disabled = false;
+        }
+        showCatalogError('Could not reach the server after multiple attempts. Please check your connection.');
+        showToast('Failed to load catalog. Please try again.', 'error');
+      }
+    }
+  }
+}
+window.reloadCatalog = reloadCatalog;
 
 // ===================== WATCHLIST =====================
 async function addToWatchlist(animeId) {

@@ -3,7 +3,7 @@
 // Include on: login.html, signup.html, index.html
 
 (function() {
-  var BACKEND = 'https://anistrimbackend.onrender.com';
+  var BACKEND = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com';
 
   // ── Extract code from URL or deep link ───────────────────
   function getCodeFromUrl(url) {

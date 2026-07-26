@@ -140,11 +140,11 @@
       </div>
     </div>
     <nav>
-      <div class="admin-nav-item active" onclick="showTab('dashboard')">📊 Dashboard</div>
-      <div class="admin-nav-item" onclick="showTab('anime')">🎬 Anime CMS</div>
-      <div class="admin-nav-item" onclick="showTab('episodes')">📺 Episodes</div>
-      <div class="admin-nav-item" onclick="showTab('users')">👥 Users</div>
-      <div class="admin-nav-item" onclick="showTab('revenue')">💰 Revenue</div>
+      <div class="admin-nav-item active" onclick="showTab('dashboard', this)">📊 Dashboard</div>
+      <div class="admin-nav-item" onclick="showTab('anime', this)">🎬 Anime CMS</div>
+      <div class="admin-nav-item" onclick="showTab('episodes', this)">📺 Episodes</div>
+      <div class="admin-nav-item" onclick="showTab('users', this)">👥 Users</div>
+      <div class="admin-nav-item" onclick="showTab('revenue', this)">💰 Revenue</div>
       <div style="border-top:1px solid var(--border);margin:16px 0;"></div>
       <div class="admin-nav-item" onclick="location.href='index.html'">🏠 View Site</div>
       <div class="admin-nav-item" style="color:#ef4444;" onclick="handleSignOut()">🚪 Sign Out</div>
@@ -365,14 +365,15 @@
   </main>
 </div>
 
+<script src="config.js"></script>
 <script src="scrpt.js"></script>
 <script>
 // ── Tab Switcher ──────────────────────────────────────────
-function showTab(name) {
+function showTab(name, el) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.admin-nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`tab-${name}`)?.classList.add('active');
-  event?.currentTarget?.classList.add('active');
+  if (el) el.classList.add('active');
 
   // Lazy-load data
   if (name === 'dashboard') loadDashboard();
@@ -407,19 +408,7 @@ function openSelectedEpisodesForEdit() {
   const title = sel.options[sel.selectedIndex]?.dataset.title || sel.options[sel.selectedIndex]?.textContent || 'Anime';
   openEpisodesModal(sel.value, title.replace(/^#\d+\s+—\s+/, ''));
 }
-window.openSelectedEpisodesForEdit = openSelectedEpisodesForEdit;
 
-// ── Dashboard ────────────────────────────────────────────
-async function loadDashboard() {
-  try {
-    const { ok, data } = await apiFetch('/api/admin/stats');
-    if (!ok) return;
-
-    setText('stat-users',        data.users.total);
-    setText('stat-premium-users',`${data.users.premium} premium`);
-    setText('stat-anime',        data.anime.total);
-    setText('stat-views',        `${(data.anime.totalViews||0).toLocaleString()} total views`);
-    setText('stat-revenue',      `UGX ${Number(data.revenue.total||0).toLocaleString()}`);
     setText('stat-today-rev',    `UGX ${Number(data.revenue.today||0).toLocaleString()} today`);
     setText('stat-subs',         data.users.premium);
 
