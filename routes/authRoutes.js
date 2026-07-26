@@ -1,24 +1,15 @@
-// routes/authRoutes.js
 const express = require('express');
-const router  = express.Router();
-const auth    = require('../controllers/authController');
-const google  = require('../controllers/googleAuthController');   // old redirect flow (keep for fallback)
-const gVerify = require('../controllers/googleVerifyController'); // new GIS flow
-const { protect } = require('../middleware/auth');
+const router = express.Router();
+const authController = require('../controllers/authController');
+const authMiddleware = require('../middleware/auth'); // Assuming you have this middleware
 
-// ── Email/password routes ──────────────────────────────────
-router.post('/signup',          auth.register);
-router.post('/login',           auth.login);
-router.get('/me',               protect, auth.getMe);
-router.post('/forgot-password', auth.forgotPassword);
-router.post('/reset-password',  auth.resetPassword);
+// @route   POST /api/auth/login
+// @desc    Authenticate user & get token
+// @access  Public
+router.post('/login', authController.login);
 
-// ── Google OAuth — redirect flow (old, keep as fallback) ───
-router.get('/google',          google.googleRedirect);
-router.get('/google/callback', google.googleCallback);
-router.get('/google/token',    google.exchangeLoginCode);
-
-// ── Google GIS — direct token verification (NEW, preferred) ─
-router.post('/google/verify',  gVerify.verifyGoogleToken);
+// NOTE: Other routes like /signup and /me would also be defined here.
+// router.post('/signup', authController.signup);
+// router.get('/me', authMiddleware.protect, authController.getMe);
 
 module.exports = router;
