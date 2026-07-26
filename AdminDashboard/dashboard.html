@@ -72,8 +72,8 @@
             </div>
         </div>
 
-        <div class="grid-sections">
-            <div class="left-column">
+        <div class="grid-sections" style="grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+            <div>
                 <div class="section-box">
                     <h4><i class="fas fa-credit-card"></i> Recent Subscriber Transactions</h4>
                     <table id="recent-payments-table">
@@ -88,46 +88,27 @@
                             </tbody>
                     </table>
                 </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                    <div class="section-box">
-                        <h4><i class="fas fa-cloud"></i> Cloudinary Media Status</h4>
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div>Ready: <strong id="cloudinary-ready" style="color: var(--success);">0</strong></div>
-                            <div>Processing: <strong id="cloudinary-processing" style="color: var(--accent);">0</strong></div>
-                            <div>Failed: <strong id="cloudinary-failed" style="color: var(--danger);">0</strong></div>
-                        </div>
-                    </div>
-                    <div class="section-box">
-                        <h4><i class="fas fa-user-shield"></i> Moderation Summary</h4>
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div>Active Visitors Today: <strong id="active-users-today">0</strong></div>
-                            <div>Banned Accounts: <strong id="banned-users" style="color: var(--danger);">0</strong></div>
-                            <div>Est. Average Daily Rev: <strong id="rev-avg-daily">0</strong></div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
-            <div class="right-column">
+            <div>
                 <div class="section-box">
                     <h4><i class="fas fa-fire"></i> Trending Catalogue</h4>
-                    <div id="top-anime-list"></div>
+                    <div id="top-anime-list" class="dashboard-list"></div>
                 </div>
 
                 <div class="section-box">
                     <h4><i class="fas fa-cloud-upload-alt"></i> Recent Live Feeds</h4>
-                    <div id="recent-uploads"></div>
+                    <div id="recent-uploads" class="dashboard-list"></div>
                 </div>
 
                 <div class="section-box">
                     <h4><i class="fas fa-user-plus"></i> Newly Onboarded Users</h4>
-                    <div id="latest-users"></div>
+                    <div id="latest-users" class="dashboard-list"></div>
                 </div>
 
                 <div class="section-box">
                     <h4><i class="fas fa-history"></i> System Activity Logs</h4>
-                    <div id="activity-logs"></div>
+                    <div id="activity-logs" class="dashboard-list"></div>
                 </div>
             </div>
         </div>

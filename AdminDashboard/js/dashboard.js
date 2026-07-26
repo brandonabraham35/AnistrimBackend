@@ -11,7 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Helper Functions ---
   const safeInner = (selector, value, fallback = '0') => {
     const el = document.querySelector(selector);
-    if (el) el.innerHTML = value || fallback;
+    if (el) {
+      // Use textContent for security unless the value is explicitly meant to be HTML
+      if (String(value).includes('<')) el.innerHTML = value;
+      else el.textContent = value || fallback;
+    }
   };
 
   // --- SPA Routing ---
@@ -52,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const { totalUsers = 0, premiumUsers = 0 } = users;
       const { totalAnime = 0, totalEpisodes = 0 } = content;
       const { videoCount = 0 } = cloudinary;
-      const { today = 0, month = 0 } = revenue;
+      const { today = 0, month = 0, total = 0 } = revenue;
 
       console.log('[Dashboard] Hydrating stats:', { totalUsers, premiumUsers, totalAnime, totalEpisodes, videoCount, revenueToday: today, revenueMonth: month });
 
@@ -63,6 +67,13 @@ document.addEventListener('DOMContentLoaded', () => {
       safeInner('#stats-cloudinary-videos', videoCount);
       safeInner('#stats-revenue-today', `UGX ${today.toLocaleString()}`);
       safeInner('#stats-revenue-month', `UGX ${month.toLocaleString()}`);
+      safeInner('#stats-revenue-total', `UGX ${total.toLocaleString()}`);
+
+      // Populate the new Uchiha-style lists
+      populateList('#top-anime-list', data.topAnime, item => `<span>${item.title}</span><span class="list-value">${item.views || 0} views</span>`);
+      populateList('#recent-uploads', data.recentEpisodes, item => `<span>${item.anime_title || 'Unknown'} - Ep ${item.episode_number}</span><span class="list-value">${new Date(item.created_at).toLocaleDateString()}</span>`);
+      populateList('#latest-users', data.latestUsers, item => `<span>${item.name}</span><span class="list-value">${item.email}</span>`);
+      populateList('#activity-logs', data.activityLogs, item => `<span>${item.message}</span><span class="list-value">${new Date(item.timestamp).toLocaleTimeString()}</span>`);
 
     } catch (error) {
       console.error('Failed to load or render dashboard overview:', error);
@@ -72,6 +83,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       document.querySelectorAll('[id^="stats-"]').forEach(el => el.innerHTML = '<span style="color: #f87171;">Error</span>');
     }
+  }
+
+  function populateList(selector, items, formatter) {
+    const container = document.querySelector(selector);
+    if (!container) return;
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="list-item empty">No data available.</div>';
+      return;
+    }
+    container.innerHTML = items.map(item => {
+      const content = formatter(item);
+      return `<div class="list-item">${content}</div>`;
+    }).join('');
   }
 
   // --- Event Listeners ---

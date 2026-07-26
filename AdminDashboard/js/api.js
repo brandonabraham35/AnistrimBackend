@@ -14,10 +14,14 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
   
   const url = `${BASE_URL}${endpoint}`;
   const token = localStorage.getItem('admin_token');
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
+  const headers = { ...options.headers };
+
+  // Only set Content-Type for JSON. Let the browser handle it for FormData.
+  if (options.body && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(options.body);
+  }
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
