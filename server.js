@@ -82,6 +82,22 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
 });
 
+// Catch-all for Admin Dashboard SPA routes (e.g., /dashboard, /dashboard/users)
+// This must come AFTER API routes and specific static routes, but BEFORE the general frontend fallback.
+app.get('/dashboard*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
+});
+
+// Catch-all for Admin Login SPA routes (e.g., /admin, /admin/forgot-password)
+// This ensures that client-side routing within the /admin path works.
+app.get('/admin*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'AdminDashboard', 'index.html'));
+});
+
+// General Frontend SPA fallback:
+// For any other unmatched route (e.g., /browse, /details, /watchlist, or even /),
+// serve the main frontend index.html, letting the client-side router handle it.
+// This must be the very last route handler.
 // ─── Start Server ──────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('==================================================');
