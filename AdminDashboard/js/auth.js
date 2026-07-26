@@ -60,9 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
  * Initiates the Google OAuth flow by redirecting to the backend endpoint.
  */
 function googleLogin() {
-    const baseUrl = (typeof window.getApiBaseUrl === 'function')
-        ? window.getApiBaseUrl()
-        : 'https://anistrimbackend.onrender.com';
+    // Aligning with api.js, hardcode the production URL to make the admin dashboard self-contained.
+    const baseUrl = 'https://anistrimbackend.onrender.com';
 
     // Redirect to the backend's Google OAuth endpoint. The backend will handle
     // the redirect to Google's consent screen.
