@@ -1,15 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-    --bg-dark: #080a10; /* Deeper, near-black */
-    --bg-card: #0f131c; /* Slightly lighter for cards */
-    --primary: #9b4de0; /* Vibrant neon purple */
-    --primary-glow: rgba(155, 77, 224, 0.4);
-    --primary-hover: #a855f7;
-    --accent-cyan: #22d3ee;
+    --bg-dark: #090a0f; /* Deep Obsidian */
+    --bg-card: #11131b; /* Dark Slate */
+    --primary: #dc2626; /* Sharingan Crimson */
+    --primary-glow: rgba(220, 38, 38, 0.4);
+    --primary-hover: #ef4444;
+    --accent-cyan: #22d3ee; /* Kept for secondary highlights */
     --text-main: #f8fafc;
     --text-muted: #a0aec0; /* Lighter gray */
-    --border: #252a3a; /* Subtle dark border */
+    --border: #2a2c37; /* Subtle dark border */
     --success: #10b981;
     --danger: #f43f5e;
     --warning: #f59e0b;
@@ -39,10 +39,9 @@ body::before {
     position: fixed;
     top: 0; left: 0;
     width: 100vw; height: 100vh;
-    background-image:
-        linear-gradient(rgba(155, 77, 224, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(155, 77, 224, 0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
+    /* Subtle Sharingan tomoe pattern */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cpath d='M30 20 A10 10 0 1 1 30 40 A6 6 0 1 0 30 28 Z' fill='rgba(220, 38, 38, 0.04)'/%3E%3C/svg%3E");
+    background-size: 50px 50px;
     z-index: -1;
     pointer-events: none;
 }
@@ -201,7 +200,7 @@ body::before {
 .card-info .value {
     font-size: 2rem;
     font-weight: 700;
-    color: var(--primary); /* Accent purple */
+    color: var(--text-main); /* Use main text for numbers, border for accent */
     text-shadow: 0 0 8px var(--primary-glow);
 }
 
@@ -402,8 +401,9 @@ body.login-page {
     display: grid;
     place-items: center;
     padding: 1rem;
-    /* Use a different background for the login page */
-    background-image: url('https://images.alphacoders.com/134/1349993.png');
+    /* Use the requested Itachi hero image */
+    /* Ensure this path is correct for your project structure */
+    background-image: url('../img/itachi-hero.jpg');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -414,7 +414,7 @@ body.login-page::before {
     content: '';
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(8, 10, 16, 0.7);
+    background: linear-gradient(to top, rgba(9, 10, 15, 1) 0%, rgba(9, 10, 15, 0.7) 50%, rgba(9, 10, 15, 0.4) 100%);
     /* Use a simple overlay instead of the grid pattern */
     background-image: none;
     z-index: 0;
@@ -515,7 +515,7 @@ body.login-page::before {
     padding: 12px;
     border-radius: 8px;
     font-size: 1rem;
-    background-image: linear-gradient(to right, var(--primary), var(--accent-cyan));
+    background-image: linear-gradient(to right, var(--primary-hover), var(--primary));
 }
 
 #login-btn:disabled {
