@@ -33,7 +33,7 @@
         </div>
 
         <p class="page-error" id="dashboard-error" role="alert"></p>
-        <section data-section-panel="dashboard">
+        <section id="dashboard" class="content-section active">
         <div class="grid-stats">
             <div class="card">
                 <div class="card-info"><h3>Total Users</h3><div class="value" id="total-users">0</div></div>
@@ -133,7 +133,7 @@
         </div>
         </section>
 
-        <section class="page-section" data-section-panel="anime" hidden>
+        <section id="anime" class="content-section" hidden>
             <div class="toolbar">
                 <input type="search" id="anime-search" placeholder="Search anime..." style="flex:1;max-width:300px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
                 <select id="anime-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
@@ -149,7 +149,7 @@
                 <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-anime" title="Select all"></th><th>Cover</th><th>Title</th><th>Status</th><th>Premium</th><th>Featured</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section class="page-section" data-section-panel="users" hidden>
+        <section id="users" class="content-section" hidden>
             <div class="toolbar">
                 <button id="bulkDeleteBtn-users" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-users">0</span>)</button>
             </div>
@@ -157,7 +157,7 @@
                 <div style="overflow-x:auto"><table id="users-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section class="page-section" data-section-panel="episodes" hidden>
+        <section id="episodes" class="content-section" hidden>
             <div class="toolbar">
                 <button class="btn" id="add-episode-button">Add Episode</button>
                 <button id="bulkDeleteBtn-episodes" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-episodes">0</span>)</button>
@@ -166,12 +166,12 @@
                 <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-episodes" title="Select all"></th><th>Anime</th><th>Episode</th><th>Title</th><th>Duration</th><th>Views</th><th>Premium</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section class="page-section" data-section-panel="payments" hidden>
+        <section id="payments" class="content-section" hidden>
             <div class="section-box"><h4><i class="fas fa-wallet"></i> Payment Records</h4>
                 <div style="overflow-x:auto"><table id="payments-table"><thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th><th>Reference</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section class="page-section" data-section-panel="ads-config" hidden>
+        <section id="ads-config" class="content-section" hidden>
             <div class="section-box">
                 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:0.5rem;margin-bottom:1.5rem;">
                     <h4 style="border:none;margin:0;padding:0;"><i class="fas fa-ad"></i> Ads Configuration</h4>
