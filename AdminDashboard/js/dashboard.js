@@ -1,517 +1,89 @@
-(function () {
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-  const text = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = value ?? '-'; };
-  const date = value => value ? new Date(value).toLocaleDateString() : '-';
-  const money = (value, currency = 'UGX') => `${currency} ${Number(value || 0).toLocaleString()}`;
+document.addEventListener('DOMContentLoaded', () => {
+  const sections = document.querySelectorAll('.content-section');
+  const navLinks = document.querySelectorAll('.sidebar .nav-link');
 
-  function requireAdmin() {
-    try { if (localStorage.getItem('admin_token') && JSON.parse(localStorage.getItem('admin_user') || '{}').isAdmin) return true; } catch (_) { /* sign out below */ }
-    localStorage.removeItem('admin_token'); localStorage.removeItem('admin_user'); window.location.replace('index.html'); return false;
+  // --- Helper Functions ---
+  const safeInner = (selector, value, fallback = '0') => {
+    const el = document.querySelector(selector);
+    if (el) el.innerHTML = value || fallback;
+  };
+
+  // --- SPA Routing ---
+  function showSection(targetId) {
+    const currentActive = document.querySelector('.content-section.active');
+    if (currentActive && currentActive.id === targetId) {
+      return;
+    }
+
+    sections.forEach(section => {
+      section.classList.toggle('active', section.id === targetId);
+    });
+
+    navLinks.forEach(link => {
+      const linkTargetId = (link.dataset.section || (link.href && link.href.split('#')[1]));
+      link.classList.toggle('active', linkTargetId === targetId);
+    });
+
+    if (history.pushState) {
+      history.pushState(null, null, `#${targetId}`);
+    } else {
+      location.hash = `#${targetId}`;
+    }
   }
-  const setError = message => text('dashboard-error', message || '');
 
+  // --- Data Loading ---
   async function loadOverview() {
-    // Retry once after 2s on failure
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const data = await window.apiRequest('/admin/dashboard/overview');
-        if (!data || !data.overview) throw new Error('Invalid dashboard response structure');
-
-        const overview = data.overview;
-        const users = overview.users || {};
-        const content = overview.content || {};
-        const media = overview.cloudinary || { ready: 0, processing: 0, failed: 0 };
-
-        text('total-users', Number(users.total || 0).toLocaleString());
-        text('premium-users', Number(users.premium || 0).toLocaleString());
-        text('total-anime', Number(content.totalAnime || 0).toLocaleString());
-        text('total-episodes', Number(content.totalEpisodes || 0).toLocaleString());
-        text('total-views', Number(content.totalViews || 0).toLocaleString());
-        text('cloudinary-ready', Number(media.ready || 0));
-        text('cloudinary-processing', Number(media.processing || 0));
-        text('cloudinary-failed', Number(media.failed || 0));
-        text('active-users-today', Number(users.activeToday || 0));
-        text('banned-users', Number(users.banned || 0));
-
-        // Safely set innerHTML with fallbacks
-        const safeInner = (id, items, fn, fallback) => {
-          const el = document.getElementById(id);
-          if (el) el.innerHTML = (items && items.length) ? items.map(fn).join('') : (fallback || '<div class="item-sub">No records found.</div>');
-        };
-
-        safeInner('top-anime-list', data.topAnime, a =>
-          `<div class="list-item"><span class="item-title">${esc(a.title)}</span><span class="item-sub">${Number(a.view_count || 0).toLocaleString()} views</span></div>`
-        );
-        safeInner('recent-uploads', data.recentEpisodes, e =>
-          `<div class="list-item"><span class="item-title">${esc(e.anime_title)} · Ep ${esc(e.episode_number)}</span><span class="item-sub">${esc(e.video_status || 'Available')}</span></div>`
-        );
-        safeInner('latest-users', data.latestUsers, u =>
-          `<div class="list-item"><span class="item-title">${esc(u.name)}</span><span class="item-sub">Joined ${date(u.created_at)}</span></div>`
-        );
-        safeInner('activity-logs', data.activityLogs, log =>
-          `<div class="timeline-item"><span class="time">${new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span><strong>${esc(log.user_name || 'System')}</strong> ${esc(log.action)}</span></div>`
-        );
-
-        try { await loadPaymentSummary(); } catch (error) { console.error('Payment summary failed:', error); }
-        setError('');
-        return; // Success — exit retry loop
-      } catch (error) {
-        console.error(`Dashboard overview failed (attempt ${attempt + 1}/2):`, error);
-        if (attempt === 0) {
-          // Wait before retry
-          await new Promise(r => setTimeout(r, 2000));
-        } else {
-          setError(`Unable to load live dashboard data: ${error.message}`);
-        }
-      }
-    }
-  }
-
-  async function loadPaymentSummary() {
-    const data = await window.apiRequest('/payments/revenue'); const stats = data.stats || {}; const currency = data.recent?.[0]?.currency || 'UGX';
-    text('revenue-total', money(stats.total_revenue, currency)); text('revenue-today', money(stats.revenue_today, currency)); text('revenue-monthly', stats.monthly_subs ? `${stats.monthly_subs} subscriptions` : 'No subscriptions'); text('rev-avg-daily', money(Number(stats.total_revenue || 0) / Math.max(1, new Date().getDate()), currency));
-    document.querySelector('#recent-payments-table tbody').innerHTML = (data.recent || []).slice(0, 5).map(p => `<tr><td>${esc(p.name || p.email)}</td><td>${esc(money(p.amount, p.currency || currency))}</td><td>${esc(p.status)}</td></tr>`).join('') || '<tr><td colspan="3">No payment records.</td></tr>';
-  }
-    async function loadAnime() { const body = document.querySelector('#anime-table tbody'); body.innerHTML = '<tr><td colspan="7">Loading anime...</td></tr>'; try { const anime = await window.apiRequest('/admin/anime'); body.innerHTML = anime.map(a => `<tr data-id="${a.id}"><td><input type="checkbox" class="select-item" data-entity="anime" value="${a.id}"></td><td><img src="${esc(a.cover_image || 'placeholder.jpg')}" width="50" style="border-radius:4px;aspect-ratio:3/4;object-fit:cover"></td><td>${esc(a.title)}</td><td><span class="status-badge ${esc(a.status || 'unknown')}">${esc(a.status || 'unknown')}</span></td><td>${a.is_premium ? '💎' : 'Free'}</td><td>${a.is_featured ? '⭐' : '-'}</td><td><button class="action-btn edit-btn" data-edit-anime="${a.id}" title="Edit"><i class="fas fa-edit"></i></button> <button class="action-btn edit-btn" style="background:#10b981" data-manage-episodes="${a.id}" data-anime-title="${esc(a.title)}" title="Episodes"><i class="fas fa-list"></i></button> <button class="action-btn delete-btn" data-delete-anime="${a.id}" title="Delete"><i class="fas fa-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="7">No anime records.</td></tr>'; updateBulkDeleteButton('anime'); } catch (error) { body.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; } }
-   async function loadUsers() { const body = document.querySelector('#users-table tbody'); body.innerHTML = '<tr><td colspan="7">Loading users...</td></tr>'; try { const users = await window.apiRequest('/admin/users'); body.innerHTML = users.map(u => `<tr><td><input type="checkbox" class="select-item" data-entity="users" value="${u.id}"></td><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${u.is_admin ? 'Admin' : 'User'}</td><td>${u.is_premium ? 'Premium' : 'Free'}</td><td>${esc(u.status)}</td><td>${date(u.created_at)}<br>${u.is_admin ? '' : `<button class="btn secondary" data-premium-user="${u.id}" data-premium-value="${u.is_premium ? '0' : '1'}">${u.is_premium ? 'Revoke Premium' : 'Grant Premium'}</button>`}</td></tr>`).join('') || '<tr><td colspan="7">No user records.</td></tr>'; updateBulkDeleteButton('users'); } catch (error) { body.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; } }
-   async function loadEpisodes() { const body = document.querySelector('#episodes-table tbody'); body.innerHTML = '<tr><td colspan="7">Loading episodes...</td></tr>'; try { const episodes = await window.apiRequest('/admin/episodes'); body.innerHTML = episodes.map(e => `<tr><td><input type="checkbox" class="select-item" data-entity="episodes" value="${e.id}"></td><td>${esc(e.anime_title)}</td><td>${esc(e.episode_number)}</td><td>${esc(e.title || 'Untitled')}</td><td>${e.duration_sec ? `${Number(e.duration_sec)} sec` : '-'}</td><td>${Number(e.view_count || 0).toLocaleString()}</td><td>${e.is_premium ? 'Premium' : 'Free'}<br><button class="btn secondary" data-edit-episode="${e.id}">Edit</button> <button class="btn danger" data-delete-episode="${e.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="7">No episode records.</td></tr>'; updateBulkDeleteButton('episodes'); } catch (error) { body.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; } }
-  async function loadPayments() { const body = document.querySelector('#payments-table tbody'); body.innerHTML = '<tr><td colspan="6">Loading payments...</td></tr>'; try { // Fetch both legacy payments and new subscriptions data const [legacyData, subscriptionData] = await Promise.allSettled([ window.apiRequest('/payments/revenue'), window.apiRequest('/payments/subscription-revenue') ]); const legacy = legacyData.status === 'fulfilled' ? legacyData.value : { stats: {}, recent: [] }; const subs = subscriptionData.status === 'fulfilled' ? subscriptionData.value : { stats: {}, recent: [] }; // Combine and sort by date (paid_at or created_at) const allTransactions = [ ...(legacy.recent || []).map(p => ({ ...p, table: 'payments', source: 'legacy' })), ...(subs.recent || []).map(s => ({ ...s, table: 'subscriptions', source: 'subscription' })) ]; allTransactions.sort((a, b) => { const dateA = new Date(a.paid_at || a.created_at || 0); const dateB = new Date(b.paid_at || b.created_at || 0); return dateB - dateA; }); body.innerHTML = allTransactions.slice(0, 20).map(p => `<tr> <td>${esc(p.name || p.email)}</td> <td>${esc(money(p.amount, p.currency || 'UGX'))}</td> <td>${esc(p.plan)}</td> <td> <span class="status-badge ${esc((p.status || '').toLowerCase())}"> ${esc(p.status)} </span> ${p.source === 'subscription' ? '<span class="badge premium">Pesapal</span>' : ''} </td> <td>${date(p.paid_at || p.created_at)}</td> <td>${p.reference || '-'}</td> </tr>`).join('') || '<tr><td colspan="6">No payment records found.</td></tr>'; } catch (error) { body.innerHTML = `<tr><td colspan="6">${esc(error.message)}</td></tr>`; } }
-
-    // ─── Bulk Delete Helpers ──────────────────────────────────────
-    function updateBulkDeleteButton(entity) {
-      const btn = document.getElementById(`bulkDeleteBtn-${entity}`);
-      const countEl = document.getElementById(`selectedCount-${entity}`);
-      if (!btn || !countEl) return;
-      const checked = document.querySelectorAll(`.select-item[data-entity="${entity}"]:checked`);
-      const count = checked.length;
-      countEl.textContent = count;
-      btn.style.display = count > 0 ? 'inline-flex' : 'none';
-    }
-
-    async function bulkDeleteItems(entity) {
-      const checked = document.querySelectorAll(`.select-item[data-entity="${entity}"]:checked`);
-      const ids = Array.from(checked).map(cb => Number(cb.value));
-      if (ids.length === 0) return;
-
-      if (!confirm(`Are you sure you want to delete ${ids.length} ${entity}? This action cannot be undone.`)) return;
-
-      const btn = document.getElementById(`bulkDeleteBtn-${entity}`);
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Deleting...';
-
-      try {
-        const result = await window.apiRequest(`/admin/${entity}/bulk-delete`, {
-          method: 'POST',
-          body: { ids }
-        });
-
-        // Show success toast
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:#059669;color:#fff;padding:.75rem 1.25rem;border-radius:.5rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);';
-        toast.textContent = `✅ ${result.message || `Deleted ${ids.length} ${entity}.`}`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
-
-        // Refresh the active section
-        const activeSection = document.querySelector('[data-section-panel]:not([hidden])')?.dataset?.sectionPanel;
-        if (activeSection === 'anime') { await loadAnime(); await loadOverview(); }
-        else if (activeSection === 'episodes') { await loadEpisodes(); await loadOverview(); }
-        else if (activeSection === 'users') { await loadUsers(); await loadOverview(); }
-      } catch (error) {
-        alert(`Bulk delete failed: ${error.message}`);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = `Delete Selected (${ids.length})`;
-        updateBulkDeleteButton(entity);
-      }
-    }
-
-    function openModal(title, content) { const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop'; backdrop.innerHTML = `<div class="modal-card"><div class="toolbar"><h3 style="margin-right:auto">${esc(title)}</h3><button class="btn secondary" type="button">Close</button></div>${content}</div>`; backdrop.addEventListener('click', event => { if (event.target === backdrop || event.target.matches('button.secondary')) backdrop.remove(); }); document.body.append(backdrop); return backdrop; }
-    async function uploadImage(file, folder) { const payload = new FormData(); payload.append('image', file); const result = await window.apiRequest(`/admin/upload/${folder}`, { method: 'POST', body: payload }); return { url: result.secure_url || result.url || result.imageUrl || '', publicId: result.public_id || '' }; }
-
-    // ─── Hybrid Add Anime Modal Wiring ──────────────────────
-    function wireHybridModal() {
-      const modal = document.getElementById('add-anime-modal');
-      if (!modal) return;
-
-      const openBtn = document.getElementById('add-anime-button');
-      const closeBtn = document.getElementById('close-add-anime-modal');
-      const tabButtons = modal.querySelectorAll('[data-anime-tab]');
-      const panels = modal.querySelectorAll('[data-anime-panel]');
-      const searchForm = document.getElementById('kitsu-search-form');
-      const searchResults = document.getElementById('kitsu-search-results');
-      const manualForm = document.getElementById('manual-add-anime-form');
-
-      // ─── Open / Close ────────────────────────────────────
-      if (openBtn) {
-        openBtn.addEventListener('click', () => {
-          tabButtons.forEach((btn, i) => btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false'));
-          panels.forEach((panel, i) => { panel.hidden = i !== 0; });
-          if (searchResults) searchResults.innerHTML = '';
-          if (searchForm) searchForm.reset();
-          if (manualForm) manualForm.reset();
-          document.getElementById('manual-cover-preview').innerHTML = '';
-          document.getElementById('manual-banner-preview').innerHTML = '';
-          document.getElementById('manual-cover-url').value = '';
-          document.getElementById('manual-banner-url').value = '';
-          modal.hidden = false;
-          modal.removeAttribute('aria-hidden');
-          setTimeout(() => document.getElementById('kitsu-search-input')?.focus(), 100);
-        });
-      }
-
-      if (closeBtn) closeBtn.addEventListener('click', () => closeModal());
-
-      modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
-
-      function closeModal() { modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
-
-      // ─── Tab Toggle ──────────────────────────────────────
-      tabButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const tab = btn.getAttribute('data-anime-tab');
-          tabButtons.forEach(b => b.setAttribute('aria-selected', b.getAttribute('data-anime-tab') === tab ? 'true' : 'false'));
-          panels.forEach(p => p.hidden = p.getAttribute('data-anime-panel') !== tab);
-        });
-      });
-
-      // ─── Kitsu Search ────────────────────────────────────
-      if (searchForm) {
-        searchForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const query = document.getElementById('kitsu-search-input').value.trim();
-          if (!query) return;
-
-          const submitBtn = searchForm.querySelector('button[type="submit"]');
-          submitBtn.disabled = true;
-          submitBtn.innerHTML = '<span class="spinner"></span> Searching...';
-          searchResults.innerHTML = '';
-
-          try {
-            const data = await window.apiRequest(`/anime/search?q=${encodeURIComponent(query)}&limit=12`);
-            renderKitsuSearchResults(data);
-          } catch (err) {
-            searchResults.innerHTML = `<p style="color:#ef4444;padding:1rem">${esc(err.message)}</p>`;
-          } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Search';
-          }
-        });
-      }
-
-      function renderKitsuSearchResults(results) {
-        if (!results || !results.length) {
-          searchResults.innerHTML = '<p style="color:#94a3b8;padding:1rem">No results found.</p>';
-          return;
-        }
-        searchResults.innerHTML = '';
-
-        // ─── "Import All Results" toolbar ──────────────────────
-        const importAllBar = document.createElement('div');
-        importAllBar.className = 'import-all-bar';
-        importAllBar.style.cssText = 'display:flex;justify-content:flex-end;gap:.75rem;margin-bottom:.75rem;';
-        const importAllBtn = document.createElement('button');
-        importAllBtn.className = 'btn import-all-btn';
-        importAllBtn.textContent = '📥 Import All Results';
-        importAllBtn.type = 'button';
-        importAllBar.appendChild(importAllBtn);
-        searchResults.appendChild(importAllBar);
-
-        // ─── Build result cards ─────────────────────────────────
-        results.forEach(anime => {
-          const card = document.createElement('div');
-          card.className = 'kitsu-result';
-          card.innerHTML = `
-            <img src="${esc(anime.cover_image || '')}" alt="${esc(anime.title)}" loading="lazy" onerror="this.src='placeholder.jpg'">
-            <div>
-              <h4>${esc(anime.title)}</h4>
-              <p>${esc(anime.year || '?')} · ${esc(anime.episode_count || '?')} episodes</p>
-              <p class="synopsis">${esc(anime.description || 'No synopsis available.')}</p>
-            </div>
-            <button class="btn import-btn" data-kitsu-id="${esc(anime.kitsu_id || anime.id)}">Import</button>
-          `;
-          searchResults.appendChild(card);
-        });
-
-        // ─── Helper: import a single kitus-result card by button ─
-        async function importSingle(btn) {
-          const kitsuId = btn.getAttribute('data-kitsu-id');
-          btn.disabled = true;
-          btn.innerHTML = '<span class="spinner"></span> Importing...';
-
-          try {
-            await window.apiRequest('/admin/import-anime', { method: 'POST', body: { kitsuId } });
-            btn.innerHTML = '✅ Imported';
-            btn.className = 'btn imported-btn';
-            btn.disabled = true;
-          } catch (err) {
-            btn.disabled = false;
-            btn.textContent = 'Import';
-            const errEl = document.createElement('p');
-            errEl.style.cssText = 'color:#ef4444;font-size:.85rem;margin-top:.5rem;grid-column:1/-1';
-            errEl.textContent = `Import failed: ${err.message}`;
-            btn.closest('.kitsu-result')?.appendChild(errEl);
-          }
-        }
-
-        // ─── Wire individual import buttons ─────────────────────
-        const allImportBtns = [...searchResults.querySelectorAll('.import-btn')];
-        allImportBtns.forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            await importSingle(btn);
-          });
-        });
-
-        // ─── Wire "Import All Results" button ───────────────────
-        importAllBtn.addEventListener('click', async () => {
-          importAllBtn.disabled = true;
-          importAllBtn.innerHTML = '<span class="spinner"></span> Importing all...';
-
-          for (const btn of allImportBtns) {
-            // Skip already-imported buttons
-            if (btn.disabled && btn.classList.contains('imported-btn')) continue;
-            await importSingle(btn);
-          }
-
-          importAllBtn.innerHTML = '✅ All Imported';
-          importAllBtn.className = 'btn imported-btn';
-          importAllBtn.disabled = true;
-        });
-      }
-
-      // ─── Manual Upload: Cover Image ──────────────────────
-      const coverFile = document.getElementById('manual-cover-file');
-      if (coverFile) {
-        coverFile.addEventListener('change', async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          try {
-            const result = await uploadImage(file, 'anime');
-            document.getElementById('manual-cover-url').value = result.url;
-            document.getElementById('manual-cover-preview').innerHTML = `<img src="${result.url}">`;
-          } catch (err) {
-            document.getElementById('manual-cover-preview').innerHTML = `<span style="color:#ef4444;font-size:.85rem">Upload failed: ${esc(err.message)}</span>`;
-          }
-        });
-      }
-
-      // ─── Manual Upload: Banner Image ─────────────────────
-      const bannerFile = document.getElementById('manual-banner-file');
-      if (bannerFile) {
-        bannerFile.addEventListener('change', async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          try {
-            const result = await uploadImage(file, 'banners');
-            document.getElementById('manual-banner-url').value = result.url;
-            document.getElementById('manual-banner-preview').innerHTML = `<img src="${result.url}">`;
-          } catch (err) {
-            document.getElementById('manual-banner-preview').innerHTML = `<span style="color:#ef4444;font-size:.85rem">Upload failed: ${esc(err.message)}</span>`;
-          }
-        });
-      }
-
-      // ─── Manual Upload: Submit Form ──────────────────────
-      if (manualForm) {
-        manualForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const submitBtn = manualForm.querySelector('button[type="submit"]');
-          submitBtn.disabled = true;
-          submitBtn.innerHTML = '<span class="spinner"></span> Creating...';
-
-          try {
-            const body = {
-              title: document.getElementById('manual-title').value.trim(),
-              year: document.getElementById('manual-year').value ? parseInt(document.getElementById('manual-year').value) : undefined,
-              studio: document.getElementById('manual-studio').value.trim() || undefined,
-              status: document.getElementById('manual-status').value,
-              description: document.getElementById('manual-description').value.trim() || undefined,
-              is_premium: document.getElementById('manual-is-premium').checked ? 1 : 0,
-              is_featured: document.getElementById('manual-is-featured').checked ? 1 : 0,
-              cover_image: document.getElementById('manual-cover-url').value || undefined,
-              banner_image: document.getElementById('manual-banner-url').value || undefined,
-            };
-
-            await window.apiRequest('/admin/anime', { method: 'POST', body });
-            closeModal();
-            await loadAnime();
-            await loadOverview();
-          } catch (err) {
-            alert(`Failed to create anime: ${err.message}`);
-          } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Create Anime';
-          }
-        });
-      }
-    }
-  function uploadVideo(file, title, progress) { return new Promise((resolve, reject) => { const xhr = new XMLHttpRequest(); const data = new FormData(); data.append('video', file); data.append('title', title || file.name); xhr.open('POST', `${window.API_BASE}/admin/upload/video`); const token = localStorage.getItem('admin_token'); if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`); xhr.upload.onprogress = event => event.lengthComputable && progress(Math.round(event.loaded / event.total * 100), 'Uploading...'); xhr.onerror = () => reject(new Error('Network error while uploading the video.')); xhr.onload = () => { let result; try { result = JSON.parse(xhr.responseText); } catch (_) { return reject(new Error('Invalid response from the video upload service.')); } if (xhr.status < 200 || xhr.status >= 300 || result.success === false) return reject(new Error(result.message || 'Video upload failed.')); resolve(result); }; xhr.send(data); }); }
-  async function prepareEpisodeMedia(form) { const bar = form.querySelector('[data-upload-progress]'); const status = form.querySelector('[data-upload-status]'); const progress = (value, message) => { bar.hidden = false; bar.value = value; status.textContent = message; }; const data = Object.fromEntries(new FormData(form)); delete data.video_file; delete data.thumbnail_file; data.is_premium = form.is_premium.checked; if (form.thumbnail_file.files[0]) { progress(0, 'Preparing thumbnail upload...'); const image = await uploadImage(form.thumbnail_file.files[0], 'thumbnails'); data.thumbnail_url = image.url; data.thumbnail_public_id = image.publicId; const input = form.querySelector('#ep-thumb-url'); if (input) input.value = image.url; } if (form.video_file.files[0]) { progress(0, 'Preparing upload...'); const video = await uploadVideo(form.video_file.files[0], data.title, progress); progress(100, 'Cloudinary processing complete.'); data.video_url = video.secure_url || video.video_url; data.cloudinary_public_id = video.public_id; data.duration_sec = Math.round(Number(video.duration || 0)) || null; const urlInput = form.querySelector('#ep-video-url'); const idInput = form.querySelector('#ep-cloudinary-id'); if (urlInput) urlInput.value = data.video_url; if (idInput) idInput.value = data.cloudinary_public_id; } return data; }
-  async function openAnimeEditor(id = null) { let anime = {}; if (id) anime = (await window.apiRequest('/admin/anime')).find(item => Number(item.id) === Number(id)) || {}; const modal = openModal(id ? 'Edit Anime' : 'Add Anime', `<form id="anime-form" class="form-grid"><label>Title<input name="title" required value="${esc(anime.title || '')}"></label><label>Japanese title<input name="title_japanese" value="${esc(anime.title_japanese || '')}"></label><label>Year<input name="year" type="number" value="${esc(anime.year || '')}"></label><label>Studio<input name="studio" value="${esc(anime.studio || '')}"></label><label>Rating<input name="rating" type="number" min="0" max="10" step=".1" value="${esc(anime.rating || '')}"></label><label>Status<select name="status"><option value="airing">Airing</option><option value="completed">Completed</option><option value="upcoming">Upcoming</option></select></label><label>Cover URL<input name="cover_image" value="${esc(anime.cover_image || '')}"><input name="cover_file" type="file" accept="image/*"></label><label>Banner URL<input name="banner_image" value="${esc(anime.banner_image || '')}"><input name="banner_file" type="file" accept="image/*"></label><label class="wide">Description<textarea name="description">${esc(anime.description || '')}</textarea></label><label class="wide">Tags<input name="tags" value="${esc(anime.tags || '')}"></label><label><input name="is_premium" type="checkbox" ${anime.is_premium ? 'checked' : ''}> Premium only</label><label><input name="is_featured" type="checkbox" ${anime.is_featured ? 'checked' : ''}> Hero featured</label><div class="wide"><button class="btn" type="submit">${id ? 'Save changes' : 'Create anime'}</button></div></form>`); modal.querySelector('[name=status]').value = anime.status || 'completed'; modal.querySelector('#anime-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = Object.fromEntries(new FormData(form)); data.is_premium = form.is_premium.checked; data.is_featured = form.is_featured.checked; if (form.cover_file.files[0]) { const image = await uploadImage(form.cover_file.files[0], 'anime'); data.cover_image = image.url; data.cover_public_id = image.publicId; } if (form.banner_file.files[0]) { const image = await uploadImage(form.banner_file.files[0], 'banners'); data.banner_image = image.url; data.banner_public_id = image.publicId; } delete data.cover_file; delete data.banner_file; await window.apiRequest(id ? `/admin/anime/${id}` : '/admin/anime', { method: id ? 'PUT' : 'POST', body: data }); modal.remove(); await loadAnime(); await loadOverview(); } catch (error) { alert(`Anime was not saved: ${error.message}`); } finally { submit.disabled = false; } }); }
-  async function openEpisodeEditor(animeId = '') { const anime = await window.apiRequest('/admin/anime'); const modal = openModal('Add Episode', `<form id="episode-form" class="form-grid"><label>Anime<select name="anime_id" required>${anime.map(a => `<option value="${a.id}" ${String(a.id) === String(animeId) ? 'selected' : ''}>${esc(a.title)}</option>`).join('')}</select></label><label>Episode number<input name="episode_number" type="number" min="1" required></label><label>Title<input name="title"></label><label>Video file<input id="ep-video-file" name="video_file" type="file" accept="video/*" required></label><label>Thumbnail image<input id="ep-thumb-file" name="thumbnail_file" type="file" accept="image/*" required></label><input id="ep-video-url" name="video_url" type="hidden"><input id="ep-cloudinary-id" name="cloudinary_public_id" type="hidden"><input id="ep-thumb-url" name="thumbnail_url" type="hidden"><label>Intro start<input name="intro_start_time" type="number" min="0"></label><label>Intro end<input name="intro_end_time" type="number" min="0"></label><label><input name="is_premium" type="checkbox"> Premium episode</label><div class="wide"><progress data-upload-progress hidden value="0" max="100"></progress><div data-upload-status aria-live="polite"></div><button class="btn" type="submit">Save Episode</button></div></form>`); modal.querySelector('#episode-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = await prepareEpisodeMedia(form); const selected = data.anime_id; delete data.anime_id; await window.apiRequest(`/admin/anime/${selected}/episodes`, { method: 'POST', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not published: ${error.message}`); } finally { submit.disabled = false; } }); }
-  async function openEpisodeEdit(id) { const episode = await window.apiRequest(`/admin/episodes/${id}`); const modal = openModal('Edit Episode', `<form id="episode-edit-form" class="form-grid"><label>Episode number<input name="episode_number" type="number" min="1" value="${esc(episode.episode_number)}"></label><label>Title<input name="title" value="${esc(episode.title || '')}"></label><label>Replace video (optional)<input id="ep-video-file" name="video_file" type="file" accept="video/*"></label><label>Replace thumbnail (optional)<input id="ep-thumb-file" name="thumbnail_file" type="file" accept="image/*"></label><input id="ep-video-url" name="video_url" type="hidden" value="${esc(episode.video_url || '')}"><input id="ep-cloudinary-id" name="cloudinary_public_id" type="hidden" value="${esc(episode.cloudinary_public_id || '')}"><input id="ep-thumb-url" name="thumbnail_url" type="hidden" value="${esc(episode.thumbnail_url || '')}"><label>Intro start<input name="intro_start_time" type="number" value="${esc(episode.intro_start_time || '')}"></label><label>Intro end<input name="intro_end_time" type="number" value="${esc(episode.intro_end_time || '')}"></label><label><input name="is_premium" type="checkbox" ${episode.is_premium ? 'checked' : ''}> Premium episode</label><div class="wide"><progress data-upload-progress hidden value="0" max="100"></progress><div data-upload-status aria-live="polite"></div><button class="btn" type="submit">Save Episode</button></div></form>`); modal.querySelector('#episode-edit-form').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type=submit]'); submit.disabled = true; try { const data = await prepareEpisodeMedia(form); await window.apiRequest(`/admin/episodes/${id}`, { method: 'PUT', body: data }); modal.remove(); await loadEpisodes(); await loadOverview(); } catch (error) { alert(`Episode was not saved: ${error.message}`); } finally { submit.disabled = false; } }); }
-  // ─── Ads Configuration Management ────────────────────────────────
-  async function loadAdsConfig() {
     try {
-      const config = await window.apiRequest('/ads/config');
-      if (!config) {
-        document.getElementById('ads-banner-enabled').checked = true;
-        document.getElementById('ads-interstitial-enabled').checked = true;
-        document.getElementById('ads-preroll-enabled').checked = false;
-        document.getElementById('ads-interstitial-clicks').value = 3;
-        document.getElementById('ads-interstitial-clicks-value').textContent = '3';
-      } else {
-        document.getElementById('ads-banner-enabled').checked = config.bannerEnabled;
-        document.getElementById('ads-interstitial-enabled').checked = config.interstitialEnabled;
-        document.getElementById('ads-preroll-enabled').checked = config.preRollEnabled;
-        document.getElementById('ads-interstitial-clicks').value = config.interstitialClicksBetween || 3;
-        document.getElementById('ads-interstitial-clicks-value').textContent = config.interstitialClicksBetween || 3;
-      }
-      updateAdsPreview();
-      const statusEl = document.getElementById('ads-config-status');
-      if (statusEl) { statusEl.style.display = 'none'; }
+      const overview = await apiFetch('/api/admin/dashboard/overview');
+
+      const { users = {}, content = {}, cloudinary = {}, revenue = {} } = overview || {};
+      const { totalUsers = 0, premiumUsers = 0 } = users;
+      const { totalAnime = 0, totalEpisodes = 0 } = content;
+      const { videoCount = 0 } = cloudinary;
+      const { today = 0, month = 0 } = revenue;
+
+      safeInner('#stats-total-users', totalUsers);
+      safeInner('#stats-vip-users', premiumUsers);
+      safeInner('#stats-total-anime', totalAnime);
+      safeInner('#stats-total-episodes', totalEpisodes);
+      safeInner('#stats-cloudinary-videos', videoCount);
+      safeInner('#stats-revenue-today', `UGX ${today.toLocaleString()}`);
+      safeInner('#stats-revenue-month', `UGX ${month.toLocaleString()}`);
+
     } catch (error) {
-      console.error('Failed to load ads config:', error.message);
+      console.error('Failed to load dashboard overview:', error);
+      document.querySelectorAll('[id^="stats-"]').forEach(el => el.innerHTML = '<span style="color: #f87171;">Error</span>');
     }
   }
 
-  function updateAdsPreview() {
-    const bannerEnabled = document.getElementById('ads-banner-enabled').checked;
-    const interstitialEnabled = document.getElementById('ads-interstitial-enabled').checked;
-    const preRollEnabled = document.getElementById('ads-preroll-enabled').checked;
-    const interstitialClicks = parseInt(document.getElementById('ads-interstitial-clicks').value) || 3;
-    document.getElementById('ads-interstitial-clicks-value').textContent = interstitialClicks;
-    const preview = {
-      bannerEnabled,
-      interstitialEnabled,
-      interstitialClicksBetween: interstitialClicks,
-      preRollEnabled,
-    };
-    document.getElementById('ads-config-preview').textContent = JSON.stringify(preview, null, 2);
-  }
-  window.updateAdsPreview = updateAdsPreview;
-
-  async function saveAdsConfig() {
-    const btn = document.getElementById('save-ads-config-btn');
-    const statusEl = document.getElementById('ads-config-status');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Saving...';
-    statusEl.style.display = 'none';
-    try {
-      const body = {
-        bannerEnabled: document.getElementById('ads-banner-enabled').checked,
-        interstitialEnabled: document.getElementById('ads-interstitial-enabled').checked,
-        preRollEnabled: document.getElementById('ads-preroll-enabled').checked,
-        interstitialClicksBetween: parseInt(document.getElementById('ads-interstitial-clicks').value) || 3,
-      };
-      await window.apiRequest('/ads/config', { method: 'PUT', body });
-      statusEl.style.cssText = 'margin-bottom:1rem;padding:0.75rem;border-radius:0.35rem;background:rgba(34,197,94,0.15);color:var(--success);font-weight:600;';
-      statusEl.textContent = '✅ Ads configuration saved successfully.';
-      statusEl.style.display = 'block';
-      updateAdsPreview();
-      setTimeout(() => { statusEl.style.display = 'none'; }, 4000);
-    } catch (error) {
-      statusEl.style.cssText = 'margin-bottom:1rem;padding:0.75rem;border-radius:0.35rem;background:rgba(239,68,68,0.15);color:var(--danger);font-weight:600;';
-      statusEl.textContent = `❌ Failed to save: ${error.message}`;
-      statusEl.style.display = 'block';
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '💾 Save Changes';
-    }
-  }
-  window.saveAdsConfig = saveAdsConfig;
-
-  function showSection(section) {
-    // Hide all panels, show the target
-    document.querySelectorAll('[data-section-panel]').forEach(panel => {
-      panel.hidden = panel.dataset.sectionPanel !== section;
-    });
-    // Update active state on sidebar nav links
-    document.querySelectorAll('[data-section]').forEach(link => {
-      link.classList.toggle('active', link.dataset.section === section);
-    });
-    // Update page title
-    const titles = { dashboard: 'Administrative Overview', anime: 'Anime List', episodes: 'Episodes', users: 'Users Management', payments: 'Payments', 'ads-config': 'Ads Configuration' };
-    text('page-title', titles[section] || 'Administrative Overview');
-
-    // Update hash but avoid triggering hashchange loop in Capacitor
-    if (window.location.hash !== '#' + section) {
-      window.location.hash = section;
-    }
-
-    // Load section data
-    const loaders = { dashboard: loadOverview, anime: loadAnime, episodes: loadEpisodes, users: loadUsers, payments: loadPayments, 'ads-config': loadAdsConfig };
-    loaders[section]?.();
-  }
-  window.manageEpisodes = (animeId) => { showSection('episodes'); openEpisodeEditor(animeId); }; window.logout = () => { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_user'); window.location.replace('index.html'); };
-  document.addEventListener('DOMContentLoaded', () => {
-    if (!requireAdmin()) return;
-
-    // ─── Sidebar Navigation — click-based (no hash nav) ────
-    document.querySelectorAll('[data-section]').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        showSection(link.dataset.section);
-      });
-    });
-
-    // ─── Hashchange listener — handles back/forward navigation ─
-    // In Capacitor, hashchange may not fire reliably, so we also poll via
-    // the sidebar click handlers above.
-    window.addEventListener('hashchange', () => {
-      const section = location.hash.slice(1) || 'dashboard';
-      showSection(section);
-    });
-
-    // ─── Fallback: also handle popstate for Capacitor back button ─
-    window.addEventListener('popstate', () => {
-      const section = location.hash.slice(1) || 'dashboard';
-      showSection(section);
-    });
-
-    wireHybridModal();
-
-    // ─── Guard: add-episode-button may not exist in all views ──
-    const addEpBtn = document.getElementById('add-episode-button');
-    if (addEpBtn) addEpBtn.addEventListener('click', () => openEpisodeEditor());
-
-    // ─── Select All / Checkbox Change Handling ─────────────────
-    document.addEventListener('change', event => {
-      // Select All checkbox
-      const selectAll = event.target.closest('[id^="selectAll-"]');
-      if (selectAll) {
-        const entity = selectAll.id.replace('selectAll-', '');
-        const checkboxes = document.querySelectorAll(`.select-item[data-entity="${entity}"]`);
-        checkboxes.forEach(cb => cb.checked = selectAll.checked);
-        updateBulkDeleteButton(entity);
-        return;
-      }
-      // Individual checkbox
-      const item = event.target.closest('.select-item');
-      if (item) {
-        const entity = item.dataset.entity;
-        // Update "select all" state
-        const selectAllEl = document.getElementById(`selectAll-${entity}`);
-        if (selectAllEl) {
-          const all = document.querySelectorAll(`.select-item[data-entity="${entity}"]`);
-          const checked = document.querySelectorAll(`.select-item[data-entity="${entity}"]:checked`);
-          selectAllEl.checked = all.length > 0 && checked.length === all.length;
-        }
-        updateBulkDeleteButton(entity);
-        return;
+  // --- Event Listeners ---
+  navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetSection = link.dataset.section;
+      if (targetSection) {
+        showSection(targetSection);
       }
     });
+  });
 
-    // ─── Bulk Delete Button Clicks ──────────────────────────────
-    document.addEventListener('click', event => {
-      const bulkBtn = event.target.closest('[id^="bulkDeleteBtn-"]');
-      if (bulkBtn) {
-        const entity = bulkBtn.id.replace('bulkDeleteBtn-', '');
-        bulkDeleteItems(entity);
-        return;
-      }
-    });
+  window.addEventListener('hashchange', () => {
+    const targetId = window.location.hash.substring(1) || 'dashboard';
+    showSection(targetId);
+  });
 
-    document.addEventListener('click', async event => { const edit = event.target.closest('[data-edit-anime]'); const remove = event.target.closest('[data-delete-anime]'); const manage = event.target.closest('[data-manage-episodes]'); const premium = event.target.closest('[data-premium-user]'); const editEpisode = event.target.closest('[data-edit-episode]'); const deleteEpisode = event.target.closest('[data-delete-episode]'); try { if (edit) return openAnimeEditor(edit.dataset.editAnime); if (manage) return window.manageEpisodes(manage.dataset.manageEpisodes, manage.dataset.animeTitle); if (remove && confirm('Delete this anime and its episodes?')) { await window.apiRequest(`/admin/anime/${remove.dataset.deleteAnime}`, { method: 'DELETE' }); await loadAnime(); await loadOverview(); } if (premium) { await window.apiRequest(`/admin/users/${premium.dataset.premiumUser}/premium`, { method: 'PUT', body: { is_premium: premium.dataset.premiumValue === '1' } }); await loadUsers(); await loadOverview(); } if (editEpisode) return openEpisodeEdit(editEpisode.dataset.editEpisode); if (deleteEpisode && confirm('Delete this episode?')) { await window.apiRequest(`/admin/episodes/${deleteEpisode.dataset.deleteEpisode}`, { method: 'DELETE' }); await loadEpisodes(); await loadOverview(); } } catch (error) { alert(error.message || 'Operation failed.'); } }); const section = location.hash.slice(1); showSection(['dashboard', 'anime', 'episodes', 'users', 'payments', 'ads-config'].includes(section) ? section : 'dashboard'); window.setInterval(() => { if (!document.querySelector('[data-section-panel="dashboard"]').hidden) loadOverview(); }, 30000); });
+  window.addEventListener('popstate', () => {
+    const targetId = window.location.hash.substring(1) || 'dashboard';
+    showSection(targetId);
+  });
+
+  // --- Initial Load ---
+  function initializeDashboard() {
+    const initialSection = window.location.hash.substring(1) || 'dashboard';
+    showSection(initialSection);
+    loadOverview();
+    setInterval(loadOverview, 30000);
+  }
+
+  initializeDashboard();
+});
