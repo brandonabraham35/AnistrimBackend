@@ -5,9 +5,9 @@
  * - Throws an error for non-successful responses to be caught by the caller.
  */
 async function apiFetch(endpoint, options = {}, retries = 1) {
-  const BASE_URL = (typeof window.getApiBaseUrl === 'function')
-    ? window.getApiBaseUrl()
-    : 'https://anistrimbackend.onrender.com';
+  // For the Admin Dashboard, always target the production backend to avoid
+  // conflicts with local frontend development servers or misconfigurations.
+  const BASE_URL = 'https://anistrimbackend.onrender.com';
 
   const url = `${BASE_URL}${endpoint}`;
   const token = localStorage.getItem('admin_token');
