@@ -25,6 +25,13 @@ exports.login = async (req, res) => {
         log('User Check: User record FOUND.');
         log(`User ID: ${user.id}, Is Admin: ${user.is_admin}`);
 
+        // Admin portal login requires admin privileges.
+        if (!user.is_admin) {
+            log(`Authorization Check: User ${user.id} is NOT an admin.`);
+            log('--> Returning HTTP 403 (Forbidden).');
+            return res.status(403).json({ message: 'Access denied. Account is not configured as an administrator.' });
+        }
+
         // IMPORTANT: Never log the raw password or the full hash in production.
         log('Password Check: Comparing provided password with stored hash...');
         const match = await bcrypt.compare(password, user.password_hash);
