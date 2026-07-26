@@ -94,7 +94,11 @@ const adminController = {
         dashboardQuery('recent episodes', recentEpisodesSql),
         dashboardQuery('activity logs', logsSql),
         dashboardQuery('top anime', 'SELECT id, title, cover_image, view_count FROM anime ORDER BY view_count DESC, created_at DESC LIMIT 5'),
-        dashboardQuery('revenue', 'SELECT COALESCE(SUM(amount), 0) revenue FROM payments WHERE status = "successful"'),
+        dashboardQuery('revenue', `
+          SELECT COALESCE(SUM(amount), 0) AS total,
+                 COALESCE(SUM(CASE WHEN DATE(paid_at) = CURDATE() THEN amount ELSE 0 END), 0) AS today,
+                 COALESCE(SUM(CASE WHEN YEAR(paid_at) = YEAR(CURDATE()) AND MONTH(paid_at) = MONTH(CURDATE()) THEN amount ELSE 0 END), 0) AS month
+          FROM payments WHERE status = "successful"`),
         dashboardQuery('latest users', 'SELECT id, name, email, avatar_url, created_at FROM users ORDER BY created_at DESC LIMIT 5'),
       ]);
       const users = results[0][0][0] || {};
@@ -107,7 +111,7 @@ const adminController = {
           content: { totalAnime: Number(content.totalAnime) || 0, totalEpisodes: Number(episodes.totalEpisodes) || 0, totalViews: (Number(content.totalViews) || 0) + (Number(episodes.episodeViews) || 0), dailyViews: Number(activity.dailyViews) || 0, avgRating: Number(content.avgRating) || 0 },
           storage: { usageGB: null, videoCount: Number(episodes.videoCount) || 0 },
           cloudinary: { ready: Number(episodes.videoCount) || 0, processing: Number(episodes.processingCount) || 0, failed: Number(episodes.failedCount) || 0 },
-          revenue: Number(results[8][0][0]?.revenue) || 0,
+          revenue: results[8][0][0] || { total: 0, today: 0, month: 0 },
         },
         recentAnime: results[4][0], recentEpisodes: results[5][0], activityLogs: results[6][0], topAnime: results[7][0], latestUsers: results[9][0],
       });
