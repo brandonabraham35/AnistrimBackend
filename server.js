@@ -101,7 +101,7 @@ app.get(/^\/admin(\/.*)?$/, (req, res) => {
 // For any other unmatched route (e.g., /, /browse, /details, /watchlist),
 // serve the main frontend index.html, letting the client-side router handle it.
 // This must be the very last route handler.
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
 });
 
