@@ -132,8 +132,8 @@ function setupPlayer(video) {
     fill.style.width = pct + '%';
     timeDisplay.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration)}`;
 
-    // ── Skip Intro button based on fetched introRange ──────────────
-    if (introRange && video.currentTime >= introRange.start && video.currentTime < introRange.end) {
+    // ── Skip Intro button — premium-only feature ───────────────────
+    if (isPremium && introRange && video.currentTime >= introRange.start && video.currentTime < introRange.end) {
       skipBtn.style.display = 'block';
       skipBtn.classList.remove('hidden');
     } else {
@@ -274,8 +274,8 @@ function showPremiumFeatureBanner() {
   banner.innerHTML = `
     <span style="font-size:1.4rem;">👑</span>
     <div style="flex:1;">
-      <div style="font-size:0.88rem;font-weight:600;margin-bottom:2px;">Upgrade for Skip Intro &amp; Autoplay</div>
-      <div style="font-size:0.78rem;color:var(--text-muted);">Premium members skip ads, auto-play next episodes and more.</div>
+      <div style="font-size:0.88rem;font-weight:600;margin-bottom:2px;">Upgrade for Skip Intro, Autoplay &amp; Downloads</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);">Premium members skip intros, auto-play next episodes, download offline, and more.</div>
     </div>
     <a href="upgrade.html" style="background:var(--purple);color:#fff;padding:7px 14px;border-radius:6px;font-size:0.8rem;font-weight:700;text-decoration:none;white-space:nowrap;">Upgrade</a>
   `;
@@ -349,7 +349,7 @@ function toggleFullscreen() {
 window.toggleFullscreen = toggleFullscreen;
 
 function skipIntro() {
-  // Only works for premium — button is hidden for free users anyway
+  // Premium-only feature — only works for premium/admin users
   if (!State.isPremium && !State.isAdmin) return;
   const video = document.getElementById('animePlayer');
   if (introRange) video.currentTime = introRange.end;
