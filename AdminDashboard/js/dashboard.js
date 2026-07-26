@@ -39,13 +39,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Data Loading ---
   async function loadOverview() {
     try {
-      const overview = await apiFetch('/api/admin/dashboard/overview');
+      const data = await apiFetch('/api/admin/dashboard/overview');
 
-      const { users = {}, content = {}, cloudinary = {}, revenue = {} } = overview || {};
+      // The API nests the main stats under an "overview" key.
+      // We must access that key first.
+      const overview = data.overview;
+      if (!overview) {
+        throw new Error('API response is missing the "overview" object.');
+      }
+
+      const { users = {}, content = {}, cloudinary = {}, revenue = {} } = overview;
       const { totalUsers = 0, premiumUsers = 0 } = users;
       const { totalAnime = 0, totalEpisodes = 0 } = content;
       const { videoCount = 0 } = cloudinary;
       const { today = 0, month = 0 } = revenue;
+
+      console.log('[Dashboard] Hydrating stats:', { totalUsers, premiumUsers, totalAnime, totalEpisodes, videoCount, revenueToday: today, revenueMonth: month });
 
       safeInner('#stats-total-users', totalUsers);
       safeInner('#stats-vip-users', premiumUsers);
@@ -56,7 +65,11 @@ document.addEventListener('DOMContentLoaded', () => {
       safeInner('#stats-revenue-month', `UGX ${month.toLocaleString()}`);
 
     } catch (error) {
-      console.error('Failed to load dashboard overview:', error);
+      console.error('Failed to load or render dashboard overview:', error);
+      const errorEl = document.getElementById('dashboard-error');
+      if (errorEl) {
+        errorEl.textContent = `Dashboard Error: ${error.message}. Check console for details.`;
+      }
       document.querySelectorAll('[id^="stats-"]').forEach(el => el.innerHTML = '<span style="color: #f87171;">Error</span>');
     }
   }
