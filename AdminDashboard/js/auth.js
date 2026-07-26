@@ -56,10 +56,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+/**
+ * Initiates the Google OAuth flow by redirecting to the backend endpoint.
+ */
+function googleLogin() {
+    const baseUrl = (typeof window.getApiBaseUrl === 'function')
+        ? window.getApiBaseUrl()
+        : 'https://anistrimbackend.onrender.com';
+
+    // Redirect to the backend's Google OAuth endpoint. The backend will handle
+    // the redirect to Google's consent screen.
+    window.location.href = `${baseUrl}/api/auth/google`;
+}
+
 function logout() {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
     window.location.replace('index.html');
 }
 
+window.googleLogin = googleLogin;
 window.logout = logout;
