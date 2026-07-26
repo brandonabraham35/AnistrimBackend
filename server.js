@@ -104,10 +104,12 @@ app.get('*', (req, res) => {
 });
 
 // ─── Start Server ──────────────────────────────────────────
-app.listen(PORT, () => {
+// Bind to 0.0.0.0 to ensure the server is accessible from outside the container,
+// as required by hosting platforms like Render.
+app.listen(PORT, '0.0.0.0', () => {
   console.log('==================================================');
   console.log(`🚀 AniStrim2 running on port ${PORT}`);
-  console.log(`   http://localhost:${PORT}`);
+  console.log(`   Listening on: http://0.0.0.0:${PORT}`);
   console.log('==================================================');
 });
 
