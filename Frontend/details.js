@@ -36,24 +36,15 @@ async function loadDetails() {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
+    const signalTimeout = setTimeout(() => controller.abort(), 7000);
 
-    const res = await fetch(
-      `${API}/api/anime/${id}`,
-      {
-        signal: controller.signal,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    clearTimeout(timer);
+    // Use the centralized apiFetch helper from scrpt.js
+    const { ok, data } = await apiFetch(`/api/anime/${id}`, { signal: controller.signal });
+
+    clearTimeout(signalTimeout);
     clearTimeout(timeout);
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
+    if (!ok) throw new Error('API fetch failed');
     // Guard: ensure we got a real anime object back
     if (!data || typeof data !== 'object' || !data.id) throw new Error('Invalid response shape');
 
@@ -72,9 +63,10 @@ async function loadDetails() {
 // ── Backup: scan trending list ──────────────────────────
 async function loadFromBackup(id) {
   try {
-    const res = await fetch(`${API}/api/anime/trending`);
-    if (!res.ok) throw new Error(`Trending HTTP ${res.status}`);
-    const all = await res.json();
+    // Use the centralized apiFetch helper
+    const { ok, data: all } = await apiFetch('/api/anime/trending');
+    if (!ok) throw new Error('Trending fetch failed');
+
     const found = Array.isArray(all) ? all.find(a => String(a.id) === String(id)) : null;
     if (found) {
       currentAnime = { ...found, episodes: [] }; // episodes not in trending; show empty list
@@ -211,19 +203,13 @@ async function addToListFromDetails() {
   if (!currentAnime) return;
   if (!localStorage.getItem('token')) { location.href = 'login.html'; return; }
   try {
-    const res = await fetch(
-      `${API}/api/watchlist/add`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ animeId: currentAnime.id })
-      }
-    );
-    const data = await res.json();
-    if (typeof showToast === 'function') showToast(data.message || 'Added to list!');
+    // Use the centralized apiFetch helper
+    const { ok, data } = await apiFetch('/api/watchlist/add', {
+      method: 'POST',
+      body: JSON.stringify({ animeId: currentAnime.id })
+    });
+
+    if (ok && typeof showToast === 'function') showToast(data.message || 'Added to list!');
     else alert(data.message || 'Added to list!');
   } catch (e) { console.error('Watchlist error:', e); }
 }

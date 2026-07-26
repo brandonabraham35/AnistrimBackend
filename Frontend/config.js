@@ -22,10 +22,18 @@
 
   // Get the correct API base URL for the current environment
   function getApiBaseUrl() {
-    // Always use the absolute Render backend URL.
-    // In Capacitor, localhost refers to the device itself, not the server.
-    // Using relative paths would fail because the app is served from
-    // https://localhost or capacitor://localhost.
+    const isNative = isCapacitorNative();
+    const isFile = window.location.protocol === 'file:';
+    // Capacitor's webview on Android serves from a `localhost` origin. This check ensures
+    // that any 'localhost' origin inside the native shell defaults to the live API.
+    const isCapacitorLocalhost = window.location.hostname === 'localhost';
+
+    // If running in a native mobile context, always force the production URL.
+    if (isNative || isFile || isCapacitorLocalhost) {
+      return API_BASE_URL;
+    }
+
+    // For all other cases (e.g., standard browser development, web deployment), default to production.
     return API_BASE_URL;
   }
 
@@ -38,4 +46,3 @@
   console.log('[Config] Environment:', isCapacitorNative() ? 'Capacitor Native' : 'Browser');
   console.log('[Config] API Base URL:', getApiBaseUrl());
 })();
-
