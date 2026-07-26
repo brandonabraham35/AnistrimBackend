@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const initializedSections = new Set();
+
   // Ensure admin token exists, otherwise redirect to login.
   if (!localStorage.getItem('admin_token')) {
     window.location.replace('index.html');
@@ -37,6 +39,21 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window.location.hash !== `#${effectiveTargetId}`) {
         history.pushState(null, null, `#${effectiveTargetId}`);
       }
+    }
+
+    // Initialize section-specific JS module if it hasn't been already
+    if (!initializedSections.has(effectiveTargetId)) {
+      switch (effectiveTargetId) {
+        case 'anime':    if (window.initializeAnimeSection)    window.initializeAnimeSection(); break;
+        case 'users':    if (window.initializeUsersSection)    window.initializeUsersSection(); break;
+        case 'episodes': if (window.initializeEpisodesSection) window.initializeEpisodesSection(); break;
+        case 'genres':   if (window.initializeGenresSection)   window.initializeGenresSection(); break;
+        case 'payments': if (window.initializePaymentsSection) window.initializePaymentsSection(); break;
+        case 'ads-config': if (window.initializeAdsSection)      window.initializeAdsSection(); break;
+        case 'logs':     if (window.initializeLogsSection)     window.initializeLogsSection(); break;
+        case 'settings': if (window.initializeSettingsSection) window.initializeSettingsSection(); break;
+      }
+      initializedSections.add(effectiveTargetId);
     }
   }
 
