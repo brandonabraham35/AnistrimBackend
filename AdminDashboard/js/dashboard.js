@@ -1,4 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Ensure admin token exists, otherwise redirect to login.
+  if (!localStorage.getItem('admin_token')) {
+    window.location.replace('index.html');
+    return;
+  }
+
   const sections = document.querySelectorAll('.content-section');
   const navLinks = document.querySelectorAll('.sidebar .nav-link');
 
@@ -10,24 +16,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- SPA Routing ---
   function showSection(targetId) {
-    const currentActive = document.querySelector('.content-section.active');
-    if (currentActive && currentActive.id === targetId) {
-      return;
-    }
+    // Default to 'dashboard' if the targetId is invalid or not found
+    const effectiveTargetId = document.getElementById(targetId) ? targetId : 'dashboard';
 
     sections.forEach(section => {
-      section.classList.toggle('active', section.id === targetId);
+      section.classList.toggle('active', section.id === effectiveTargetId);
     });
 
     navLinks.forEach(link => {
       const linkTargetId = (link.dataset.section || (link.href && link.href.split('#')[1]));
-      link.classList.toggle('active', linkTargetId === targetId);
+      link.classList.toggle('active', linkTargetId === effectiveTargetId);
     });
 
+    // Update URL hash. Using history.pushState is cleaner for SPAs.
     if (history.pushState) {
-      history.pushState(null, null, `#${targetId}`);
-    } else {
-      location.hash = `#${targetId}`;
+      if (window.location.hash !== `#${effectiveTargetId}`) {
+        history.pushState(null, null, `#${effectiveTargetId}`);
+      }
     }
   }
 
@@ -60,22 +65,33 @@ document.addEventListener('DOMContentLoaded', () => {
   navLinks.forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
-      const targetSection = link.dataset.section;
+      // Support both `data-section` and `href` attributes for routing
+      const targetSection = link.dataset.section || (link.getAttribute('href') || '').substring(1);
       if (targetSection) {
         showSection(targetSection);
       }
     });
   });
 
+  // This listener handles direct hash changes (e.g., from bookmarks).
   window.addEventListener('hashchange', () => {
     const targetId = window.location.hash.substring(1) || 'dashboard';
     showSection(targetId);
   });
 
+  // This listener handles browser back/forward navigation.
   window.addEventListener('popstate', () => {
     const targetId = window.location.hash.substring(1) || 'dashboard';
     showSection(targetId);
   });
+
+  // --- Global Logout Handler ---
+  function logout() {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
+    window.location.replace('index.html');
+  }
+  window.logout = logout;
 
   // --- Initial Load ---
   function initializeDashboard() {

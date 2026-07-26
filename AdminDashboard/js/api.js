@@ -10,9 +10,17 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
     : 'https://anistrimbackend.onrender.com';
 
   const url = `${BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('admin_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, { ...options, headers });
 
     if (!response.ok) {
       // Try to parse error message from backend, otherwise use status text
