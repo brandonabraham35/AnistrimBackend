@@ -206,7 +206,7 @@ async function addToListFromDetails() {
     // Use the centralized apiFetch helper
     const { ok, data } = await apiFetch('/api/watchlist/add', {
       method: 'POST',
-      body: JSON.stringify({ animeId: currentAnime.id })
+      body: { animeId: currentAnime.id }
     });
 
     if (ok && typeof showToast === 'function') showToast(data.message || 'Added to list!');

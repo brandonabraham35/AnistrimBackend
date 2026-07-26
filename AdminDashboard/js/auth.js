@@ -24,10 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (errorMsg) errorMsg.innerText = '';
 
             try {
-                // Use the correct admin login endpoint and stringify the body
+                // Pass a raw JavaScript object; the apiRequest helper will handle serialization.
                 const data = await window.apiRequest('/api/auth/login', {
                     method: 'POST',
-                    body: JSON.stringify({ email, password })
+                    body: { email, password }
                 });
 
                 const u = data?.user;

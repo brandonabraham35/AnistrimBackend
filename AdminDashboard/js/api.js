@@ -15,11 +15,18 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
   const url = `${BASE_URL}${endpoint}`;
   const token = localStorage.getItem('admin_token');
   const headers = { ...options.headers };
+  const method = options.method || 'GET';
 
   // Only set Content-Type for JSON. Let the browser handle it for FormData.
   if (options.body && !(options.body instanceof FormData)) {
+    // Add safe logging
+    console.log(`[API] ${method} ${url} (JSON Body)`);
     headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(options.body);
+  } else if (options.body instanceof FormData) {
+    console.log(`[API] ${method} ${url} (FormData Body)`);
+  } else {
+    console.log(`[API] ${method} ${url}`);
   }
 
   if (token) {
