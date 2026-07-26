@@ -66,9 +66,10 @@ function googleLogin() {
 
     // Redirect to the backend's Google OAuth endpoint. The backend will handle
     // the redirect to Google's consent screen.
-    // We add `?origin=admin_dashboard` to signal to the backend that this is a web admin login,
-    // so it can redirect back to this page instead of the mobile app's deep-link.
-    window.location.href = `${baseUrl}/api/auth/google?origin=admin_dashboard`;
+    // We use the 'state' parameter to signal the origin of the request.
+    // The backend will receive this back from Google and can use it to redirect correctly.
+    const state = 'admin_dashboard';
+    window.location.href = `${baseUrl}/api/auth/google?state=${encodeURIComponent(state)}`;
 }
 
 function logout() {
