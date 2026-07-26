@@ -60,8 +60,10 @@ document.addEventListener('DOMContentLoaded', () => {
  * Initiates the Google OAuth flow by redirecting to the backend endpoint.
  */
 function googleLogin() {
-    // Aligning with api.js, hardcode the production URL to make the admin dashboard self-contained.
-    const baseUrl = 'https://anistrimbackend.onrender.com';
+    // Dynamically determine the base URL to support both local development and production,
+    // matching the logic in api.js.
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = isLocalhost ? 'http://localhost:5000' : 'https://anistrimbackend.onrender.com';
 
     // Redirect to the backend's Google OAuth endpoint. The backend will handle
     // the redirect to Google's consent screen.

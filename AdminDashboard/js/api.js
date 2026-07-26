@@ -5,9 +5,13 @@
  * - Throws an error for non-successful responses to be caught by the caller.
  */
 async function apiFetch(endpoint, options = {}, retries = 1) {
-  // For the Admin Dashboard, always target the production backend to avoid
-  // conflicts with local frontend development servers or misconfigurations.
-  const BASE_URL = 'https://anistrimbackend.onrender.com';
+  // Dynamically determine BASE_URL for Admin Dashboard:
+  // Use local backend for local development, otherwise use production Render backend.
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const BASE_URL = isLocalhost
+    ? 'http://localhost:5000' // Assuming your local backend runs on port 5000
+    : 'https://anistrimbackend.onrender.com';
+
 
   const url = `${BASE_URL}${endpoint}`;
   const token = localStorage.getItem('admin_token');
