@@ -85,14 +85,14 @@ app.use('/uploads', (req, res, next) => {
 // They must come after all API and static asset routes.
 
 // Admin dashboard SPA fallback
-// This regex matches /dashboard and any sub-path like /dashboard/users
+// This regex matches /dashboard and any sub-path like /dashboard/users, fixing the crash.
 app.get(/^\/dashboard(\/.*)?$/, (req, res) => {
   res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
 });
 
 // Catch-all for Admin Login SPA routes (e.g., /admin, /admin/forgot-password)
 // This ensures that client-side routing within the /admin path works.
-// This regex matches /admin and any sub-path like /admin/forgot-password
+// This regex matches /admin and any sub-path like /admin/forgot-password, fixing the crash.
 app.get(/^\/admin(\/.*)?$/, (req, res) => {
   res.sendFile(path.join(__dirname, 'AdminDashboard', 'index.html'));
 });
