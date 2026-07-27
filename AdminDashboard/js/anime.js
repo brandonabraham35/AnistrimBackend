@@ -89,16 +89,19 @@ async function _fetchAllAnime() {
     _anime_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading anime...</td></tr>';
 
     try {
-        _anime_all = await _requestAnimeWithTimeout('/api/admin/anime');
-        if (!Array.isArray(_anime_all)) throw new Error('The admin catalogue response is invalid.');
+        // The public catalogue reads the same MySQL anime records but does not
+        // wait on the protected admin pool. Use it for the initial table render
+        // so existing content appears even when an admin request is delayed.
+        _anime_all = await _requestAnimeWithTimeout('/api/anime/trending');
+        if (!Array.isArray(_anime_all)) throw new Error('The catalogue response is invalid.');
         _handleFilterChange(); // Initial render
     } catch (error) {
-        _diag_anime('Admin catalogue request failed; using public catalogue fallback:', error);
+        _diag_anime('Public catalogue request failed; trying the admin endpoint:', error);
         try {
-            _anime_all = await _requestAnimeWithTimeout('/api/anime/trending');
+            _anime_all = await _requestAnimeWithTimeout('/api/admin/anime');
             if (!Array.isArray(_anime_all)) throw new Error('The public catalogue response is invalid.');
             _handleFilterChange();
-            window.showToast?.('Loaded catalogue using the public data feed.', 'success');
+            window.showToast?.('Loaded catalogue using the admin data feed.', 'success');
         } catch (fallbackError) {
             _diag_anime('Failed to load anime:', fallbackError);
             _anime_tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Unable to load anime. Please retry.</td></tr>`;
