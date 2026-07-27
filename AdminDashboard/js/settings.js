@@ -1,14 +1,20 @@
 async function initSettings() {
-    const data = await window.apiRequest('/admin/settings');
     const form = document.getElementById('settings-form');
+    if (!form) return;
 
-    Object.keys(data).forEach(key => {
-        const input = form.querySelector(`[name="${key}"]`);
-        if (input) {
-            if (input.type === 'checkbox') input.checked = data[key] === '1';
-            else input.value = data[key];
-        }
-    });
+    try {
+        const data = await window.apiRequest('/api/admin/settings');
+        Object.keys(data).forEach(key => {
+            const input = form.querySelector(`[name="${key}"]`);
+            if (input) {
+                if (input.type === 'checkbox') input.checked = data[key] === '1' || data[key] === true;
+                else input.value = data[key];
+            }
+        });
+    } catch (error) {
+        console.error('[Settings] Failed to load settings:', error);
+        alert(`Failed to load settings: ${error.message}`);
+    }
 }
 
 document.getElementById('settings-form').onsubmit = async (e) => {
@@ -21,8 +27,13 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     // Handle checkboxes (maintenance_mode)
     if (!body.maintenance_mode) body.maintenance_mode = '0';
 
-    await window.apiRequest('/admin/settings', { method: 'PUT', body });
-    alert('Settings saved!');
+    try {
+        await window.apiRequest('/api/admin/settings', { method: 'PUT', body });
+        alert('Settings saved!');
+    } catch (error) {
+        console.error('[Settings] Failed to save settings:', error);
+        alert(`Failed to save settings: ${error.message}`);
+    }
 };
 
 window.initSettings = initSettings;

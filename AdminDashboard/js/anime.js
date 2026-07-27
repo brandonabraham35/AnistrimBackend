@@ -55,8 +55,13 @@ async function handleDeleteAnime(id) {
     if (!confirm(`Are you sure you want to delete anime ID: ${id}? This cannot be undone.`)) {
         return;
     }
-    await window.apiRequest(`/api/admin/anime/${id}`, { method: 'DELETE' });
-    loadAnime(); // Refresh the list
+    try {
+        await window.apiRequest(`/api/admin/anime/${id}`, { method: 'DELETE' });
+        loadAnime(); // Refresh the list on success
+    } catch (error) {
+        console.error(`[Anime] Failed to delete anime ${id}:`, error);
+        alert(`Failed to delete anime: ${error.message}`);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
