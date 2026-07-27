@@ -25,6 +25,9 @@ router.put('/anime/:id',                    admin.updateAnime);
 router.delete('/anime/:id',                 admin.deleteAnime);
 router.post('/anime/bulk-delete',           admin.bulkDeleteAnime);
 router.post('/import-anime',                imports.importAnime);
+router.get('/anime/import/search',          imports.searchConsumet);
+router.post('/anime/import',                imports.importConsumetAnime);
+router.put('/anime/:id/sync',               imports.syncConsumetAnime);
 
 // Genres
 router.get('/genres',                       admin.getAllGenres);

@@ -115,6 +115,8 @@ function _renderAnimePage() {
                 <td>${anime.is_premium ? 'Yes' : 'No'}</td>
                 <td>${anime.is_featured ? 'Yes' : 'No'}</td>
                 <td>
+                    <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes">Episodes</button>
+                    <button class="btn-action sync" data-id="${anime.id}" title="Sync with Consumet">Sync</button>
                     <button class="btn-action edit" data-id="${anime.id}" title="Edit">✏️</button>
                     <button class="btn-action delete" data-id="${anime.id}" title="Delete">🗑️</button>
                 </td>
@@ -185,12 +187,33 @@ function _handleTableClick(e) {
     const target = e.target;
     const id = target.closest('tr')?.querySelector('.anime-select-checkbox')?.dataset.id;
 
-    if (target.matches('.btn-action.delete')) {
+    if (target.matches('.btn-action.episodes')) {
+        window.manageEpisodes?.(id, _anime_all.find(anime => String(anime.id) === String(id))?.title || '');
+    } else if (target.matches('.btn-action.delete')) {
         handleDeleteAnime(id);
     } else if (target.matches('.btn-action.edit')) {
         _openAnimeModal(id);
+    } else if (target.matches('.btn-action.sync')) {
+        _syncConsumetAnime(id, target);
     } else if (target.matches('.anime-select-checkbox')) {
         _updateBulkDeleteButton();
+    }
+}
+
+async function _syncConsumetAnime(id, button) {
+    if (!confirm('Sync this anime metadata and episodes from Consumet?')) return;
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = '...';
+    try {
+        await window.apiRequest(`/api/admin/anime/${id}/sync`, { method: 'PUT' });
+        await _fetchAllAnime();
+        window.showToast('Anime synced from Consumet.');
+    } catch (error) {
+        window.showToast(`Sync failed: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
     }
 }
 
@@ -378,9 +401,9 @@ async function _handleKitsuSearch(e) {
     resultsContainer.innerHTML = '<p>Searching...</p>';
 
     try {
-        const results = await window.apiRequest(`/api/anime/search?q=${encodeURIComponent(query)}`);
+        const results = await window.apiRequest(`/api/admin/anime/import/search?q=${encodeURIComponent(query)}`);
         if (!results || results.length === 0) {
-            resultsContainer.innerHTML = '<p>No results found on Kitsu.</p>';
+            resultsContainer.innerHTML = '<p>No results found on Consumet.</p>';
             return;
         }
         resultsContainer.innerHTML = results.map(item => `
@@ -388,8 +411,10 @@ async function _handleKitsuSearch(e) {
                 <img src="${item.cover_image}" alt="${item.title}">
                 <div class="kitsu-result-info">
                     <strong>${window._escapeHTML(item.title)}</strong>
-                    <small>${item.year}</small>
+                    <small>${item.year || 'Year unknown'} ${item.episodes ? ` · ${item.episodes} episodes` : ''}</small>
+                    <small>${window._escapeHTML((item.description || '').slice(0, 120))}</small>
                 </div>
+                <button type="button" class="btn import-consumet-btn">Import</button>
             </div>
         `).join('');
     } catch (error) {
@@ -399,7 +424,9 @@ async function _handleKitsuSearch(e) {
 }
 
 async function _handleKitsuResultClick(e) {
-    const item = e.target.closest('.kitsu-result-item');
+    const importButton = e.target.closest('.import-consumet-btn');
+    if (!importButton) return;
+    const item = importButton.closest('.kitsu-result-item');
     const kitsuId = item?.dataset.kitsuId;
     if (!kitsuId) return;
 
@@ -412,15 +439,15 @@ async function _handleKitsuResultClick(e) {
     item.style.opacity = '0.7';
 
     try {
-        await window.apiRequest('/api/admin/import-anime', {
+        await window.apiRequest('/api/admin/anime/import', {
             method: 'POST',
-            body: { kitsuId }
+            body: { providerId: kitsuId }
         });
-        _diag_anime(`Successfully imported anime from Kitsu ID ${kitsuId}`);
+        _diag_anime(`Successfully imported anime from Consumet ID ${kitsuId}`);
         _closeAnimeModal();
         await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
     } catch (error) {
-        _diag_anime('Kitsu import failed:', error);
+        _diag_anime('Consumet import failed:', error);
         window.showToast(`Import failed: ${error.message}`, 'error');
         item.innerHTML = 'Import Failed. Try again.';
         item.style.pointerEvents = 'auto';
