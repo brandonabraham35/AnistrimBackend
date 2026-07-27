@@ -201,15 +201,14 @@ async function _handleManualFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
-    const body = Object.fromEntries(formData.entries());
-
-    // Handle checkboxes
-    body.is_premium = form.querySelector('#manual-is-premium').checked;
-    body.is_featured = form.querySelector('#manual-is-featured').checked;
+    // The API client is designed to handle FormData directly for file uploads.
+    // We just need to ensure checkbox values are correctly represented.
+    formData.set('is_premium', form.querySelector('#manual-is-premium').checked);
+    formData.set('is_featured', form.querySelector('#manual-is-featured').checked);
     
     const apiRequest = _anime_editId
-        ? window.apiRequest(`/api/admin/anime/${_anime_editId}`, { method: 'PUT', body })
-        : window.apiRequest(`/api/admin/anime`, { method: 'POST', body });
+        ? window.apiRequest(`/api/admin/anime/${_anime_editId}`, { method: 'PUT', body: formData })
+        : window.apiRequest(`/api/admin/anime`, { method: 'POST', body: formData });
 
     try {
         await apiRequest;
@@ -280,6 +279,7 @@ async function _openAnimeModal(animeId) {
     // Reset form
     form.reset();
     _resetModalTabs();
+    if (window.refreshImagePreviews) window.refreshImagePreviews();
 
     if (animeId) {
         // Edit mode
@@ -303,6 +303,9 @@ async function _openAnimeModal(animeId) {
         // The backend `genres` field is a comma-separated string, so this works.
         const genresInput = form.querySelector('[name="genres"]');
         if (genresInput) genresInput.value = anime.genres || '';
+
+        // Hydrate image previews
+        if (window.refreshImagePreviews) window.refreshImagePreviews();
 
         // Switch to manual tab for editing
         _showModalTab('manual');

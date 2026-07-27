@@ -122,7 +122,7 @@
                 <select id="anime-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
                     <option value="">All Status</option>
                     <option value="completed">Completed</option>
-                    <option value="releasing">Airing</option>
+                    <option value="airing">Airing</option>
                     <option value="upcoming">Upcoming</option>
                 </select>
                 <button type="button" class="btn" id="add-anime-button">Add Anime</button>
@@ -148,6 +148,7 @@
             </div>
             <div class="section-box"><h4><i class="fas fa-video"></i> Episodes</h4>
                 <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-episodes" title="Select all"></th><th>Anime</th><th>Episode</th><th>Title</th><th>Duration</th><th>Views</th><th>Premium</th></tr></thead><tbody></tbody></table></div>
+                <div id="anime-pagination" class="pagination-controls"></div>
             </div>
         </section>
         <section id="payments" class="content-section">
@@ -306,5 +307,9 @@
     <script src="js/ads.js"></script>
     <script src="js/logs.js"></script>
     <script src="js/settings.js"></script>
+
+    <!-- Uploader Widget Script -->
+    <script src="js/uploader.js"></script>
+
 </body>
 </html>
