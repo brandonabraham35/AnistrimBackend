@@ -130,11 +130,25 @@ const adminController = {
       const filters = req.query || {};
       const params = [];
       const where = [];
-      if (filters.q) { where.push('(a.title LIKE ? OR a.title_japanese LIKE ?)'); params.push(`%${filters.q}%`, `%${filters.q}%`); }
+      const schema = await getSchema();
+      if (filters.q) {
+        if (hasColumn(schema, 'anime', 'title_japanese')) {
+          where.push('(a.title LIKE ? OR a.title_japanese LIKE ?)');
+          params.push(`%${filters.q}%`, `%${filters.q}%`);
+        } else {
+          where.push('a.title LIKE ?');
+          params.push(`%${filters.q}%`);
+        }
+      }
       if (filters.status) { where.push('a.status = ?'); params.push(filters.status); }
-      const [anime] = await db.query(`SELECT a.*, COUNT(DISTINCT e.id) episode_count, GROUP_CONCAT(DISTINCT g.name ORDER BY g.name SEPARATOR ', ') genres
-        FROM anime a LEFT JOIN episodes e ON e.anime_id = a.id LEFT JOIN anime_genres ag ON ag.anime_id = a.id LEFT JOIN genres g ON g.id = ag.genre_id
-        ${where.length ? `WHERE ${where.join(' AND ')}` : ''} GROUP BY a.id ORDER BY a.created_at DESC`, params);
+      // This table only needs anime metadata and the episode total. Avoid
+      // optional genre joins here: an older database without genre migration
+      // must not block the entire Anime List from rendering.
+      const [anime] = await db.query(`SELECT a.*,
+          (SELECT COUNT(*) FROM episodes e WHERE e.anime_id = a.id) AS episode_count
+        FROM anime a
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY a.created_at DESC`, params);
       res.json(anime.map(row => ({ ...row, is_premium: toBool(row.is_premium), is_featured: toBool(row.is_featured) })));
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
