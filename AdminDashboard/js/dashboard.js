@@ -96,12 +96,18 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Failed to load or render dashboard overview:', error);
       const errorEl = document.getElementById('dashboard-error');
       if (errorEl) {
+        // Replace the inline onclick with a proper event listener for a better UX.
         errorEl.innerHTML = `
           Dashboard Error: ${error.message}.
-          <button onclick="window.location.reload()" style="background:var(--primary);color:#fff;border:0;border-radius:4px;padding:4px 12px;margin-left:8px;cursor:pointer;">
+          <button id="dashboard-retry-btn" style="background:var(--primary);color:#fff;border:0;border-radius:4px;padding:4px 12px;margin-left:8px;cursor:pointer;">
             ↺ Retry
           </button>
         `;
+        const retryBtn = document.getElementById('dashboard-retry-btn');
+        if (retryBtn) {
+          // Re-call the load function directly instead of reloading the whole page.
+          retryBtn.addEventListener('click', () => loadOverview());
+        }
       }
       document.querySelectorAll('[id^="stats-"]').forEach(el => el.innerHTML = '<span style="color: #f87171;">Error</span>');
     }
