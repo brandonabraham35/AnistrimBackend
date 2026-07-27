@@ -428,6 +428,19 @@ input:focus, select:focus, textarea:focus {
 .anime-import-panel { padding: 1.25rem; }
 .anime-import-panel[hidden] { display: none; }
 
+/* Compact, scrollable provider results — external artwork must never resize the modal. */
+.kitsu-search-bar { display: flex; gap: .65rem; }
+.kitsu-search-bar input { min-width: 0; flex: 1; }
+.kitsu-search-results { max-height: 52vh; overflow-y: auto; margin-top: 1rem; padding-right: .25rem; }
+.universal-import-bar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; }
+.kitsu-result-item { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: .85rem; padding: .75rem; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-dark); margin-bottom: .65rem; }
+.kitsu-result-item img { width: 70px; height: 100px; object-fit: cover; border-radius: 6px; background: #111827; }
+.kitsu-result-info { min-width: 0; display: flex; flex-direction: column; gap: .32rem; }
+.kitsu-result-info strong { color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kitsu-result-info small { color: var(--text-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.kitsu-result-item .btn { white-space: nowrap; }
+@media (max-width: 560px) { .kitsu-search-bar { flex-wrap: wrap; } .kitsu-search-bar input { flex-basis: 100%; } .kitsu-result-item { grid-template-columns: 56px minmax(0, 1fr); } .kitsu-result-item img { width: 56px; height: 80px; } .kitsu-result-item .btn { grid-column: 2; justify-self: start; } }
+
 .page-error {
     color: var(--danger);
     margin: -1rem 0 1rem;

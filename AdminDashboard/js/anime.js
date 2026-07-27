@@ -10,6 +10,7 @@ const _anime_itemsPerPage = 15;
 let _anime_tableBody = null; // Cached tbody element
 let _anime_paginationContainer = null; // Cached pagination container
 let _anime_editId = null; // null for 'Add' mode, anime.id for 'Edit' mode
+let _anime_import_results = [];
 
 // --- Initialization ---
 function initializeAnimeSection() {
@@ -388,6 +389,7 @@ function _resetModalTabs() {
     const defaultPanel = document.querySelector('[data-anime-panel="kitsu"]');
     if (defaultTab) defaultTab.setAttribute('aria-selected', 'true');
     if (defaultPanel) defaultPanel.hidden = false;
+    _anime_import_results = [];
     document.getElementById('kitsu-search-results').innerHTML = '';
     document.getElementById('kitsu-search-input').value = '';
 }
@@ -424,7 +426,13 @@ async function _handleKitsuSearch(e) {
             resultsContainer.innerHTML = '<p>No results found on Consumet.</p>';
             return;
         }
-        resultsContainer.innerHTML = results.map(item => `
+        _anime_import_results = results;
+        resultsContainer.innerHTML = `
+            <div class="universal-import-bar">
+                <span>${results.length} matching title${results.length === 1 ? '' : 's'}</span>
+                <button type="button" class="btn universal-import-btn">Universal Import</button>
+            </div>
+        ` + results.map(item => `
             <div class="kitsu-result-item" data-kitsu-id="${item.id}">
                 <img src="${item.cover_image}" alt="${item.title}">
                 <div class="kitsu-result-info">
@@ -442,6 +450,11 @@ async function _handleKitsuSearch(e) {
 }
 
 async function _handleKitsuResultClick(e) {
+    const universalButton = e.target.closest('.universal-import-btn');
+    if (universalButton) {
+        await _importAllSearchResults(universalButton);
+        return;
+    }
     const importButton = e.target.closest('.import-consumet-btn');
     if (!importButton) return;
     const item = importButton.closest('.kitsu-result-item');
@@ -452,27 +465,48 @@ async function _handleKitsuResultClick(e) {
         return;
     }
 
-    item.innerHTML += ' <small>Importing...</small>';
-    item.style.pointerEvents = 'none';
-    item.style.opacity = '0.7';
-
-    try {
-        await window.apiRequest('/api/admin/anime/import', {
-            method: 'POST',
-            body: { providerId: kitsuId }
-        });
-        _diag_anime(`Successfully imported anime from Consumet ID ${kitsuId}`);
+    if (await _importProviderAnime(kitsuId, item, importButton)) {
         _closeAnimeModal();
-        await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
-    } catch (error) {
-        _diag_anime('Consumet import failed:', error);
-        window.showToast(`Import failed: ${error.message}`, 'error');
-        item.innerHTML = 'Import Failed. Try again.';
-        item.style.pointerEvents = 'auto';
-        item.style.opacity = '1';
+        await _fetchAllAnime();
+        window.showToast('Anime imported successfully.');
     }
 }
 
+async function _importProviderAnime(providerId, item, button) {
+    const originalMarkup = item?.innerHTML;
+    if (button) button.disabled = true;
+    if (item) { item.style.pointerEvents = 'none'; item.style.opacity = '0.7'; }
+    try {
+        await window.apiRequest('/api/admin/anime/import', { method: 'POST', body: { providerId } });
+        return true;
+    } catch (error) {
+        _diag_anime('Consumet import failed:', error);
+        if (item) {
+            item.innerHTML = originalMarkup || 'Import failed. Try again.';
+            item.style.pointerEvents = 'auto';
+            item.style.opacity = '1';
+        }
+        window.showToast(`Import failed: ${error.message}`, 'error');
+        return false;
+    }
+}
+
+async function _importAllSearchResults(button) {
+    if (!_anime_import_results.length) return;
+    if (!confirm(`Import all ${_anime_import_results.length} search results? They will be processed one at a time.`)) return;
+    button.disabled = true;
+    let completed = 0;
+    for (const result of _anime_import_results) {
+        button.textContent = `Importing ${completed + 1}/${_anime_import_results.length}...`;
+        const item = Array.from(document.querySelectorAll('.kitsu-result-item'))
+            .find(element => element.dataset.kitsuId === String(result.id));
+        if (await _importProviderAnime(result.id, item, null)) completed++;
+    }
+    await _fetchAllAnime();
+    button.textContent = `Imported ${completed}/${_anime_import_results.length}`;
+    window.showToast(`${completed} anime imported successfully.`);
+    if (completed === _anime_import_results.length) _closeAnimeModal();
+}
 
 // --- Final Setup ---
 document.addEventListener('DOMContentLoaded', () => {
