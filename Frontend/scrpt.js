@@ -45,6 +45,17 @@ async function apiFetch(endpoint, options = {}) {
 }
 
 // ===================== UTILS =====================
+function _escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+window._escapeHTML = _escapeHTML;
+
 function toggleMenu() {
   document.getElementById('side-menu')?.classList.toggle('active');
   document.getElementById('menu-overlay')?.classList.toggle('active');
@@ -129,14 +140,14 @@ async function loadContinueWatching() {
       return `
       <div class="card" onclick="location.href='watch.html?id=${item.anime_id}&ep=${item.episode_number}'">
         <div class="card-img-wrap">
-          <img src="${imgSrc}" alt="${item.title}" loading="lazy"
-               onerror="cardImgError(this,'${(item.title||'').replace(/'/g,"\\'")}')">
+          <img src="${imgSrc}" alt="${_escapeHTML(item.title)}" loading="lazy"
+               onerror="cardImgError(this,'${_escapeHTML((item.title||'').replace(/'/g,"\\'"))}')">
           <span class="card-badge">⭐ ${item.rating}</span>
           <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,0.2);">
             <div style="height:100%;background:var(--purple);width:${Math.min((item.progress_sec/(item.duration_sec||1440))*100,100).toFixed(0)}%"></div>
           </div>
         </div>
-        <div class="card-title">${item.title}</div>
+        <div class="card-title">${_escapeHTML(item.title)}</div>
         <div class="card-sub">Ep ${item.episode_number} · Resume</div>
       </div>`;
     }).join('');
@@ -171,15 +182,15 @@ function setHero(i) {
         `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)`;
     }
   }
-  setText('hero-title',    a.title);
+  setText('hero-title',    a.title || '');
   setText('hero-rating',   `⭐ ${a.rating}`);
   setText('hero-year',     a.year || '');
   setText('hero-episodes', a.episodes?.length ? `${a.episodes.length} Episodes` : '');
-  setText('hero-desc',     (a.description||'').substring(0,160) + '...');
+  setText('hero-desc',     (a.description || '').substring(0, 160) + '...');
 
   const genresEl = document.getElementById('hero-genres');
   if (genresEl && a.genres) {
-    genresEl.innerHTML = a.genres.slice(0,3).map(g=>`<span class="genre-pill">${g}</span>`).join('');
+    genresEl.innerHTML = a.genres.slice(0,3).map(g=>`<span class="genre-pill">${_escapeHTML(g)}</span>`).join('');
   }
   document.getElementById('hero-watch-btn')?.setAttribute('onclick', `location.href='watch.html?id=${a.id}&ep=1'`);
   document.getElementById('hero-info-btn')?.setAttribute('onclick',  `location.href='details.html?id=${a.id}'`);
@@ -222,13 +233,13 @@ function renderRow(containerId, list) {
     return `
     <div class="card" onclick="location.href='details.html?id=${a.id}'">
       <div class="card-img-wrap">
-        <img src="${imgSrc}" alt="${a.title}" loading="lazy"
-             onerror="cardImgError(this,'${(a.title||'').replace(/'/g,"\\'")}')">
+        <img src="${imgSrc}" alt="${_escapeHTML(a.title)}" loading="lazy"
+             onerror="cardImgError(this,'${_escapeHTML((a.title||'').replace(/'/g,"\\'"))}')">
         <span class="card-badge">⭐ ${a.rating || '?'}</span>
         ${a.is_premium ? '<span class="card-premium">👑</span>' : ''}
       </div>
-      <div class="card-title">${a.title}</div>
-      <div class="card-sub">${a.year || ''} · ${a.status || ''}</div>
+      <div class="card-title">${_escapeHTML(a.title)}</div>
+      <div class="card-sub">${_escapeHTML(a.year || '')} · ${_escapeHTML(a.status || '')}</div>
     </div>`;
   }).join('');
 }
@@ -260,7 +271,7 @@ function showCatalogError(message) {
       Could not load catalog
     </h3>
     <p style="margin:0;color:var(--text-muted);font-size:0.88rem;max-width:300px;">
-      ${message || 'Check your connection and try again.'}
+      ${_escapeHTML(message || 'Check your connection and try again.')}
     </p>
     <button id="catalog-reload-btn" onclick="reloadCatalog()"
       style="

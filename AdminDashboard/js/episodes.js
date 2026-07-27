@@ -35,10 +35,10 @@
     _episodes_tbody.innerHTML = _episodes_all.map(episode => `<tr>
             <td>${episode.episode_number || '-'}</td>
             <td>${episode.thumbnail_url ? `<img src="${episode.thumbnail_url}" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:6px;">` : '-'}</td>
-            <td>${episode.title || 'Untitled Episode'}</td>
+            <td>${window._escapeHTML(episode.title || 'Untitled Episode')}</td>
             <td>${episode.duration_sec ? `${episode.duration_sec} sec` : '-'}</td>
             <td>${episode.is_premium ? 'Yes' : 'No'}</td>
-            <td><button class="secondary-btn" onclick="openEpisodeModal(${episode.id})">Edit</button> <button class="danger-btn" onclick="deleteEpisode(${episode.id})">Delete</button></td>
+            <td><button class="secondary-btn" data-action="edit" data-id="${episode.id}">Edit</button> <button class="danger-btn" data-action="delete" data-id="${episode.id}">Delete</button></td>
         </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;">No episodes added yet.</td></tr>';
   }
 
@@ -48,11 +48,30 @@
     if (!_episodes_tbody) {
       _episodes_tbody = document.querySelector('#episodes-table tbody');
     }
+    // Use event delegation for actions to be more secure and efficient
+    if (_episodes_tbody && !_episodes_tbody.dataset.listener) {
+      _episodes_tbody.addEventListener('click', _handleEpisodeTableClick);
+      _episodes_tbody.dataset.listener = 'true';
+    }
 
     const title = document.getElementById('current-anime-title');
     if (title) title.textContent = animeTitle ? `Episodes: ${animeTitle}` : 'Episodes';
     if (typeof window.showSection === 'function') window.showSection('episodes');
     return loadEpisodes(animeId);
+  }
+
+  function _handleEpisodeTableClick(e) {
+    const target = e.target.closest('button');
+    if (!target) return;
+
+    const action = target.dataset.action;
+    const id = target.dataset.id;
+
+    if (action === 'edit') {
+      if (window.openEpisodeModal) window.openEpisodeModal(id);
+    } else if (action === 'delete') {
+      deleteEpisode(id);
+    }
   }
 
   async function deleteEpisode(episodeId) {

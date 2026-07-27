@@ -32,7 +32,7 @@ function _renderGenres() {
         return;
     }
 
-    _genres_tbody.innerHTML = _genres_all.map(g => `<tr><td>${g.name}</td><td><button class="action-btn delete-btn" onclick="deleteGenre(${g.id})">Delete</button></td></tr>`).join('');
+    _genres_tbody.innerHTML = _genres_all.map(g => `<tr><td>${window._escapeHTML(g.name)}</td><td><button class="action-btn delete-btn" onclick="deleteGenre(${g.id})">Delete</button></td></tr>`).join('');
 }
 
 // Event listener for adding a new genre

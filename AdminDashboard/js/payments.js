@@ -42,9 +42,9 @@ function _renderPayments() {
 
     _payments_tbody.innerHTML = _payments_all.map(p => `
                 <tr>
-                    <td>${p.name}<br><small>${p.email}</small></td>
+                    <td>${window._escapeHTML(p.name)}<br><small>${window._escapeHTML(p.email)}</small></td>
                     <td>UGX ${p.amount.toLocaleString()}</td>
-                    <td>${p.plan}</td>
+                    <td>${window._escapeHTML(p.plan)}</td>
                         <td>
                             <select class="payment-status-select" data-id="${p.id}">
                                 <option value="pending" ${p.status === 'pending' ? 'selected' : ''}>Pending</option>
@@ -54,7 +54,7 @@ function _renderPayments() {
                             </select>
                         </td>
                     <td>${new Date(p.paid_at || p.created_at).toLocaleDateString()}</td>
-                    <td>${p.reference || p.flw_tx_ref || '-'}</td>
+                    <td>${window._escapeHTML(p.reference || p.flw_tx_ref || '-')}</td>
                 </tr>
             `).join('');
 }

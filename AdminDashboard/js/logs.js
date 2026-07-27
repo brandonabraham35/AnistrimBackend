@@ -29,9 +29,9 @@ function _renderLogs() {
 
     _logs_tbody.innerHTML = _logs_all.map(l => `
         <tr>
-            <td>${l.user_name || 'System'}</td>
-            <td>${l.action}</td>
-            <td>${l.target_type || '-'} ${l.target_id || ''}</td>
+            <td>${window._escapeHTML(l.user_name || 'System')}</td>
+            <td>${window._escapeHTML(l.action)}</td>
+            <td>${window._escapeHTML(l.target_type || '-')} ${l.target_id || ''}</td>
             <td>${new Date(l.created_at).toLocaleString()}</td>
         </tr>
     `).join('');

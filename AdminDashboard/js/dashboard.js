@@ -10,14 +10,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const sections = document.querySelectorAll('.content-section');
   const navLinks = document.querySelectorAll('.sidebar .nav-links a:not(.logout-btn)');
 
+  // --- Security & Utility Functions ---
+  function _escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+  }
+  window._escapeHTML = _escapeHTML; // Expose for other modules
+
   // --- Helper Functions ---
-  const safeInner = (selector, value, fallback = '0') => {
+  const setText = (selector, value, fallback = '0') => {
     const el = document.querySelector(selector);
-    if (el) {
-      // Use textContent for security unless the value is explicitly meant to be HTML
-      if (String(value).includes('<')) el.innerHTML = value;
-      else el.textContent = value || fallback;
-    }
+    if (el) el.textContent = value || fallback;
   };
 
   // --- SPA Routing ---
@@ -77,20 +85,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
       console.log('[Dashboard] Hydrating stats:', { totalUsers, premiumUsers, totalAnime, totalEpisodes, videoCount, revenueToday: today, revenueMonth: month });
 
-      safeInner('#stats-total-users', totalUsers);
-      safeInner('#stats-vip-users', premiumUsers);
-      safeInner('#stats-total-anime', totalAnime);
-      safeInner('#stats-total-episodes', totalEpisodes);
-      safeInner('#stats-cloudinary-videos', videoCount);
-      safeInner('#stats-revenue-today', `UGX ${today.toLocaleString()}`);
-      safeInner('#stats-revenue-month', `UGX ${month.toLocaleString()}`);
-      safeInner('#stats-revenue-total', `UGX ${total.toLocaleString()}`);
+      setText('#stats-total-users', totalUsers);
+      setText('#stats-vip-users', premiumUsers);
+      setText('#stats-total-anime', totalAnime);
+      setText('#stats-total-episodes', totalEpisodes);
+      setText('#stats-cloudinary-videos', videoCount);
+      setText('#stats-revenue-today', `UGX ${today.toLocaleString()}`);
+      setText('#stats-revenue-month', `UGX ${month.toLocaleString()}`);
+      setText('#stats-revenue-total', `UGX ${total.toLocaleString()}`);
 
       // Populate the new Uchiha-style lists
-      populateList('#top-anime-list', data.topAnime, item => `<span>${item.title}</span><span class="list-value">${item.views || 0} views</span>`);
-      populateList('#recent-uploads', data.recentEpisodes, item => `<span>${item.anime_title || 'Unknown'} - Ep ${item.episode_number}</span><span class="list-value">${new Date(item.created_at).toLocaleDateString()}</span>`);
-      populateList('#latest-users', data.latestUsers, item => `<span>${item.name}</span><span class="list-value">${item.email}</span>`);
-      populateList('#activity-logs', data.activityLogs, item => `<span>${item.message}</span><span class="list-value">${new Date(item.timestamp).toLocaleTimeString()}</span>`);
+      populateList('#top-anime-list', data.topAnime, item => `<span>${_escapeHTML(item.title)}</span><span class="list-value">${item.views || 0} views</span>`);
+      populateList('#recent-uploads', data.recentEpisodes, item => `<span>${_escapeHTML(item.anime_title || 'Unknown')} - Ep ${item.episode_number}</span><span class="list-value">${new Date(item.created_at).toLocaleDateString()}</span>`);
+      populateList('#latest-users', data.latestUsers, item => `<span>${_escapeHTML(item.name)}</span><span class="list-value">${_escapeHTML(item.email)}</span>`);
+      populateList('#activity-logs', data.activityLogs, item => `<span>${_escapeHTML(item.message)}</span><span class="list-value">${new Date(item.timestamp).toLocaleTimeString()}</span>`);
 
     } catch (error) {
       console.error('Failed to load or render dashboard overview:', error);
@@ -98,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (errorEl) {
         // Replace the inline onclick with a proper event listener for a better UX.
         errorEl.innerHTML = `
-          Dashboard Error: ${error.message}.
+          Dashboard Error: ${_escapeHTML(error.message)}.
           <button id="dashboard-retry-btn" style="background:var(--primary);color:#fff;border:0;border-radius:4px;padding:4px 12px;margin-left:8px;cursor:pointer;">
             ↺ Retry
           </button>

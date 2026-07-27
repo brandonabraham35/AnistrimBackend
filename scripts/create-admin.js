@@ -19,6 +19,26 @@ const askQuestion = (query) => {
   return new Promise(resolve => rl.question(query, resolve));
 };
 
+const escapeSql = (str) => {
+  if (str === null || str === undefined) {
+    return 'NULL';
+  }
+  return "'" + String(str).replace(/[\\$'"]/g, "\\$&") + "'";
+};
+
+const printWarning = () => {
+  console.warn(`
+  =================================================================
+  ==  SECURITY WARNING                                           ==
+  =================================================================
+  This script generates a raw SQL query. For a live application,
+  NEVER construct queries this way with user input. Always use
+  parameterized queries (prepared statements) to prevent SQL
+  injection attacks. This script is for developer use only.
+  =================================================================
+  `);
+};
+
 async function main() {
   const email = await askQuestion(questions[0]);
   const name = await askQuestion(questions[1]);
@@ -38,17 +58,20 @@ async function main() {
   console.log(`   Hash starts with: ${passwordHash.substring(0, 10)}...`);
 
   const sqlQuery = `
--- =================================================================
---  Run this SQL query in your MySQL Workbench to fix the admin user
--- =================================================================
+-- =============================================================================
+--  Run this SQL query in your database client to create/update the admin user.
+--  WARNING: This uses REPLACE, which will delete and re-insert the row if
+--           a user with the same primary key (email) exists.
+-- =============================================================================
 REPLACE INTO users (name, email, password_hash, is_admin, is_premium, created_at, status)
 VALUES
-('${name.replace(/'/g, "''")}', '${email.replace(/'/g, "''")}', '${passwordHash}', 1, 1, NOW(), 'active');
--- =================================================================
+(${escapeSql(name)}, ${escapeSql(email)}, '${passwordHash}', 1, 1, NOW(), 'active');
+-- =============================================================================
 `;
 
   console.log('\n✅ SQL Query Generated:\n');
   console.log(sqlQuery);
+  printWarning();
 
   rl.close();
 }

@@ -81,8 +81,8 @@ function _renderUsersPage() {
         _users_tableBody.innerHTML = pageItems.map(user => `
             <tr>
                 <td><input type="checkbox" class="user-select-checkbox" data-id="${user.id}"></td>
-                <td>${user.name}</td>
-                <td>${user.email}</td>
+                <td>${window._escapeHTML(user.name)}</td>
+                <td>${window._escapeHTML(user.email)}</td>
                 <td>${user.is_admin ? 'Admin' : 'User'}</td>
                 <td>${user.is_premium ? '💎 Premium' : 'Free'}</td>
                 <td><span class="status-badge ${user.status}">${user.status}</span></td>

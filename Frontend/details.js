@@ -117,7 +117,7 @@ function renderDetails(a) {
 
   const genresEl = document.getElementById('details-genres');
   if (genresEl && Array.isArray(a.genres) && a.genres.length) {
-    genresEl.innerHTML = a.genres.map(g => `<span class="genre-pill">${g}</span>`).join('');
+    genresEl.innerHTML = a.genres.map(g => `<span class="genre-pill">${window._escapeHTML(g)}</span>`).join('');
   }
 }
 
@@ -168,21 +168,21 @@ async function fetchAndRenderEpisodes(animeId) {
     // ── Build episode rows ──
     container.innerHTML = episodes.map(ep => {
       const locked = ep.is_premium && !State.isPremium && !State.isAdmin;
+      const epNum = ep.number || ep.episode_number;
       return `
-        <div class="episode-row ${locked ? 'episode-locked' : ''}"
-             onclick="${locked
-                ? "location.href='upgrade.html'"
-                : `location.href='watch.html?animeId=${animeId}&epId=${ep.id}'`}">
-          <span class="ep-num-badge">${ep.number || ep.episode_number}</span>
+        <div class="episode-row ${locked ? 'episode-locked' : ''}" 
+             data-locked="${locked}" data-anime-id="${animeId}" data-ep-id="${ep.id}">
+          <span class="ep-num-badge">${epNum}</span>
           <span class="ep-row-title">
-            ${ep.title || 'Episode ' + (ep.number || ep.episode_number)}
+            ${window._escapeHTML(ep.title || 'Episode ' + epNum)}
             ${ep.is_premium ? ' <span style="color:var(--orange);font-size:0.75rem;">👑</span>' : ''}
           </span>
-          ${locked
-            ? '<span class="ep-lock-badge">🔒</span>'
-            : '<span class="ep-play-arrow">▶</span>'}
+          ${locked ? '<span class="ep-lock-badge">🔒</span>' : '<span class="ep-play-arrow">▶</span>'}
         </div>`;
     }).join('');
+
+    // Add a single, delegated event listener for all episode rows
+    container.addEventListener('click', handleEpisodeClick);
 
   } catch (e) {
     console.error('fetchAndRenderEpisodes error:', e);
@@ -197,6 +197,21 @@ async function fetchAndRenderEpisodes(animeId) {
   }
 }
 window.fetchAndRenderEpisodes = fetchAndRenderEpisodes;
+
+function handleEpisodeClick(event) {
+  const row = event.target.closest('.episode-row');
+  if (!row) return;
+
+  const isLocked = row.dataset.locked === 'true';
+  if (isLocked) {
+    location.href = 'upgrade.html';
+    return;
+  }
+
+  const animeId = row.dataset.animeId;
+  const epId = row.dataset.epId;
+  location.href = `watch.html?animeId=${animeId}&epId=${epId}`;
+}
 
 // ── Watchlist ────────────────────────────────────────────
 async function addToListFromDetails() {
@@ -225,7 +240,7 @@ function showLoadingState() {
 
 function showErrorState(id) {
   setText('details-title', 'Could Not Load Anime');
-  setText('details-desc',  'Something went wrong fetching this title. Check your connection and try again.');
+  setText('details-desc', 'Something went wrong fetching this title. Check your connection and try again.');
   document.getElementById('start-watching-btn')?.remove();
 
   // Show a retry button

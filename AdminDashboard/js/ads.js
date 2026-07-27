@@ -83,7 +83,7 @@ function _renderAds() {
                     ${ad.image_url ? `<img src="${ad.image_url}" alt="Ad Preview">` : '<span>No Image</span>'}
                 </div>
             </td>
-            <td>${ad.title || 'Untitled Ad'}</td>
+            <td>${window._escapeHTML(ad.title || 'Untitled Ad')}</td>
             <td>${ad.type || 'N/A'}</td>
             <td>
                 <label class="switch">

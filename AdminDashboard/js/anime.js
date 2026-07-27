@@ -102,7 +102,7 @@ function _renderAnimePage() {
             <tr>
                 <td><input type="checkbox" class="anime-select-checkbox" data-id="${anime.id}"></td>
                 <td><img src="${anime.cover_image || 'img/placeholder.png'}" alt="${anime.title}" style="width:40px; height:60px; object-fit:cover; border-radius:4px;"></td>
-                <td>${anime.title}</td>
+                <td>${window._escapeHTML(anime.title)}</td>
                 <td><span class="status-badge ${anime.status}">${anime.status}</span></td>
                 <td>${anime.is_premium ? 'Yes' : 'No'}</td>
                 <td>${anime.is_featured ? 'Yes' : 'No'}</td>
@@ -377,7 +377,7 @@ async function _handleKitsuSearch(e) {
             <div class="kitsu-result-item" data-kitsu-id="${item.id}">
                 <img src="${item.cover_image}" alt="${item.title}">
                 <div class="kitsu-result-info">
-                    <strong>${item.title}</strong>
+                    <strong>${window._escapeHTML(item.title)}</strong>
                     <small>${item.year}</small>
                 </div>
             </div>
