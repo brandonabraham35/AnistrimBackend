@@ -75,6 +75,19 @@ exports.importAnime = async (req, res) => {
     const result = await catalogue.importFromKitsu(kitsuId);
     const animeId = result.anime.id;
 
+    // Kitsu fallback imports are also media-owned by AniStrim: copy available
+    // provider artwork into Cloudinary and update the same database record.
+    const importedCover = await persistRemoteImage(result.anime.cover_image, 'anime');
+    const importedBanner = await persistRemoteImage(result.anime.banner_image, 'banners');
+    if (importedCover.publicId || importedBanner.publicId) {
+      await db.query(
+        'UPDATE anime SET cover_image = ?, banner_image = ?, cover_public_id = COALESCE(?, cover_public_id), banner_public_id = COALESCE(?, banner_public_id) WHERE id = ?',
+        [importedCover.url, importedBanner.url, importedCover.publicId, importedBanner.publicId, animeId]
+      );
+      result.anime.cover_image = importedCover.url;
+      result.anime.banner_image = importedBanner.url;
+    }
+
     console.log(`[IMPORT CHECKPOINT 1] Anime ID ${animeId} resolved.`);
 
     // Step 2: Fetch episodes directly from the official Kitsu API (no Cloudflare, always works)
@@ -164,6 +177,12 @@ exports.searchConsumet = async (req, res) => {
 exports.importConsumetAnime = async (req, res) => {
   const providerId = String(req.body?.providerId || req.body?.animeId || '').trim();
   if (!providerId) return res.status(400).json({ message: 'providerId is required.' });
+  if (providerId.startsWith('kitsu:')) {
+    // The Consumet search fallback returns a namespaced Kitsu identifier.
+    // Reuse the established Kitsu importer for compatibility and episode seeding.
+    req.body = { kitsuId: providerId.slice('kitsu:'.length) };
+    return exports.importAnime(req, res);
+  }
   try {
     const metadata = normaliseConsumetInfo(await consumet.fetchAnimeInfo(providerId), providerId);
     const [existing] = await db.query('SELECT id FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', ['consumet', providerId]);

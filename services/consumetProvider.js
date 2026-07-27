@@ -118,12 +118,35 @@ class ConsumetProvider {
    * so we extract the array before returning.
    */
   async searchAnime(query, limit = 10) {
-    const searchResponse = await provider.search(query, limit);
-    // Safely extract the array (handling both paginated object and flat array returns)
-    const results = Array.isArray(searchResponse)
-      ? searchResponse
-      : (searchResponse.results || []);
-    return results;
+    try {
+      const searchResponse = await provider.search(query, limit);
+      const results = Array.isArray(searchResponse) ? searchResponse : (searchResponse.results || []);
+      if (results.length) return results;
+    } catch (error) {
+      console.warn('[ConsumetProvider] Primary search failed:', error.message || 'unknown provider error');
+    }
+
+    // Keep the admin import usable when the current Consumet streaming provider
+    // or AniList is rate-limited. This remains server-side; the browser never
+    // contacts an external catalogue provider directly.
+    try {
+      const response = await axios.get('https://kitsu.io/api/edge/anime', {
+        params: { 'filter[text]': query, 'page[limit]': Math.min(limit, 20) },
+        timeout: 12000,
+      });
+      return (response.data?.data || []).map(item => ({
+        id: `kitsu:${item.id}`,
+        title: item.attributes?.titles?.en_jp || item.attributes?.canonicalTitle || 'Untitled Anime',
+        image: item.attributes?.posterImage?.medium || item.attributes?.posterImage?.original || null,
+        cover: item.attributes?.coverImage?.large || item.attributes?.coverImage?.original || null,
+        description: item.attributes?.synopsis || '',
+        releaseDate: item.attributes?.startDate?.slice(0, 4) || null,
+        totalEpisodes: item.attributes?.episodeCount || null,
+      }));
+    } catch (error) {
+      console.error('[ConsumetProvider] Kitsu fallback search failed:', error.message);
+      return [];
+    }
   }
 
   /**
@@ -247,4 +270,3 @@ class ConsumetProvider {
 }
 
 module.exports = { ConsumetProvider };
-
