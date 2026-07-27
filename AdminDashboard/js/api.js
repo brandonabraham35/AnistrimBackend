@@ -37,6 +37,15 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
     const response = await fetch(url, { ...options, headers });
 
     if (!response.ok) {
+      // If the token is expired or invalid, the API will return a 401.
+      // We should clear the session and redirect to the login page.
+      if (response.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        window.location.replace('index.html');
+        // Throw an error to prevent the rest of the code from executing
+        throw new Error('Session expired. Please log in again.');
+      }
       // Try to parse error message from backend, otherwise use status text
       let message = response.statusText;
       try {
