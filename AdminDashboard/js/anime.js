@@ -88,12 +88,30 @@ async function _fetchAllAnime() {
     _anime_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading anime...</td></tr>';
 
     try {
-        _anime_all = await window.apiRequest(`/api/admin/anime`);
+        _anime_all = await _requestAnimeWithTimeout('/api/admin/anime');
+        if (!Array.isArray(_anime_all)) throw new Error('The admin catalogue response is invalid.');
         _handleFilterChange(); // Initial render
     } catch (error) {
-        _diag_anime('Failed to load anime:', error);
-        _anime_tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Error loading anime. Check console.</td></tr>`;
+        _diag_anime('Admin catalogue request failed; using public catalogue fallback:', error);
+        try {
+            _anime_all = await _requestAnimeWithTimeout('/api/anime/trending');
+            if (!Array.isArray(_anime_all)) throw new Error('The public catalogue response is invalid.');
+            _handleFilterChange();
+            window.showToast?.('Loaded catalogue using the public data feed.', 'success');
+        } catch (fallbackError) {
+            _diag_anime('Failed to load anime:', fallbackError);
+            _anime_tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Unable to load anime. Please retry.</td></tr>`;
+        }
     }
+}
+
+function _requestAnimeWithTimeout(endpoint, timeoutMs = 12000) {
+    let timer;
+    const request = window.apiRequest(endpoint);
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Catalogue request timed out.')), timeoutMs);
+    });
+    return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
 }
 
 function _renderAnimePage() {
