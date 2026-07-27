@@ -120,7 +120,12 @@ exports.search = async (req, res) => {
       params.push(genre);
     }
     sql += ` WHERE 1=1`;
-    if (q) { sql += ` AND MATCH(a.title, a.description) AGAINST(? IN BOOLEAN MODE)`; params.push(`${q}*`); }
+    // LIKE works on every supported MySQL schema. MATCH requires a FULLTEXT
+    // index which is not present in older production databases.
+    if (q) {
+      sql += ` AND (a.title LIKE ? OR a.description LIKE ?)`;
+      params.push(`%${q}%`, `%${q}%`);
+    }
     if (status) { sql += ` AND a.status = ?`; params.push(status); }
     sql += ` ORDER BY a.rating DESC LIMIT 50`;
 

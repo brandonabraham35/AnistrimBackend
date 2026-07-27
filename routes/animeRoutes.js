@@ -104,12 +104,14 @@ router.get('/:animeId/episodes', async (req, res) => {
 });
 
 // Public (but protect adds user context if token present — optional auth)
-router.get('/trending', catalogue.getTrendingAnime);
+// The mobile catalogue is backed by AniStrim's own MySQL records.  Do not
+// make the home screen depend on an external provider being online.
+router.get('/trending', anime.getTrending);
 router.get('/latest',   anime.getLatest);
 router.get('/recent',   anime.getLatest);
-router.get('/popular',  catalogue.getPopularAnime);
+router.get('/popular',  anime.getTrending);
 router.get('/featured', anime.getFeatured);
-router.get('/search',           catalogue.search);
+router.get('/search',           anime.search);
 router.get('/search/advanced',  catalogue.advancedSearch);
 router.get('/recommendations/:id', anime.getRecommendations);
 router.get('/resolve/stream', anime.resolveStream);

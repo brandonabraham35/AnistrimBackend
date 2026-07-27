@@ -14,13 +14,14 @@ let _anime_editId = null; // null for 'Add' mode, anime.id for 'Edit' mode
 // --- Initialization ---
 function initializeAnimeSection() {
     _diag_anime('Initializing Anime management section...');
-    
-    // Initial data load
-    _fetchAllAnime();
 
-    // Cache DOM elements
+    // Cache DOM elements before the first fetch. Previously the request was
+    // skipped because _fetchAllAnime correctly returns when this is null.
     _anime_tableBody = document.querySelector('#anime-table tbody');
     _anime_paginationContainer = document.getElementById('anime-pagination');
+
+    // Initial data load
+    _fetchAllAnime();
 
     // Setup event listeners
     const section = document.getElementById('anime');

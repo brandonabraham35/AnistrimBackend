@@ -24,6 +24,32 @@
     }
   }
 
+  async function initializeEpisodesSection() {
+    _episodes_tbody = document.querySelector('#episodes-table tbody');
+    if (!_episodes_tbody) return;
+
+    _episodes_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading episodes...</td></tr>';
+    try {
+      _episodes_all = await window.apiRequest('/api/admin/episodes');
+      if (!_episodes_all.length) {
+        _episodes_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No episodes added yet.</td></tr>';
+        return;
+      }
+      _episodes_tbody.innerHTML = _episodes_all.map(episode => `<tr>
+        <td><input type="checkbox" aria-label="Select episode ${episode.id}"></td>
+        <td>${window._escapeHTML(episode.anime_title || 'Unknown anime')}</td>
+        <td>${episode.episode_number || '-'}</td>
+        <td>${window._escapeHTML(episode.title || 'Untitled Episode')}</td>
+        <td>${episode.duration_sec ? `${episode.duration_sec} sec` : '-'}</td>
+        <td>${episode.view_count || 0}</td>
+        <td>${episode.is_premium ? 'Yes' : 'No'}</td>
+      </tr>`).join('');
+    } catch (error) {
+      console.error('[Episodes] Failed to load all episodes:', error);
+      _episodes_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--danger);">Unable to load episodes.</td></tr>';
+    }
+  }
+
   function _renderEpisodes() {
     if (!_episodes_tbody) return;
 
@@ -89,6 +115,7 @@
   // File selection is handled by the dashboard modal. There is deliberately no
   // URL field, status polling, or provider-specific playback state here.
   window.loadEpisodes = loadEpisodes;
+  window.initializeEpisodesSection = initializeEpisodesSection;
   window.manageEpisodes = manageEpisodes;
   window.deleteEpisode = deleteEpisode;
 })();
