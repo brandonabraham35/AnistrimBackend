@@ -135,10 +135,22 @@
         </section>
         <section id="users" class="content-section">
             <div class="toolbar">
-                <button type="button" id="bulkDeleteBtn-users" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-users">0</span>)</button>
+                <input type="search" id="user-search" placeholder="Search by name or email..." style="flex:1;max-width:300px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <select id="user-filter-role" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                    <option value="">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="user">User</option>
+                </select>
+                <select id="user-filter-plan" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                    <option value="">All Plans</option>
+                    <option value="premium">Premium</option>
+                    <option value="free">Free</option>
+                </select>
+                <button type="button" id="bulkDeleteBtn-users" class="btn danger" style="display:none;">Delete Selected (<span id="selectedCount-users">0</span>)</button>
             </div>
             <div class="section-box"><h4><i class="fas fa-users"></i> Registered Users</h4>
-                <div style="overflow-x:auto"><table id="users-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto"><table id="users-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+                <div id="users-pagination" class="pagination-controls"></div>
             </div>
         </section>
         <section id="episodes" class="content-section">
