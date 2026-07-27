@@ -22,6 +22,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window._escapeHTML = _escapeHTML; // Expose for other modules
 
+  // --- Toast Notifications ---
+  function showToast(msg, type = 'success') {
+    let toast = document.getElementById('admin-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'admin-toast';
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-family: 'Outfit', sans-serif;
+        font-size: 0.9rem;
+        font-weight: 500;
+        z-index: 10000;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        transition: opacity 0.3s, transform 0.3s;
+        transform: translateY(20px);
+        opacity: 0;
+        pointer-events: none;
+      `;
+      document.body.appendChild(toast);
+    }
+    toast.textContent = window._escapeHTML(msg);
+    toast.style.borderColor = type === 'error' ? 'var(--danger)' : 'var(--primary)';
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateY(20px)'; }, 4000);
+  }
+  window.showToast = showToast; // Expose globally
+
   // --- Helper Functions ---
   const setText = (selector, value, fallback = '0') => {
     const el = document.querySelector(selector); // Use _escapeHTML for all text content to prevent XSS

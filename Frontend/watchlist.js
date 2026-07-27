@@ -38,12 +38,12 @@ function renderWatchlist(list) {
   const statusLabel = { watching:'Watching', plan_to_watch:'Plan to Watch', completed:'Completed', dropped:'Dropped' };
   container.innerHTML = list.map(a => `
     <div class="wl-item" onclick="location.href='details.html?id=${a.id}'">
-      <div class="wl-thumb"> 
+      <div class="wl-thumb">
         <img src="${window._escapeHTML(a.cover_image)}" alt="${window._escapeHTML(a.title)}" onerror="this.style.opacity='0'">
       </div>
       <div class="wl-info">
         <div class="wl-title">${window._escapeHTML(a.title)}</div>
-        <span class="wl-status-badge">${statusLabel[a.watch_status] || 'Plan to Watch'}</span>
+        <span class="wl-status-badge">${window._escapeHTML(statusLabel[a.watch_status] || 'Plan to Watch')}</span>
         <div class="wl-progress">Ep ${a.episodes_watched || 0} / ${a.total_episodes || '?'}</div>
       </div>
       <span class="wl-play">

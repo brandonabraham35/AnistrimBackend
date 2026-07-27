@@ -80,7 +80,7 @@ async function _updatePaymentStatus(id, status) {
         _renderPayments();
     } catch (error) {
         _diag_payments(`Failed to update payment status for ${id}:`, error);
-        alert(`Failed to update payment status: ${error.message}`);
+        window.showToast(`Failed to update payment status: ${error.message}`, 'error');
     }
 }
 

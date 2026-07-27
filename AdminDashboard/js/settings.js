@@ -13,7 +13,7 @@ async function initSettings() {
         });
     } catch (error) {
         console.error('[Settings] Failed to load settings:', error);
-        alert(`Failed to load settings: ${window._escapeHTML(error.message)}`);
+        window.showToast(`Failed to load settings: ${window._escapeHTML(error.message)}`, 'error');
     }
 }
 
@@ -29,10 +29,10 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
     try {
         await window.apiRequest('/api/admin/settings', { method: 'PUT', body });
-        alert('Settings saved!');
+        window.showToast('Settings saved!');
     } catch (error) {
         console.error('[Settings] Failed to save settings:', error);
-        alert(`Failed to save settings: ${window._escapeHTML(error.message)}`);
+        window.showToast(`Failed to save settings: ${window._escapeHTML(error.message)}`, 'error');
     }
 };
 

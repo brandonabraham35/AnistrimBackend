@@ -84,16 +84,13 @@ app.use('/uploads', (req, res, next) => {
 // They must come after all API and static asset routes.
 
 // Admin dashboard SPA fallback
-// This regex matches /dashboard and any sub-path like /dashboard/users, fixing the crash.
-app.get(/^\/dashboard(\/.*)?$/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
-});
-
-// Catch-all for Admin Login SPA routes (e.g., /admin, /admin/forgot-password)
-// This ensures that client-side routing within the /admin path works.
-// This regex matches /admin and any sub-path like /admin/forgot-password, fixing the crash.
+// This catches any deep links into the admin panel (e.g., /admin/users) that aren't
+// static files, and serves the main dashboard HTML. The client-side router
+// (in dashboard.js) will then handle showing the correct section based on the URL hash,
+// and will redirect to the login page if the user is not authenticated.
+// This must come AFTER the static middleware for '/admin'.
 app.get(/^\/admin(\/.*)?$/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'AdminDashboard', 'index.html'));
+  res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
 });
 
 // General Frontend SPA fallback:

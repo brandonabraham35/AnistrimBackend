@@ -34,7 +34,7 @@ async function loadWatch() {
     currentAnimeTitle = window._escapeHTML(animeData.title); // Escape anime title
     document.title = 'Ep ' + currentEp + ' - ' + window._escapeHTML(animeData.title) + ' | AniStrim'; // Escape anime title for document title
     document.getElementById('watch-ep-title').textContent = 'Episode ' + currentEp;
-    document.getElementById('watch-anime-title').textContent = animeData.title;
+    document.getElementById('watch-anime-title').textContent = currentAnimeTitle;
 
     const { data: episodesData } = await apiFetch('/api/anime/' + animeId + '/episodes');
     const episodes = Array.isArray(episodesData) ? episodesData : [];
@@ -426,7 +426,7 @@ function renderMoreEpisodes(episodes, animeId) {
     var premiumTag = e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : '';
     var playSvg = isLocked ? '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>' : '<polygon points="5 3 19 12 5 21 5 3"/>';
     var playColor = isLocked ? 'var(--orange)' : 'var(--text-muted)';
-    return '<div class="episode-item" onclick="location.href=\'watch.html?animeId=' + animeId + '&epId=' + e.id + '\'"><div class="ep-thumb-wrap"><img src="' + thumbSrc + '" alt="' + epTitle.replace(/'/g,"\\'") + '" loading="lazy" onerror="cardImgError(this,\'' + epTitle.replace(/'/g,"\\'") + '\')" style="width:60px;height:40px;object-fit:cover;border-radius:4px;"></div><div class="ep-num" style="' + lockColor + '">' + lockIcon + '</div><div class="ep-info"><div class="ep-title">' + epTitle + premiumTag + '</div><div class="ep-duration">' + fmtTime(e.duration_sec || 1440) + '</div><span class="ep-play" style="color:' + playColor + '"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + playSvg + '</svg></span></div>';
+    return '<div class="episode-item" onclick="location.href=\'watch.html?animeId=' + animeId + '&epId=' + e.id + '\'"><div class="ep-thumb-wrap"><img src="' + thumbSrc + '" alt="' + epTitle.replace(/'/g,"\\'") + '" loading="lazy" onerror="cardImgError(this,\'' + epTitle.replace(/'/g,"\\'") + '\')" style="width:60px;height:40px;object-fit:cover;border-radius:4px;"></div><div class="ep-num" style="' + lockColor + '">' + lockIcon + '</div><div class="ep-info"><div class="ep-title">' + window._escapeHTML(epTitle) + premiumTag + '</div><div class="ep-duration">' + fmtTime(e.duration_sec || 1440) + '</div><span class="ep-play" style="color:' + playColor + '"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + playSvg + '</svg></span></div></div>';
   }).join('');
 }
 

@@ -47,6 +47,13 @@ function _diag_ads(...args) {
     console.log('[Ads]', ...args);
 }
 
+/**
+ * Handles the Escape key press to close the modal.
+ */
+function _handleEscKeyForAdModal(e) {
+    if (e.key === 'Escape') _closeAdModal();
+}
+
 // --- Data Fetching & Rendering ---
 
 /**
@@ -153,7 +160,7 @@ async function _handleFormSubmit(e) {
         await _loadAds(); // Re-fetch and re-render to ensure data consistency and updated sort order
     } catch (error) {
         _diag_ads('Failed to save ad:', error);
-        alert(`Failed to save ad: ${error.message}`);
+        window.showToast(`Failed to save ad: ${error.message}`, 'error');
     }
 }
 
@@ -174,7 +181,7 @@ async function _updateAd(id, partialBody) {
         _renderAds(); // Re-render from local cache
     } catch (error) {
         _diag_ads(`Failed to update ad ${id}:`, error);
-        alert(`Failed to update ad: ${window._escapeHTML(error.message)}`);
+        window.showToast(`Failed to update ad: ${window._escapeHTML(error.message)}`, 'error');
         await _loadAds(); // Revert UI on failure
     }
 }
@@ -192,7 +199,7 @@ async function deleteAd(id) {
         _renderAds(); // Re-render from local cache
     } catch (error) {
         console.error(`[Ads] Failed to delete ad ${id}:`, error);
-        alert(`Failed to delete ad: ${window._escapeHTML(error.message)}`);
+        window.showToast(`Failed to delete ad: ${window._escapeHTML(error.message)}`, 'error');
     }
 }
 
@@ -220,7 +227,7 @@ async function _openAdModal(adId) {
         title.textContent = 'Edit Ad';
         const ad = _ads_all.find(a => String(a.id) === String(adId));
         if (!ad) {
-            alert('Could not find ad data to edit.');
+            window.showToast('Could not find ad data to edit.', 'error');
             return;
         }
         // Populate form fields from the ad object
@@ -243,6 +250,7 @@ async function _openAdModal(adId) {
     }
 
     modal.style.display = 'flex';
+    document.addEventListener('keydown', _handleEscKeyForAdModal);
 }
 
 /**
@@ -252,6 +260,7 @@ function _closeAdModal() {
     const modal = document.getElementById('ad-modal');
     if (modal) modal.style.display = 'none';
     _ads_editId = null;
+    document.removeEventListener('keydown', _handleEscKeyForAdModal);
 }
 
 // --- Global Exposure ---

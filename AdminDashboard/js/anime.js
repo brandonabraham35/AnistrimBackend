@@ -73,6 +73,13 @@ function _debounce(func, delay) {
     };
 }
 
+/**
+ * Handles the Escape key press to close the modal.
+ */
+function _handleEscKeyForAnimeModal(e) {
+    if (e.key === 'Escape') _closeAnimeModal();
+}
+
 // --- Data Fetching & Rendering ---
 
 async function _fetchAllAnime() {
@@ -198,7 +205,7 @@ async function handleDeleteAnime(id) {
         _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_anime(`Failed to delete anime ${id}:`, error);
-        alert(`Failed to delete anime: ${error.message}`);
+        window.showToast(`Failed to delete anime: ${error.message}`, 'error');
     }
 }
 
@@ -222,7 +229,7 @@ async function _handleManualFormSubmit(e) {
         await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
     } catch (error) {
         _diag_anime(`Failed to save anime:`, error);
-        alert(`Failed to save anime: ${error.message}`);
+        window.showToast(`Failed to save anime: ${error.message}`, 'error');
     }
 }
 
@@ -271,7 +278,7 @@ async function _handleBulkDelete() {
         _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_anime('Failed to bulk delete anime:', error);
-        alert(`Failed to bulk delete: ${error.message}`);
+        window.showToast(`Failed to bulk delete: ${error.message}`, 'error');
     }
 }
 
@@ -292,7 +299,7 @@ async function _openAnimeModal(animeId) {
         title.textContent = 'Edit Anime';
         const anime = _anime_all.find(a => String(a.id) === String(animeId));
         if (!anime) {
-            alert('Could not find anime data to edit.');
+            window.showToast('Could not find anime data to edit.', 'error');
             return;
         }
         // Populate form
@@ -322,12 +329,14 @@ async function _openAnimeModal(animeId) {
     }
 
     modal.hidden = false;
+    document.addEventListener('keydown', _handleEscKeyForAnimeModal);
 }
 
 function _closeAnimeModal() {
     const modal = document.getElementById('add-anime-modal');
     if (modal) modal.hidden = true;
     _anime_editId = null;
+    document.removeEventListener('keydown', _handleEscKeyForAnimeModal);
 }
 
 function _resetModalTabs() {
@@ -411,7 +420,7 @@ async function _handleKitsuResultClick(e) {
         await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
     } catch (error) {
         _diag_anime('Kitsu import failed:', error);
-        alert(`Import failed: ${error.message}`);
+        window.showToast(`Import failed: ${error.message}`, 'error');
         item.innerHTML = 'Import Failed. Try again.';
         item.style.pointerEvents = 'auto';
         item.style.opacity = '1';

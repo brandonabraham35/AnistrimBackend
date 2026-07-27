@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
         _renderGenres(); // Re-render from local cache
     } catch (error) {
         console.error('[Genres] Failed to add genre:', error);
-        alert(`Failed to add genre: ${error.message}`);
+        window.showToast(`Failed to add genre: ${error.message}`, 'error');
     }
     });
 });
@@ -66,7 +66,7 @@ async function deleteGenre(id) {
         _renderGenres(); // Re-render from local cache
     } catch (error) {
         console.error(`[Genres] Failed to delete genre ${id}:`, error);
-        alert(`Failed to delete genre: ${error.message}`);
+        window.showToast(`Failed to delete genre: ${error.message}`, 'error');
     }
 };
 

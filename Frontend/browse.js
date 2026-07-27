@@ -173,8 +173,8 @@ function renderBrowseGrid(list) {
   grid.innerHTML = list.map(a => `
     <div class="browse-card" onclick="location.href='details.html?id=${a.id}'">
       <div class="browse-card-img">
-        <img src="${a.cover_image}" alt="${a.title}" loading="lazy"
-             onerror="this.src='${window._escapeHTML(makeFallbackImg(a.title))}'">
+        <img src="${a.cover_image}" alt="${window._escapeHTML(a.title)}" loading="lazy"
+             onerror="cardImgError(this, '${window._escapeHTML((a.title || '').replace(/'/g, "\\'"))}')">
         <span class="browse-card-badge">⭐ ${a.rating}</span>
         ${a.is_premium ? '<span class="browse-card-premium">👑 Premium</span>' : ''}
       </div>

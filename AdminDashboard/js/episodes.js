@@ -82,7 +82,7 @@
         _renderEpisodes(); // Re-render from local cache
     } catch (error) {
         console.error(`[Episodes] Failed to delete episode ${episodeId}:`, error);
-        alert(`Failed to delete episode: ${error.message}`);
+        window.showToast(`Failed to delete episode: ${error.message}`, 'error');
     }
   }
 

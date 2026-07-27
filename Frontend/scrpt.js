@@ -190,7 +190,7 @@ function setHero(i) {
 
   const genresEl = document.getElementById('hero-genres');
   if (genresEl && a.genres) {
-    genresEl.innerHTML = a.genres.slice(0,3).map(g=>`<span class="genre-pill">${_escapeHTML(g)}</span>`).join('');
+    genresEl.innerHTML = a.genres.slice(0,3).map(g=>`<span class="genre-pill">${window._escapeHTML(g)}</span>`).join('');
   }
   document.getElementById('hero-watch-btn')?.setAttribute('onclick', `location.href='watch.html?id=${a.id}&ep=1'`);
   document.getElementById('hero-info-btn')?.setAttribute('onclick',  `location.href='details.html?id=${a.id}'`);

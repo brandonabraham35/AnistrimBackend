@@ -179,7 +179,7 @@ async function _updateUser(id, body) {
         _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_users(`Failed to update user ${id}:`, error);
-        alert(`Failed to update user: ${error.message}`);
+        window.showToast(`Failed to update user: ${error.message}`, 'error');
     }
 }
 
@@ -198,7 +198,7 @@ async function _handleDeleteUser(id) {
         _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_users(`Failed to delete user ${id}:`, error);
-        alert(`Failed to delete user: ${error.message}`);
+        window.showToast(`Failed to delete user: ${error.message}`, 'error');
     }
 }
 
@@ -247,7 +247,7 @@ async function _handleBulkDelete() {
         _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_users('Failed to bulk delete users:', error);
-        alert(`Failed to bulk delete: ${error.message}`);
+        window.showToast(`Failed to bulk delete: ${error.message}`, 'error');
     }
 }
 
