@@ -70,7 +70,7 @@ async function uploadAvatar(file) {
     if (user) {
       user.avatar = uploadedAvatar;
       user.avatar_url = uploadedAvatar;
-      State.save(token, user);
+      State.save(State.token, user); // Use State.token for consistency
     }
     if (typeof showToast === 'function') showToast('Profile picture updated!');
   } catch(e) {

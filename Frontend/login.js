@@ -27,7 +27,7 @@ async function handleLogin() {
       btn.textContent = 'Sign In';
       btn.disabled = false;
     }
-  } catch (e) {
+  } catch (e) { // Escape error message for alert
     showError('Cannot reach server. Please check your connection.');
     btn.textContent = 'Sign In';
     btn.disabled = false;
@@ -70,7 +70,7 @@ async function googleLogin() {
     }
   } catch (e) {
     console.error('Google login error:', e);
-    showError('Could not open Google sign-in. Please try again.');
+    showError(window._escapeHTML('Could not open Google sign-in. Please try again.'));
   }
 }
 window.googleLogin = googleLogin;

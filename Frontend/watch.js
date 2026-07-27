@@ -23,7 +23,7 @@ async function loadWatch() {
   const params   = new URLSearchParams(window.location.search);
   const animeId  = params.get('animeId') || params.get('id');
   const epIdRaw  = params.get('epId') || params.get('ep');
-  currentEp      = parseInt(epIdRaw) || 1;
+  currentEp      = parseInt(epIdRaw) || 1; // epIdRaw is from URL, so it's safe to parse as int
   if (!animeId) { showWatchError('Missing anime ID. Please go back and try again.'); return; }
 
   try {
@@ -31,8 +31,8 @@ async function loadWatch() {
     currentAnime = animeData;
     if (!animeData || !animeData.id) { showWatchError('Could not load anime data.'); return; }
 
-    currentAnimeTitle = animeData.title;
-    document.title = 'Ep ' + currentEp + ' - ' + animeData.title + ' | AniStrim';
+    currentAnimeTitle = window._escapeHTML(animeData.title); // Escape anime title
+    document.title = 'Ep ' + currentEp + ' - ' + window._escapeHTML(animeData.title) + ' | AniStrim'; // Escape anime title for document title
     document.getElementById('watch-ep-title').textContent = 'Episode ' + currentEp;
     document.getElementById('watch-anime-title').textContent = animeData.title;
 
@@ -466,7 +466,7 @@ async function handleDownload() {
   if (!State.isPremium && !State.isAdmin) { if (confirm('Offline downloads are for premium users only. Upgrade now?')) location.href = 'upgrade.html'; return; }
   if (!currentAnimeTitle || !currentEp) { alert('Cannot download this episode.'); return; }
   if (isEpisodeDownloaded(currentAnimeTitle, currentEp)) {
-    document.getElementById('offlineDeleteBtn').style.display = 'inline-block';
+    document.getElementById('offlineDeleteBtn').style.display = 'inline-block'; // This is a UI element, not user input
     document.getElementById('offlineStatus').textContent = '✅ Already downloaded.';
     document.getElementById('offlineStartBtn').textContent = 'Re-download';
     document.getElementById('offlineModal').style.display = 'flex';
@@ -475,10 +475,10 @@ async function handleDownload() {
   document.getElementById('offlineDeleteBtn').style.display = 'none';
   document.getElementById('offlineStartBtn').textContent = 'Start Download';
   try {
-    var { data } = await apiFetch('/api/stream/offline-download', { method: 'POST', body: JSON.stringify({ animeTitle: currentAnimeTitle, episodeNumber: currentEp, provider: currentProvider || undefined }) });
-    if (!data || !data.authorized || !data.streamUrl) { alert('Download authorization failed.'); return; }
+    var { data } = await apiFetch('/api/stream/offline-download', { method: 'POST', body: JSON.stringify({ animeTitle: currentAnimeTitle, episodeNumber: currentEp, provider: currentProvider || undefined }) }); // currentAnimeTitle is already escaped
+    if (!data || !data.authorized || !data.streamUrl) { alert(window._escapeHTML('Download authorization failed.')); return; }
     var downloadInfo = { animeTitle: currentAnimeTitle, episodeNumber: currentEp, streamUrl: data.streamUrl, quality: data.quality || 'auto', provider: data.provider || currentProvider };
-    document.getElementById('offlineMeta').textContent = currentAnimeTitle + ' - Ep ' + currentEp + ' (' + downloadInfo.quality + ')';
+    document.getElementById('offlineMeta').textContent = window._escapeHTML(currentAnimeTitle + ' - Ep ' + currentEp + ' (' + downloadInfo.quality + ')'); // Escape dynamic content
     document.getElementById('offlineStatus').textContent = 'Ready to start download.';
     document.getElementById('offlineModal').style.display = 'flex';
     window.__pendingDownload = downloadInfo;
@@ -496,7 +496,7 @@ async function startOfflineDownload() {
   var statusEl = document.getElementById('offlineStatus');
   var startBtn = document.getElementById('offlineStartBtn');
   startBtn.disabled = true;
-  startBtn.textContent = 'Downloading...';
+    startBtn.textContent = window._escapeHTML('Downloading...');
   statusEl.textContent = 'Downloading episode (sandboxed)...';
   try {
     var response = await fetch(info.streamUrl);
@@ -523,7 +523,7 @@ async function startOfflineDownload() {
     startBtn.textContent = 'Downloaded ✓';
     startBtn.disabled = false;
     setTimeout(closeOfflineModal, 2000);
-  } catch (e) { console.error('Offline download failed:', e); statusEl.textContent = '❌ Download failed: ' + e.message; startBtn.textContent = 'Retry'; startBtn.disabled = false; }
+  } catch (e) { console.error('Offline download failed:', e); statusEl.textContent = '❌ Download failed: ' + window._escapeHTML(e.message); startBtn.textContent = 'Retry'; startBtn.disabled = false; }
 }
 window.startOfflineDownload = startOfflineDownload;
 
@@ -531,7 +531,7 @@ function deleteOfflineDownload() {
   var list = getOfflineList();
   var filtered = list.filter(function(e) { return !(e.animeTitle === currentAnimeTitle && e.episodeNumber === currentEp); });
   saveOfflineList(filtered);
-  deleteBlobFromIndexedDB(currentAnimeTitle, currentEp);
+  deleteBlobFromIndexedDB(currentAnimeTitle, currentEp); // currentAnimeTitle is already escaped
   document.getElementById('offlineStatus').textContent = '🗑️ Deleted from offline storage.';
   document.getElementById('offlineDeleteBtn').style.display = 'none';
   document.getElementById('offlineStartBtn').textContent = 'Start Download';
@@ -591,7 +591,7 @@ async function downloadEpisode(ep) {
     var a = document.createElement('a');
 a.href = API + '/api/download/' + ep.id + '?token=' + encodeURIComponent(token);
     a.download = (currentAnime && currentAnime.title || 'anime') + '_ep' + currentEp + '.mp4';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); // a.download is safe as it's a filename
     if (dlBtn) { dlBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download'; dlBtn.disabled = false; }
   } catch(e) {
     console.error('Download error:', e);

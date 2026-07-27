@@ -13,7 +13,7 @@ async function initSettings() {
         });
     } catch (error) {
         console.error('[Settings] Failed to load settings:', error);
-        alert(`Failed to load settings: ${error.message}`);
+        alert(`Failed to load settings: ${window._escapeHTML(error.message)}`);
     }
 }
 
@@ -32,7 +32,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
         alert('Settings saved!');
     } catch (error) {
         console.error('[Settings] Failed to save settings:', error);
-        alert(`Failed to save settings: ${error.message}`);
+        alert(`Failed to save settings: ${window._escapeHTML(error.message)}`);
     }
 };
 

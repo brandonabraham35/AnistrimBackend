@@ -100,11 +100,9 @@ function renderDetails(a) {
   setText('details-rating',   `⭐ ${a.rating || '0.0'}`);
   setText('details-desc',     a.description || 'No description available.');
 
-  const yearEl = document.getElementById('details-year');
-  if (yearEl) yearEl.innerHTML = `📅 ${a.year || 'N/A'}`;
-
-  const epsEl = document.getElementById('details-eps');
-  if (epsEl) epsEl.innerHTML = `📺 -- Episodes`;
+  // Use setText for year and episodes count for consistency and safety
+  setText('details-year', `📅 ${a.year || 'N/A'}`);
+  setText('details-eps', `📺 -- Episodes`);
 
   const studioEl = document.getElementById('details-studio');
   if (studioEl && a.studio) studioEl.innerHTML = `🏠 ${a.studio}`;
@@ -188,7 +186,7 @@ async function fetchAndRenderEpisodes(animeId) {
     console.error('fetchAndRenderEpisodes error:', e);
     container.innerHTML = `
       <p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">
-        Could not load episodes.
+        ${window._escapeHTML('Could not load episodes.')}
         <button onclick="fetchAndRenderEpisodes('${animeId}')"
           style="background:none;border:1px solid var(--border);color:var(--purple);padding:4px 12px;border-radius:6px;cursor:pointer;margin-left:8px;font-size:0.82rem;">
           ↺ Retry
@@ -240,7 +238,7 @@ function showLoadingState() {
 
 function showErrorState(id) {
   setText('details-title', 'Could Not Load Anime');
-  setText('details-desc', 'Something went wrong fetching this title. Check your connection and try again.');
+  setText('details-desc', window._escapeHTML('Something went wrong fetching this title. Check your connection and try again.'));
   document.getElementById('start-watching-btn')?.remove();
 
   // Show a retry button

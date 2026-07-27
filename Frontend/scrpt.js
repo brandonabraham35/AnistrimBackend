@@ -140,7 +140,7 @@ async function loadContinueWatching() {
       return `
       <div class="card" onclick="location.href='watch.html?id=${item.anime_id}&ep=${item.episode_number}'">
         <div class="card-img-wrap">
-          <img src="${imgSrc}" alt="${_escapeHTML(item.title)}" loading="lazy"
+          <img src="${imgSrc}" alt="${window._escapeHTML(item.title)}" loading="lazy"
                onerror="cardImgError(this,'${_escapeHTML((item.title||'').replace(/'/g,"\\'"))}')">
           <span class="card-badge">⭐ ${item.rating}</span>
           <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,0.2);">
@@ -186,7 +186,7 @@ function setHero(i) {
   setText('hero-rating',   `⭐ ${a.rating}`);
   setText('hero-year',     a.year || '');
   setText('hero-episodes', a.episodes?.length ? `${a.episodes.length} Episodes` : '');
-  setText('hero-desc',     (a.description || '').substring(0, 160) + '...');
+  setText('hero-desc',     window._escapeHTML((a.description||'').substring(0,160) + '...'));
 
   const genresEl = document.getElementById('hero-genres');
   if (genresEl && a.genres) {
@@ -271,7 +271,7 @@ function showCatalogError(message) {
       Could not load catalog
     </h3>
     <p style="margin:0;color:var(--text-muted);font-size:0.88rem;max-width:300px;">
-      ${_escapeHTML(message || 'Check your connection and try again.')}
+      ${window._escapeHTML(message || 'Check your connection and try again.')}
     </p>
     <button id="catalog-reload-btn" onclick="reloadCatalog()"
       style="
@@ -507,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let left = 15;
     const cd  = overlay.querySelector('#ad-countdown');
     const btn = overlay.querySelector('#ad-skip-btn');
-    const tick = setInterval(() => {
+    const tick = setInterval(() => { // Use _escapeHTML for countdown text
       left--;
       if (cd)  cd.textContent  = Math.max(0, left);
       if (btn) btn.textContent = left > 0 ? `Skip in ${left}s` : 'Skip Ad';

@@ -40,13 +40,13 @@ async function handleUpgrade() {
       localStorage.setItem('pending_subscription_ref', data.tx_ref);
       window.location.href = data.payment_link;
     } else {
-      alert(data.message || 'Could not start payment. Please try again.');
+      alert(window._escapeHTML(data.message || 'Could not start payment. Please try again.'));
       btn.textContent = 'Confirm Upgrade';
       btn.disabled = false;
     }
   } catch (e) {
     console.error('Payment error:', e);
-    alert('Server error. Please try again.');
+    alert(window._escapeHTML('Server error. Please try again.'));
     btn.textContent = 'Confirm Upgrade';
     btn.disabled = false;
   }

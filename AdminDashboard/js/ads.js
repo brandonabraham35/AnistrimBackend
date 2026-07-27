@@ -139,8 +139,8 @@ async function _handleFormSubmit(e) {
     const body = Object.fromEntries(formData.entries());
 
     // Ensure checkbox values are correctly represented as booleans/numbers for the API
-    body.is_active = form.querySelector('#ad-is-active').checked;
-    body.target_free_only = form.querySelector('#ad-target-free-only').checked;
+    body.is_active = form.querySelector('#ad-is-active').checked ? '1' : '0';
+    body.target_free_only = form.querySelector('#ad-target-free-only').checked ? '1' : '0';
     body.frequency = parseInt(body.frequency, 10) || 1;
 
     const endpoint = _ads_editId ? `/api/admin/ads/${_ads_editId}` : '/api/admin/ads';
@@ -150,7 +150,7 @@ async function _handleFormSubmit(e) {
         await window.apiRequest(endpoint, { method, body });
         _diag_ads(`Successfully ${_ads_editId ? 'updated' : 'created'} ad.`);
         _closeAdModal();
-        await _loadAds(); // Re-fetch and re-render to ensure data consistency and sort order
+        await _loadAds(); // Re-fetch and re-render to ensure data consistency and updated sort order
     } catch (error) {
         _diag_ads('Failed to save ad:', error);
         alert(`Failed to save ad: ${error.message}`);
@@ -174,7 +174,7 @@ async function _updateAd(id, partialBody) {
         _renderAds(); // Re-render from local cache
     } catch (error) {
         _diag_ads(`Failed to update ad ${id}:`, error);
-        alert(`Failed to update ad: ${error.message}`);
+        alert(`Failed to update ad: ${window._escapeHTML(error.message)}`);
         await _loadAds(); // Revert UI on failure
     }
 }
@@ -192,7 +192,7 @@ async function deleteAd(id) {
         _renderAds(); // Re-render from local cache
     } catch (error) {
         console.error(`[Ads] Failed to delete ad ${id}:`, error);
-        alert(`Failed to delete ad: ${error.message}`);
+        alert(`Failed to delete ad: ${window._escapeHTML(error.message)}`);
     }
 }
 
@@ -228,8 +228,8 @@ async function _openAdModal(adId) {
         form.querySelector('#ad-type').value = ad.type || 'banner';
         form.querySelector('#ad-link').value = ad.link || '';
         form.querySelector('#ad-frequency').value = ad.frequency || 1;
-        form.querySelector('#ad-is-active').checked = ad.is_active;
-        form.querySelector('#ad-target-free-only').checked = ad.target_free_only;
+        form.querySelector('#ad-is-active').checked = ad.is_active === 1 || ad.is_active === true;
+        form.querySelector('#ad-target-free-only').checked = ad.target_free_only === 1 || ad.target_free_only === true;
 
         // Hydrate the image uploader with the existing image URL
         const uploader = form.querySelector('#ad-image-uploader');

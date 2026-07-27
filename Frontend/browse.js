@@ -33,7 +33,7 @@ function showBrowseError(message) {
         Could not load catalog
       </h3>
       <p style="margin:0;color:var(--text-muted);font-size:0.88rem;max-width:300px;">
-        ${message || 'Check your connection and try again.'}
+        ${window._escapeHTML(message || 'Check your connection and try again.')}
       </p>
       <button id="browse-reload-btn" onclick="reloadBrowse()"
         style="
@@ -174,12 +174,12 @@ function renderBrowseGrid(list) {
     <div class="browse-card" onclick="location.href='details.html?id=${a.id}'">
       <div class="browse-card-img">
         <img src="${a.cover_image}" alt="${a.title}" loading="lazy"
-             onerror="this.src='https://picsum.photos/seed/${a.id}/300/450'">
+             onerror="this.src='${window._escapeHTML(makeFallbackImg(a.title))}'">
         <span class="browse-card-badge">⭐ ${a.rating}</span>
         ${a.is_premium ? '<span class="browse-card-premium">👑 Premium</span>' : ''}
       </div>
-      <div class="browse-card-title">${a.title}</div>
-      <div class="browse-card-sub">${a.year || ''} · ${a.status || ''}</div>
+      <div class="browse-card-title">${window._escapeHTML(a.title)}</div>
+      <div class="browse-card-sub">${window._escapeHTML(a.year || '')} · ${window._escapeHTML(a.status || '')}</div>
     </div>
   `).join('');
 }

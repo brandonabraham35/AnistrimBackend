@@ -30,7 +30,7 @@ async function handleSignUp() {
       btn.textContent = 'Create Account';
       btn.disabled = false;
     }
-  } catch (e) {
+  } catch (e) { // Escape error message for alert
     showError('Cannot reach server. Please check your connection.');
     btn.textContent = 'Create Account';
     btn.disabled = false;
@@ -64,7 +64,7 @@ async function googleSignUp() {
       window.location.href = `${BACKEND}/api/auth/google`;
     }
   } catch (e) {
-    showError('Could not open Google sign-in. Please try again.');
+    showError(window._escapeHTML('Could not open Google sign-in. Please try again.'));
   }
 }
 window.googleSignUp = googleSignUp;

@@ -147,7 +147,7 @@ function _renderPagination() {
     
     // Simplified pagination links for brevity
     for (let i = 1; i <= totalPages; i++) {
-        html += `<button class="pagination-btn ${i === _anime_currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+        html += `<button class="pagination-btn ${i === _anime_currentPage ? 'active' : ''}" data-page="${i}">${window._escapeHTML(i)}</button>`;
     }
 
     _anime_paginationContainer.innerHTML = html;
@@ -208,8 +208,8 @@ async function _handleManualFormSubmit(e) {
     const formData = new FormData(form);
     // The API client is designed to handle FormData directly for file uploads.
     // We just need to ensure checkbox values are correctly represented.
-    formData.set('is_premium', form.querySelector('#manual-is-premium').checked);
-    formData.set('is_featured', form.querySelector('#manual-is-featured').checked);
+    formData.set('is_premium', form.querySelector('#manual-is-premium').checked ? '1' : '0');
+    formData.set('is_featured', form.querySelector('#manual-is-featured').checked ? '1' : '0');
     
     const apiRequest = _anime_editId
         ? window.apiRequest(`/api/admin/anime/${_anime_editId}`, { method: 'PUT', body: formData })

@@ -41,7 +41,7 @@
         let blobUrl = null;
 
         function showPreview(src, label) {
-            preview.innerHTML = src ? `<img src="${src}" alt="Preview">` : '<span>No file</span>';
+            preview.innerHTML = src ? `<img src="${window._escapeHTML(src)}" alt="${window._escapeHTML(label || 'Preview')}">` : '<span>No file</span>';
             removeBtn.style.display = src ? 'inline-block' : 'none';
             status.textContent = label || 'Max 15 MB';
         }
@@ -90,7 +90,7 @@
                 if (!uploadedUrl) throw new Error('Server response did not include a URL.');
 
                 hiddenInput.value = uploadedUrl;
-                showPreview(uploadedUrl, 'Upload complete');
+                showPreview(uploadedUrl, window._escapeHTML('Upload complete'));
                 if (blobUrl) URL.revokeObjectURL(blobUrl);
                 blobUrl = null;
 

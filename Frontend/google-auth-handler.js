@@ -31,7 +31,7 @@
 
       if (!res.ok || !data.token || !data.user) {
         hideOverlay();
-        showAuthError(data.message || 'Sign-in failed. Please try again.');
+        showAuthError(window._escapeHTML(data.message || 'Sign-in failed. Please try again.'));
         return;
       }
 
@@ -51,7 +51,7 @@
     } catch(e) {
       hideOverlay();
       console.error('Google auth handler error:', e);
-      showAuthError('Could not complete sign-in. Please try again.');
+      showAuthError(window._escapeHTML('Could not complete sign-in. Please try again.'));
     }
   }
 

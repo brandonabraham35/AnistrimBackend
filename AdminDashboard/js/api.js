@@ -54,7 +54,7 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
       } catch (e) {
         // Not a JSON response, stick with status text
       }
-      throw new Error(`API Error: ${message} (Status: ${response.status})`);
+      throw new Error(`API Error: ${window._escapeHTML(message)} (Status: ${response.status})`);
     }
 
     return await response.json();

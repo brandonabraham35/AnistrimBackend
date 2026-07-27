@@ -24,8 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Helper Functions ---
   const setText = (selector, value, fallback = '0') => {
-    const el = document.querySelector(selector);
-    if (el) el.textContent = value || fallback;
+    const el = document.querySelector(selector); // Use _escapeHTML for all text content to prevent XSS
+    if (el) el.textContent = window._escapeHTML(value || fallback);
   };
 
   // --- SPA Routing ---

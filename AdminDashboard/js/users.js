@@ -128,7 +128,7 @@ function _renderPagination() {
     html += `<button class="pagination-btn" data-page="prev" ${_users_currentPage === 1 ? 'disabled' : ''}>&laquo; Prev</button>`;
 
     for (let i = 1; i <= totalPages; i++) {
-        html += `<button class="pagination-btn ${i === _users_currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+        html += `<button class="pagination-btn ${i === _users_currentPage ? 'active' : ''}" data-page="${i}">${window._escapeHTML(i)}</button>`;
     }
 
     _users_paginationContainer.innerHTML = html;

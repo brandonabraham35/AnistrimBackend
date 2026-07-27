@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (errorMsg) errorMsg.innerText = 'Access denied. Account is not configured as an administrator.';
                     localStorage.removeItem('admin_token');
                 } else {
-                    if (errorMsg) errorMsg.innerText = 'Login failed.';
+                    if (errorMsg) errorMsg.innerText = window._escapeHTML(data.message || 'Login failed.');
                 }
             } catch (err) {
                 localStorage.removeItem('admin_token');

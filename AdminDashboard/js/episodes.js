@@ -55,7 +55,7 @@
     }
 
     const title = document.getElementById('current-anime-title');
-    if (title) title.textContent = animeTitle ? `Episodes: ${animeTitle}` : 'Episodes';
+    if (title) title.textContent = animeTitle ? `Episodes: ${window._escapeHTML(animeTitle)}` : 'Episodes';
     if (typeof window.showSection === 'function') window.showSection('episodes');
     return loadEpisodes(animeId);
   }
