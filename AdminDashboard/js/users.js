@@ -5,6 +5,8 @@ let _users_all = [];
 let _users_filtered = [];
 let _users_currentPage = 1;
 const _users_itemsPerPage = 15;
+let _users_tableBody = null; // Cached tbody element
+let _users_paginationContainer = null; // Cached pagination container
 
 // --- Initialization ---
 function initializeUsersSection() {
@@ -12,6 +14,10 @@ function initializeUsersSection() {
 
     // Initial data load
     _fetchAllUsers();
+
+    // Cache DOM elements
+    _users_tableBody = document.querySelector('#users-table tbody');
+    _users_paginationContainer = document.getElementById('users-pagination');
 
     // Setup event listeners
     const section = document.getElementById('users');
@@ -31,7 +37,7 @@ function initializeUsersSection() {
     section.querySelector('#bulkDeleteBtn-users')?.addEventListener('click', _handleBulkDelete);
 
     // Pagination
-    document.getElementById('users-pagination')?.addEventListener('click', _handlePaginationClick);
+    _users_paginationContainer?.addEventListener('click', _handlePaginationClick);
 }
 
 function _diag_users(...args) {
@@ -50,31 +56,29 @@ function _debounce(func, delay) {
 // --- Data Fetching & Rendering ---
 
 async function _fetchAllUsers() {
-    const tableBody = document.querySelector('#users-table tbody');
-    if (!tableBody) return;
-    tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading users...</td></tr>';
+    if (!_users_tableBody) return;
+    _users_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading users...</td></tr>';
 
     try {
         _users_all = await window.apiRequest(`/api/admin/users`);
         _handleFilterChange(); // Initial render
     } catch (error) {
         _diag_users('Failed to load users:', error);
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Error loading users. Check console.</td></tr>`;
+        _users_tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Error loading users. Check console.</td></tr>`;
     }
 }
 
 function _renderUsersPage() {
-    const tableBody = document.querySelector('#users-table tbody');
-    if (!tableBody) return;
+    if (!_users_tableBody) return;
 
     const startIndex = (_users_currentPage - 1) * _users_itemsPerPage;
     const endIndex = startIndex + _users_itemsPerPage;
     const pageItems = _users_filtered.slice(startIndex, endIndex);
 
     if (pageItems.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No users found.</td></tr>';
+        _users_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No users found.</td></tr>';
     } else {
-        tableBody.innerHTML = pageItems.map(user => `
+        _users_tableBody.innerHTML = pageItems.map(user => `
             <tr>
                 <td><input type="checkbox" class="user-select-checkbox" data-id="${user.id}"></td>
                 <td>${user.name}</td>
@@ -112,12 +116,11 @@ function _handleFilterChange() {
 
 // --- Pagination ---
 function _renderPagination() {
-    const paginationContainer = document.getElementById('users-pagination');
-    if (!paginationContainer) return;
+    if (!_users_paginationContainer) return;
 
     const totalPages = Math.ceil(_users_filtered.length / _users_itemsPerPage);
     if (totalPages <= 1) {
-        paginationContainer.innerHTML = '';
+        _users_paginationContainer.innerHTML = '';
         return;
     }
 
@@ -128,8 +131,9 @@ function _renderPagination() {
         html += `<button class="pagination-btn ${i === _users_currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
     }
 
-    html += `<button class="pagination-btn" data-page="next" ${_users_currentPage === totalPages ? 'disabled' : ''}>Next &raquo;</button>`;
-    paginationContainer.innerHTML = html;
+    _users_paginationContainer.innerHTML = html;
+    _users_paginationContainer.querySelector(`[data-page="prev"]`).disabled = _users_currentPage === 1;
+    _users_paginationContainer.querySelector(`[data-page="next"]`).disabled = _users_currentPage === totalPages;
 }
 
 function _handlePaginationClick(e) {
@@ -167,7 +171,12 @@ function _handleTableClick(e) {
 async function _updateUser(id, body) {
     try {
         await window.apiRequest(`/api/admin/users/${id}`, { method: 'PUT', body });
-        await _fetchAllUsers(); // Refresh on success
+        _diag_users(`Successfully updated user ${id}.`);
+        const userIndex = _users_all.findIndex(u => String(u.id) === String(id));
+        if (userIndex > -1) {
+            _users_all[userIndex] = { ..._users_all[userIndex], ...body };
+        }
+        _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_users(`Failed to update user ${id}:`, error);
         alert(`Failed to update user: ${error.message}`);
@@ -185,7 +194,8 @@ async function _handleDeleteUser(id) {
             body: { ids: [id] }
         });
         _diag_users(`Successfully deleted user ${id}`);
-        await _fetchAllUsers();
+        _users_all = _users_all.filter(user => String(user.id) !== String(id));
+        _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_users(`Failed to delete user ${id}:`, error);
         alert(`Failed to delete user: ${error.message}`);
@@ -233,7 +243,8 @@ async function _handleBulkDelete() {
             body: { ids }
         });
         _diag_users(`Successfully bulk deleted ${ids.length} users.`);
-        await _fetchAllUsers();
+        _users_all = _users_all.filter(user => !ids.includes(String(user.id)));
+        _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_users('Failed to bulk delete users:', error);
         alert(`Failed to bulk delete: ${error.message}`);

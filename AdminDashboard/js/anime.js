@@ -7,6 +7,8 @@ let _anime_all = [];
 let _anime_filtered = [];
 let _anime_currentPage = 1;
 const _anime_itemsPerPage = 15;
+let _anime_tableBody = null; // Cached tbody element
+let _anime_paginationContainer = null; // Cached pagination container
 let _anime_editId = null; // null for 'Add' mode, anime.id for 'Edit' mode
 
 // --- Initialization ---
@@ -15,6 +17,10 @@ function initializeAnimeSection() {
     
     // Initial data load
     _fetchAllAnime();
+
+    // Cache DOM elements
+    _anime_tableBody = document.querySelector('#anime-table tbody');
+    _anime_paginationContainer = document.getElementById('anime-pagination');
 
     // Setup event listeners
     const section = document.getElementById('anime');
@@ -50,8 +56,8 @@ function initializeAnimeSection() {
         modal.querySelector('#kitsu-search-results')?.addEventListener('click', _handleKitsuResultClick);
     }
     
-    // Pagination
-    document.getElementById('anime-pagination')?.addEventListener('click', _handlePaginationClick);
+    // Pagination (using cached element)
+    _anime_paginationContainer?.addEventListener('click', _handlePaginationClick);
 }
 
 function _diag_anime(...args) {
@@ -70,31 +76,29 @@ function _debounce(func, delay) {
 // --- Data Fetching & Rendering ---
 
 async function _fetchAllAnime() {
-    const tableBody = document.querySelector('#anime-table tbody');
-    if (!tableBody) return;
-    tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading anime...</td></tr>';
+    if (!_anime_tableBody) return;
+    _anime_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading anime...</td></tr>';
 
     try {
         _anime_all = await window.apiRequest(`/api/admin/anime`);
         _handleFilterChange(); // Initial render
     } catch (error) {
         _diag_anime('Failed to load anime:', error);
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Error loading anime. Check console.</td></tr>`;
+        _anime_tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Error loading anime. Check console.</td></tr>`;
     }
 }
 
 function _renderAnimePage() {
-    const tableBody = document.querySelector('#anime-table tbody');
-    if (!tableBody) return;
+    if (!_anime_tableBody) return;
 
     const startIndex = (_anime_currentPage - 1) * _anime_itemsPerPage;
     const endIndex = startIndex + _anime_itemsPerPage;
     const pageItems = _anime_filtered.slice(startIndex, endIndex);
 
     if (pageItems.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No anime found.</td></tr>';
+        _anime_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No anime found.</td></tr>';
     } else {
-        tableBody.innerHTML = pageItems.map(anime => `
+        _anime_tableBody.innerHTML = pageItems.map(anime => `
             <tr>
                 <td><input type="checkbox" class="anime-select-checkbox" data-id="${anime.id}"></td>
                 <td><img src="${anime.cover_image || 'img/placeholder.png'}" alt="${anime.title}" style="width:40px; height:60px; object-fit:cover; border-radius:4px;"></td>
@@ -130,12 +134,11 @@ function _handleFilterChange() {
 
 // --- Pagination ---
 function _renderPagination() {
-    const paginationContainer = document.getElementById('anime-pagination');
-    if (!paginationContainer) return;
+    if (!_anime_paginationContainer) return;
 
     const totalPages = Math.ceil(_anime_filtered.length / _anime_itemsPerPage);
     if (totalPages <= 1) {
-        paginationContainer.innerHTML = '';
+        _anime_paginationContainer.innerHTML = '';
         return;
     }
 
@@ -147,8 +150,9 @@ function _renderPagination() {
         html += `<button class="pagination-btn ${i === _anime_currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
     }
 
-    html += `<button class="pagination-btn" data-page="next" ${_anime_currentPage === totalPages ? 'disabled' : ''}>Next &raquo;</button>`;
-    paginationContainer.innerHTML = html;
+    _anime_paginationContainer.innerHTML = html;
+    _anime_paginationContainer.querySelector(`[data-page="prev"]`).disabled = _anime_currentPage === 1;
+    _anime_paginationContainer.querySelector(`[data-page="next"]`).disabled = _anime_currentPage === totalPages;
 }
 
 function _handlePaginationClick(e) {
@@ -190,7 +194,8 @@ async function handleDeleteAnime(id) {
     try {
         await window.apiRequest(`/api/admin/anime/${id}`, { method: 'DELETE' });
         _diag_anime(`Successfully deleted anime ${id}`);
-        await _fetchAllAnime(); // Refresh the list
+        _anime_all = _anime_all.filter(anime => String(anime.id) !== String(id));
+        _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_anime(`Failed to delete anime ${id}:`, error);
         alert(`Failed to delete anime: ${error.message}`);
@@ -214,7 +219,7 @@ async function _handleManualFormSubmit(e) {
         await apiRequest;
         _diag_anime(`Successfully ${ _anime_editId ? 'updated' : 'created' } anime.`);
         _closeAnimeModal();
-        await _fetchAllAnime();
+        await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
     } catch (error) {
         _diag_anime(`Failed to save anime:`, error);
         alert(`Failed to save anime: ${error.message}`);
@@ -262,7 +267,8 @@ async function _handleBulkDelete() {
             body: { ids }
         });
         _diag_anime(`Successfully bulk deleted ${ids.length} anime.`);
-        await _fetchAllAnime();
+        _anime_all = _anime_all.filter(anime => !ids.includes(String(anime.id)));
+        _handleFilterChange(); // Re-render from local cache
     } catch (error) {
         _diag_anime('Failed to bulk delete anime:', error);
         alert(`Failed to bulk delete: ${error.message}`);
@@ -402,7 +408,7 @@ async function _handleKitsuResultClick(e) {
         });
         _diag_anime(`Successfully imported anime from Kitsu ID ${kitsuId}`);
         _closeAnimeModal();
-        await _fetchAllAnime();
+        await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
     } catch (error) {
         _diag_anime('Kitsu import failed:', error);
         alert(`Import failed: ${error.message}`);

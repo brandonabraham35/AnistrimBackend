@@ -3,6 +3,7 @@
 // --- State ---
 let _ads_all = [];
 let _ads_editId = null; // null for 'Add' mode, ad.id for 'Edit' mode
+let _ads_tbody = null; // Cached tbody element
 
 /**
  * Initializes the Ads management section, fetches data, and sets up event listeners.
@@ -12,6 +13,9 @@ function initializeAdsSection() {
 
     // Initial data load
     _loadAds();
+
+    // Cache DOM elements
+    _ads_tbody = document.querySelector('#ads-table tbody');
 
     // Setup event listeners
     const section = document.getElementById('ads-config'); // ID from dashboard.js
@@ -49,16 +53,15 @@ function _diag_ads(...args) {
  * Fetches all ads from the API and triggers a re-render.
  */
 async function _loadAds() {
-    const tbody = document.querySelector('#ads-table tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading ads...</td></tr>';
+    if (!_ads_tbody) return;
+    _ads_tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading ads...</td></tr>';
 
     try {
         _ads_all = await window.apiRequest('/api/admin/ads');
         _renderAds();
     } catch (error) {
         _diag_ads('Failed to load ads:', error);
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Error loading ads. Check console.</td></tr>`;
+        _ads_tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Error loading ads. Check console.</td></tr>`;
     }
 }
 
@@ -66,15 +69,14 @@ async function _loadAds() {
  * Renders the list of ads into the table.
  */
 function _renderAds() {
-    const tbody = document.querySelector('#ads-table tbody');
-    if (!tbody) return;
+    if (!_ads_tbody) return;
 
     if (_ads_all.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No ads have been created yet.</td></tr>';
+        _ads_tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No ads have been created yet.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = _ads_all.map(ad => `
+    _ads_tbody.innerHTML = _ads_all.map(ad => `
         <tr>
             <td>
                 <div class="ad-preview">
@@ -148,7 +150,7 @@ async function _handleFormSubmit(e) {
         await window.apiRequest(endpoint, { method, body });
         _diag_ads(`Successfully ${_ads_editId ? 'updated' : 'created'} ad.`);
         _closeAdModal();
-        await _loadAds();
+        await _loadAds(); // Re-fetch and re-render to ensure data consistency and sort order
     } catch (error) {
         _diag_ads('Failed to save ad:', error);
         alert(`Failed to save ad: ${error.message}`);
@@ -169,6 +171,7 @@ async function _updateAd(id, partialBody) {
         if (adIndex > -1) {
             _ads_all[adIndex] = { ..._ads_all[adIndex], ...partialBody };
         }
+        _renderAds(); // Re-render from local cache
     } catch (error) {
         _diag_ads(`Failed to update ad ${id}:`, error);
         alert(`Failed to update ad: ${error.message}`);
@@ -185,7 +188,8 @@ async function deleteAd(id) {
     try {
         await window.apiRequest(`/api/admin/ads/${id}`, { method: 'DELETE' });
         _diag_ads(`Successfully deleted ad ${id}`);
-        await _loadAds();
+        _ads_all = _ads_all.filter(ad => String(ad.id) !== String(id));
+        _renderAds(); // Re-render from local cache
     } catch (error) {
         console.error(`[Ads] Failed to delete ad ${id}:`, error);
         alert(`Failed to delete ad: ${error.message}`);

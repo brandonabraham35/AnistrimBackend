@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Data Loading ---
   async function loadOverview() {
     try {
-      const data = await apiFetch('/api/admin/dashboard/overview');
+      const data = await window.apiRequest('/api/admin/dashboard/overview');
 
       // The API nests the main stats under an "overview" key.
       // We must access that key first.

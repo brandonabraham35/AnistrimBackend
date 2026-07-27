@@ -49,22 +49,18 @@ async function uploadAvatar(file) {
   const fd = new FormData();
   fd.append('avatar', file);
   try {
-    const token = (window.State && State.token) || localStorage.getItem('token') || sessionStorage.getItem('token') || '';
-    if (!token) throw new Error('Not authenticated. Please log in again.');
-
-    const res  = await fetch(`${API}/api/auth/avatar`, {
+    // Use the centralized apiFetch helper for consistency
+    const { ok, data } = await apiFetch('/api/auth/avatar', {
       method:  'POST',
-      headers: { Authorization: `Bearer ${token}` },
       body:    fd,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || 'Upload failed');
+    if (!ok) throw new Error(data.message || 'Upload failed');
 
     // 3. Swap to the persistent server URL, then revoke the blob
     const uploadedAvatar = data.avatar_url || data.avatarUrl || data.avatar || data.imageUrl || data.image_url || data.url || data.path;
     if (!uploadedAvatar) throw new Error('Upload succeeded but server returned no avatar URL.');
     const finalUrl = uploadedAvatar.startsWith('http')
-      ? uploadedAvatar
+      ? uploadedAvatar // Use the full URL if it's absolute
       : API + uploadedAvatar;
     _showAvatar(finalUrl);
     setTimeout(() => URL.revokeObjectURL(localUrl), 1000);

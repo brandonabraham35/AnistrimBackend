@@ -1,45 +1,82 @@
+// AdminDashboard/js/genres.js
+
+// --- State ---
+let _genres_all = [];
+let _genres_tbody = null; // Cached tbody element
+
+/**
+ * Initializes the Genres management section, fetches data, and sets up event listeners.
+ */
 async function initGenres() {
-    const tbody = document.querySelector('#genres-table tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Loading genres...</td></tr>';
+    _genres_tbody = document.querySelector('#genres-table tbody'); // Cache tbody
+    if (!_genres_tbody) return;
+    _genres_tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Loading genres...</td></tr>';
 
     try {
-        const genres = await window.apiRequest('/api/admin/genres');
-        tbody.innerHTML = '';
-        genres.forEach(g => {
-            tbody.innerHTML += `<tr><td>${g.name}</td><td><button class="action-btn delete-btn" onclick="deleteGenre(${g.id})">Delete</button></td></tr>`;
-        });
+        _genres_all = await window.apiRequest('/api/admin/genres');
+        _renderGenres();
     } catch (error) {
         console.error('[Genres] Failed to load genres:', error);
-        tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--danger);">Error loading genres. Check console.</td></tr>`;
+        _genres_tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--danger);">Error loading genres. Check console.</td></tr>`;
     }
 }
 
-document.getElementById('genre-form').onsubmit = async (e) => {
+/**
+ * Renders the list of genres into the table.
+ */
+function _renderGenres() {
+    if (!_genres_tbody) return;
+
+    if (_genres_all.length === 0) {
+        _genres_tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">No genres created yet.</td></tr>';
+        return;
+    }
+
+    _genres_tbody.innerHTML = _genres_all.map(g => `<tr><td>${g.name}</td><td><button class="action-btn delete-btn" onclick="deleteGenre(${g.id})">Delete</button></td></tr>`).join('');
+}
+
+// Event listener for adding a new genre
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('genre-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('genre-name').value;
     if (!name) return;
 
     try {
-        await window.apiRequest('/api/admin/genres', { method: 'POST', body: { name } });
+        const newGenre = await window.apiRequest('/api/admin/genres', { method: 'POST', body: { name } });
         document.getElementById('genre-name').value = '';
-        initGenres();
+        _genres_all.push(newGenre); // Add to local cache
+        _renderGenres(); // Re-render from local cache
     } catch (error) {
         console.error('[Genres] Failed to add genre:', error);
         alert(`Failed to add genre: ${error.message}`);
     }
-};
+    });
+});
 
+/**
+ * Deletes a genre after confirmation.
+ * @param {number|string} id The ID of the genre to delete.
+ */
 async function deleteGenre(id) {
-    if (!confirm('Delete genre?')) return;
+    if (!confirm('Are you sure you want to delete this genre? This action cannot be undone.')) return;
     try {
         await window.apiRequest(`/api/admin/genres/${id}`, { method: 'DELETE' });
-        initGenres();
+        _genres_all = _genres_all.filter(g => String(g.id) !== String(id)); // Remove from local cache
+        _renderGenres(); // Re-render from local cache
     } catch (error) {
         console.error(`[Genres] Failed to delete genre ${id}:`, error);
         alert(`Failed to delete genre: ${error.message}`);
     }
-}
+};
 
-window.initGenres = initGenres;
-window.deleteGenre = deleteGenre;
+// Expose the initialization function globally for dashboard.js
+document.addEventListener('DOMContentLoaded', () => {
+    window.initializeGenresSection = initGenres;
+    window.deleteGenre = deleteGenre; // Expose for onclick handlers
+
+    // Initialize if the hash matches on page load
+    if (window.location.hash === '#genres') {
+        initGenres();
+    }
+});
