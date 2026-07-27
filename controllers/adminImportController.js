@@ -5,6 +5,40 @@ const { ConsumetProvider } = require('../services/consumetProvider');
 const { uploadBufferToCloudinary, hasCloudinaryConfig } = require('../utils/bunnyUpload');
 
 const consumet = new ConsumetProvider();
+let cloudinaryColumnsPromise = null;
+
+async function ensureCloudinaryColumns() {
+  if (!cloudinaryColumnsPromise) {
+    cloudinaryColumnsPromise = (async () => {
+      const [rows] = await db.query(`SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'anime'
+          AND COLUMN_NAME IN ('cover_public_id', 'banner_public_id')`);
+      const columns = new Set(rows.map(row => row.COLUMN_NAME));
+      if (!columns.has('cover_public_id')) await db.query('ALTER TABLE anime ADD COLUMN cover_public_id VARCHAR(255) DEFAULT NULL');
+      if (!columns.has('banner_public_id')) await db.query('ALTER TABLE anime ADD COLUMN banner_public_id VARCHAR(255) DEFAULT NULL');
+    })().catch(error => {
+      cloudinaryColumnsPromise = null;
+      throw error;
+    });
+  }
+  return cloudinaryColumnsPromise;
+}
+
+function importPayload(req) {
+  const body = req.body || {};
+  if (typeof body.providerData !== 'string') return body.providerData || body;
+  try {
+    let value = body.providerData.trim();
+    // Decode a normal JSON string and, if needed, one accidental outer layer.
+    let parsed = JSON.parse(value);
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    return parsed;
+  } catch (error) {
+    const invalidPayload = new Error('Invalid JSON payload provided.');
+    invalidPayload.status = 400;
+    throw invalidPayload;
+  }
+}
 
 const titleOf = value => typeof value === 'string'
   ? value
@@ -65,10 +99,13 @@ async function bulkInsertEpisodes(animeId, episodes) {
  * Protected by router.use(protect, adminOnly) in routes/adminRoutes.js.
  */
 exports.importAnime = async (req, res) => {
-  const kitsuId = String(req.body?.kitsuId || '').trim();
+  let payload;
+  try { payload = importPayload(req); } catch (error) { return res.status(error.status || 400).json({ message: error.message }); }
+  const kitsuId = String(payload?.kitsuId || '').trim();
   if (!kitsuId) return res.status(400).json({ message: 'kitsuId is required.' });
 
   try {
+    await ensureCloudinaryColumns();
     console.log(`[IMPORT START] Processing Kitsu ID: ${kitsuId}`);
 
     // Step 1: Import anime metadata from Kitsu + resolve MalSync slug
@@ -175,7 +212,9 @@ exports.searchConsumet = async (req, res) => {
 
 /** Import Consumet metadata, persist provider art in Cloudinary, and seed episode records. */
 exports.importConsumetAnime = async (req, res) => {
-  const providerId = String(req.body?.providerId || req.body?.animeId || '').trim();
+  let payload;
+  try { payload = importPayload(req); } catch (error) { return res.status(error.status || 400).json({ message: error.message }); }
+  const providerId = String(payload?.providerId || payload?.animeId || '').trim();
   if (!providerId) return res.status(400).json({ message: 'providerId is required.' });
   if (providerId.startsWith('kitsu:')) {
     // The Consumet search fallback returns a namespaced Kitsu identifier.
@@ -184,6 +223,7 @@ exports.importConsumetAnime = async (req, res) => {
     return exports.importAnime(req, res);
   }
   try {
+    await ensureCloudinaryColumns();
     const metadata = normaliseConsumetInfo(await consumet.fetchAnimeInfo(providerId), providerId);
     const [existing] = await db.query('SELECT id FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', ['consumet', providerId]);
     const cover = await persistRemoteImage(metadata.coverUrl, 'anime');
