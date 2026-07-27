@@ -63,6 +63,42 @@ body::before {
     border-right: 1px solid var(--border);
 }
 
+/* Add media queries for responsive sidebar */
+@media (max-width: 768px) { /* Collapse sidebar to icon-only on tablets */
+    .sidebar {
+        width: 70px;
+        padding: 1rem 0.5rem;
+    }
+    .sidebar h2 {
+        font-size: 0; /* Hide "AniStrim" text */
+        justify-content: center; /* Center the icon */
+    }
+    .sidebar h2 i {
+        font-size: 1.5rem; /* Keep icon size */
+        margin: 0;
+    }
+    .nav-links a {
+        justify-content: center; /* Center icons */
+        padding: 0.75rem 0.5rem;
+        font-size: 0; /* Hide link text */
+    }
+    .nav-links a i {
+        font-size: 1.1rem; /* Keep icon size */
+        margin-right: 0;
+    }
+    .logout-btn {
+        justify-content: center;
+        font-size: 0; /* Hide "Sign Out" text */
+    }
+    .logout-btn i {
+        font-size: 1.1rem; /* Keep icon size */
+        margin-right: 0;
+    }
+    .main-content {
+        margin-left: 70px; /* Adjust main content margin */
+    }
+}
+
 .sidebar h2 {
     font-size: 1.5rem;
     color: var(--primary);
@@ -118,6 +154,15 @@ body::before {
     background-color: var(--danger);
     color: white;
     box-shadow: 0 0 15px rgba(244, 63, 94, 0.5);
+}
+
+@media (max-width: 600px) { /* Hide sidebar completely on smaller phones */
+    .sidebar {
+        display: none;
+    }
+    .main-content {
+        margin-left: 0;
+    }
 }
 
 /* --- Main Content --- */

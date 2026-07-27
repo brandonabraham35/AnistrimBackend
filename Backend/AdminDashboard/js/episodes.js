@@ -7,19 +7,26 @@
   async function loadEpisodes(animeId = currentAnimeId) {
     if (!animeId) return [];
     currentAnimeId = animeId;
-    const episodes = await window.apiRequest(`/admin/anime/${animeId}/episodes`);
     const tbody = document.querySelector('#episodes-table tbody');
-    if (tbody) {
-      tbody.innerHTML = episodes.map(episode => `<tr>
-        <td>${episode.episode_number || '-'}</td>
-        <td>${episode.thumbnail_url ? `<img src="${episode.thumbnail_url}" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:6px;">` : '-'}</td>
-        <td>${episode.title || 'Untitled Episode'}</td>
-        <td>${episode.duration_sec ? `${episode.duration_sec} sec` : '-'}</td>
-        <td>${episode.is_premium ? 'Yes' : 'No'}</td>
-        <td><button class="secondary-btn" onclick="openEpisodeModal(${episode.id})">Edit</button> <button class="danger-btn" onclick="deleteEpisode(${episode.id})">Delete</button></td>
-      </tr>`).join('') || '<tr><td colspan="6">No episodes added yet.</td></tr>';
+    if (!tbody) return [];
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading episodes...</td></tr>';
+
+    try {
+        const episodes = await window.apiRequest(`/api/admin/anime/${animeId}/episodes`);
+        tbody.innerHTML = episodes.map(episode => `<tr>
+            <td>${episode.episode_number || '-'}</td>
+            <td>${episode.thumbnail_url ? `<img src="${episode.thumbnail_url}" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:6px;">` : '-'}</td>
+            <td>${episode.title || 'Untitled Episode'}</td>
+            <td>${episode.duration_sec ? `${episode.duration_sec} sec` : '-'}</td>
+            <td>${episode.is_premium ? 'Yes' : 'No'}</td>
+            <td><button class="secondary-btn" onclick="openEpisodeModal(${episode.id})">Edit</button> <button class="danger-btn" onclick="deleteEpisode(${episode.id})">Delete</button></td>
+        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;">No episodes added yet.</td></tr>';
+        return episodes;
+    } catch (error) {
+        console.error(`[Episodes] Failed to load episodes for anime ${animeId}:`, error);
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Error loading episodes. Check console.</td></tr>`;
+        return [];
     }
-    return episodes;
   }
 
   function manageEpisodes(animeId, animeTitle = '') {
@@ -31,9 +38,14 @@
   }
 
   async function deleteEpisode(episodeId) {
-    if (!window.confirm('Delete this episode?')) return;
-    await window.apiRequest(`/admin/episodes/${episodeId}`, { method: 'DELETE' });
-    await loadEpisodes();
+    try {
+        if (!window.confirm('Delete this episode?')) return;
+        await window.apiRequest(`/api/admin/episodes/${episodeId}`, { method: 'DELETE' });
+        await loadEpisodes();
+    } catch (error) {
+        console.error(`[Episodes] Failed to delete episode ${episodeId}:`, error);
+        alert(`Failed to delete episode: ${error.message}`);
+    }
   }
 
   // File selection is handled by the dashboard modal. There is deliberately no

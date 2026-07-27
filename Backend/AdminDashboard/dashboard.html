@@ -17,7 +17,10 @@
             <li><a href="javascript:void(0)" data-section="episodes"><i class="fas fa-video"></i> Episodes</a></li>
             <li><a href="javascript:void(0)" data-section="users"><i class="fas fa-users"></i> Users Management</a></li>
             <li><a href="javascript:void(0)" data-section="payments"><i class="fas fa-wallet"></i> Payments</a></li>
+            <li><a href="javascript:void(0)" data-section="genres"><i class="fas fa-tags"></i> Genres</a></li>
             <li><a href="javascript:void(0)" data-section="ads-config"><i class="fas fa-ad"></i> Ads Config</a></li>
+            <li><a href="javascript:void(0)" data-section="logs"><i class="fas fa-clipboard-list"></i> Logs</a></li>
+            <li><a href="javascript:void(0)" data-section="settings"><i class="fas fa-cog"></i> Settings</a></li>
             <li><a href="javascript:void(0)" class="logout-btn" onclick="window.logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
         </ul>
     </div>
@@ -84,8 +87,7 @@
                                 <th>Gateway Status</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
             </div>
@@ -114,7 +116,7 @@
         </div>
         </section>
 
-        <section id="anime" class="content-section" hidden>
+        <section id="anime" class="content-section">
             <div class="toolbar">
                 <input type="search" id="anime-search" placeholder="Search anime..." style="flex:1;max-width:300px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
                 <select id="anime-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
@@ -123,40 +125,64 @@
                     <option value="airing">Airing</option>
                     <option value="upcoming">Upcoming</option>
                 </select>
-                <button class="btn" id="add-anime-button">Add Anime</button>
-                <button id="bulkDeleteBtn-anime" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-anime">0</span>)</button>
+                <button type="button" class="btn" id="add-anime-button">Add Anime</button>
+                <button type="button" id="bulkDeleteBtn-anime" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-anime">0</span>)</button>
             </div>
             <div class="section-box"><h4><i class="fas fa-tv"></i> Anime Catalogue</h4>
                 <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-anime" title="Select all"></th><th>Cover</th><th>Title</th><th>Status</th><th>Premium</th><th>Featured</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section id="users" class="content-section" hidden>
+        <section id="users" class="content-section">
             <div class="toolbar">
-                <button id="bulkDeleteBtn-users" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-users">0</span>)</button>
+                <button type="button" id="bulkDeleteBtn-users" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-users">0</span>)</button>
             </div>
             <div class="section-box"><h4><i class="fas fa-users"></i> Registered Users</h4>
                 <div style="overflow-x:auto"><table id="users-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section id="episodes" class="content-section" hidden>
+        <section id="episodes" class="content-section">
             <div class="toolbar">
-                <button class="btn" id="add-episode-button">Add Episode</button>
-                <button id="bulkDeleteBtn-episodes" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-episodes">0</span>)</button>
+                <button type="button" class="btn" id="add-episode-button">Add Episode</button>
+                <button type="button" id="bulkDeleteBtn-episodes" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-episodes">0</span>)</button>
             </div>
             <div class="section-box"><h4><i class="fas fa-video"></i> Episodes</h4>
                 <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-episodes" title="Select all"></th><th>Anime</th><th>Episode</th><th>Title</th><th>Duration</th><th>Views</th><th>Premium</th></tr></thead><tbody></tbody></table></div>
             </div>
         </section>
-        <section id="payments" class="content-section" hidden>
+        <section id="payments" class="content-section">
             <div class="section-box"><h4><i class="fas fa-wallet"></i> Payment Records</h4>
-                <div style="overflow-x:auto"><table id="payments-table"><thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th><th>Reference</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto">
+                    <table id="payments-table">
+                        <thead>
+                            <tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th><th>Reference</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </section>
-        <section id="ads-config" class="content-section" hidden>
+        <section id="genres" class="content-section">
+            <div class="section-box">
+                <h4><i class="fas fa-tags"></i> Manage Genres</h4>
+                <form id="genre-form" class="form-grid" style="grid-template-columns: 1fr auto; gap: 1rem; margin-bottom: 1.5rem;">
+                    <input id="genre-name" placeholder="New genre name..." required>
+                    <button type="submit" class="btn">Add Genre</button>
+                </form>
+                <div style="overflow-x:auto">
+                    <table id="genres-table">
+                        <thead>
+                            <tr><th>Name</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        <section id="ads-config" class="content-section">
             <div class="section-box">
                 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:0.5rem;margin-bottom:1.5rem;">
                     <h4 style="border:none;margin:0;padding:0;"><i class="fas fa-ad"></i> Ads Configuration</h4>
-                    <button class="btn" id="save-ads-config-btn" onclick="saveAdsConfig()">💾 Save Changes</button>
+                    <button type="button" class="btn" id="save-ads-config-btn" onclick="saveAdsConfig()">💾 Save Changes</button>
                 </div>
                 <p style="color:var(--text-sub);font-size:0.85rem;margin-bottom:1.5rem;">Configure remote monetization rules. The mobile app fetches these settings on boot.</p>
                 <div id="ads-config-status" style="margin-bottom:1rem;display:none;" role="alert"></div>
@@ -219,6 +245,28 @@
                 .ads-slider::before { content:''; position:absolute; width:18px; height:18px; border-radius:50%; background:#fff; bottom:3px; left:3px; transition:0.3s; }
             </style>
         </section>
+        <section id="logs" class="content-section">
+            <div class="section-box">
+                <h4><i class="fas fa-clipboard-list"></i> Activity Logs</h4>
+                <div style="overflow-x:auto">
+                    <table id="logs-table">
+                        <thead>
+                            <tr><th>Admin</th><th>Action</th><th>Target</th><th>Timestamp</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        <section id="settings" class="content-section">
+            <div class="section-box">
+                <h4><i class="fas fa-cog"></i> Site Settings</h4>
+                <form id="settings-form" class="form-grid">
+                    <!-- Settings fields will be populated by settings.js -->
+                    <button type="submit" class="btn wide">Save Settings</button>
+                </form>
+            </div>
+        </section>
     </div>
 
     <div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
@@ -229,7 +277,7 @@
                 <button type="button" class="anime-import-tab" data-anime-tab="manual" role="tab" aria-selected="false">📝 Manual Upload</button>
             </div>
             <section class="anime-import-panel" data-anime-panel="kitsu">
-                <form id="kitsu-search-form" class="kitsu-search-bar"><input id="kitsu-search-input" type="search" placeholder="Search Kitsu, e.g. Frieren" required><button class="btn" type="submit">Search</button></form>
+                <form id="kitsu-search-form" class="kitsu-search-bar"><input id="kitsu-search-input" type="search" placeholder="Search Kitsu, e.g. Frieren" required><button type="submit" class="btn">Search</button></form>
                 <div id="kitsu-search-results" class="kitsu-search-results" aria-live="polite"></div>
             </section>
             <section class="anime-import-panel" data-anime-panel="manual" hidden>
@@ -241,7 +289,7 @@
                     <label class="wide">Description<textarea id="manual-description" name="description" rows="4"></textarea></label>
                     <label><input id="manual-is-premium" name="is_premium" type="checkbox"> Premium only</label>
                     <label><input id="manual-is-featured" name="is_featured" type="checkbox"> Hero featured</label>
-                    <div class="wide" style="display:flex;gap:.75rem"><button class="btn" type="submit">Create Anime</button></div>
+                    <div class="wide" style="display:flex;gap:.75rem"><button type="submit" class="btn">Create Anime</button></div>
                 </form>
             </section>
         </div>

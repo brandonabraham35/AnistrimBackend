@@ -4,6 +4,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('login-form');
     const errorMsg = document.getElementById('error-message');
 
+    // Display any error messages passed from the Google OAuth callback.
+    const urlParams = new URLSearchParams(window.location.search);
+    const authError = urlParams.get('error');
+    if (authError && errorMsg) {
+        errorMsg.innerText = decodeURIComponent(authError);
+    }
+
     const currentPath = window.location.pathname;
     const isLoginPage = currentPath.endsWith('index.html') || currentPath === '/' || currentPath.endsWith('/');
 
