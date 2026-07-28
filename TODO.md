@@ -1,35 +1,63 @@
-# Admin Dashboard Fix — Completed
+# Google OAuth GIS Migration Plan
 
-## ✅ Fix 1: `AdminDashboard/js/api.js` — Cross-Platform API Base URL
+## ✅ Completed Steps
 
-- Uses `window.getApiBaseUrl()` + `/api` as primary (from config.js)
-- Falls back to localStorage override, then hardcoded default
-- Added retry logic (1 retry with 1.5s backoff) for transient failures
-- Re-resolves base URL on each call for dynamic environments (Capacitor)
+### Step 1: Backend — Register the GIS verify route
 
-## ✅ Fix 2: `AdminDashboard/dashboard.html` — SPA Routing Fix
+- [x] Added `POST /api/auth/google/verify` route pointing to `googleVerifyController.verifyGoogleToken`
+- [x] Added `GET /api/auth/google/client-id` endpoint to expose the Google Client ID to frontend
+- Files: `routes/authRoutes.js`, `controllers/googleVerifyController.js` (already existed)
 
-- Changed sidebar `<a href="#section">` to `<a href="javascript:void(0)">`
-- Prevents dual hash navigation (browser + JS handler)
-- Sidebar clicks now controlled entirely by `data-section` click handlers
+### Step 2: Frontend login.html — Add GIS library
 
-## ✅ Fix 3: `AdminDashboard/js/dashboard.js` — Data Fetching Robustness
+- [x] Added `<script src="https://accounts.google.com/gsi/client" async defer>`
+- [x] Button now has id `google-login-btn` for JS targeting
+- [x] Added disabled state styles for Google button
 
-- `loadOverview()` now has retry loop (1 retry after 2s)
-- Added `safeInner()` helper to safely set innerHTML with null/empty fallbacks
-- Added `showSection()` guard to avoid hashchange loop in Capacitor
-- Added `popstate` event listener for Capacitor back button support
-- Added `e.preventDefault()` on sidebar click handler
-- Null-safe destructuring for `overview.users`, `overview.content`, `overview.cloudinary`
+### Step 3: Frontend login.js — Replace redirect with GIS popup
 
-## ✅ Fix 4: `Frontend/admin.html` — Data Consistency
+- [x] Replaced `window.location.href = ${BACKEND}/api/auth/google` with GIS popup
+- [x] Added `handleGoogleLogin()` that calls `google.accounts.id.prompt()`
+- [x] Added `handleGISCredentialResponse()` callback to receive ID token
+- [x] Added `sendIdTokenToBackend()` to POST to `/api/auth/google/verify`
+- [x] Added loading state with spinner in button
+- [x] Added disabled state to prevent multiple clicks
+- [x] Added popup cancellation handling with user-friendly message
+- [x] Added `initGIS()` and `fetchClientId()` for dynamic client ID config
+- [x] Backward compatible — email/password login unchanged
 
-- `loadUsers()` now handles flat array from backend (not `{ users: [], total: N }`)
-- Added fallback empty-state message for users table
-- All API calls use `apiFetch()` which already goes through `scrpt.js` using centralized `API` constant
+### Step 4: Frontend signup.html
 
-## ✅ Fix 5: `Frontend/admin.html` — Image Uploader
+- [x] Same GIS library addition
+- [x] Same button structure with id-based targeting
 
-- Image uploader widget already has null guards via `cleanImg()`
-- URL input binding already handles `getElementById` null checks
-- `bindImageUrlInputs()` already uses `!input || !hidden || input.dataset.urlBindReady` guard
+### Step 5: Frontend signup.js
+
+- [x] Same GIS popup flow as login.js
+- [x] `handleGoogleSignUp()` function for signup page
+- [x] Both login and signup call the same `POST /api/auth/google/verify` endpoint
+- [x] Backend handles account creation vs linking automatically
+
+### Step 6: AdminDashboard login
+
+- [x] Added GIS library to `AdminDashboard/index.html`
+- [x] Replaced redirect in `AdminDashboard/js/auth.js` with GIS popup
+- [x] Added admin role check after token verification
+- [x] Same loading states, error handling, and popup cancellation
+
+### Step 7: Clean up old redirect flow files
+
+- [x] `controllers/googleAuthController.js` — preserved for Capacitor mobile deep-link flow
+- [x] `Frontend/google-auth-handler.js` — preserved for Capacitor deep-link support
+- [x] `Frontend/google-callback.html` — preserved for Capacitor fallback
+- [x] `AdminDashboard/google-callback.html` — preserved for legacy compatibility
+
+## 📋 Remaining
+
+- [ ] Test the GIS popup opens on "Continue with Google" click
+- [ ] Verify ID token is received and sent to backend
+- [ ] Verify backend returns JWT on POST /api/auth/google/verify
+- [ ] Verify redirect to dashboard/home after successful login
+- [ ] Verify existing email/password login still works
+- [ ] Verify account linking (Google + email/password)
+- [ ] Verify AdminDashboard GIS login with admin role check
