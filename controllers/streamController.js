@@ -21,17 +21,33 @@ const streamingService = require('../services/streamingService');
  *   { provider, streamUrl, sources, subtitles, bestQuality, tier }
  */
 exports.getStream = async (req, res) => {
-  const { animeTitle, episodeNumber } = req.params;
+  const { animeTitle, episodeNumber: episodeIdentifier } = req.params;
   const { preferredProvider } = req.query;
 
-  if (!animeTitle || !episodeNumber) {
-    return res.status(400).json({ error: 'animeTitle and episodeNumber are required.' });
+  if (!animeTitle || !episodeIdentifier) {
+    return res.status(400).json({ error: 'animeTitle and episode identifier are required.' });
   }
 
   // Determine user's premium status (from auth middleware or optional token)
   const isPremium = req.user?.isPremium === true || req.user?.isAdmin === true;
 
   try {
+    let episodeNumber;
+
+    // The frontend incorrectly sends the episode's database ID instead of its sequential number.
+    // We query the database to find the correct sequential `episode_number`.
+    const [episodes] = await db.query(
+      'SELECT episode_number FROM episodes WHERE id = ?',
+      [episodeIdentifier]
+    );
+
+    if (episodes && episodes.length > 0) {
+      episodeNumber = episodes[0].episode_number;
+    } else {
+      // As a fallback, assume the identifier *is* the correct episode number for older clients.
+      episodeNumber = episodeIdentifier;
+    }
+
     const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
       preferredProvider: preferredProvider || undefined,
@@ -42,7 +58,7 @@ exports.getStream = async (req, res) => {
       ...result,
     });
   } catch (err) {
-    console.error('[StreamController] getStream error:', err.message);
+    console.error(`[StreamController] getStream error for "${animeTitle}" Ep ${episodeIdentifier}:`, err.message);
     res.status(502).json({
       success: false,
       error: err.message,

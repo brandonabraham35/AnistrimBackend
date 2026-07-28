@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      ISSUE 4 FIX:
+      Required to allow the app to make network requests to your backend API.
+      Without this, all HTTP calls will fail.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <!--
+              ISSUE 5 FIX:
+              This intent filter catches the redirect from Google's OAuth screen.
+              When Google redirects to "anistrim://auth?code=...", this brings your app
+              to the foreground and delivers the URL to Capacitor's App plugin.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="anistrim" android:host="auth" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -33,8 +33,13 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Add a 60-second timeout to handle slow server startup on free tiers (Issue #6)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
   try {
-    const response = await fetch(url, { ...options, headers });
+    // Pass the abort signal to the fetch request
+    const response = await fetch(url, { ...options, headers, signal: controller.signal });
 
     if (!response.ok) {
       // If the token is expired or invalid, the API will return a 401.
@@ -67,6 +72,8 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
     }
     console.error(`[API] Fetch failed for ${endpoint} after all retries.`, error);
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

@@ -8,34 +8,51 @@ const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.A
 const availableProviders = Object.keys(ANIME);
 console.log(`[STREAM SETUP] Available ANIME providers:`, availableProviders.join(', '));
 
-// Load proxy configuration from environment variables
-const PROXY_HOST = process.env.PROXY_HOST || 'p.webshare.io';
-const PROXY_PORT = process.env.PROXY_PORT || '80';
-const PROXY_USER = process.env.PROXY_USER;
-const PROXY_PASS = process.env.PROXY_PASS;
+// Load a comma-separated list of proxies from environment variables.
+// Format: http://USER:PASS@HOST:PORT,http://USER2:PASS2@HOST2:PORT2
+const PROXY_LIST = (process.env.PROXY_LIST || '').split(',').map(p => p.trim()).filter(Boolean);
+let proxyIndex = 0;
 
-let customAxios;
+const customAxios = axios.create({
+    timeout: 15000, // Increased timeout for proxies
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+    }
+});
 
-if (PROXY_USER && PROXY_PASS) {
-    const proxyUrl = `http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`;
-    const proxyAgent = new HttpsProxyAgent(proxyUrl);
-    console.log(`[STREAM SETUP] Initializing Proxy Agent via ${PROXY_HOST}:${PROXY_PORT}...`);
+if (PROXY_LIST.length > 0) {
+    console.log(`[STREAM SETUP] Initializing with ${PROXY_LIST.length} rotating proxies.`);
 
-    customAxios = axios.create({
-        timeout: 10000,
-        httpsAgent: proxyAgent,
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-        }
+    // Request interceptor to attach a rotating proxy to each outgoing request
+    customAxios.interceptors.request.use(config => {
+        // Round-robin proxy selection
+        const proxyUrl = PROXY_LIST[proxyIndex];
+        proxyIndex = (proxyIndex + 1) % PROXY_LIST.length;
+        
+        config.httpsAgent = new HttpsProxyAgent(proxyUrl);
+        return config;
     });
+
+    // Response interceptor to handle 403 Forbidden errors by retrying without a proxy
+    customAxios.interceptors.response.use(
+        (response) => response,
+        async (error) => {
+            const config = error.config;
+            if (error.response?.status === 403 && config.httpsAgent && !config._retry) {
+                config._retry = true;
+                console.warn(`[Proxy] Request to ${config.url} was blocked (403). Retrying once without proxy...`);
+                return customAxios.request({ ...config, httpsAgent: null });
+            }
+            return Promise.reject(error);
+        }
+    );
 } else {
-    console.warn(`[STREAM SETUP] Proxy credentials missing. Falling back to direct connection.`);
-    customAxios = axios.create({ timeout: 8000 });
+    console.log(`[STREAM SETUP] No proxies configured. Using direct connection.`);
 }
 
 // Priority list excluding hard-blocked providers (AnimePahe / HiAnime)
