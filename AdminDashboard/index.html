@@ -46,10 +46,13 @@
         AniStrim Platform © 2024
     </footer>
 
-    <!-- Google Identity Services library -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Google Identity Services library (no async/defer — load deterministically) -->
+    <script src="https://accounts.google.com/gsi/client"></script>
     <!-- JS files must be loaded in the correct order -->
     <script src="js/api.js"></script>
+    <!-- Shared Google Auth Module (served from Frontend at root path) -->
+    <script src="/google-auth-handler.js"></script>
     <script src="js/auth.js"></script>
 </body>
 </html>
+

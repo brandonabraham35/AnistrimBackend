@@ -18,74 +18,79 @@ function signToken(user) {
 
 // POST /api/auth/google/verify
 // Frontend sends Google ID token, we verify it and return our JWT
-exports.verifyGoogleToken = async (req, res) => {
-  const { idToken } = req.body;
+// Wrapped for Express 5 async safety — does NOT rely on Express catching rejected promises
+exports.verifyGoogleToken = function (req, res) {
+  // Manual async wrapper for Express 5 compatibility
+  // Express 5 does NOT automatically catch async errors in route handlers
+  (async () => {
+    const { idToken } = req.body;
 
-  if (!idToken) {
-    return res.status(400).json({ message: 'Google ID token is required.' });
-  }
-
-  try {
-    // Verify the token with Google
-    const ticket = await googleClient.verifyIdToken({
-      idToken:  idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-
-    if (!payload.email_verified) {
-      return res.status(400).json({ message: 'Google email is not verified.' });
+    if (!idToken) {
+      return res.status(400).json({ message: 'Google ID token is required.' });
     }
 
-    const googleEmail  = payload.email;
-    const googleName   = payload.name;
-    const googleAvatar = payload.picture;
-    const googleId     = payload.sub;
+    try {
+      // Verify the token with Google
+      const ticket = await googleClient.verifyIdToken({
+        idToken:  idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
 
-    // Find or create user
-    const [existing] = await db.query(
-      'SELECT * FROM users WHERE email = ?', [googleEmail]
-    );
+      const payload = ticket.getPayload();
 
-    let user;
-    if (existing.length > 0) {
-      user = existing[0];
-      // Update google_id and avatar if missing
-      if (!user.google_id) {
-        await db.query(
-          'UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?',
-          [googleId, googleAvatar, user.id]
-        );
-        user.google_id  = googleId;
-        user.avatar_url = user.avatar_url || googleAvatar;
+      if (!payload.email_verified) {
+        return res.status(400).json({ message: 'Google email is not verified.' });
       }
-    } else {
-      // Create new user
-      const [result] = await db.query(
-        `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium)
-         VALUES (?, ?, NULL, ?, ?, 0, 0)`,
-        [googleName, googleEmail, googleAvatar, googleId]
+
+      const googleEmail  = payload.email;
+      const googleName   = payload.name;
+      const googleAvatar = payload.picture;
+      const googleId     = payload.sub;
+
+      // Find or create user
+      const [existing] = await db.query(
+        'SELECT * FROM users WHERE email = ?', [googleEmail]
       );
-      const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
-      user = newRows[0];
+
+      let user;
+      if (existing.length > 0) {
+        user = existing[0];
+        // Update google_id and avatar if missing
+        if (!user.google_id) {
+          await db.query(
+            'UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?',
+            [googleId, googleAvatar, user.id]
+          );
+          user.google_id  = googleId;
+          user.avatar_url = user.avatar_url || googleAvatar;
+        }
+      } else {
+        // Create new user
+        const [result] = await db.query(
+          `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium)
+           VALUES (?, ?, NULL, ?, ?, 0, 0)`,
+          [googleName, googleEmail, googleAvatar, googleId]
+        );
+        const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+        user = newRows[0];
+      }
+
+      const token   = signToken(user);
+      const userObj = {
+        id:        user.id,
+        name:      user.name,
+        email:     user.email,
+        isPremium: !!user.is_premium,
+        isAdmin:   !!user.is_admin,
+        avatar:    user.avatar_url,
+      };
+
+      console.log(`✅ Google login: ${googleEmail}`);
+      res.json({ token, user: userObj, message: 'Welcome!' });
+
+    } catch (err) {
+      console.error('Google verify error:', err.message);
+      res.status(401).json({ message: 'Google verification failed. Please try again.' });
     }
-
-    const token   = signToken(user);
-    const userObj = {
-      id:        user.id,
-      name:      user.name,
-      email:     user.email,
-      isPremium: !!user.is_premium,
-      isAdmin:   !!user.is_admin,
-      avatar:    user.avatar_url,
-    };
-
-    console.log(`✅ Google login: ${googleEmail}`);
-    res.json({ token, user: userObj, message: 'Welcome!' });
-
-  } catch (err) {
-    console.error('Google verify error:', err.message);
-    res.status(401).json({ message: 'Google verification failed. Please try again.' });
-  }
+  })();
 };

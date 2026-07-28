@@ -33,8 +33,7 @@
     "node-fetch": "^2.7.0",
     "redis": "^6.1.0",
     "uuid": "^14.0.1"
-  }
-,
+  },
   "devDependencies": {
     "eslint": "^8.57.0"
   }

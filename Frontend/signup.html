@@ -2,62 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; frame-src https://accounts.google.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.gstatic.com; frame-src https://accounts.google.com;">
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Up | AniStrim</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="mobile-native.css">
-  <style>
-    .google-btn {
-      width: 100%;
-      background: linear-gradient(135deg, #1a0a2e 0%, #0d0520 100%) !important;
-      border: 1.5px solid #6c2bd9 !important;
-      border-radius: 12px !important;
-      padding: 14px 20px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 12px !important;
-      cursor: pointer !important;
-      position: relative !important;
-      overflow: hidden !important;
-      transition: all 0.3s ease !important;
-      box-shadow: 0 0 20px rgba(108, 43, 217, 0.25) !important;
-      color: #fff !important;
-      font-size: 0.95rem !important;
-      font-weight: 600 !important;
-      margin-bottom: 20px !important;
-    }
-    .google-btn:hover {
-      box-shadow: 0 0 30px rgba(108, 43, 217, 0.5) !important;
-      border-color: #9d6fff !important;
-      transform: translateY(-1px) !important;
-      opacity: 1 !important;
-    }
-    .google-btn img { display: none !important; }
-    .google-btn::before {
-      content: '';
-      position: absolute;
-      top: 0; left: -100%;
-      width: 60%; height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(108,43,217,0.15), transparent);
-      transform: skewX(-20deg);
-      animation: gbtn-shimmer 3s infinite;
-    }
-    @keyframes gbtn-shimmer {
-      0%   { left: -100%; }
-      100% { left: 200%; }
-    }
-    .google-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      pointer-events: none;
-    }
-    .google-btn:disabled::before {
-      animation: none;
-    }
-  </style>
   </head>
 <body class="auth-body">
 <div class="auth-box">
@@ -67,7 +17,10 @@
     <p>Join AniStrim to start watching</p>
   </div>
 
-<button class="google-btn" id="google-signup-btn" onclick="handleGoogleSignUp()">
+  <!-- Error message container -->
+  <p id="auth-error" style="display:none;"></p>
+
+  <button class="google-btn" id="google-signup-btn" onclick="handleGoogleSignUp()">
     <span id="google-btn-icon" style="width:26px;height:26px;background:white;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 8px rgba(108,43,217,0.4);">
       <svg width="15" height="15" viewBox="0 0 24 24">
         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -95,18 +48,21 @@
       <input type="password" id="signup-pass" placeholder="••••••••">
       <button class="toggle-pw" onclick="togglePasswordVisibility('signup-pass')">👁️</button>
     </div>
+  </div>
 
   <button class="auth-submit" onclick="handleSignUp()">Create Account</button>
 
   <div class="auth-links">
     Already have an account? <a href="login.html">Sign In</a>
   </div>
+</div>
 
-<!-- Google Identity Services library -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- Google Identity Services library (no async/defer — load deterministically) -->
+<script src="https://accounts.google.com/gsi/client"></script>
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
 <script src="google-auth-handler.js"></script>
 <script src="signup.js"></script>
 </body>
 </html>
+
