@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS anime (
   year          SMALLINT            DEFAULT NULL,
   studio        VARCHAR(120)        DEFAULT NULL,
   status        ENUM('airing','completed','upcoming') NOT NULL DEFAULT 'completed',
+  media_type    VARCHAR(20)         NOT NULL DEFAULT 'TV',  -- TV, MOVIE, OVA, SPECIAL
   is_premium    TINYINT(1)          NOT NULL DEFAULT 0,  -- Premium-only title
   is_featured   TINYINT(1)          NOT NULL DEFAULT 0,  -- Show in hero slider
   view_count    INT                 NOT NULL DEFAULT 0,

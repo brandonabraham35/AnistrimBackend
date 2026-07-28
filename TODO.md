@@ -1,61 +1,20 @@
-# Google Authentication Fix - Implementation Status
+# Implementation Plan — Proxy + Movie Metadata Fix
 
-## Step 1: Create Shared Google Auth Module ✅
+## Steps
 
-- [x] Rewrite `Frontend/google-auth-handler.js` as the single source of truth
-- [x] Single GIS initialization with validated client ID
-- [x] Proper retry/timeout for library loading (10 retries, 1s apart)
-- [x] Proper retry/timeout for client ID fetch (3 retries, 2s apart)
-- [x] Error differentiation for all failure modes
-- [x] Promise-based API: `window.initGoogleAuth(buttonId)` → resolves with credential
-- [x] Preserved Capacitor deep-link handler
+- [x] Task Analysis & Code Review Complete
+- [x] Step 1: Create SQL migration (v16) — add `media_type` column + ensure cloudinary columns exist
+- [x] Step 2: Update `services/streamingService.js` — inject Thordata proxy agent into all provider resolvers
+- [x] Step 3: Update `controllers/streamController.js` — add movie detection logic to fix episode number
+- [x] Step 4: Update `services/consumetProvider.js` — enhance movie handling + add Thordata proxy fallback
+- [x] Step 5: Update `services/kitsuProvider.js` — extract `media_type` (subtype) from Kitsu API responses
+- [x] Step 6: Update `controllers/adminImportController.js` — persist `media_type` during Consumet/Kitsu imports
+- [x] Step 7: Update `services/catalogueService.js` — persist `media_type` during Kitsu imports
+- [x] Step 8: Update `sql/schema.sql` — add media_type column reference
 
-## Step 2: Fix login.html ✅
+## Testing
 
-- [x] Fix missing `</div>` closing tag in password wrapper section
-- [x] Remove duplicate inline CSS (style.css already has google-btn styles)
-- [x] Fix script loading order (GIS library → config → google-auth-handler → login)
-- [x] Remove `async defer` from GIS script for deterministic loading
-
-## Step 3: Fix signup.html ✅
-
-- [x] Same HTML fixes as login.html
-- [x] Fix password wrapper nesting
-- [x] Remove duplicate CSS
-- [x] Fix script loading order
-
-## Step 4: Rewrite login.js ✅
-
-- [x] Remove all inline GIS initialization code (initGIS, fetchClientId, handleGISCredentialResponse, etc.)
-- [x] Use shared `window.initGoogleAuth()` module
-- [x] Keep email/password login intact
-- [x] Improved error display with auto-clear
-
-## Step 5: Rewrite signup.js ✅
-
-- [x] Remove all inline GIS initialization code
-- [x] Use shared `window.initGoogleAuth()` module
-- [x] Keep email/password signup intact
-- [x] Improved error display with auto-clear
-
-## Step 6: Fix Backend Async Error Handling ✅
-
-- [x] Wrapped `googleVerifyController.verifyGoogleToken` in manual async IIFE
-- [x] Express 5 async safety — no longer relies on Express catching rejected promises
-
-## Step 7: Update AdminDashboard auth.js ✅
-
-- [x] Use shared `window.initGoogleAuth()` module
-- [x] Keep admin-only access check
-- [x] Clean up dead code
-- [x] Updated index.html to include shared module from correct path
-
-## Step 8: Verify
-
-- [ ] No console errors on login page load
-- [ ] GIS library loads successfully
-- [ ] Client ID fetched from backend
-- [ ] GIS initialized exactly once
-- [ ] Click "Continue with Google" → account chooser opens
-- [ ] Successful Google login redirects correctly
-- [ ] Error states show meaningful messages
+- [ ] Run migration on database: `mysql -u root -p anistrim2 < sql/migrations_v16_media_type.sql`
+- [ ] Verify proxy routing works with Thordata (check server logs for `✅ Thordata proxy configured`)
+- [ ] Verify movie resolution (e.g. "Jujutsu Kaisen 0") resolves episode 1 correctly
+- [ ] Re-import any movies via admin dashboard to set their `media_type = 'MOVIE'`

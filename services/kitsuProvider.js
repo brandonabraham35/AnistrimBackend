@@ -7,6 +7,15 @@ function normalize(record) {
   const titles = attributes.titles || {};
   const startDate = attributes.startDate || null;
   const statusMap = { current: 'airing', finished: 'completed', upcoming: 'upcoming', tba: 'upcoming', unreleased: 'upcoming' };
+  // Map Kitsu subtype to media_type: "TV", "movie", "OVA", "special"
+  const subtypeMap = {
+    TV: 'TV',
+    movie: 'MOVIE',
+    ova: 'OVA',
+    ona: 'OVA',
+    special: 'SPECIAL',
+    music: 'SPECIAL',
+  };
   return {
     kitsu_id: String(record.id),
     title: attributes.canonicalTitle || titles.en || titles.en_jp || Object.values(titles)[0] || 'Untitled Anime',
@@ -19,6 +28,7 @@ function normalize(record) {
     season: attributes.season || null,
     year: startDate ? Number(startDate.slice(0, 4)) : null,
     status: statusMap[attributes.status] || 'upcoming',
+    media_type: subtypeMap[attributes.subtype] || 'TV',
     age_rating: attributes.ageRating || null,
     popularity: Number(attributes.popularityRank || 0),
     slug: attributes.slug || null,

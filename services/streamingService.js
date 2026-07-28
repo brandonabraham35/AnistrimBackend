@@ -12,9 +12,47 @@
 //  Quality Tiers:
 //    Free users:  ≤ 720p (480p, 720p)
 //    Premium/Admin users: up to 4K (1080p, 4K)
+//
+//  Proxy Support:
+//    Thordata residential proxy is injected into all outbound
+//    provider requests via process.env.PROXY_HOST/PORT/USER/PASS
+//    to mask the Render server IP and avoid 403 blocks.
 // ============================================================
 const axios = require('axios');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const { ConsumetProvider } = require('./consumetProvider');
+
+// ── Thordata Proxy Agent ──────────────────────────────────
+// Constructs a proxy agent from environment variables if they are set.
+// All external provider HTTP calls use this agent to avoid IP-based blocks.
+const PROXY_URL = (() => {
+  const host = process.env.PROXY_HOST;
+  const port = process.env.PROXY_PORT;
+  const user = process.env.PROXY_USER;
+  const pass = process.env.PROXY_PASS;
+  if (host && port) {
+    const auth = user && pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : '';
+    return `http://${auth}${host}:${port}`;
+  }
+  return null;
+})();
+
+const proxyAgent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : null;
+
+if (proxyAgent) {
+  console.log(`[StreamingService] ✅ Thordata proxy configured via ${process.env.PROXY_HOST}:${process.env.PROXY_PORT}`);
+} else {
+  console.log('[StreamingService] ℹ️ No proxy configured — using direct connections. Set PROXY_HOST/PORT/USER/PASS to enable.');
+}
+
+// ── Shared axios instance with proxy agent ────────────────
+const proxiedAxios = axios.create({
+  timeout: 15000,
+  httpsAgent: proxyAgent || undefined,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  },
+});
 
 // ── Provider Priority ───────────────────────────────────────
 const PROVIDER_ORDER = (process.env.STREAM_PROVIDERS || 'consumet')
@@ -120,10 +158,8 @@ async function resolveViaConsumetHttp(animeTitle, episodeNumber) {
   if (!baseUrl) return null;
 
   try {
-    // First search for the anime
-    const searchRes = await axios.get(`${baseUrl}/anime/${encodeURIComponent(animeTitle)}`, {
-      timeout: 8000,
-    });
+    // First search for the anime — use proxied axios to mask server IP
+    const searchRes = await proxiedAxios.get(`${baseUrl}/anime/${encodeURIComponent(animeTitle)}`);
 
     const results = searchRes.data?.results || [];
     if (!results.length) return null;
@@ -131,16 +167,14 @@ async function resolveViaConsumetHttp(animeTitle, episodeNumber) {
     const target = results[0];
     const animeId = target.id;
 
-    // Fetch episodes
-    const epRes = await axios.get(`${baseUrl}/anime/${animeId}`, { timeout: 8000 });
+    // Fetch episodes — use proxied axios
+    const epRes = await proxiedAxios.get(`${baseUrl}/anime/${animeId}`);
     const episodes = epRes.data?.episodes || [];
     const targetEp = episodes.find(e => e.number === Number(episodeNumber));
     if (!targetEp?.id) return null;
 
-    // Fetch sources
-    const srcRes = await axios.get(`${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`, {
-      timeout: 10000,
-    });
+    // Fetch sources — use proxied axios
+    const srcRes = await proxiedAxios.get(`${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`);
 
     const rawSources = srcRes.data?.sources || [];
     const subtitles = srcRes.data?.subtitles || [];
@@ -175,9 +209,9 @@ async function resolveViaMiruro(animeTitle, episodeNumber) {
   if (!baseUrl) return null;
 
   try {
-    const searchRes = await axios.get(`${baseUrl}/search`, {
+    // Use proxied axios to mask server IP from Miruro
+    const searchRes = await proxiedAxios.get(`${baseUrl}/search`, {
       params: { query: animeTitle },
-      timeout: 8000,
     });
 
     const results = searchRes.data?.results || [];
@@ -186,10 +220,8 @@ async function resolveViaMiruro(animeTitle, episodeNumber) {
     const animeData = results[0];
     const animeId = animeData.id || animeData.slug;
 
-    // Get episode sources
-    const epRes = await axios.get(`${baseUrl}/anime/${animeId}/episode/${episodeNumber}`, {
-      timeout: 10000,
-    });
+    // Get episode sources — use proxied axios
+    const epRes = await proxiedAxios.get(`${baseUrl}/anime/${animeId}/episode/${episodeNumber}`);
 
     const rawSources = epRes.data?.sources || [];
     const sources = rawSources.map(s => ({

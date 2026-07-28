@@ -60,6 +60,15 @@ async function persistRemoteImage(url, folder) {
 function normaliseConsumetInfo(info, providerId) {
   const releaseDate = info.releaseDate || info.year || null;
   const statusMap = { RELEASING: 'airing', FINISHED: 'completed', NOT_YET_RELEASED: 'upcoming' };
+  // Map Consumet format to media_type: AniList returns "TV", "MOVIE", "OVA", "ONA", "SPECIAL"
+  const formatMap = {
+    TV: 'TV',
+    MOVIE: 'MOVIE',
+    OVA: 'OVA',
+    ONA: 'OVA',
+    SPECIAL: 'SPECIAL',
+    MUSIC: 'SPECIAL',
+  };
   return {
     providerId: String(providerId),
     title: titleOf(info.title),
@@ -69,6 +78,7 @@ function normaliseConsumetInfo(info, providerId) {
     year: Number(String(releaseDate || '').slice(0, 4)) || null,
     studio: Array.isArray(info.studios) ? info.studios[0] : (info.studio || null),
     status: statusMap[String(info.status || '').toUpperCase()] || String(info.status || 'completed').toLowerCase(),
+    media_type: formatMap[String(info.type || info.format || '').toUpperCase()] || 'TV',
     genres: Array.isArray(info.genres) ? info.genres : [],
     episodes: Array.isArray(info.episodes) ? info.episodes : [],
   };
@@ -230,11 +240,11 @@ exports.importConsumetAnime = async (req, res) => {
     const banner = await persistRemoteImage(metadata.bannerUrl, 'banners');
     let animeId = existing[0]?.id;
     if (animeId) {
-      await db.query(`UPDATE anime SET title=?, description=?, cover_image=?, banner_image=?, year=?, studio=?, status=?, cover_public_id=COALESCE(?, cover_public_id), banner_public_id=COALESCE(?, banner_public_id) WHERE id=?`,
-        [metadata.title, metadata.description, cover.url, banner.url, metadata.year, metadata.studio, metadata.status, cover.publicId, banner.publicId, animeId]);
+      await db.query(`UPDATE anime SET title=?, description=?, cover_image=?, banner_image=?, year=?, studio=?, status=?, media_type=?, cover_public_id=COALESCE(?, cover_public_id), banner_public_id=COALESCE(?, banner_public_id) WHERE id=?`,
+        [metadata.title, metadata.description, cover.url, banner.url, metadata.year, metadata.studio, metadata.status, metadata.media_type || 'TV', cover.publicId, banner.publicId, animeId]);
     } else {
-      const [result] = await db.query(`INSERT INTO anime (title, description, cover_image, banner_image, cover_public_id, banner_public_id, year, studio, status, is_premium, is_featured, source_provider, source_id, source_slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'consumet', ?, ?)`,
-        [metadata.title, metadata.description, cover.url, banner.url, cover.publicId, banner.publicId, metadata.year, metadata.studio, metadata.status, providerId, providerId]);
+      const [result] = await db.query(`INSERT INTO anime (title, description, cover_image, banner_image, cover_public_id, banner_public_id, year, studio, status, media_type, is_premium, is_featured, source_provider, source_id, source_slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'consumet', ?, ?)`,
+        [metadata.title, metadata.description, cover.url, banner.url, cover.publicId, banner.publicId, metadata.year, metadata.studio, metadata.status, metadata.media_type || 'TV', providerId, providerId]);
       animeId = result.insertId;
     }
     for (const rawName of metadata.genres) {

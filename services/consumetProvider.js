@@ -8,9 +8,32 @@ const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.A
 const availableProviders = Object.keys(ANIME);
 console.log(`[STREAM SETUP] Available ANIME providers:`, availableProviders.join(', '));
 
+// ── Thordata Proxy (Single) ───────────────────────────────
+// If PROXY_HOST/PORT/USER/PASS are set, build a proxy URL for
+// the fallback HTTP client (Kitsu API, etc.)
+const THORDATA_PROXY_URL = (() => {
+  const host = process.env.PROXY_HOST;
+  const port = process.env.PROXY_PORT;
+  const user = process.env.PROXY_USER;
+  const pass = process.env.PROXY_PASS;
+  if (host && port) {
+    const auth = user && pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : '';
+    return `http://${auth}${host}:${port}`;
+  }
+  return null;
+})();
+
 // Load a comma-separated list of proxies from environment variables.
 // Format: http://USER:PASS@HOST:PORT,http://USER2:PASS2@HOST2:PORT2
-const PROXY_LIST = (process.env.PROXY_LIST || '').split(',').map(p => p.trim()).filter(Boolean);
+// If THORDATA_PROXY_URL is set but PROXY_LIST is empty, add it as the single entry.
+const PROXY_LIST = (() => {
+  const list = (process.env.PROXY_LIST || '').split(',').map(p => p.trim()).filter(Boolean);
+  if (list.length === 0 && THORDATA_PROXY_URL) {
+    return [THORDATA_PROXY_URL];
+  }
+  return list;
+})();
+
 let proxyIndex = 0;
 
 const customAxios = axios.create({
@@ -206,6 +229,13 @@ class ConsumetProvider {
    *   3. Find the episode matching the given number
    *   4. Resolve streaming sources for that episode
    *   5. Return the highest quality .m3u8 URL
+   *
+   * Movie Handling:
+   *   When episodeNumber is 1 and the anime is a standalone movie
+   *   (e.g. "Jujutsu Kaisen 0"), the episode list may contain only 1
+   *   entry or the "episode" may be identified by title rather than number.
+   *   The smart search retry drops trailing numerical tokens (e.g. "0")
+   *   to find the parent entry.
    */
   async resolveStreamUrl(animeTitle, episodeNumber) {
     // 1. Search for the anime
@@ -214,6 +244,7 @@ class ConsumetProvider {
     let searchResults = searchResponse.results ? searchResponse.results : searchResponse;
 
     // THE SMART RETRY: If 0 results, drop the last word (e.g., "Jujutsu Kaisen 0" -> "Jujutsu Kaisen")
+    // This handles movie titles that include a numeric suffix like "0" or "I".
     if ((!Array.isArray(searchResults) || searchResults.length === 0) && animeTitle.includes(' ')) {
       const simplifiedTitle = animeTitle.split(' ').slice(0, -1).join(' ');
       console.log(`[resolveStream WARN] 0 results for exact title. Retrying with widened search: "${simplifiedTitle}"...`);
@@ -254,13 +285,60 @@ class ConsumetProvider {
     // 3. Fetch full anime info (includes episodes)
     const info = await provider.fetchAnimeInfo(slug);
     const episodes = info?.episodes || [];
+
+    // ── Movie-specific handling ────────────────────────────
+    // If no episodes array exists or it's empty, this could be a movie
+    // where the provider reports 0 episodes. Try fetching the entire
+    // info as a single "episode" by using the anime ID itself.
     if (!episodes.length) {
-      throw new Error(`No episodes found for "${animeTitle}". The provider may not support this title.`);
+      console.log(`[resolveStream] "${animeTitle}" has no episode list — treating as movie/single-entry.`);
+      // For movies, the "episode" may be the anime itself.
+      // Attempt to resolve sources using the anime slug/id as the episode ID.
+      try {
+        const sources = await provider.fetchEpisodeSources(slug);
+        const streamList = sources?.sources || [];
+        if (streamList.length > 0) {
+          const bestSource = streamList.reduce((best, src) =>
+            (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
+          , streamList[0]);
+          return {
+            streamUrl: bestSource?.url || streamList[0]?.url,
+            allSources: streamList,
+            subtitles: sources?.subtitles || [],
+            episodeTitle: info.title || animeTitle,
+            episodeImage: info.image || null,
+          };
+        }
+      } catch (err) {
+        console.warn(`[resolveStream] Movie direct fetch failed: ${err.message}`);
+      }
+      throw new Error(`No playable sources found for "${animeTitle}".`);
     }
 
     // 4. Find the target episode by number
     const targetEp = episodes.find(ep => ep.number === Number(episodeNumber));
     if (!targetEp) {
+      // For movies, where episodeNumber=1 but the provider may not have
+      // numbered its single entry, use the first episode as fallback.
+      if (Number(episodeNumber) === 1 && episodes.length >= 1) {
+        console.log(`[resolveStream] Episode 1 not found by number — using first episode entry for "${animeTitle}".`);
+        const firstEp = episodes[0];
+        const sources = await provider.fetchEpisodeSources(firstEp.id);
+        const streamList = sources?.sources || [];
+        if (!streamList.length) {
+          throw new Error(`No stream sources found for "${animeTitle}".`);
+        }
+        const bestSource = streamList.reduce((best, src) =>
+          (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
+        , streamList[0]);
+        return {
+          streamUrl: bestSource?.url || streamList[0]?.url,
+          allSources: streamList,
+          subtitles: sources?.subtitles || [],
+          episodeTitle: firstEp.title || null,
+          episodeImage: firstEp.image || null,
+        };
+      }
       throw new Error(`Episode ${episodeNumber} not found for "${animeTitle}".`);
     }
 

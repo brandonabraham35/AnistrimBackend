@@ -34,17 +34,39 @@ exports.getStream = async (req, res) => {
   try {
     let episodeNumber;
 
-    // The frontend incorrectly sends the episode's database ID instead of its sequential number.
-    // We query the database to find the correct sequential `episode_number`.
-    const [episodes] = await db.query(
-      'SELECT episode_number FROM episodes WHERE id = ?',
-      [episodeIdentifier]
+    // ── Movie Detection Fix ────────────────────────────────
+    // Query the database to check the media_type for this title.
+    // If the requested media is a standalone MOVIE, ignore the
+    // arbitrary episode number from the frontend and use episode 1.
+    const [mediaRows] = await db.query(
+      'SELECT media_type FROM anime WHERE title = ? OR title_japanese = ? LIMIT 1',
+      [animeTitle, animeTitle]
     );
 
-    if (episodes && episodes.length > 0) {
-      episodeNumber = episodes[0].episode_number;
+    if (mediaRows && mediaRows.length > 0) {
+      const mediaType = (mediaRows[0].media_type || 'TV').toUpperCase();
+      if (mediaType === 'MOVIE') {
+        console.log(`[StreamController] "${animeTitle}" is a MOVIE — overriding episode to 1`);
+        episodeNumber = 1;
+      } else {
+        // Standard TV/OVA/SPECIAL handling:
+        // The frontend incorrectly sends the episode's database ID instead of
+        // its sequential number. We query the database to find the correct
+        // sequential `episode_number`.
+        const [episodes] = await db.query(
+          'SELECT episode_number FROM episodes WHERE id = ?',
+          [episodeIdentifier]
+        );
+
+        if (episodes && episodes.length > 0) {
+          episodeNumber = episodes[0].episode_number;
+        } else {
+          // As a fallback, assume the identifier *is* the correct episode number
+          episodeNumber = episodeIdentifier;
+        }
+      }
     } else {
-      // As a fallback, assume the identifier *is* the correct episode number for older clients.
+      // Fallback: No anime found in DB — use identifier as-is
       episodeNumber = episodeIdentifier;
     }
 

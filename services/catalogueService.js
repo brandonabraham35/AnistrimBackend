@@ -36,9 +36,9 @@ async function importKitsuAnime(metadata) {
   // internal catalogue metadata; the content fields are the same strict set
   // accepted by the existing admin create endpoint.
   const [result] = await db.query(
-    `INSERT INTO anime (title, description, cover_image, banner_image, year, studio, status, is_premium, is_featured, source_provider, source_id, source_slug)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'kitsu', ?, ?)`,
-    [metadata.title, metadata.description, metadata.cover_image, metadata.banner_image, metadata.year, metadata.studio || null, metadata.status, metadata.kitsu_id, metadata.slug]
+    `INSERT INTO anime (title, description, cover_image, banner_image, year, studio, status, media_type, is_premium, is_featured, source_provider, source_id, source_slug)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'kitsu', ?, ?)`,
+    [metadata.title, metadata.description, metadata.cover_image, metadata.banner_image, metadata.year, metadata.studio || null, metadata.status, metadata.media_type || 'TV', metadata.kitsu_id, metadata.slug]
   );
   await replaceGenres(result.insertId, metadata.genres);
   const [rows] = await db.query('SELECT * FROM anime WHERE id = ?', [result.insertId]);
