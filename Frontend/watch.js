@@ -1,4 +1,14 @@
 // watch.js — Premium skip intro + autoplay next episode + Multi-API streaming
+// ── Episode Identity ────────────────────────────────────────
+// Key distinction:
+//   episodeId   = Database record ID (used for progress saving, DB lookups)
+//   episodeNumber = Sequential episode number (1, 2, 3...) (used for streaming)
+//
+// The URL now supports TWO params:
+//   ?epId=123   → Database ID (for progress/DB operations)
+//   ?ep=5       → Episode NUMBER (for stream resolution)
+//   (backward compat: if only epId is present and no ep, we still try to
+//    resolve episode number from the database on the backend)
 let currentAnime = null;
 let currentEp    = 1;
 let nextEpData   = null;
@@ -22,8 +32,16 @@ const AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 async function loadWatch() {
   const params   = new URLSearchParams(window.location.search);
   const animeId  = params.get('animeId') || params.get('id');
-  const epIdRaw  = params.get('epId') || params.get('ep');
-  currentEp      = parseInt(epIdRaw) || 1; // epIdRaw is from URL, so it's safe to parse as int
+  const epIdRaw  = params.get('epId') || params.get('id'); // DB record ID for progress
+  const epNumRaw = params.get('ep');                       // Explicit episode number (streaming)
+
+  // Set episode number: prefer ?ep=, fall back to ?epId=, fall back to 1
+  if (epNumRaw) {
+    currentEp = parseInt(epNumRaw, 10) || 1;
+  } else {
+    currentEp = parseInt(epIdRaw, 10) || 1;
+  }
+
   if (!animeId) { showWatchError('Missing anime ID. Please go back and try again.'); return; }
 
   try {

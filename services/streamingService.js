@@ -1,64 +1,30 @@
 // ============================================================
 //  services/streamingService.js — Multi-API Fallback Engine
-//  Aggregates stream sources from multiple providers with
-//  configurable priority ordering and quality tier enforcement.
+//
+//  CLEAN ORCHESTRATION LAYER:
+//    • Does NOT contain scraping logic (all providers via ConsumetProvider)
+//    • Pre-queries cache before calling providers
+//    • Centralized retry orchestration via providerHttp
+//    • Provider health check integration
+//    • Structured logging throughout
+//    • Proper fallback chain
 //
 //  Providers (configurable via STREAM_PROVIDERS env var):
-//    consumet — In-memory @consumet/extensions
-//    consumet-http — External Consumet API server
-//    miruro — Miruro API
-//    zoro — Direct Zoro/Aniwatch via Consumet
+//    consumet      — In-memory @consumet/extensions (via ConsumetProvider)
+//    consumet-http — External Consumet API server (via providerHttp)
+//    miruro        — Miruro API (via providerHttp)
 //
 //  Quality Tiers:
 //    Free users:  ≤ 720p (480p, 720p)
 //    Premium/Admin users: up to 4K (1080p, 4K)
 //
-//  Proxy Support:
-//    Thordata residential proxy is injected into all outbound
-//    provider requests via process.env.PROXY_HOST/PORT/USER/PASS
-//    to mask the Render server IP and avoid 403 blocks.
+//  Proxy:
+//    Uses the SHARED proxy manager from utils/providerHttp.js
+//    NO duplicate proxy configuration.
 // ============================================================
-const axios = require('axios');
-const { HttpsProxyAgent } = require('https-proxy-agent');
 const { ConsumetProvider } = require('./consumetProvider');
-
-// ── Thordata Proxy Agent ──────────────────────────────────
-// Constructs a proxy agent from environment variables if they are set.
-// All external provider HTTP calls use this agent to avoid IP-based blocks.
-const PROXY_URL = (() => {
-  const host = process.env.PROXY_HOST;
-  const port = process.env.PROXY_PORT;
-  const user = process.env.PROXY_USER;
-  const pass = process.env.PROXY_PASS;
-  if (host && port) {
-    const auth = user && pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : '';
-    return `http://${auth}${host}:${port}`;
-  }
-  return null;
-})();
-
-const proxyAgent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : null;
-
-if (proxyAgent) {
-  console.log(`[StreamingService] ✅ Thordata proxy configured via ${process.env.PROXY_HOST}:${process.env.PROXY_PORT}`);
-} else {
-  console.log('[StreamingService] ℹ️ No proxy configured — using direct connections. Set PROXY_HOST/PORT/USER/PASS to enable.');
-}
-
-// ── Shared axios instance with proxy agent ────────────────
-const proxiedAxios = axios.create({
-  timeout: 15000,
-  httpsAgent: proxyAgent || undefined,
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  },
-});
-
-// ── Provider Priority ───────────────────────────────────────
-const PROVIDER_ORDER = (process.env.STREAM_PROVIDERS || 'consumet')
-  .split(',')
-  .map(s => s.trim().toLowerCase())
-  .filter(Boolean);
+const { request, isProviderHealthy, getProviderHealth } = require('../utils/providerHttp');
+const cache = require('../utils/cacheService');
 
 // ── Quality Tier Definitions ────────────────────────────────
 const QUALITY_TIERS = {
@@ -74,7 +40,9 @@ const QUALITY_TIERS = {
   },
 };
 
-// Parse quality number from string like "1080p", "1080", "4K", "2160p"
+/**
+ * Parse quality number from string like "1080p", "1080", "4K", "2160p"
+ */
 function parseQualityNumber(qualityStr) {
   if (!qualityStr || typeof qualityStr !== 'string') return 0;
   const cleaned = qualityStr.toLowerCase().replace(/[^0-9k]/g, '');
@@ -95,9 +63,7 @@ function filterSourcesByTier(sources, isPremium) {
 
   return sources.filter(src => {
     const qNum = parseQualityNumber(src.quality);
-    // If we can parse a number, enforce the tier max
     if (qNum > 0) return qNum <= tier.max;
-    // Otherwise, check if the quality string is in the allowed list
     const qStr = (src.quality || '').toLowerCase();
     return tier.allowed.includes(qStr);
   });
@@ -116,6 +82,12 @@ function getBestQualityLabel(sources, isPremium) {
   return sorted[0].quality || 'Auto';
 }
 
+// ── Provider Priority ───────────────────────────────────────
+const PROVIDER_ORDER = (process.env.STREAM_PROVIDERS || 'consumet')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(Boolean);
+
 // ── Consumet (In-Memory) Provider ──────────────────────────
 let consumetProvider = null;
 
@@ -127,15 +99,28 @@ function getConsumetProvider() {
 }
 
 async function resolveViaConsumet(animeTitle, episodeNumber) {
+  const startTime = Date.now();
+  console.log(`[StreamingService] ➡️ consumet | "${animeTitle}" Ep ${episodeNumber}`);
+
   try {
+    // Check provider health first
+    if (!isProviderHealthy('consumet')) {
+      console.warn(`[StreamingService] ⏭ consumet is DEGRADED — skipping`);
+      return null;
+    }
+
     const provider = getConsumetProvider();
     const result = await provider.resolveStreamUrl(animeTitle, episodeNumber);
+
+    const elapsed = Date.now() - startTime;
 
     // Normalize sources into standard format
     const sources = (result.allSources || []).map(s => ({
       url: s.url,
       quality: s.quality || 'auto',
     }));
+
+    console.log(`[StreamingService] ✅ consumet | ${elapsed}ms | ${sources.length} sources found`);
 
     return {
       provider: 'consumet',
@@ -147,7 +132,8 @@ async function resolveViaConsumet(animeTitle, episodeNumber) {
       })),
     };
   } catch (err) {
-    console.warn(`[StreamingService] Consumet failed: ${err.message}`);
+    const elapsed = Date.now() - startTime;
+    console.warn(`[StreamingService] ❌ consumet | ${elapsed}ms | ${err.message}`);
     return null;
   }
 }
@@ -155,26 +141,62 @@ async function resolveViaConsumet(animeTitle, episodeNumber) {
 // ── Consumet HTTP API Provider ─────────────────────────────
 async function resolveViaConsumetHttp(animeTitle, episodeNumber) {
   const baseUrl = process.env.CONSUMET_API_URL;
-  if (!baseUrl) return null;
+  if (!baseUrl) {
+    console.log(`[StreamingService] ⏭ consumet-http skipped (CONSUMET_API_URL not set)`);
+    return null;
+  }
+
+  const startTime = Date.now();
+  console.log(`[StreamingService] ➡️ consumet-http | "${animeTitle}" Ep ${episodeNumber}`);
 
   try {
-    // First search for the anime — use proxied axios to mask server IP
-    const searchRes = await proxiedAxios.get(`${baseUrl}/anime/${encodeURIComponent(animeTitle)}`);
+    if (!isProviderHealthy('consumet-http')) {
+      console.warn(`[StreamingService] ⏭ consumet-http is DEGRADED — skipping`);
+      return null;
+    }
+
+    // First search for the anime using shared providerHttp (with proxy + retry)
+    const searchRes = await request({
+      method: 'get',
+      url: `${baseUrl}/anime/${encodeURIComponent(animeTitle)}`,
+    }, {
+      providerName: 'consumet-http',
+      timeout: 15000,
+    });
 
     const results = searchRes.data?.results || [];
-    if (!results.length) return null;
+    if (!results.length) {
+      console.warn(`[StreamingService] ⚠️ consumet-http search returned 0 results`);
+      return null;
+    }
 
     const target = results[0];
     const animeId = target.id;
 
-    // Fetch episodes — use proxied axios
-    const epRes = await proxiedAxios.get(`${baseUrl}/anime/${animeId}`);
+    // Fetch episodes
+    const epRes = await request({
+      method: 'get',
+      url: `${baseUrl}/anime/${animeId}`,
+    }, {
+      providerName: 'consumet-http',
+      timeout: 15000,
+    });
+
     const episodes = epRes.data?.episodes || [];
     const targetEp = episodes.find(e => e.number === Number(episodeNumber));
-    if (!targetEp?.id) return null;
+    if (!targetEp?.id) {
+      console.warn(`[StreamingService] ⚠️ consumet-http episode ${episodeNumber} not found`);
+      return null;
+    }
 
-    // Fetch sources — use proxied axios
-    const srcRes = await proxiedAxios.get(`${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`);
+    // Fetch sources
+    const srcRes = await request({
+      method: 'get',
+      url: `${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`,
+    }, {
+      providerName: 'consumet-http',
+      timeout: 15000,
+    });
 
     const rawSources = srcRes.data?.sources || [];
     const subtitles = srcRes.data?.subtitles || [];
@@ -188,6 +210,9 @@ async function resolveViaConsumetHttp(animeTitle, episodeNumber) {
       parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
     , sources[0]);
 
+    const elapsed = Date.now() - startTime;
+    console.log(`[StreamingService] ✅ consumet-http | ${elapsed}ms | ${sources.length} sources`);
+
     return {
       provider: 'consumet-http',
       streamUrl: best?.url || null,
@@ -198,7 +223,8 @@ async function resolveViaConsumetHttp(animeTitle, episodeNumber) {
       })),
     };
   } catch (err) {
-    console.warn(`[StreamingService] Consumet-HTTP failed: ${err.message}`);
+    const elapsed = Date.now() - startTime;
+    console.warn(`[StreamingService] ❌ consumet-http | ${elapsed}ms | ${err.message}`);
     return null;
   }
 }
@@ -206,12 +232,28 @@ async function resolveViaConsumetHttp(animeTitle, episodeNumber) {
 // ── Miruro API Provider ────────────────────────────────────
 async function resolveViaMiruro(animeTitle, episodeNumber) {
   const baseUrl = process.env.MIRURO_API_URL;
-  if (!baseUrl) return null;
+  if (!baseUrl) {
+    console.log(`[StreamingService] ⏭ miruro skipped (MIRURO_API_URL not set)`);
+    return null;
+  }
+
+  const startTime = Date.now();
+  console.log(`[StreamingService] ➡️ miruro | "${animeTitle}" Ep ${episodeNumber}`);
 
   try {
-    // Use proxied axios to mask server IP from Miruro
-    const searchRes = await proxiedAxios.get(`${baseUrl}/search`, {
+    if (!isProviderHealthy('miruro')) {
+      console.warn(`[StreamingService] ⏭ miruro is DEGRADED — skipping`);
+      return null;
+    }
+
+    // Search via shared providerHttp
+    const searchRes = await request({
+      method: 'get',
+      url: `${baseUrl}/search`,
       params: { query: animeTitle },
+    }, {
+      providerName: 'miruro',
+      timeout: 15000,
     });
 
     const results = searchRes.data?.results || [];
@@ -220,8 +262,14 @@ async function resolveViaMiruro(animeTitle, episodeNumber) {
     const animeData = results[0];
     const animeId = animeData.id || animeData.slug;
 
-    // Get episode sources — use proxied axios
-    const epRes = await proxiedAxios.get(`${baseUrl}/anime/${animeId}/episode/${episodeNumber}`);
+    // Get episode sources
+    const epRes = await request({
+      method: 'get',
+      url: `${baseUrl}/anime/${animeId}/episode/${episodeNumber}`,
+    }, {
+      providerName: 'miruro',
+      timeout: 15000,
+    });
 
     const rawSources = epRes.data?.sources || [];
     const sources = rawSources.map(s => ({
@@ -233,6 +281,9 @@ async function resolveViaMiruro(animeTitle, episodeNumber) {
       parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
     , sources[0]);
 
+    const elapsed = Date.now() - startTime;
+    console.log(`[StreamingService] ✅ miruro | ${elapsed}ms | ${sources.length} sources`);
+
     return {
       provider: 'miruro',
       streamUrl: best?.url || null,
@@ -243,7 +294,8 @@ async function resolveViaMiruro(animeTitle, episodeNumber) {
       })),
     };
   } catch (err) {
-    console.warn(`[StreamingService] Miruro failed: ${err.message}`);
+    const elapsed = Date.now() - startTime;
+    console.warn(`[StreamingService] ❌ miruro | ${elapsed}ms | ${err.message}`);
     return null;
   }
 }
@@ -254,6 +306,13 @@ const PROVIDER_RESOLVERS = {
   'consumet-http': resolveViaConsumetHttp,
   miruro: resolveViaMiruro,
 };
+
+// ── Cache Helpers ──────────────────────────────────────────
+const STREAM_CACHE_TTL = parseInt(process.env.STREAM_CACHE_TTL_SECONDS || '300', 10); // 5 minutes default
+
+function buildCacheKey(animeTitle, episodeNumber, providerName) {
+  return `stream:${animeTitle.toLowerCase().replace(/\s+/g, '-')}:ep${episodeNumber}:${providerName || 'all'}`;
+}
 
 // ── Main Resolver ──────────────────────────────────────────
 
@@ -266,32 +325,55 @@ const PROVIDER_RESOLVERS = {
  * @param {object} options
  * @param {boolean} options.isPremium — Whether user can access 1080p/4K
  * @param {string} [options.preferredProvider] — Force a specific provider
+ * @param {boolean} [options.skipCache] — Bypass cache for this request
  * @returns {Promise<{provider: string, streamUrl: string|null, sources: Array, subtitles: Array, bestQuality: string, tier: string}>}
  */
 async function resolveStream(animeTitle, episodeNumber, options = {}) {
-  const { isPremium = false, preferredProvider } = options;
+  const { isPremium = false, preferredProvider, skipCache = false } = options;
   const tier = isPremium ? 'premium' : 'free';
+  const overallStart = Date.now();
 
-  // Determine provider order
+  console.log(`[StreamingService] 🎬 resolveStream | "${animeTitle}" Ep ${episodeNumber} | tier: ${tier}`);
+
+  // ── Cache Check ──────────────────────────────────────────
+  if (!skipCache) {
+    const cacheKey = buildCacheKey(animeTitle, episodeNumber);
+    try {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        console.log(`[StreamingService] 💾 CACHE HIT | "${animeTitle}" Ep ${episodeNumber}`);
+        return cached;
+      }
+      console.log(`[StreamingService] 💾 CACHE MISS | "${animeTitle}" Ep ${episodeNumber}`);
+    } catch (cacheErr) {
+      console.warn(`[StreamingService] Cache read failed: ${cacheErr.message} — proceeding without cache`);
+    }
+  } else {
+    console.log(`[StreamingService] ⏭ Cache bypassed (skipCache=true)`);
+  }
+
+  // ── Determine provider order ─────────────────────────────
   const providerOrder = preferredProvider
     ? [preferredProvider, ...PROVIDER_ORDER.filter(p => p !== preferredProvider)]
     : PROVIDER_ORDER;
 
+  console.log(`[StreamingService] Provider order: ${providerOrder.join(' → ')}`);
+
+  // ── Try providers in order ───────────────────────────────
   for (const providerName of providerOrder) {
     const resolver = PROVIDER_RESOLVERS[providerName];
     if (!resolver) {
-      console.warn(`[StreamingService] Unknown provider: ${providerName}`);
+      console.warn(`[StreamingService] ⚠️ Unknown provider: ${providerName}`);
       continue;
     }
 
-    console.log(`[StreamingService] Trying provider: ${providerName}`);
     const result = await resolver(animeTitle, episodeNumber);
 
     if (result && result.sources && result.sources.length > 0) {
       // Filter by tier
       const filteredSources = filterSourcesByTier(result.sources, isPremium);
       if (filteredSources.length === 0) {
-        console.log(`[StreamingService] ${providerName} returned sources but none match tier "${tier}"`);
+        console.log(`[StreamingService] ⚠️ ${providerName} returned sources but none match tier "${tier}"`);
         continue;
       }
 
@@ -300,9 +382,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
         parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
       , filteredSources[0]);
 
-      console.log(`[StreamingService] ✅ ${providerName} — best quality: ${best.quality}`);
-
-      return {
+      const payload = {
         provider: result.provider,
         streamUrl: best.url,
         sources: filteredSources,
@@ -310,11 +390,30 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
         bestQuality: best.quality || 'auto',
         tier,
       };
+
+      // ── Cache the result ──────────────────────────────
+      try {
+        const cacheKey = buildCacheKey(animeTitle, episodeNumber);
+        await cache.set(cacheKey, payload, STREAM_CACHE_TTL);
+        console.log(`[StreamingService] 💾 CACHED | "${animeTitle}" Ep ${episodeNumber} for ${STREAM_CACHE_TTL}s`);
+      } catch (cacheErr) {
+        console.warn(`[StreamingService] Cache write failed: ${cacheErr.message}`);
+      }
+
+      const elapsed = Date.now() - overallStart;
+      console.log(`[StreamingService] ✅ RESOLVED | "${animeTitle}" Ep ${episodeNumber} → ${result.provider} (${best.quality}) | ${elapsed}ms`);
+
+      return payload;
     }
+
+    console.log(`[StreamingService] ⚠️ ${providerName} returned no usable sources`);
   }
 
   // All providers failed
-  throw new Error(`No stream provider could resolve "${animeTitle}" Episode ${episodeNumber}`);
+  const elapsed = Date.now() - overallStart;
+  const errorMsg = `No stream provider could resolve "${animeTitle}" Episode ${episodeNumber} (${elapsed}ms)`;
+  console.error(`[StreamingService] 🛑 ${errorMsg}`);
+  throw new Error(errorMsg);
 }
 
 /**
@@ -330,6 +429,8 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
 async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
   const { isPremium = false } = options;
   const results = [];
+
+  console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${episodeNumber}`);
 
   for (const providerName of PROVIDER_ORDER) {
     const resolver = PROVIDER_RESOLVERS[providerName];
@@ -351,11 +452,17 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
         });
       }
     } catch (err) {
-      // Silently skip failed providers
+      console.warn(`[StreamingService] resolveAllProviders: ${providerName} failed: ${err.message}`);
     }
   }
 
+  console.log(`[StreamingService] 📋 resolveAllProviders | ${results.length} providers resolved`);
   return results;
+}
+
+// ── Provider Health Endpoint ───────────────────────────────
+function getProviderHealthStatus() {
+  return getProviderHealth();
 }
 
 module.exports = {
@@ -363,6 +470,7 @@ module.exports = {
   resolveAllProviders,
   filterSourcesByTier,
   getBestQualityLabel,
+  getProviderHealthStatus,
   QUALITY_TIERS,
 };
 

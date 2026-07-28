@@ -1,121 +1,134 @@
-const axios = require('axios');
+// ============================================================
+//  services/consumetProvider.js — Consumet In-Memory Provider
+//
+//  Uses @consumet/extensions with:
+//    • Shared HTTP client from utils/providerHttp.js for proxy,
+//      retry, and header management
+//    • Unified proxy configuration (no duplicate proxy logic)
+//    • Provider health tracking via providerHttp
+//    • Rotating proxies with 403 retry handling
+//    • Cloudflare-bypass headers
+//    • Fallback across multiple Consumet-supported providers
+// ============================================================
 const consumet = require('@consumet/extensions');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const { buildHeaders, getProxyList, createProxyAgent, getNextProxyUrl } = require('../utils/providerHttp');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
 const availableProviders = Object.keys(ANIME);
-console.log(`[STREAM SETUP] Available ANIME providers:`, availableProviders.join(', '));
+console.log(`[ConsumetProvider] Available ANIME providers:`, availableProviders.join(', '));
 
-// ── Thordata Proxy (Single) ───────────────────────────────
-// If PROXY_HOST/PORT/USER/PASS are set, build a proxy URL for
-// the fallback HTTP client (Kitsu API, etc.)
-const THORDATA_PROXY_URL = (() => {
-  const host = process.env.PROXY_HOST;
-  const port = process.env.PROXY_PORT;
-  const user = process.env.PROXY_USER;
-  const pass = process.env.PROXY_PASS;
-  if (host && port) {
-    const auth = user && pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : '';
-    return `http://${auth}${host}:${port}`;
-  }
-  return null;
-})();
+// ── Shared Proxy Integration ──────────────────────────────
+// Build a customAxios that uses the SAME proxy configuration as providerHttp.js
+// The @consumet/extensions library accepts an axios instance — we configure it
+// to use our shared proxy rotation and unified headers.
 
-// Load a comma-separated list of proxies from environment variables.
-// Format: http://USER:PASS@HOST:PORT,http://USER2:PASS2@HOST2:PORT2
-// If THORDATA_PROXY_URL is set but PROXY_LIST is empty, add it as the single entry.
-const PROXY_LIST = (() => {
-  const list = (process.env.PROXY_LIST || '').split(',').map(p => p.trim()).filter(Boolean);
-  if (list.length === 0 && THORDATA_PROXY_URL) {
-    return [THORDATA_PROXY_URL];
-  }
-  return list;
-})();
+const axios = require('axios');
 
-let proxyIndex = 0;
+// Build the initial headers from our shared system
+const sharedHeaders = buildHeaders('consumet');
 
 const customAxios = axios.create({
-    timeout: 15000, // Increased timeout for proxies
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-    }
+  timeout: 15000,
+  headers: sharedHeaders,
 });
 
+// Attach rotating proxy interceptor — uses same proxy list as providerHttp
+const PROXY_LIST = getProxyList();
+
 if (PROXY_LIST.length > 0) {
-    console.log(`[STREAM SETUP] Initializing with ${PROXY_LIST.length} rotating proxies.`);
+  console.log(`[ConsumetProvider] Using shared proxy rotation (${PROXY_LIST.length} proxies)`);
 
-    // Request interceptor to attach a rotating proxy to each outgoing request
-    customAxios.interceptors.request.use(config => {
-        // Round-robin proxy selection
-        const proxyUrl = PROXY_LIST[proxyIndex];
-        proxyIndex = (proxyIndex + 1) % PROXY_LIST.length;
-        
-        config.httpsAgent = new HttpsProxyAgent(proxyUrl);
-        return config;
-    });
+  // Request interceptor: attach proxy agent
+  customAxios.interceptors.request.use(config => {
+    const proxyUrl = getNextProxyUrl();
+    if (proxyUrl) {
+      config.httpsAgent = createProxyAgent(proxyUrl);
+      // Add Referer header for Cloudflare-bypass
+      config.headers['Referer'] = 'https://consumet.org/';
+      config.headers['Origin'] = 'https://consumet.org';
+    }
+    return config;
+  });
 
-    // Response interceptor to handle 403 Forbidden errors by retrying without a proxy
-    customAxios.interceptors.response.use(
-        (response) => response,
-        async (error) => {
-            const config = error.config;
-            if (error.response?.status === 403 && config.httpsAgent && !config._retry) {
-                config._retry = true;
-                console.warn(`[Proxy] Request to ${config.url} was blocked (403). Retrying once without proxy...`);
-                return customAxios.request({ ...config, httpsAgent: null });
-            }
-            return Promise.reject(error);
+  // Response interceptor: on 403, retry with a different proxy once
+  customAxios.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const config = error.config;
+      if (error.response?.status === 403 && config.httpsAgent && !config._retry) {
+        config._retry = true;
+        console.warn(`[ConsumetProvider] 403 blocked — retrying with different proxy...`);
+        // Get a new proxy (next in rotation)
+        const newProxyUrl = getNextProxyUrl();
+        if (newProxyUrl) {
+          config.httpsAgent = createProxyAgent(newProxyUrl);
+          return customAxios.request(config);
         }
-    );
+      }
+      // On 403 without proxy, or retry exhausted — try without proxy as last resort
+      if (error.response?.status === 403 && config.httpsAgent && config._retry) {
+        console.warn(`[ConsumetProvider] 403 persists with proxy — retrying WITHOUT proxy...`);
+        config._retry = true;
+        config.httpsAgent = null;
+        return customAxios.request(config);
+      }
+      return Promise.reject(error);
+    }
+  );
 } else {
-    console.log(`[STREAM SETUP] No proxies configured. Using direct connection.`);
+  console.log(`[ConsumetProvider] No proxies configured. Consumet uses direct connection.`);
 }
 
-// Priority list excluding hard-blocked providers (AnimePahe / HiAnime)
-const preferredOrder = ['KickAssAnime', 'AnimeKai', 'AnimeSama', 'AnimeSaturn'];
+// ── Provider Selection ────────────────────────────────────
+// Priority order — Consumet's internal fallback chain.
+// AnimePahe and Hianime are included but will be attempted WITH proxy.
+// The proxy rotation should handle 403 blocks from these targets.
+const preferredOrder = [
+  'KickAssAnime',
+  'AnimePahe',
+  'AnimeKai',
+  'AnimeSaturn',
+  'Hianime',
+  'AnimeSama',
+];
 
 let fallbackProvider = null;
 
 for (const name of preferredOrder) {
-    const key = availableProviders.find(k => k.toLowerCase() === name.toLowerCase());
-    if (key && typeof ANIME[key] === 'function') {
-        try {
-            console.log(`[STREAM SETUP] Success: Using ${key}`);
-            fallbackProvider = new ANIME[key](customAxios);
-            break;
-        } catch (e) {
-            console.warn(`[STREAM SETUP] Failed to instantiate ${key}:`, e.message);
-        }
+  const key = availableProviders.find(k => k.toLowerCase() === name.toLowerCase());
+  if (key && typeof ANIME[key] === 'function') {
+    try {
+      console.log(`[ConsumetProvider] ✅ Selected provider: ${key}`);
+      fallbackProvider = new ANIME[key](customAxios);
+      break;
+    } catch (e) {
+      console.warn(`[ConsumetProvider] Failed to instantiate ${key}:`, e.message);
     }
+  }
 }
 
+// Ultimate safe fallback — exclude known-broken providers
 if (!fallbackProvider) {
-    const safeKey = availableProviders.find(key => 
-        typeof ANIME[key] === 'function' && 
-        !key.toLowerCase().includes('pahe') &&
-        !key.toLowerCase().includes('hianime')
-    );
-    if (safeKey) {
-        console.log(`[STREAM SETUP] Blind Fallback Success: Using ${safeKey}`);
-        fallbackProvider = new ANIME[safeKey](customAxios);
-    } else {
-        throw new Error("CRITICAL: No safe anime providers found.");
-    }
+  const safeKey = availableProviders.find(key =>
+    typeof ANIME[key] === 'function' &&
+    !key.toLowerCase().includes('pahe') &&
+    !key.toLowerCase().includes('hianime')
+  );
+  if (safeKey) {
+    console.log(`[ConsumetProvider] ⚠️  Blind fallback: ${safeKey}`);
+    fallbackProvider = new ANIME[safeKey](customAxios);
+  } else {
+    throw new Error("[ConsumetProvider] CRITICAL: No usable anime providers found in @consumet/extensions.");
+  }
 }
 
+// Wrap in AniList meta-provider
 const provider = new META.Anilist(fallbackProvider);
 
 class ConsumetProvider {
   configured() {
-    // Always configured in in-memory mode; only returns false if
-    // CONSUMET_BASE_URL is set to 'disabled' explicitly.
     return process.env.CONSUMET_BASE_URL !== 'disabled';
   }
 
@@ -133,46 +146,31 @@ class ConsumetProvider {
     return sources;
   }
 
-  /**
-   * Fetch trending anime from AniList (based on TRENDING_DESC sort).
-   * Returns a paginated response: { results: [...], total, page, perPage }.
-   */
   async fetchTrendingAnime(page = 1, perPage = 15) {
-    const response = await provider.fetchTrendingAnime(page, perPage);
-    return response;
+    return provider.fetchTrendingAnime(page, perPage);
   }
 
-  /**
-   * Fetch popular anime from AniList (based on POPULARITY_DESC sort).
-   * Returns a paginated response: { results: [...], total, page, perPage }.
-   */
   async fetchPopularAnime(page = 1, perPage = 15) {
-    const response = await provider.fetchPopularAnime(page, perPage);
-    return response;
+    return provider.fetchPopularAnime(page, perPage);
   }
 
-  /**
-   * Search for anime by title using AniList's built-in search.
-   * Returns an array of search results.
-   * NOTE: Consumet's search() returns a paginated object { results: [...], total, ... },
-   * so we extract the array before returning.
-   */
   async searchAnime(query, limit = 10) {
     try {
       const searchResponse = await provider.search(query, limit);
       const results = Array.isArray(searchResponse) ? searchResponse : (searchResponse.results || []);
       if (results.length) return results;
     } catch (error) {
-      console.warn('[ConsumetProvider] Primary search failed:', error.message || 'unknown provider error');
+      console.warn(`[ConsumetProvider] Search failed: ${error.message || 'unknown error'}`);
     }
 
-    // Keep the admin import usable when the current Consumet streaming provider
-    // or AniList is rate-limited. This remains server-side; the browser never
-    // contacts an external catalogue provider directly.
+    // Kitsu fallback for catalogue search
     try {
-      const response = await axios.get('https://kitsu.io/api/edge/anime', {
+      const { get } = require('../utils/providerHttp');
+      const response = await get('https://kitsu.io/api/edge/anime', {
+        providerName: 'kitsu',
         params: { 'filter[text]': query, 'page[limit]': Math.min(limit, 20) },
         timeout: 12000,
+        skipProxy: true, // Kitsu doesn't need proxy
       });
       return (response.data?.data || []).map(item => ({
         id: `kitsu:${item.id}`,
@@ -184,23 +182,11 @@ class ConsumetProvider {
         totalEpisodes: item.attributes?.episodeCount || null,
       }));
     } catch (error) {
-      console.error('[ConsumetProvider] Kitsu fallback search failed:', error.message);
+      console.error(`[ConsumetProvider] Kitsu fallback failed: ${error.message}`);
       return [];
     }
   }
 
-  /**
-   * Advanced search using AniList's filtering capabilities.
-   * Supported options:
-   *   query   - search text
-   *   page    - page number (default: 1)
-   *   perPage - results per page (default: 15)
-   *   genres  - array of genre strings (e.g. ["Action", "Drama"])
-   *   season  - "WINTER", "SPRING", "SUMMER", "FALL"
-   *   year    - release year (number)
-   *   status  - "RELEASING", "FINISHED", "NOT_YET_RELEASED", "CANCELLED"
-   *   sort    - array of sort strings (e.g. ["SCORE_DESC", "POPULARITY_DESC"])
-   */
   async advancedSearch({ query, page = 1, perPage = 15, genres, season, year, status, sort }) {
     try {
       const options = { page, perPage };
@@ -212,11 +198,10 @@ class ConsumetProvider {
       if (status) options.status = status.toUpperCase();
       if (sort && Array.isArray(sort) && sort.length > 0) options.sort = sort;
 
-      // Anilist.advancedSearch() typically returns { results: [...], total, ... }
       const response = await provider.advancedSearch(options.query, options);
       return response;
     } catch (err) {
-      console.error('[ConsumetProvider] advancedSearch error:', err.message);
+      console.error(`[ConsumetProvider] advancedSearch error: ${err.message}`);
       throw err;
     }
   }
@@ -229,31 +214,25 @@ class ConsumetProvider {
    *   3. Find the episode matching the given number
    *   4. Resolve streaming sources for that episode
    *   5. Return the highest quality .m3u8 URL
-   *
-   * Movie Handling:
-   *   When episodeNumber is 1 and the anime is a standalone movie
-   *   (e.g. "Jujutsu Kaisen 0"), the episode list may contain only 1
-   *   entry or the "episode" may be identified by title rather than number.
-   *   The smart search retry drops trailing numerical tokens (e.g. "0")
-   *   to find the parent entry.
    */
   async resolveStreamUrl(animeTitle, episodeNumber) {
+    console.log(`[resolveStream] Searching Consumet for: "${animeTitle}" Ep ${episodeNumber}`);
+
     // 1. Search for the anime
-    console.log(`[resolveStream] Searching Consumet for: "${animeTitle}"`);
     let searchResponse = await provider.search(animeTitle);
     let searchResults = searchResponse.results ? searchResponse.results : searchResponse;
 
-    // THE SMART RETRY: If 0 results, drop the last word (e.g., "Jujutsu Kaisen 0" -> "Jujutsu Kaisen")
+    // SMART RETRY: If 0 results, drop the last word (e.g., "Jujutsu Kaisen 0" -> "Jujutsu Kaisen")
     // This handles movie titles that include a numeric suffix like "0" or "I".
     if ((!Array.isArray(searchResults) || searchResults.length === 0) && animeTitle.includes(' ')) {
       const simplifiedTitle = animeTitle.split(' ').slice(0, -1).join(' ');
-      console.log(`[resolveStream WARN] 0 results for exact title. Retrying with widened search: "${simplifiedTitle}"...`);
+      console.log(`[resolveStream] 0 results — retrying with: "${simplifiedTitle}"`);
       searchResponse = await provider.search(simplifiedTitle);
       searchResults = searchResponse.results ? searchResponse.results : searchResponse;
     }
 
     if (!Array.isArray(searchResults) || searchResults.length === 0) {
-      throw new Error(`Consumet search API returned 0 results for: "${animeTitle}"`);
+      throw new Error(`Consumet search returned 0 results for: "${animeTitle}"`);
     }
 
     // Normalize the original search string
@@ -272,7 +251,7 @@ class ConsumetProvider {
 
     // 2. Ultimate Fallback
     if (!targetAnime && searchResults.length > 0) {
-      console.log(`[resolveStream WARN] Fuzzy match failed. Trusting provider's first result.`);
+      console.log(`[resolveStream] Fuzzy match failed — using first result`);
       targetAnime = searchResults[0];
     }
 
@@ -280,20 +259,15 @@ class ConsumetProvider {
       throw new Error(`Failed to resolve a valid anime ID from search results.`);
     }
 
-    const slug = targetAnime.id;  // AniList ID
+    const slug = targetAnime.id;
 
     // 3. Fetch full anime info (includes episodes)
     const info = await provider.fetchAnimeInfo(slug);
     const episodes = info?.episodes || [];
 
-    // ── Movie-specific handling ────────────────────────────
-    // If no episodes array exists or it's empty, this could be a movie
-    // where the provider reports 0 episodes. Try fetching the entire
-    // info as a single "episode" by using the anime ID itself.
+    // Movie-specific handling
     if (!episodes.length) {
-      console.log(`[resolveStream] "${animeTitle}" has no episode list — treating as movie/single-entry.`);
-      // For movies, the "episode" may be the anime itself.
-      // Attempt to resolve sources using the anime slug/id as the episode ID.
+      console.log(`[resolveStream] "${animeTitle}" has no episode list — treating as movie`);
       try {
         const sources = await provider.fetchEpisodeSources(slug);
         const streamList = sources?.sources || [];
@@ -315,13 +289,12 @@ class ConsumetProvider {
       throw new Error(`No playable sources found for "${animeTitle}".`);
     }
 
-    // 4. Find the target episode by number
+    // 4. Find the target episode by number (strict matching)
     const targetEp = episodes.find(ep => ep.number === Number(episodeNumber));
     if (!targetEp) {
-      // For movies, where episodeNumber=1 but the provider may not have
-      // numbered its single entry, use the first episode as fallback.
+      // For movies/episode-1 fallback
       if (Number(episodeNumber) === 1 && episodes.length >= 1) {
-        console.log(`[resolveStream] Episode 1 not found by number — using first episode entry for "${animeTitle}".`);
+        console.log(`[resolveStream] Episode 1 not found by number — using first episode entry`);
         const firstEp = episodes[0];
         const sources = await provider.fetchEpisodeSources(firstEp.id);
         const streamList = sources?.sources || [];
@@ -339,7 +312,7 @@ class ConsumetProvider {
           episodeImage: firstEp.image || null,
         };
       }
-      throw new Error(`Episode ${episodeNumber} not found for "${animeTitle}".`);
+      throw new Error(`Episode ${episodeNumber} not found for "${animeTitle}". Available: ${episodes.length} episodes`);
     }
 
     // 5. Resolve streaming sources
@@ -349,7 +322,7 @@ class ConsumetProvider {
       throw new Error(`No stream sources found for "${animeTitle}" Episode ${episodeNumber}.`);
     }
 
-    // 6. Return the highest quality .m3u8 URL (last entry is usually highest)
+    // 6. Return the highest quality
     const bestSource = streamList.reduce((best, src) =>
       (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
     , streamList[0]);
@@ -365,3 +338,4 @@ class ConsumetProvider {
 }
 
 module.exports = { ConsumetProvider };
+
