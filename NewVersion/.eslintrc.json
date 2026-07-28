@@ -1,0 +1,22 @@
+{
+    "env": {
+        "commonjs": true,
+        "es2021": true,
+        "node": true
+    },
+    "extends": "eslint:recommended",
+    "parserOptions": {
+        "ecmaVersion": "latest"
+    },
+    "rules": {
+        "no-unused-vars": ["warn", { "args": "none" }],
+        "no-console": "off",
+        "semi": ["error", "always"],
+        "quotes": ["error", "single"],
+        "no-undef": "error"
+    },
+    "ignorePatterns": [
+        "AdminDashboard/js/",
+        "Frontend/"
+    ]
+}

@@ -1,524 +1,963 @@
-// AdminDashboard/js/anime.js
+// ─── AdminDashboard/js/anime.js ───
+// Complete Anime List CMS — bulk management table with full CRUD, filtering, sorting, pagination
 
-// This module handles the "Anime List" section of the admin dashboard.
+// ─── State ────────────────────────────────────────────────────────────────────
+let _allAnime = [];
+let _filteredAnime = [];
+let _selectedIds = new Set();
+let _currentPage = 1;
+let _perPage = 25;
+let _sortField = 'newest';
+let _sortOrder = 'desc';
+let _filters = { q: '', status: '', premium: '', featured: '', media_type: '', year: '', genre: '' };
+let _editId = null;
+let _importResults = [];
+let _genreList = [];
+let _isLoading = false;
+let _confirmCallback = null;
 
-// --- State ---
-let _anime_all = [];
-let _anime_filtered = [];
-let _anime_currentPage = 1;
-const _anime_itemsPerPage = 15;
-let _anime_tableBody = null; // Cached tbody element
-let _anime_paginationContainer = null; // Cached pagination container
-let _anime_editId = null; // null for 'Add' mode, anime.id for 'Edit' mode
-let _anime_import_results = [];
+// ─── DOM Cache ────────────────────────────────────────────────────────────────
+function _$el(id) { return document.getElementById(id); }
+function _q(sel, parent) { return (parent || document).querySelector(sel); }
+function _qa(sel, parent) { return Array.from((parent || document).querySelectorAll(sel)); }
 
-// --- Initialization ---
+let _tableBody, _pagination, _tableInfo, _mobileCards, _bulkToolbar, _selectedCountEl;
+
+// ─── Initialization ───────────────────────────────────────────────────────────
 function initializeAnimeSection() {
-    _diag_anime('Initializing Anime management section...');
+  console.log('[Anime CMS] Initializing...');
 
-    // Cache DOM elements before the first fetch. Previously the request was
-    // skipped because _fetchAllAnime correctly returns when this is null.
-    _anime_tableBody = document.querySelector('#anime-table tbody');
-    _anime_paginationContainer = document.getElementById('anime-pagination');
+  _tableBody = _$el('anime-table-body');
+  _pagination = _$el('anime-pagination');
+  _tableInfo = _$el('anime-table-info');
+  _mobileCards = _$el('anime-mobile-cards');
+  _bulkToolbar = _$el('anime-bulk-toolbar');
+  _selectedCountEl = _$el('anime-selected-count');
 
-    // Initial data load
-    _fetchAllAnime();
+  // Load genres for dropdown
+  _loadGenres();
 
-    // Setup event listeners
-    const section = document.getElementById('anime');
-    if (!section) return;
+  // Initial fetch
+  _fetchAnime();
 
-    // Search and Filter
-    section.querySelector('#anime-search')?.addEventListener('input', _debounce(_handleFilterChange, 300));
-    section.querySelector('#anime-filter-status')?.addEventListener('change', _handleFilterChange);
+  // Setup event listeners
+  _setupEventListeners();
 
-    // Main actions
-    section.querySelector('#add-anime-button')?.addEventListener('click', () => _openAnimeModal(null));
-    
-    // Table interaction (delegated)
-    const table = section.querySelector('#anime-table');
-    table?.addEventListener('click', _handleTableClick);
+  // Responsive handler
+  _handleResponsive();
+  window.addEventListener('resize', _handleResponsive);
 
-    // Bulk actions
-    section.querySelector('#selectAll-anime')?.addEventListener('change', _handleSelectAll);
-    section.querySelector('#bulkDeleteBtn-anime')?.addEventListener('click', _handleBulkDelete);
-
-    // Modal interaction
-    const modal = document.getElementById('add-anime-modal');
-    if (modal) {
-        modal.querySelector('#close-add-anime-modal')?.addEventListener('click', () => _closeAnimeModal());
-        modal.addEventListener('click', (e) => { if (e.target === modal) _closeAnimeModal(); }); // Close on overlay click
-        
-        // Tab switching
-        modal.querySelector('.anime-import-tabs')?.addEventListener('click', _handleModalTabClick);
-
-        // Forms
-        modal.querySelector('#kitsu-search-form')?.addEventListener('submit', _handleKitsuSearch);
-        modal.querySelector('#manual-add-anime-form')?.addEventListener('submit', _handleManualFormSubmit);
-        modal.querySelector('#kitsu-search-results')?.addEventListener('click', _handleKitsuResultClick);
-    }
-    
-    // Pagination (using cached element)
-    _anime_paginationContainer?.addEventListener('click', _handlePaginationClick);
+  window.animeRefresh = () => _fetchAnime();
 }
 
-function _diag_anime(...args) {
-    console.log('[Anime]', ...args);
-}
+function _setupEventListeners() {
+  // Search (debounced)
+  _$el('anime-search')?.addEventListener('input', _debounce(() => {
+    _filters.q = _$el('anime-search').value;
+    _currentPage = 1;
+    _fetchAnime();
+  }, 350));
 
-function _debounce(func, delay) {
-    let timeout;
-    return function(...args) {
-        const context = this;
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(context, args), delay);
-    };
-}
-
-/**
- * Handles the Escape key press to close the modal.
- */
-function _handleEscKeyForAnimeModal(e) {
-    if (e.key === 'Escape') _closeAnimeModal();
-}
-
-// --- Data Fetching & Rendering ---
-
-async function _fetchAllAnime() {
-    if (!_anime_tableBody) return;
-    _anime_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading anime...</td></tr>';
-
-    try {
-        // The public catalogue reads the same MySQL anime records but does not
-        // wait on the protected admin pool. Use it for the initial table render
-        // so existing content appears even when an admin request is delayed.
-        _anime_all = await _requestAnimeWithTimeout('/api/anime/trending');
-        if (!Array.isArray(_anime_all)) throw new Error('The catalogue response is invalid.');
-        _handleFilterChange(); // Initial render
-    } catch (error) {
-        _diag_anime('Public catalogue request failed; trying the admin endpoint:', error);
-        try {
-            _anime_all = await _requestAnimeWithTimeout('/api/admin/anime');
-            if (!Array.isArray(_anime_all)) throw new Error('The public catalogue response is invalid.');
-            _handleFilterChange();
-            window.showToast?.('Loaded catalogue using the admin data feed.', 'success');
-        } catch (fallbackError) {
-            _diag_anime('Failed to load anime:', fallbackError);
-            _anime_tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Unable to load anime. Please retry.</td></tr>`;
-        }
-    }
-}
-
-function _requestAnimeWithTimeout(endpoint, timeoutMs = 12000) {
-    let timer;
-    const request = window.apiRequest(endpoint);
-    const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Catalogue request timed out.')), timeoutMs);
+  // Filter selects
+  ['anime-filter-status', 'anime-filter-premium', 'anime-filter-featured', 'anime-filter-media-type', 'anime-filter-genre', 'anime-sort', 'anime-per-page'].forEach(id => {
+    _$el(id)?.addEventListener('change', () => {
+      const el = _$el(id);
+      if (id === 'anime-sort') {
+        _sortField = el.value;
+        _sortOrder = (_sortField === 'oldest' || _sortField === 'title' || _sortField === 'alphabetical') ? 'asc' : 'desc';
+      } else if (id === 'anime-per-page') {
+        _perPage = Number(el.value);
+      } else {
+        const key = id.replace('anime-filter-', '');
+        _filters[key] = el.value;
+      }
+      _currentPage = 1;
+      _fetchAnime();
     });
-    return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
-}
+  });
 
-function _renderAnimePage() {
-    if (!_anime_tableBody) return;
+  // Year filter (debounced)
+  _$el('anime-filter-year')?.addEventListener('input', _debounce(() => {
+    _filters.year = _$el('anime-filter-year').value;
+    _currentPage = 1;
+    _fetchAnime();
+  }, 400));
 
-    const startIndex = (_anime_currentPage - 1) * _anime_itemsPerPage;
-    const endIndex = startIndex + _anime_itemsPerPage;
-    const pageItems = _anime_filtered.slice(startIndex, endIndex);
-
-    if (pageItems.length === 0) {
-        _anime_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No anime found.</td></tr>';
-    } else {
-        _anime_tableBody.innerHTML = pageItems.map(anime => `
-            <tr>
-                <td><input type="checkbox" class="anime-select-checkbox" data-id="${anime.id}"></td>
-                <td><img src="${anime.cover_image || 'img/placeholder.png'}" alt="${anime.title}" style="width:40px; height:60px; object-fit:cover; border-radius:4px;"></td>
-                <td>${window._escapeHTML(anime.title)}</td>
-                <td><span class="status-badge ${anime.status}">${anime.status}</span></td>
-                <td>${anime.is_premium ? 'Yes' : 'No'}</td>
-                <td>${anime.is_featured ? 'Yes' : 'No'}</td>
-                <td>
-                    <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes">Episodes</button>
-                    <button class="btn-action sync" data-id="${anime.id}" title="Sync with Consumet">Sync</button>
-                    <button class="btn-action edit" data-id="${anime.id}" title="Edit">✏️</button>
-                    <button class="btn-action delete" data-id="${anime.id}" title="Delete">🗑️</button>
-                </td>
-            </tr>
-        `).join('');
-    }
-    
-    _renderPagination();
-    _updateBulkDeleteButton();
-}
-
-function _handleFilterChange() {
-    const query = document.getElementById('anime-search')?.value.toLowerCase() || '';
-    const status = document.getElementById('anime-filter-status')?.value || '';
-
-    _anime_filtered = _anime_all.filter(anime => {
-        const matchesQuery = !query || anime.title.toLowerCase().includes(query);
-        const matchesStatus = !status || anime.status === status;
-        return matchesQuery && matchesStatus;
+  // Select All
+  _$el('selectAll-anime')?.addEventListener('change', (e) => {
+    const checked = e.target.checked;
+    const pageItems = _getPageItems();
+    pageItems.forEach(a => {
+      if (checked) _selectedIds.add(String(a.id));
+      else _selectedIds.delete(String(a.id));
     });
-    
-    _anime_currentPage = 1;
-    _renderAnimePage();
-}
+    _updateUI();
+  });
 
-// --- Pagination ---
-function _renderPagination() {
-    if (!_anime_paginationContainer) return;
+  // Bulk actions (delegated)
+  _bulkToolbar?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.bulk-action-btn, #anime-bulk-cancel, #anime-bulk-export');
+    if (!btn) return;
+    if (btn.id === 'anime-bulk-cancel') {
+      _selectedIds.clear();
+      _updateUI();
+      return;
+    }
+    if (btn.id === 'anime-bulk-export') {
+      _exportCSV();
+      return;
+    }
+    const action = btn.dataset.action;
+    if (action) _handleBulkAction(action, btn);
+  });
 
-    const totalPages = Math.ceil(_anime_filtered.length / _anime_itemsPerPage);
-    if (totalPages <= 1) {
-        _anime_paginationContainer.innerHTML = '';
-        return;
+  // Table events (delegated)
+  _$el('anime-table')?.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const cb = tr.querySelector('.anime-select-checkbox');
+    const id = cb?.dataset?.id;
+
+    // Checkbox click
+    if (e.target.closest('.anime-select-checkbox') || e.target.closest('#selectAll-anime')) return;
+
+    // Action buttons
+    const actionBtn = e.target.closest('.btn-action');
+    if (actionBtn) {
+      e.preventDefault();
+      const action = actionBtn.classList.contains('episodes') ? 'episodes' :
+                     actionBtn.classList.contains('delete') ? 'delete' :
+                     actionBtn.classList.contains('edit') ? 'edit' :
+                     actionBtn.classList.contains('sync') ? 'sync' :
+                     actionBtn.classList.contains('details') ? 'details' : null;
+      if (action) {
+        window.animeAction?.(action, id, actionBtn) || _handleRowAction(action, id, actionBtn);
+      }
+      return;
     }
 
-    let html = '';
-    html += `<button class="pagination-btn" data-page="prev" ${_anime_currentPage === 1 ? 'disabled' : ''}>&laquo; Prev</button>`;
-    
-    // Simplified pagination links for brevity
-    for (let i = 1; i <= totalPages; i++) {
-        html += `<button class="pagination-btn ${i === _anime_currentPage ? 'active' : ''}" data-page="${i}">${window._escapeHTML(i)}</button>`;
+    // Click on row to toggle checkbox
+    if (id) {
+      const checked = !cb.checked;
+      cb.checked = checked;
+      if (checked) _selectedIds.add(id);
+      else _selectedIds.delete(id);
+      _updateUI();
     }
+  });
 
-    _anime_paginationContainer.innerHTML = html;
-    _anime_paginationContainer.querySelector(`[data-page="prev"]`).disabled = _anime_currentPage === 1;
-    _anime_paginationContainer.querySelector(`[data-page="next"]`).disabled = _anime_currentPage === totalPages;
-}
+  // Checkbox changes
+  _$el('anime-table')?.addEventListener('change', (e) => {
+    const cb = e.target.closest('.anime-select-checkbox');
+    if (!cb) return;
+    const id = cb.dataset.id;
+    if (cb.checked) _selectedIds.add(id);
+    else _selectedIds.delete(id);
+    _updateUI();
+  });
 
-function _handlePaginationClick(e) {
-    const target = e.target.closest('.pagination-btn');
-    if (!target) return;
+  // Mobile cards checkbox changes
+  _mobileCards?.addEventListener('change', (e) => {
+    const cb = e.target.closest('.anime-select-checkbox');
+    if (!cb) return;
+    const id = cb.dataset.id;
+    if (cb.checked) _selectedIds.add(id);
+    else _selectedIds.delete(id);
+    _updateUI();
+  });
 
-    const page = target.dataset.page;
-    const totalPages = Math.ceil(_anime_filtered.length / _anime_itemsPerPage);
+  // Mobile cards action buttons
+  _mobileCards?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-action');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.classList.contains('delete') ? 'delete' :
+                   btn.classList.contains('edit') ? 'edit' :
+                   btn.classList.contains('details') ? 'details' : null;
+    if (action) _handleRowAction(action, id, btn);
+  });
 
-    if (page === 'prev') {
-        _anime_currentPage = Math.max(1, _anime_currentPage - 1);
-    } else if (page === 'next') {
-        _anime_currentPage = Math.min(totalPages, _anime_currentPage + 1);
+  // Sortable headers
+  _$el('anime-table')?.addEventListener('click', (e) => {
+    const th = e.target.closest('.sortable');
+    if (!th) return;
+    const sortVal = th.dataset.sort;
+    if (!sortVal) return;
+    if (_sortField === sortVal) {
+      _sortOrder = _sortOrder === 'asc' ? 'desc' : 'asc';
     } else {
-        _anime_currentPage = parseInt(page, 10);
+      _sortField = sortVal;
+      _sortOrder = (sortVal === 'title' || sortVal === 'alphabetical') ? 'asc' : 'desc';
     }
-    _renderAnimePage();
+    _$el('anime-sort').value = _sortField;
+    _currentPage = 1;
+    _fetchAnime();
+  });
+
+  // Pagination
+  _pagination?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pagination-btn');
+    if (!btn) return;
+    const page = btn.dataset.page;
+    const totalPages = Math.ceil((_filteredAnime.length || 1) / _perPage);
+    if (page === 'prev') _currentPage = Math.max(1, _currentPage - 1);
+    else if (page === 'next') _currentPage = Math.min(totalPages, _currentPage + 1);
+    else _currentPage = parseInt(page, 10);
+    _renderPage();
+  });
+
+  // Add Anime button
+  _$el('add-anime-button')?.addEventListener('click', () => _openAnimeModal(null));
+
+  // Modal close buttons
+  _$el('close-add-anime-modal')?.addEventListener('click', _closeAnimeModal);
+  _$el('close-anime-details-modal')?.addEventListener('click', () => {
+    _$el('anime-details-modal').hidden = true;
+  });
+
+  // Confirm modal
+  _$el('confirm-modal-cancel')?.addEventListener('click', _closeConfirmModal);
+  _$el('confirm-modal-confirm')?.addEventListener('click', () => {
+    if (_confirmCallback) _confirmCallback();
+    _closeConfirmModal();
+  });
+
+  // Click outside modals
+  document.querySelectorAll('.anime-import-modal').forEach(modal => {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.hidden = true;
+    });
+  });
+
+  // Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      _closeAnimeModal();
+      _$el('anime-details-modal').hidden = true;
+      _closeConfirmModal();
+    }
+  });
+
+  // Existing modal tabs
+  const modal = _$el('add-anime-modal');
+  modal?.querySelector('.anime-import-tabs')?.addEventListener('click', _handleModalTabClick);
+  modal?.querySelector('#kitsu-search-form')?.addEventListener('submit', _handleKitsuSearch);
+  modal?.querySelector('#manual-add-anime-form')?.addEventListener('submit', _handleManualFormSubmit);
+  modal?.querySelector('#kitsu-search-results')?.addEventListener('click', _handleKitsuResultClick);
 }
 
-// --- Event Handlers (Delegated) ---
-function _handleTableClick(e) {
-    const target = e.target;
-    const id = target.closest('tr')?.querySelector('.anime-select-checkbox')?.dataset.id;
+// ─── Data Fetching ────────────────────────────────────────────────────────────
+async function _fetchAnime() {
+  if (_isLoading) return;
+  _isLoading = true;
+  _renderLoading();
 
-    if (target.matches('.btn-action.episodes')) {
-        window.manageEpisodes?.(id, _anime_all.find(anime => String(anime.id) === String(id))?.title || '');
-    } else if (target.matches('.btn-action.delete')) {
-        handleDeleteAnime(id);
-    } else if (target.matches('.btn-action.edit')) {
-        _openAnimeModal(id);
-    } else if (target.matches('.btn-action.sync')) {
-        _syncConsumetAnime(id, target);
-    } else if (target.matches('.anime-select-checkbox')) {
-        _updateBulkDeleteButton();
+  try {
+    const params = new URLSearchParams();
+    if (_filters.q) params.set('q', _filters.q);
+    if (_filters.status) params.set('status', _filters.status);
+    if (_filters.premium !== '') params.set('premium', _filters.premium);
+    if (_filters.featured !== '') params.set('featured', _filters.featured);
+    if (_filters.media_type) params.set('media_type', _filters.media_type);
+    if (_filters.year) params.set('year', _filters.year);
+    if (_filters.genre) params.set('genre', _filters.genre);
+    params.set('sort', _sortField);
+    params.set('order', _sortOrder);
+    params.set('page', String(_currentPage));
+    params.set('limit', String(_perPage));
+
+    const response = await window.apiRequest(`/api/admin/anime?${params.toString()}`);
+
+    // Support both old (array) and new (paginated) API formats
+    if (Array.isArray(response)) {
+      _allAnime = response;
+      _filteredAnime = response;
+      _currentPage = 1;
+      _renderPage();
+      _renderPaginationSimple();
+    } else if (response.data) {
+      _allAnime = response.data || [];
+      _filteredAnime = _allAnime;
+      _renderPage();
+      _renderPagination(response.pagination);
+    } else {
+      _allAnime = [];
+      _filteredAnime = [];
+      _renderPage();
     }
+  } catch (error) {
+    console.error('[Anime CMS] Fetch failed:', error);
+    _showError('Failed to load anime. Please try again.');
+  } finally {
+    _isLoading = false;
+  }
 }
 
-async function _syncConsumetAnime(id, button) {
-    if (!confirm('Sync this anime metadata and episodes from Consumet?')) return;
+async function _loadGenres() {
+  try {
+    const genres = await window.apiRequest('/api/admin/genres');
+    _genreList = Array.isArray(genres) ? genres : [];
+    const select = _$el('anime-filter-genre');
+    if (select) {
+      select.innerHTML = '<option value="">All Genres</option>' +
+        _genreList.map(g => `<option value="${g.name}">${g.name}</option>`).join('');
+    }
+  } catch (e) {
+    console.warn('[Anime CMS] Could not load genres:', e);
+  }
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+function _renderPage() {
+  _selectedIds = new Set([..._selectedIds].filter(id => _filteredAnime.some(a => String(a.id) === id)));
+  const pageItems = _getPageItems();
+
+  if (_filteredAnime.length === 0) {
+    _renderEmpty();
+    return;
+  }
+
+  // Check if we're on mobile
+  const isMobile = window.innerWidth <= 768;
+
+  if (isMobile) {
+    _renderMobileCards(pageItems);
+  } else {
+    _renderTableRows(pageItems);
+  }
+
+  _updateUI();
+}
+
+function _renderTableRows(items) {
+  if (!_tableBody) return;
+  _tableBody.innerHTML = items.map(anime => {
+    const isSelected = _selectedIds.has(String(anime.id));
+    const genres = Array.isArray(anime.genres) ? anime.genres.slice(0, 3).join(', ') : '';
+    const hasMoreGenres = Array.isArray(anime.genres) && anime.genres.length > 3;
+    return `
+      <tr class="${isSelected ? 'selected-row' : ''}" data-id="${anime.id}">
+        <td><input type="checkbox" class="anime-select-checkbox" data-id="${anime.id}" ${isSelected ? 'checked' : ''}></td>
+        <td><img src="${anime.cover_image || 'img/placeholder.png'}" alt="${anime.title}" style="width:40px;height:56px;object-fit:cover;border-radius:4px;" loading="lazy"></td>
+        <td><strong>${window._escapeHTML(anime.title)}</strong>${anime.title_japanese ? `<br><small style="color:var(--text-muted);font-size:0.7rem;">${window._escapeHTML(anime.title_japanese)}</small>` : ''}</td>
+        <td style="font-size:0.78rem;">${genres}${hasMoreGenres ? '...' : ''}</td>
+        <td><span class="status-badge ${anime.status || 'unknown'}">${anime.status || 'N/A'}</span></td>
+        <td>${anime.is_premium ? '<span style="color:var(--warning);font-weight:600;">Premium</span>' : 'Free'}</td>
+        <td>${anime.is_featured ? '<span style="color:var(--primary);font-weight:600;">Yes</span>' : 'No'}</td>
+        <td>${anime.episode_count || 0}</td>
+        <td>${(anime.view_count || 0).toLocaleString()}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes"><i class="fas fa-video"></i></button>
+          <button class="btn-action sync" data-id="${anime.id}" title="Sync from Consumet"><i class="fas fa-sync"></i></button>
+          <button class="btn-action details" data-id="${anime.id}" title="View Details"><i class="fas fa-eye"></i></button>
+          <button class="btn-action edit" data-id="${anime.id}" title="Edit"><i class="fas fa-edit"></i></button>
+          <button class="btn-action delete" data-id="${anime.id}" title="Delete"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function _renderMobileCards(items) {
+  if (!_mobileCards) return;
+  _mobileCards.innerHTML = items.map(anime => {
+    const isSelected = _selectedIds.has(String(anime.id));
+    const genres = Array.isArray(anime.genres) ? anime.genres : [];
+    return `
+      <div class="anime-card ${isSelected ? 'selected' : ''}">
+        <div class="card-checkbox">
+          <input type="checkbox" class="anime-select-checkbox" data-id="${anime.id}" ${isSelected ? 'checked' : ''}>
+        </div>
+        <img src="${anime.cover_image || 'img/placeholder.png'}" alt="${anime.title}" loading="lazy">
+        <div class="card-body">
+          <div class="card-title">${window._escapeHTML(anime.title)}</div>
+          <div class="card-meta">
+            <span class="status-badge ${anime.status || 'unknown'}">${anime.status || 'N/A'}</span>
+            <span>${anime.is_premium ? '🔒 Premium' : '🔓 Free'}</span>
+            <span>${anime.episode_count || 0} eps</span>
+            <span>${(anime.view_count || 0).toLocaleString()} views</span>
+          </div>
+          <div class="card-genres">${genres.map(g => `<span>${g}</span>`).join('')}</div>
+          <div class="card-actions">
+            <button class="btn-action details" data-id="${anime.id}"><i class="fas fa-eye"></i> Details</button>
+            <button class="btn-action edit" data-id="${anime.id}"><i class="fas fa-edit"></i> Edit</button>
+            <button class="btn-action delete" data-id="${anime.id}"><i class="fas fa-trash"></i> Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function _renderEmpty() {
+  if (_tableBody) {
+    _tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:3rem;">
+      <div style="font-size:3rem;margin-bottom:1rem;opacity:0.3;">🎬</div>
+      <h3 style="margin-bottom:0.5rem;">No Anime Found</h3>
+      <p style="color:var(--text-muted);margin-bottom:1.5rem;">${_filters.q ? 'Try adjusting your search or filters.' : 'Start building your catalogue.'}</p>
+      <button type="button" class="btn" onclick="document.getElementById('add-anime-button').click()">+ Add Anime</button>
+    </td></tr>`;
+  }
+  _mobileCards.innerHTML = '';
+  if (_pagination) _pagination.innerHTML = '';
+  if (_tableInfo) _tableInfo.textContent = '';
+}
+
+function _renderLoading() {
+  if (_tableBody) {
+    _tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;"><div class="loading-spinner"></div> Loading...</td></tr>';
+  }
+}
+
+function _showError(msg) {
+  if (_tableBody) {
+    _tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--danger);">${window._escapeHTML(msg)}</td></tr>`;
+  }
+}
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+function _getPageItems() {
+  const start = (_currentPage - 1) * _perPage;
+  return _filteredAnime.slice(start, start + _perPage);
+}
+
+function _renderPagination(pagination) {
+  if (!_pagination) return;
+  if (!pagination || pagination.totalPages <= 1) {
+    _pagination.innerHTML = '';
+    if (_tableInfo) _tableInfo.textContent = pagination ? `${pagination.total} anime total` : '';
+    return;
+  }
+  const { page, totalPages, total } = pagination;
+  if (_tableInfo) _tableInfo.textContent = `${total} anime total · Page ${page} of ${totalPages}`;
+  _pagination.innerHTML = _buildPaginationHTML(page, totalPages);
+}
+
+function _renderPaginationSimple() {
+  if (!_pagination) return;
+  const totalPages = Math.ceil(_filteredAnime.length / _perPage);
+  if (totalPages <= 1) {
+    _pagination.innerHTML = '';
+    if (_tableInfo) _tableInfo.textContent = `${_filteredAnime.length} anime total`;
+    return;
+  }
+  if (_tableInfo) _tableInfo.textContent = `${_filteredAnime.length} anime total · Page ${_currentPage} of ${totalPages}`;
+  _pagination.innerHTML = _buildPaginationHTML(_currentPage, totalPages);
+}
+
+function _buildPaginationHTML(current, total) {
+  let html = '';
+  html += `<button class="pagination-btn" data-page="prev" ${current <= 1 ? 'disabled' : ''}>« Prev</button>`;
+  const start = Math.max(1, current - 2);
+  const end = Math.min(total, current + 2);
+  if (start > 1) { html += `<button class="pagination-btn" data-page="1">1</button>`; if (start > 2) html += `<span style="color:var(--text-muted);padding:0 4px;">...</span>`; }
+  for (let i = start; i <= end; i++) {
+    html += `<button class="pagination-btn ${i === current ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  }
+  if (end < total) { if (end < total - 1) html += `<span style="color:var(--text-muted);padding:0 4px;">...</span>`; html += `<button class="pagination-btn" data-page="${total}">${total}</button>`; }
+  html += `<button class="pagination-btn" data-page="next" ${current >= total ? 'disabled' : ''}>Next »</button>`;
+  return html;
+}
+
+// ─── UI State Update ─────────────────────────────────────────────────────────
+function _updateUI() {
+  // Update select-all checkbox state
+  const selectAll = _$el('selectAll-anime');
+  const pageItems = _getPageItems();
+  const pageIds = new Set(pageItems.map(a => String(a.id)));
+  const selectedOnPage = [..._selectedIds].filter(id => pageIds.has(id)).length;
+
+  if (selectAll) {
+    if (selectedOnPage === 0) {
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+    } else if (selectedOnPage === pageItems.length) {
+      selectAll.checked = true;
+      selectAll.indeterminate = false;
+    } else {
+      selectAll.checked = false;
+      selectAll.indeterminate = true;
+    }
+  }
+
+  // Update selected row backgrounds
+  _qa('#anime-table tbody tr').forEach(tr => {
+    const cb = tr.querySelector('.anime-select-checkbox');
+    if (cb) {
+      tr.classList.toggle('selected-row', _selectedIds.has(cb.dataset.id));
+    }
+  });
+
+  // Update mobile card selections
+  _qa('#anime-mobile-cards .anime-card').forEach(card => {
+    const cb = card.querySelector('.anime-select-checkbox');
+    if (cb) {
+      card.classList.toggle('selected', _selectedIds.has(cb.dataset.id));
+    }
+  });
+
+  // Update mobile card checkbox state
+  _qa('#anime-mobile-cards .anime-select-checkbox').forEach(cb => {
+    cb.checked = _selectedIds.has(cb.dataset.id);
+  });
+
+  // Show/hide bulk toolbar
+  const count = _selectedIds.size;
+  if (_bulkToolbar) {
+    _bulkToolbar.style.display = count > 0 ? 'flex' : 'none';
+  }
+  if (_selectedCountEl) _selectedCountEl.textContent = count;
+
+  // Update sort indicators
+  _qa('th.sortable').forEach(th => {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === _sortField) {
+      th.classList.add(_sortOrder === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      th.querySelector('i').className = _sortOrder === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+    } else {
+      const icon = th.querySelector('i');
+      if (icon) icon.className = 'fas fa-sort';
+    }
+  });
+}
+
+function _handleResponsive() {
+  const isMobile = window.innerWidth <= 768;
+  const table = _$el('anime-table');
+  const cards = _mobileCards;
+  if (table) table.style.display = isMobile ? 'none' : '';
+  if (cards) cards.style.display = isMobile ? 'grid' : 'none';
+  if (!_isLoading && _filteredAnime.length > 0) _renderPage();
+}
+
+// ─── Row Actions ──────────────────────────────────────────────────────────────
+async function _handleRowAction(action, id, button) {
+  switch (action) {
+    case 'episodes':
+      const anime = _allAnime.find(a => String(a.id) === String(id));
+      window.manageEpisodes?.(id, anime?.title || '');
+      break;
+    case 'delete':
+      await _handleSingleDelete(id);
+      break;
+    case 'edit':
+      _openAnimeModal(id);
+      break;
+    case 'sync':
+      await _handleSync(id, button);
+      break;
+    case 'details':
+      await _showDetails(id);
+      break;
+  }
+}
+
+// Expose for potential override
+window.animeAction = null;
+
+async function _handleSingleDelete(id) {
+  const anime = _allAnime.find(a => String(a.id) === String(id));
+  const confirmed = await _showConfirm(
+    'Delete Anime',
+    `Delete "${anime?.title || 'this anime'}"? This action cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const btn = _q(`.btn-action.delete[data-id="${id}"]`);
+    if (btn) btn.classList.add('loading');
+    await window.apiRequest(`/api/admin/anime/${id}`, { method: 'DELETE' });
+    _selectedIds.delete(String(id));
+    await _fetchAnime();
+    window.showToast?.('Anime deleted successfully.', 'success');
+  } catch (error) {
+    window.showToast?.(`Delete failed: ${error.message}`, 'error');
+  } finally {
+    _qa('.btn-action.delete.loading').forEach(b => b.classList.remove('loading'));
+  }
+}
+
+async function _handleSync(id, button) {
+  if (button) {
     button.disabled = true;
-    const originalLabel = button.textContent;
-    button.textContent = '...';
-    try {
-        await window.apiRequest(`/api/admin/anime/${id}/sync`, { method: 'PUT' });
-        await _fetchAllAnime();
-        window.showToast('Anime synced from Consumet.');
-    } catch (error) {
-        window.showToast(`Sync failed: ${error.message}`, 'error');
-    } finally {
-        button.disabled = false;
-        button.textContent = originalLabel;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  }
+  try {
+    await window.apiRequest(`/api/admin/anime/${id}/sync`, { method: 'PUT' });
+    await _fetchAnime();
+    window.showToast?.('Anime synced from Consumet.', 'success');
+  } catch (error) {
+    window.showToast?.(`Sync failed: ${error.message}`, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = '<i class="fas fa-sync"></i>';
     }
+  }
 }
 
-// --- CRUD Operations ---
-async function handleDeleteAnime(id) {
-    if (!confirm(`Are you sure you want to delete anime ID: ${id}? This cannot be undone.`)) {
-        return;
-    }
-    try {
-        await window.apiRequest(`/api/admin/anime/${id}`, { method: 'DELETE' });
-        _diag_anime(`Successfully deleted anime ${id}`);
-        _anime_all = _anime_all.filter(anime => String(anime.id) !== String(id));
-        _handleFilterChange(); // Re-render from local cache
-    } catch (error) {
-        _diag_anime(`Failed to delete anime ${id}:`, error);
-        window.showToast(`Failed to delete anime: ${error.message}`, 'error');
-    }
-}
+// ─── Bulk Actions ─────────────────────────────────────────────────────────────
+async function _handleBulkAction(action, button) {
+  const ids = [..._selectedIds];
+  if (ids.length === 0) return;
 
-async function _handleManualFormSubmit(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-    // The API client is designed to handle FormData directly for file uploads.
-    // We just need to ensure checkbox values are correctly represented.
-    formData.set('is_premium', form.querySelector('#manual-is-premium').checked ? '1' : '0');
-    formData.set('is_featured', form.querySelector('#manual-is-featured').checked ? '1' : '0');
-    
-    const apiRequest = _anime_editId
-        ? window.apiRequest(`/api/admin/anime/${_anime_editId}`, { method: 'PUT', body: formData })
-        : window.apiRequest(`/api/admin/anime`, { method: 'POST', body: formData });
+  if (action === 'delete') {
+    const confirmed = await _showConfirm(
+      'Delete Anime',
+      `Delete ${ids.length} anime? This action cannot be undone.\n\nAll episodes and associated media will be permanently removed.`
+    );
+    if (!confirmed) return;
+  }
 
-    try {
-        await apiRequest;
-        _diag_anime(`Successfully ${ _anime_editId ? 'updated' : 'created' } anime.`);
-        _closeAnimeModal();
-        await _fetchAllAnime(); // Re-fetch all to ensure new data is included and sorted correctly
-    } catch (error) {
-        _diag_anime(`Failed to save anime:`, error);
-        window.showToast(`Failed to save anime: ${error.message}`, 'error');
-    }
-}
+  button?.classList.add('loading');
 
-// --- Bulk Actions ---
-function _getSelectedIds() {
-    return Array.from(document.querySelectorAll('.anime-select-checkbox:checked')).map(cb => cb.dataset.id);
-}
-
-function _updateBulkDeleteButton() {
-    const selectedIds = _getSelectedIds();
-    const btn = document.getElementById('bulkDeleteBtn-anime');
-    const countSpan = document.getElementById('selectedCount-anime');
-    if (!btn || !countSpan) return;
-
-    if (selectedIds.length > 0) {
-        btn.style.display = 'inline-block';
-        countSpan.textContent = selectedIds.length;
+  try {
+    let endpoint, method, body;
+    if (action === 'delete') {
+      endpoint = '/api/admin/anime/bulk-delete';
+      method = 'POST';
+      body = { ids };
     } else {
-        btn.style.display = 'none';
-    }
-}
-
-function _handleSelectAll(e) {
-    const isChecked = e.target.checked;
-    document.querySelectorAll('.anime-select-checkbox').forEach(cb => {
-        cb.checked = isChecked;
-    });
-    _updateBulkDeleteButton();
-}
-
-async function _handleBulkDelete() {
-    const ids = _getSelectedIds();
-    if (ids.length === 0) return;
-
-    if (!confirm(`Are you sure you want to delete ${ids.length} anime? This cannot be undone.`)) {
-        return;
+      endpoint = '/api/admin/anime/bulk';
+      method = 'PUT';
+      body = { ids, action };
     }
 
-    try {
-        await window.apiRequest(`/api/admin/anime/bulk-delete`, {
-            method: 'POST',
-            body: { ids }
-        });
-        _diag_anime(`Successfully bulk deleted ${ids.length} anime.`);
-        _anime_all = _anime_all.filter(anime => !ids.includes(String(anime.id)));
-        _handleFilterChange(); // Re-render from local cache
-    } catch (error) {
-        _diag_anime('Failed to bulk delete anime:', error);
-        window.showToast(`Failed to bulk delete: ${error.message}`, 'error');
-    }
+    await window.apiRequest(endpoint, { method, body });
+    _selectedIds.clear();
+    await _fetchAnime();
+    const actionLabels = {
+      delete: 'deleted', mark_premium: 'marked as premium', remove_premium: 'removed premium',
+      feature: 'featured', unfeature: 'unfeatured', publish: 'published', unpublish: 'unpublished'
+    };
+    window.showToast?.(`${ids.length} anime ${actionLabels[action] || 'updated'} successfully.`, 'success');
+  } catch (error) {
+    window.showToast?.(`Bulk action failed: ${error.message}`, 'error');
+  } finally {
+    _qa('.bulk-action-btn.loading').forEach(b => b.classList.remove('loading'));
+  }
 }
 
-// --- Modal ---
-async function _openAnimeModal(animeId) {
-    _anime_editId = animeId;
-    const modal = document.getElementById('add-anime-modal');
-    const title = modal.querySelector('#add-anime-modal-title');
-    const form = modal.querySelector('#manual-add-anime-form');
+// ─── Export CSV ───────────────────────────────────────────────────────────────
+function _exportCSV() {
+  const selected = _allAnime.filter(a => _selectedIds.has(String(a.id)));
+  const data = selected.length > 0 ? selected : _filteredAnime;
 
-    // Reset form
-    form.reset();
-    _resetModalTabs();
-    if (window.refreshImagePreviews) window.refreshImagePreviews();
+  const headers = ['ID', 'Title', 'Japanese Title', 'Status', 'Media Type', 'Year', 'Studio', 'Premium', 'Featured', 'Episodes', 'Views', 'Rating', 'Genres', 'Created'];
+  const rows = data.map(a => [
+    a.id, `"${(a.title || '').replace(/"/g, '""')}"`, `"${(a.title_japanese || '').replace(/"/g, '""')}"`,
+    a.status || '', a.media_type || '', a.year || '', `"${(a.studio || '').replace(/"/g, '""')}"`,
+    a.is_premium ? 'Yes' : 'No', a.is_featured ? 'Yes' : 'No',
+    a.episode_count || 0, a.view_count || 0, a.rating || '',
+    `"${(Array.isArray(a.genres) ? a.genres.join('; ') : '').replace(/"/g, '""')}"`,
+    a.created_at ? new Date(a.created_at).toLocaleDateString() : ''
+  ]);
 
-    if (animeId) {
-        // Edit mode
-        title.textContent = 'Edit Anime';
-        const anime = _anime_all.find(a => String(a.id) === String(animeId));
-        if (!anime) {
-            window.showToast('Could not find anime data to edit.', 'error');
-            return;
-        }
-        // Populate form
-        for (const key in anime) {
-            const input = form.querySelector(`[name="${key}"]`);
-            if (input) {
-                if (input.type === 'checkbox') {
-                    input.checked = !!anime[key];
-                } else {
-                    input.value = anime[key] || '';
-                }
-            }
-        }
-        // The backend `genres` field is a comma-separated string, so this works.
-        const genresInput = form.querySelector('[name="genres"]');
-        if (genresInput) genresInput.value = anime.genres || '';
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `anime-export-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 
-        // Hydrate image previews
-        if (window.refreshImagePreviews) window.refreshImagePreviews();
+  window.showToast?.(`Exported ${data.length} anime to CSV.`, 'success');
+  if (selected.length > 0) {
+    _selectedIds.clear();
+    _updateUI();
+  }
+}
 
-        // Switch to manual tab for editing
-        _showModalTab('manual');
+// ─── Details Modal ────────────────────────────────────────────────────────────
+async function _showDetails(id) {
+  const modal = _$el('anime-details-modal');
+  const titleEl = _$el('anime-details-title');
+  titleEl.textContent = 'Loading...';
+  modal.hidden = false;
 
+  try {
+    // Try to get from local cache first for instant display
+    let anime = _allAnime.find(a => String(a.id) === String(id));
+
+    // Fetch full details from API
+    const full = await window.apiRequest(`/api/admin/anime/${id}`);
+    if (full) anime = full;
+
+    if (!anime) {
+      window.showToast?.('Anime not found.', 'error');
+      modal.hidden = true;
+      return;
+    }
+
+    titleEl.textContent = anime.title || `Anime #${id}`;
+    const poster = _$el('details-poster');
+    poster.src = anime.cover_image || 'img/placeholder.png';
+    const banner = _$el('details-banner');
+    if (anime.banner_image) {
+      banner.src = anime.banner_image;
+      banner.style.display = 'block';
     } else {
-        // Add mode
-        title.textContent = 'Add Anime';
+      banner.style.display = 'none';
     }
+    _$el('details-title').textContent = anime.title || 'N/A';
+    _$el('details-title-japanese').textContent = anime.title_japanese || 'N/A';
+    const statusEl = _$el('details-status');
+    statusEl.textContent = anime.status || 'N/A';
+    statusEl.className = `status-badge ${anime.status || 'unknown'}`;
+    _$el('details-media-type').textContent = anime.media_type || 'N/A';
+    _$el('details-year').textContent = anime.year || 'N/A';
+    _$el('details-studio').textContent = anime.studio || 'N/A';
+    _$el('details-season').textContent = anime.season || 'N/A';
+    _$el('details-episodes').textContent = anime.episode_count || 0;
+    _$el('details-rating').textContent = anime.rating ? `${anime.rating}/10` : 'N/A';
+    _$el('details-views').textContent = (anime.view_count || 0).toLocaleString();
+    _$el('details-premium').textContent = anime.is_premium ? 'Yes' : 'No';
+    _$el('details-featured').textContent = anime.is_featured ? 'Yes' : 'No';
+    _$el('details-genres').textContent = Array.isArray(anime.genres) ? anime.genres.join(', ') : 'N/A';
+    _$el('details-id').textContent = anime.id;
+    _$el('details-created').textContent = anime.created_at ? new Date(anime.created_at).toLocaleString() : 'N/A';
+    _$el('details-updated').textContent = anime.updated_at ? new Date(anime.updated_at).toLocaleString() : 'N/A';
+    _$el('details-video-source').textContent = anime.video_source || 'N/A';
+    _$el('details-cloudinary').textContent = anime.cloudinary_status || 'N/A';
+    _$el('details-synopsis').textContent = anime.description || 'No synopsis available.';
+    _$el('details-tags').textContent = anime.tags || 'None';
 
+  } catch (error) {
+    console.error('[Anime CMS] Details fetch failed:', error);
+    const anime = _allAnime.find(a => String(a.id) === String(id));
+    if (anime) {
+      titleEl.textContent = anime.title || `Anime #${id}`;
+      _$el('details-title').textContent = anime.title || 'N/A';
+      _$el('details-status').textContent = anime.status || 'N/A';
+      _$el('details-synopsis').textContent = anime.description || 'No synopsis available.';
+    }
+    window.showToast?.('Could not load full details.', 'error');
+  }
+}
+
+// ─── Confirmation Modal ───────────────────────────────────────────────────────
+function _showConfirm(title, message) {
+  return new Promise((resolve) => {
+    const modal = _$el('confirm-modal');
+    _$el('confirm-modal-title').textContent = title;
+    _$el('confirm-modal-message').innerHTML = message.replace(/\n/g, '<br>');
     modal.hidden = false;
-    document.addEventListener('keydown', _handleEscKeyForAnimeModal);
+    _confirmCallback = () => {
+      resolve(true);
+      _confirmCallback = null;
+    };
+    // Override cancel to resolve false
+    const originalCancel = _$el('confirm-modal-cancel').onclick;
+    _$el('confirm-modal-cancel').onclick = () => {
+      _closeConfirmModal();
+      resolve(false);
+    };
+  });
+}
+
+function _closeConfirmModal() {
+  _$el('confirm-modal').hidden = true;
+  _confirmCallback = null;
+}
+
+// ─── Add/Edit Modal ───────────────────────────────────────────────────────────
+function _openAnimeModal(animeId) {
+  _editId = animeId;
+  const modal = _$el('add-anime-modal');
+  const title = _$el('add-anime-modal-title');
+  const form = _$el('manual-add-anime-form');
+
+  form.reset();
+  _resetModalTabs();
+  if (window.refreshImagePreviews) window.refreshImagePreviews();
+
+  if (animeId) {
+    title.textContent = 'Edit Anime';
+    const anime = _allAnime.find(a => String(a.id) === String(animeId));
+    if (!anime) {
+      window.showToast?.('Could not find anime data to edit.', 'error');
+      return;
+    }
+    for (const key in anime) {
+      const input = form.querySelector(`[name="${key}"]`);
+      if (input) {
+        if (input.type === 'checkbox') input.checked = !!anime[key];
+        else input.value = anime[key] || '';
+      }
+    }
+    if (window.refreshImagePreviews) window.refreshImagePreviews();
+    _showModalTab('manual');
+  } else {
+    title.textContent = 'Add Anime';
+  }
+
+  modal.hidden = false;
 }
 
 function _closeAnimeModal() {
-    const modal = document.getElementById('add-anime-modal');
-    if (modal) modal.hidden = true;
-    _anime_editId = null;
-    document.removeEventListener('keydown', _handleEscKeyForAnimeModal);
+  _$el('add-anime-modal').hidden = true;
+  _editId = null;
 }
 
 function _resetModalTabs() {
-    document.querySelectorAll('[data-anime-tab]').forEach(tab => tab.setAttribute('aria-selected', 'false'));
-    document.querySelectorAll('[data-anime-panel]').forEach(panel => panel.hidden = true);
-    const defaultTab = document.querySelector('[data-anime-tab="kitsu"]');
-    const defaultPanel = document.querySelector('[data-anime-panel="kitsu"]');
-    if (defaultTab) defaultTab.setAttribute('aria-selected', 'true');
-    if (defaultPanel) defaultPanel.hidden = false;
-    _anime_import_results = [];
-    document.getElementById('kitsu-search-results').innerHTML = '';
-    document.getElementById('kitsu-search-input').value = '';
+  _qa('[data-anime-tab]').forEach(tab => tab.setAttribute('aria-selected', 'false'));
+  _qa('[data-anime-panel]').forEach(panel => panel.hidden = true);
+  const defaultTab = _q('[data-anime-tab="kitsu"]');
+  const defaultPanel = _q('[data-anime-panel="kitsu"]');
+  if (defaultTab) defaultTab.setAttribute('aria-selected', 'true');
+  if (defaultPanel) defaultPanel.hidden = false;
+  _importResults = [];
+  const results = _$el('kitsu-search-results');
+  if (results) results.innerHTML = '';
+  const input = _$el('kitsu-search-input');
+  if (input) input.value = '';
 }
 
 function _showModalTab(tabName) {
-    document.querySelectorAll('[data-anime-tab]').forEach(tab => {
-        tab.setAttribute('aria-selected', tab.dataset.animeTab === tabName);
-    });
-    document.querySelectorAll('[data-anime-panel]').forEach(panel => {
-        panel.hidden = panel.dataset.animePanel !== tabName;
-    });
+  _qa('[data-anime-tab]').forEach(tab => {
+    tab.setAttribute('aria-selected', tab.dataset.animeTab === tabName);
+  });
+  _qa('[data-anime-panel]').forEach(panel => {
+    panel.hidden = panel.dataset.animePanel !== tabName;
+  });
 }
 
 function _handleModalTabClick(e) {
-    const tab = e.target.closest('[data-anime-tab]');
-    if (tab) {
-        _showModalTab(tab.dataset.animeTab);
-    }
+  const tab = e.target.closest('[data-anime-tab]');
+  if (tab) _showModalTab(tab.dataset.animeTab);
 }
 
-// --- Kitsu Import ---
+async function _handleManualFormSubmit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const formData = new FormData(form);
+  formData.set('is_premium', form.querySelector('#manual-is-premium').checked ? '1' : '0');
+  formData.set('is_featured', form.querySelector('#manual-is-featured').checked ? '1' : '0');
+
+  const apiRequest = _editId
+    ? window.apiRequest(`/api/admin/anime/${_editId}`, { method: 'PUT', body: formData })
+    : window.apiRequest('/api/admin/anime', { method: 'POST', body: formData });
+
+  try {
+    await apiRequest;
+    window.showToast?.(`Anime ${_editId ? 'updated' : 'created'} successfully.`, 'success');
+    _closeAnimeModal();
+    await _fetchAnime();
+  } catch (error) {
+    window.showToast?.(`Failed to save anime: ${error.message}`, 'error');
+  }
+}
+
+// ─── Kitsu Import ─────────────────────────────────────────────────────────────
 async function _handleKitsuSearch(e) {
-    e.preventDefault();
-    const input = document.getElementById('kitsu-search-input');
-    const query = input.value.trim();
-    if (!query) return;
+  e.preventDefault();
+  const input = _$el('kitsu-search-input');
+  const query = input?.value.trim();
+  if (!query) return;
 
-    const resultsContainer = document.getElementById('kitsu-search-results');
-    resultsContainer.innerHTML = '<p>Searching...</p>';
+  const resultsContainer = _$el('kitsu-search-results');
+  resultsContainer.innerHTML = '<p>Searching...</p>';
 
-    try {
-        const results = await window.apiRequest(`/api/admin/anime/import/search?q=${encodeURIComponent(query)}`);
-        if (!results || results.length === 0) {
-            resultsContainer.innerHTML = '<p>No results found on Consumet.</p>';
-            return;
-        }
-        _anime_import_results = results;
-        resultsContainer.innerHTML = `
-            <div class="universal-import-bar">
-                <span>${results.length} matching title${results.length === 1 ? '' : 's'}</span>
-                <button type="button" class="btn universal-import-btn">Universal Import</button>
-            </div>
-        ` + results.map(item => `
-            <div class="kitsu-result-item" data-kitsu-id="${item.id}">
-                <img src="${item.cover_image}" alt="${item.title}">
-                <div class="kitsu-result-info">
-                    <strong>${window._escapeHTML(item.title)}</strong>
-                    <small>${item.year || 'Year unknown'} ${item.episodes ? ` · ${item.episodes} episodes` : ''}</small>
-                    <small>${window._escapeHTML((item.description || '').slice(0, 120))}</small>
-                </div>
-                <button type="button" class="btn import-consumet-btn">Import</button>
-            </div>
-        `).join('');
-    } catch (error) {
-        _diag_anime('Kitsu search failed:', error);
-        resultsContainer.innerHTML = `<p style="color: var(--danger);">Search failed: ${error.message}</p>`;
+  try {
+    const results = await window.apiRequest(`/api/admin/anime/import/search?q=${encodeURIComponent(query)}`);
+    if (!results || results.length === 0) {
+      resultsContainer.innerHTML = '<p>No results found on Consumet.</p>';
+      return;
     }
+    _importResults = results;
+    resultsContainer.innerHTML = `
+      <div class="universal-import-bar">
+        <span>${results.length} matching title${results.length === 1 ? '' : 's'}</span>
+        <button type="button" class="btn universal-import-btn">Universal Import</button>
+      </div>
+    ` + results.map(item => `
+      <div class="kitsu-result-item" data-kitsu-id="${item.id}">
+        <img src="${item.cover_image}" alt="${item.title}" loading="lazy">
+        <div class="kitsu-result-info">
+          <strong>${window._escapeHTML(item.title)}</strong>
+          <small>${item.year || 'Year unknown'} ${item.episodes ? ` · ${item.episodes} episodes` : ''}</small>
+          <small>${window._escapeHTML((item.description || '').slice(0, 120))}</small>
+        </div>
+        <button type="button" class="btn import-consumet-btn">Import</button>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('[Anime CMS] Kitsu search failed:', error);
+    resultsContainer.innerHTML = `<p style="color: var(--danger);">Search failed: ${error.message}</p>`;
+  }
 }
 
 async function _handleKitsuResultClick(e) {
-    const universalButton = e.target.closest('.universal-import-btn');
-    if (universalButton) {
-        await _importAllSearchResults(universalButton);
-        return;
-    }
-    const importButton = e.target.closest('.import-consumet-btn');
-    if (!importButton) return;
-    const item = importButton.closest('.kitsu-result-item');
-    const kitsuId = item?.dataset.kitsuId;
-    if (!kitsuId) return;
+  const universalButton = e.target.closest('.universal-import-btn');
+  if (universalButton) {
+    await _importAllSearchResults(universalButton);
+    return;
+  }
+  const importButton = e.target.closest('.import-consumet-btn');
+  if (!importButton) return;
+  const item = importButton.closest('.kitsu-result-item');
+  const kitsuId = item?.dataset.kitsuId;
+  if (!kitsuId) return;
 
-    if (!confirm(`Import "${item.querySelector('strong').textContent}"? This will fetch metadata and episodes.`)) {
-        return;
-    }
+  if (!confirm(`Import "${item.querySelector('strong').textContent}"? This will fetch metadata and episodes.`)) return;
 
-    if (await _importProviderAnime(kitsuId, item, importButton)) {
-        _closeAnimeModal();
-        await _fetchAllAnime();
-        window.showToast('Anime imported successfully.');
-    }
+  if (await _importProviderAnime(kitsuId, item, importButton)) {
+    _closeAnimeModal();
+    await _fetchAnime();
+    window.showToast?.('Anime imported successfully.', 'success');
+  }
 }
 
 async function _importProviderAnime(providerId, item, button) {
-    const originalMarkup = item?.innerHTML;
-    if (button) button.disabled = true;
-    if (item) { item.style.pointerEvents = 'none'; item.style.opacity = '0.7'; }
-    try {
-        await window.apiRequest('/api/admin/anime/import', { method: 'POST', body: { providerId } });
-        return true;
-    } catch (error) {
-        _diag_anime('Consumet import failed:', error);
-        if (item) {
-            item.innerHTML = originalMarkup || 'Import failed. Try again.';
-            item.style.pointerEvents = 'auto';
-            item.style.opacity = '1';
-        }
-        window.showToast(`Import failed: ${error.message}`, 'error');
-        return false;
+  const originalMarkup = item?.innerHTML;
+  if (button) { button.disabled = true; button.textContent = '...'; }
+  if (item) { item.style.pointerEvents = 'none'; item.style.opacity = '0.7'; }
+  try {
+    await window.apiRequest('/api/admin/anime/import', { method: 'POST', body: { providerId } });
+    return true;
+  } catch (error) {
+    console.error('[Anime CMS] Import failed:', error);
+    if (item) {
+      item.innerHTML = originalMarkup || 'Import failed. Try again.';
+      item.style.pointerEvents = 'auto';
+      item.style.opacity = '1';
     }
+    window.showToast?.(`Import failed: ${error.message}`, 'error');
+    return false;
+  }
 }
 
 async function _importAllSearchResults(button) {
-    if (!_anime_import_results.length) return;
-    if (!confirm(`Import all ${_anime_import_results.length} search results? They will be processed one at a time.`)) return;
-    button.disabled = true;
-    let completed = 0;
-    for (const result of _anime_import_results) {
-        button.textContent = `Importing ${completed + 1}/${_anime_import_results.length}...`;
-        const item = Array.from(document.querySelectorAll('.kitsu-result-item'))
-            .find(element => element.dataset.kitsuId === String(result.id));
-        if (await _importProviderAnime(result.id, item, null)) completed++;
-    }
-    await _fetchAllAnime();
-    button.textContent = `Imported ${completed}/${_anime_import_results.length}`;
-    window.showToast(`${completed} anime imported successfully.`);
-    if (completed === _anime_import_results.length) _closeAnimeModal();
+  if (!_importResults.length) return;
+  if (!confirm(`Import all ${_importResults.length} search results? They will be processed one at a time.`)) return;
+  button.disabled = true;
+  let completed = 0;
+  for (const result of _importResults) {
+    button.textContent = `Importing ${completed + 1}/${_importResults.length}...`;
+    const item = _qa('.kitsu-result-item').find(el => el.dataset.kitsuId === String(result.id));
+    if (await _importProviderAnime(result.id, item, null)) completed++;
+  }
+  await _fetchAnime();
+  button.textContent = `Imported ${completed}/${_importResults.length}`;
+  window.showToast?.(`${completed} anime imported successfully.`, 'success');
+  if (completed === _importResults.length) _closeAnimeModal();
 }
 
-// --- Final Setup ---
-document.addEventListener('DOMContentLoaded', () => {
-    // The main dashboard script now handles section initialization.
-    // This script is loaded, but we need to expose the init function.
-    window.initializeAnimeSection = initializeAnimeSection;
+// ─── Utility ──────────────────────────────────────────────────────────────────
+function _debounce(fn, delay) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
 
-    // If the anime section is already active on load (e.g. from hash), initialize it.
-    if (window.location.hash === '#anime') {
-        initializeAnimeSection();
-    }
+// ─── Setup ────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  window.initializeAnimeSection = initializeAnimeSection;
+  if (window.location.hash === '#anime') {
+    initializeAnimeSection();
+  }
 });
+

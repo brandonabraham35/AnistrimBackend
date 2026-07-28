@@ -117,21 +117,97 @@
         </section>
 
         <section id="anime" class="content-section">
-            <div class="toolbar">
-                <input type="search" id="anime-search" placeholder="Search anime..." style="flex:1;max-width:300px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
-                <select id="anime-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+            <!-- Filters & Controls Toolbar -->
+            <div class="toolbar anime-toolbar">
+                <input type="search" id="anime-search" placeholder="Search title, studio, tags..." style="flex:1;max-width:200px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <select id="anime-filter-status" class="anime-filter-select">
                     <option value="">All Status</option>
                     <option value="completed">Completed</option>
                     <option value="airing">Airing</option>
                     <option value="upcoming">Upcoming</option>
                 </select>
-                <button type="button" class="btn" id="add-anime-button">Add Anime</button>
-                <button type="button" id="bulkDeleteBtn-anime" class="btn danger" style="display:none;">Delete Selected (<span id="selectedCount-anime">0</span>)</button>
+                <select id="anime-filter-premium" class="anime-filter-select">
+                    <option value="">All Plans</option>
+                    <option value="1">Premium</option>
+                    <option value="0">Free</option>
+                </select>
+                <select id="anime-filter-featured" class="anime-filter-select">
+                    <option value="">All Featured</option>
+                    <option value="1">Featured</option>
+                    <option value="0">Not Featured</option>
+                </select>
+                <select id="anime-filter-media-type" class="anime-filter-select">
+                    <option value="">All Types</option>
+                    <option value="TV">TV Series</option>
+                    <option value="MOVIE">Movie</option>
+                    <option value="OVA">OVA</option>
+                    <option value="SPECIAL">Special</option>
+                </select>
+                <input type="number" id="anime-filter-year" placeholder="Year" min="1900" max="2100" style="width:80px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <select id="anime-filter-genre" class="anime-filter-select">
+                    <option value="">All Genres</option>
+                </select>
+                <select id="anime-sort" class="anime-filter-select">
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="title">Title A-Z</option>
+                    <option value="alphabetical">Alphabetical</option>
+                    <option value="views">Most Views</option>
+                    <option value="episodes">Most Episodes</option>
+                    <option value="updated">Last Updated</option>
+                    <option value="rating">Highest Rated</option>
+                </select>
+                <select id="anime-per-page" class="anime-filter-select" style="width:80px;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+                <button type="button" class="btn" id="add-anime-button">+ Add Anime</button>
             </div>
+
+            <!-- Bulk Action Toolbar -->
+            <div id="anime-bulk-toolbar" class="bulk-toolbar" style="display:none;">
+                <span class="bulk-count"><span id="anime-selected-count">0</span> Selected</span>
+                <div class="bulk-actions">
+                    <button type="button" class="btn danger bulk-action-btn" data-action="delete">Delete Selected</button>
+                    <button type="button" class="btn bulk-action-btn" data-action="mark_premium">Mark Premium</button>
+                    <button type="button" class="btn secondary bulk-action-btn" data-action="remove_premium">Remove Premium</button>
+                    <button type="button" class="btn bulk-action-btn" data-action="feature">Feature</button>
+                    <button type="button" class="btn secondary bulk-action-btn" data-action="unfeature">Unfeature</button>
+                    <button type="button" class="btn secondary bulk-action-btn" data-action="publish">Publish</button>
+                    <button type="button" class="btn secondary bulk-action-btn" data-action="unpublish">Unpublish</button>
+                    <button type="button" class="btn secondary" id="anime-bulk-export">Export CSV</button>
+                    <button type="button" class="btn secondary" id="anime-bulk-cancel">✕ Cancel</button>
+                </div>
+            </div>
+
             <div class="section-box"><h4><i class="fas fa-tv"></i> Anime Catalogue</h4>
-                <div style="overflow-x:auto"><table id="anime-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-anime" title="Select all"></th><th>Cover</th><th>Title</th><th>Status</th><th>Premium</th><th>Featured</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+                <div style="overflow-x:auto">
+                    <table id="anime-table">
+                        <thead>
+                            <tr>
+                                <th style="width:36px"><input type="checkbox" id="selectAll-anime" title="Select all"></th>
+                                <th style="width:60px">Cover</th>
+                                <th class="sortable" data-sort="title">Title <i class="fas fa-sort"></i></th>
+                                <th>Genres</th>
+                                <th class="sortable" data-sort="status">Status <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="premium">Premium <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="featured">Featured <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="episodes">Ep <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="views">Views <i class="fas fa-sort"></i></th>
+                                <th style="width:200px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="anime-table-body"></tbody>
+                    </table>
+                </div>
+                <div id="anime-table-info" class="table-info"></div>
                 <div id="anime-pagination" class="pagination-controls"></div>
             </div>
+
+            <!-- Mobile Card View -->
+            <div id="anime-mobile-cards" class="mobile-cards" style="display:none;"></div>
         </section>
         <section id="users" class="content-section">
             <div class="toolbar">
@@ -281,6 +357,55 @@
                 </form>
             </div>
         </section>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+        <div class="anime-import-dialog" style="max-width:420px;">
+            <div class="anime-import-header"><h3 id="confirm-modal-title">Confirm Action</h3></div>
+            <div class="anime-import-panel" style="text-align:center;">
+                <p id="confirm-modal-message" style="margin-bottom:1.5rem;font-size:1.05rem;"></p>
+                <div style="display:flex;gap:.75rem;justify-content:center;">
+                    <button type="button" class="btn secondary" id="confirm-modal-cancel">Cancel</button>
+                    <button type="button" class="btn danger" id="confirm-modal-confirm">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Anime Details Modal -->
+    <div id="anime-details-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="anime-details-title">
+        <div class="anime-import-dialog" style="max-width:700px;">
+            <div class="anime-import-header"><h3 id="anime-details-title">Anime Details</h3><button type="button" class="anime-import-close" id="close-anime-details-modal" aria-label="Close">×</button></div>
+            <div id="anime-details-content" class="anime-import-panel" style="max-height:70vh;overflow-y:auto;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                    <div id="details-poster-section" style="grid-column:1/-1;text-align:center;">
+                        <img id="details-poster" src="" alt="Poster" style="max-width:200px;border-radius:8px;border:1px solid var(--border);">
+                        <img id="details-banner" src="" alt="Banner" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-top:8px;border:1px solid var(--border);display:none;">
+                    </div>
+                    <div><strong>Title:</strong> <span id="details-title"></span></div>
+                    <div><strong>Japanese Title:</strong> <span id="details-title-japanese"></span></div>
+                    <div><strong>Status:</strong> <span id="details-status" class="status-badge"></span></div>
+                    <div><strong>Media Type:</strong> <span id="details-media-type"></span></div>
+                    <div><strong>Year:</strong> <span id="details-year"></span></div>
+                    <div><strong>Studio:</strong> <span id="details-studio"></span></div>
+                    <div><strong>Season:</strong> <span id="details-season"></span></div>
+                    <div><strong>Episodes:</strong> <span id="details-episodes"></span></div>
+                    <div><strong>Rating:</strong> <span id="details-rating"></span></div>
+                    <div><strong>Views:</strong> <span id="details-views"></span></div>
+                    <div><strong>Premium:</strong> <span id="details-premium"></span></div>
+                    <div><strong>Featured:</strong> <span id="details-featured"></span></div>
+                    <div><strong>Genres:</strong> <span id="details-genres"></span></div>
+                    <div><strong>Database ID:</strong> <span id="details-id"></span></div>
+                    <div><strong>Date Added:</strong> <span id="details-created"></span></div>
+                    <div><strong>Last Updated:</strong> <span id="details-updated"></span></div>
+                    <div><strong>Video Source:</strong> <span id="details-video-source"></span></div>
+                    <div><strong>Cloudinary Status:</strong> <span id="details-cloudinary"></span></div>
+                    <div style="grid-column:1/-1;"><strong>Synopsis:</strong><p id="details-synopsis" style="margin-top:4px;color:var(--text-muted);line-height:1.6;"></p></div>
+                    <div style="grid-column:1/-1;"><strong>Tags:</strong> <span id="details-tags"></span></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
