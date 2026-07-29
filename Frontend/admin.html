@@ -3,11 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard | AniStrim</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="mobile-native.css">
-  <script src="config.js"></script>
-  <script src="scrpt.js"></script>
+<title>Redirecting to Admin Dashboard | AniStrim</title>
+  <!-- Redirect to unified AdminDashboard CMS -->
+  <script>
+    (function() {
+      if (localStorage.getItem('admin_token')) {
+        window.location.replace('../AdminDashboard/dashboard.html');
+      } else {
+        window.location.replace('../AdminDashboard/index.html');
+      }
+    })();
+  </script>
   <style>
     /* ── Admin-specific styles ── */
     .admin-layout { display:flex; min-height:100vh; }

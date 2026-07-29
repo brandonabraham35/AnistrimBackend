@@ -1,80 +1,94 @@
-# Google Auth Migration — Completion Report
+# Admin Dashboard Enhancement TODO
 
-## ✅ Step 1: Fix authController and add signup endpoint
+## Phase 0: Foundation ✅ COMPLETE
 
-**File: `controllers/authController.js`**
+- [x] Create `AdminDashboard/js/shared.js` - Shared component framework
+  - [x] Utility functions (escapeHTML, showToast, debounce, formatDate, formatNumber)
+  - [x] SkeletonLoader system (table, card, stat, chart, form skeletons)
+  - [x] Confirmation dialog (Promise-based)
+  - [x] ModalManager (unified open/close/create/edit/delete/preview modals)
+  - [x] EmptyState component
+  - [x] ErrorState component
+  - [x] Badge utilities
+  - [x] DataTable class (search, filters, sorting, pagination, bulk selection)
+  - [x] Loading overlay system
+  - [x] Form validation
+- [x] Create `AdminDashboard/css/shared.css` - Shared component styles (skeletons, badges, empty/error states, modals, datatable)
+- [x] Integrate shared.js + shared.css into `AdminDashboard/dashboard.html`
+- [x] Redirect `Frontend/admin.html` → AdminDashboard (auto-redirect authenticated users to dashboard.html, others to index.html)
 
-- Added `signup` function for new user registration
-- Removed admin-only restriction from login — now works for any valid user
-- Added `last_login` update on successful login
-- Added Google-only account detection (users without password_hash get directed to Google login)
-- Added `avatar_url` in login response for profile display
-- Extended JWT expiry from `1d` to `7d`
+## Phase 1: Dashboard
 
-**File: `routes/authRoutes.js`**
+- [ ] Add skeleton loading states (using SkeletonLoader)
+- [ ] Refactor dashboard.js to use shared.js components
+- [ ] Add live charts (viewer trends, revenue timeline, user growth)
+- [ ] Add provider health, database health, cache health widgets
+- [ ] Add storage usage widget
+- [ ] Add recent activity timeline
+- [ ] Add auto-refresh controls
 
-- Added `POST /api/auth/signup` route
+## Phase 2: Anime (already robust - minor polish)
 
-## ✅ Step 2: Enhance googleVerifyController
+- [ ] Add camera icon/media gallery functionality
+- [ ] Add bulk metadata editing modal
+- [ ] Add collection management
 
-**File: `controllers/googleVerifyController.js`**
+## Phase 3: Episodes
 
-- Added `last_login` and `updated_at` timestamp updates after successful auth
-- Added avatar URL update when Google provides a new/different picture
-- Added issuer validation (checks `accounts.google.com`)
-- Added audience validation (checks against `GOOGLE_CLIENT_ID`)
-- Added differentiated error messages:
-  - Token expired
-  - Invalid token
-  - Network error (ECONNREFUSED/ETIMEDOUT)
-  - Generic failure
-- Added three-path user resolution:
-  1. Lookup by `google_id` (fast path — returning Google users)
-  2. Lookup by `email` (account linking — existing email users)
-  3. Create new user (new Google sign-ups)
-- Added comment header marking this as the PRIMARY Google auth flow for web
+- [ ] Add search, filters, sorting, pagination
+- [ ] Add bulk action toolbar
+- [ ] Add subtitle status, quality indicators
+- [ ] Add stream status indicators
+- [ ] Add broken stream report integration
 
-## ✅ Step 3: Create last_login migration
+## Phase 4: Users
 
-**File: `sql/migrations_v17_last_login.sql`**
+- [ ] Add watch history view
+- [ ] Add premium expiry tracking
+- [ ] Add advanced role management
+- [ ] Add ban/unban flow improvements
 
-- Adds `last_login DATETIME` column to users table
-- Backfills existing records with `created_at` value
-- Adds index on `last_login`
+## Phase 5: Payments
 
-## ✅ Step 4: Legacy code isolation
+- [ ] Add search, date range filter, status filter
+- [ ] Add pagination
+- [ ] Add refund workflow
+- [ ] Add CSV export
+- [ ] Add revenue analytics sub-panel with charts
 
-The following files are **KEPT but isolated** exclusively for Capacitor/mobile support:
+## Phase 6: Genres (already working - minor polish)
 
-- `controllers/googleAuthController.js` — OAuth redirect + deep-link flow (mobile only)
-- `Frontend/google-callback.html` — Mobile callback handler
-- `AdminDashboard/google-callback.html` — Mobile admin callback handler
-- `AdminDashboard/js/google-auth-handler.js` — Empty file, kept for compatibility
+## Phase 7: Ads
 
-**Confirmation:** No web page references or calls these legacy files.
+- [ ] Create missing `#ad-modal` in HTML
+- [ ] Add scheduling UI
+- [ ] Add placement management
+- [ ] Add performance metrics
 
-## ✅ Step 5: Verify shared GIS module usage
+## Phase 8: Logs
 
-All web auth pages use the shared `google-auth-handler.js` module:
+- [ ] Add category tabs (Auth, Streaming, Payment, Admin, API, System)
+- [ ] Add search, date filter, export
+- [ ] Add auto-refresh
+- [ ] Add log level badges
 
-- `Frontend/login.html` ✅ — loads `google-auth-handler.js`
-- `Frontend/signup.html` ✅ — loads `google-auth-handler.js`
-- `AdminDashboard/index.html` ✅ — loads `google-auth-handler.js`
+## Phase 9: Settings
 
-## Architecture Summary
+- [ ] Dynamically generate settings form from backend config
+- [ ] Add grouped categories (General, Auth, Streaming, Proxy, Maintenance)
 
-**Single Google auth flow for web:** GIS ID Token verification via `googleVerifyController.js`
+## Phase 10: New CMS Modules
 
-**Flow:**
+- [ ] Analytics page (viewers, top anime, engagement, retention, geography)
+- [ ] Notifications page (broadcast, push, email, maintenance)
+- [ ] Media Manager (posters, banners, trailers, subtitles, grid/list view)
+- [ ] Automation page (scheduled jobs, health checks, cache, backup)
 
-1. User clicks "Continue with Google"
-2. GIS shows account chooser (popup)
-3. Google returns ID token to callback
-4. Frontend sends `POST /api/auth/google/verify` with ID token
-5. Backend verifies token (audience, issuer, email_verified)
-6. Backend finds or creates user (with account linking)
-7. Backend updates last_login and avatar
-8. Backend returns JWT + user object
-9. Frontend stores JWT and redirects to app
+## Phase 11: Audit & Polish
 
-**Mobile only:** Legacy OAuth redirect flow kept for Capacitor deep-link support.
+- [ ] Audit every button, icon, menu item
+- [ ] Implement missing functionality
+- [ ] Remove dead elements
+- [ ] Add comprehensive error boundaries
+- [ ] Test all CRUD operations
+- [ ] Ensure responsive layout
