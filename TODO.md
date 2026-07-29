@@ -1,48 +1,80 @@
-# Stream Resolution Pipeline Audit - Implementation Plan
+# Google Auth Migration — Completion Report
 
-## Phase 1: Foundation - Shared Infrastructure
+## ✅ Step 1: Fix authController and add signup endpoint
 
-- [x] 1. Rewrite `utils/providerHttp.js` — Central HTTP client with:
-  - Unified proxy configuration (single proxy manager)
-  - Exponential backoff retry (3 attempts, 1s→2s→4s)
-  - Provider health tracking (response time, success/failure rates)
-  - Structured logging
-  - Unified headers (User-Agent, Referer, Origin, Accept-Language)
-  - Request timeout management
+**File: `controllers/authController.js`**
 
-- [x] 2. Update `services/consumetProvider.js`:
-  - Use shared HTTP client from providerHttp.js
-  - Fix missing Referer/Origin headers
-  - Enhance 403 retry with proxy rotation
-  - Add cloudflare bypass headers
-  - Re-enable AnimePahe/Hianime in preferredOrder with proper proxy
+- Added `signup` function for new user registration
+- Removed admin-only restriction from login — now works for any valid user
+- Added `last_login` update on successful login
+- Added Google-only account detection (users without password_hash get directed to Google login)
+- Added `avatar_url` in login response for profile display
+- Extended JWT expiry from `1d` to `7d`
 
-- [x] 3. Update `services/consumet/server.js`:
-  - Integrate shared proxy configuration
-  - Use providerHttp for all outbound requests
-  - Remove standalone axios instance
+**File: `routes/authRoutes.js`**
 
-## Phase 2: Episode Mapping Fix
+- Added `POST /api/auth/signup` route
 
-- [x] 4. Update `controllers/streamController.js`:
-  - Fix episode number detection
-  - Add better logging when anime not found in DB
-  - Separate episodeId (DB) from episodeNumber (streaming)
-  - Pass both original and resolved episode number to resolver
+## ✅ Step 2: Enhance googleVerifyController
 
-- [x] 5. Update `Frontend/watch.js`:
-  - Fix `resolveAndPlayStream` to pass episode NUMBER not DB ID
-  - Add `ep` query param for episode number, keep `epId` for DB lookups
-  - Update `loadWatch()` to use correct params
+**File: `controllers/googleVerifyController.js`**
 
-## Phase 3: Orchestration & Caching
+- Added `last_login` and `updated_at` timestamp updates after successful auth
+- Added avatar URL update when Google provides a new/different picture
+- Added issuer validation (checks `accounts.google.com`)
+- Added audience validation (checks against `GOOGLE_CLIENT_ID`)
+- Added differentiated error messages:
+  - Token expired
+  - Invalid token
+  - Network error (ECONNREFUSED/ETIMEDOUT)
+  - Generic failure
+- Added three-path user resolution:
+  1. Lookup by `google_id` (fast path — returning Google users)
+  2. Lookup by `email` (account linking — existing email users)
+  3. Create new user (new Google sign-ups)
+- Added comment header marking this as the PRIMARY Google auth flow for web
 
-- [x] 6. Rewrite `services/streamingService.js`:
-  - Clean orchestration layer
-  - Pre-query cache before calling providers
-  - Centralized retry orchestration (delegated to providerHttp)
-  - Provider health check integration
-  - Structured logging throughout
-  - Proper fallback chain
+## ✅ Step 3: Create last_login migration
 
-## Phase 4: All Tasks Complete ✓
+**File: `sql/migrations_v17_last_login.sql`**
+
+- Adds `last_login DATETIME` column to users table
+- Backfills existing records with `created_at` value
+- Adds index on `last_login`
+
+## ✅ Step 4: Legacy code isolation
+
+The following files are **KEPT but isolated** exclusively for Capacitor/mobile support:
+
+- `controllers/googleAuthController.js` — OAuth redirect + deep-link flow (mobile only)
+- `Frontend/google-callback.html` — Mobile callback handler
+- `AdminDashboard/google-callback.html` — Mobile admin callback handler
+- `AdminDashboard/js/google-auth-handler.js` — Empty file, kept for compatibility
+
+**Confirmation:** No web page references or calls these legacy files.
+
+## ✅ Step 5: Verify shared GIS module usage
+
+All web auth pages use the shared `google-auth-handler.js` module:
+
+- `Frontend/login.html` ✅ — loads `google-auth-handler.js`
+- `Frontend/signup.html` ✅ — loads `google-auth-handler.js`
+- `AdminDashboard/index.html` ✅ — loads `google-auth-handler.js`
+
+## Architecture Summary
+
+**Single Google auth flow for web:** GIS ID Token verification via `googleVerifyController.js`
+
+**Flow:**
+
+1. User clicks "Continue with Google"
+2. GIS shows account chooser (popup)
+3. Google returns ID token to callback
+4. Frontend sends `POST /api/auth/google/verify` with ID token
+5. Backend verifies token (audience, issuer, email_verified)
+6. Backend finds or creates user (with account linking)
+7. Backend updates last_login and avatar
+8. Backend returns JWT + user object
+9. Frontend stores JWT and redirects to app
+
+**Mobile only:** Legacy OAuth redirect flow kept for Capacitor deep-link support.

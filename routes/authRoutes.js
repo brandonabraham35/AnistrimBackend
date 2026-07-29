@@ -10,6 +10,11 @@ const { handleImageUpload } = require('../utils/bunnyUpload');
 // @access  Public
 router.post('/login', authController.login);
 
+// @route   POST /api/auth/signup
+// @desc    Register a new user account
+// @access  Public
+router.post('/signup', authController.signup);
+
 // @route   POST /api/auth/google/verify
 // @desc    Verify Google ID Token from GIS popup (no redirect)
 // @access  Public

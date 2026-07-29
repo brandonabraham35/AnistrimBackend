@@ -1,6 +1,10 @@
 // controllers/googleVerifyController.js
 // Verifies Google ID token sent directly from frontend (GIS approach)
 // No browser redirects needed — works directly in Capacitor WebView
+//
+// THIS IS THE PRIMARY Google authentication flow for the web application.
+// Legacy OAuth redirect flow (googleAuthController.js) is kept exclusively
+// for Capacitor/mobile deep-link support and is NOT used by the web app.
 
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
@@ -29,6 +33,10 @@ exports.verifyGoogleToken = function (req, res) {
       return res.status(400).json({ message: 'Google ID token is required.' });
     }
 
+    if (typeof idToken !== 'string' || idToken.length < 20) {
+      return res.status(400).json({ message: 'Invalid Google ID token format.' });
+    }
+
     try {
       // Verify the token with Google
       const ticket = await googleClient.verifyIdToken({
@@ -38,41 +46,79 @@ exports.verifyGoogleToken = function (req, res) {
 
       const payload = ticket.getPayload();
 
+      // Validate issuer
+      const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
+      if (!validIssuers.includes(payload.iss)) {
+        return res.status(400).json({ message: 'Invalid token issuer.' });
+      }
+
+      // Validate audience
+      if (payload.aud !== process.env.GOOGLE_CLIENT_ID) {
+        return res.status(400).json({ message: 'Token audience mismatch.' });
+      }
+
       if (!payload.email_verified) {
         return res.status(400).json({ message: 'Google email is not verified.' });
       }
 
+      if (!payload.email) {
+        return res.status(400).json({ message: 'Could not retrieve email from Google.' });
+      }
+
       const googleEmail  = payload.email;
-      const googleName   = payload.name;
-      const googleAvatar = payload.picture;
+      const googleName   = payload.name || googleEmail.split('@')[0];
+      const googleAvatar = payload.picture || null;
       const googleId     = payload.sub;
 
-      // Find or create user
-      const [existing] = await db.query(
-        'SELECT * FROM users WHERE email = ?', [googleEmail]
+      // ── Find or create user ─────────────────────────────
+      // Step 1: Look up by google_id first (fastest for returning users)
+      let [rowsById] = await db.query(
+        'SELECT * FROM users WHERE google_id = ?', [googleId]
       );
 
       let user;
-      if (existing.length > 0) {
-        user = existing[0];
-        // Update google_id and avatar if missing
-        if (!user.google_id) {
+      if (rowsById.length > 0) {
+        // Existing Google user — update avatar and login timestamp
+        user = rowsById[0];
+        const updates = ['last_login = NOW()', 'updated_at = NOW()'];
+        const params = [];
+
+        if (googleAvatar && googleAvatar !== user.avatar_url) {
+          updates.push('avatar_url = ?');
+          params.push(googleAvatar);
+        }
+
+        params.push(user.id);
+        await db.query(
+          `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+          params
+        );
+        user.avatar_url = googleAvatar || user.avatar_url;
+      } else {
+        // Step 2: Look up by email (existing email/password user linking Google)
+        const [rowsByEmail] = await db.query(
+          'SELECT * FROM users WHERE email = ?', [googleEmail]
+        );
+
+        if (rowsByEmail.length > 0) {
+          // Existing email user — link Google account
+          user = rowsByEmail[0];
           await db.query(
-            'UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?',
+            'UPDATE users SET google_id = ?, avatar_url = COALESCE(?, avatar_url), last_login = NOW(), updated_at = NOW() WHERE id = ?',
             [googleId, googleAvatar, user.id]
           );
           user.google_id  = googleId;
-          user.avatar_url = user.avatar_url || googleAvatar;
+          user.avatar_url = googleAvatar || user.avatar_url;
+        } else {
+          // Step 3: Create new user
+          const [result] = await db.query(
+            `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium)
+             VALUES (?, ?, NULL, ?, ?, 0, 0)`,
+            [googleName, googleEmail, googleAvatar, googleId]
+          );
+          const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+          user = newRows[0];
         }
-      } else {
-        // Create new user
-        const [result] = await db.query(
-          `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium)
-           VALUES (?, ?, NULL, ?, ?, 0, 0)`,
-          [googleName, googleEmail, googleAvatar, googleId]
-        );
-        const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
-        user = newRows[0];
       }
 
       const token   = signToken(user);
@@ -85,12 +131,24 @@ exports.verifyGoogleToken = function (req, res) {
         avatar:    user.avatar_url,
       };
 
-      console.log(`✅ Google login: ${googleEmail}`);
-      res.json({ token, user: userObj, message: 'Welcome!' });
+      console.log(`✅ Google login: ${googleEmail} (${rowsById.length > 0 ? 'existing' : 'new'})`);
+      return res.json({ token, user: userObj, message: 'Welcome!' });
 
     } catch (err) {
       console.error('Google verify error:', err.message);
-      res.status(401).json({ message: 'Google verification failed. Please try again.' });
+
+      // Differentiate between error types
+      if (err.message && err.message.includes('Token used too late')) {
+        return res.status(401).json({ message: 'Google token has expired. Please try again.' });
+      }
+      if (err.message && err.message.includes('Invalid token')) {
+        return res.status(401).json({ message: 'Invalid Google token. Please try again.' });
+      }
+      if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+        return res.status(503).json({ message: 'Unable to verify Google token. Network error.' });
+      }
+
+      return res.status(401).json({ message: 'Google verification failed. Please try again.' });
     }
   })();
 };
