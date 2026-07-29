@@ -102,7 +102,8 @@
 
   async function deleteEpisode(episodeId) {
     try {
-        if (!window.confirm('Delete this episode?')) return;
+        const confirmed = await _confirm('Delete Episode', 'Delete this episode? This action cannot be undone.', 'Delete', 'Cancel');
+        if (!confirmed) return;
         await window.apiRequest(`/api/admin/episodes/${episodeId}`, { method: 'DELETE' });
         _episodes_all = _episodes_all.filter(ep => String(ep.id) !== String(episodeId));
         _renderEpisodes(); // Re-render from local cache

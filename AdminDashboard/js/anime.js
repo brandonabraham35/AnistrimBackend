@@ -1,5 +1,6 @@
 // ─── AdminDashboard/js/anime.js ───
 // Complete Anime List CMS — bulk management table with full CRUD, filtering, sorting, pagination
+// Uses shared.js for: _escapeHTML, showToast, debounce, confirmDialog, SkeletonLoader, EmptyState, ErrorState
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let _allAnime = [];
@@ -14,7 +15,6 @@ let _editId = null;
 let _importResults = [];
 let _genreList = [];
 let _isLoading = false;
-let _confirmCallback = null;
 
 // ─── DOM Cache ────────────────────────────────────────────────────────────────
 function _$el(id) { return document.getElementById(id); }
@@ -22,6 +22,19 @@ function _q(sel, parent) { return (parent || document).querySelector(sel); }
 function _qa(sel, parent) { return Array.from((parent || document).querySelectorAll(sel)); }
 
 let _tableBody, _pagination, _tableInfo, _mobileCards, _bulkToolbar, _selectedCountEl;
+
+// Ensure shared.js fallbacks
+if (typeof window._escapeHTML !== 'function') window._escapeHTML = function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'<').replace(/>/g,'>');};
+if (typeof window.showToast !== 'function') window.showToast = function(m){console.log('[Toast]',m);};
+if (typeof window.debounce !== 'function') {
+  window.debounce = function(fn, delay) {
+    let timer;
+    return function(...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  };
+}
 
 // ─── Initialization ───────────────────────────────────────────────────────────
 function initializeAnimeSection() {
@@ -34,25 +47,17 @@ function initializeAnimeSection() {
   _bulkToolbar = _$el('anime-bulk-toolbar');
   _selectedCountEl = _$el('anime-selected-count');
 
-  // Load genres for dropdown
   _loadGenres();
-
-  // Initial fetch
   _fetchAnime();
-
-  // Setup event listeners
   _setupEventListeners();
-
-  // Responsive handler
   _handleResponsive();
   window.addEventListener('resize', _handleResponsive);
-
   window.animeRefresh = () => _fetchAnime();
 }
 
 function _setupEventListeners() {
   // Search (debounced)
-  _$el('anime-search')?.addEventListener('input', _debounce(() => {
+  _$el('anime-search')?.addEventListener('input', window.debounce(() => {
     _filters.q = _$el('anime-search').value;
     _currentPage = 1;
     _fetchAnime();
@@ -77,7 +82,7 @@ function _setupEventListeners() {
   });
 
   // Year filter (debounced)
-  _$el('anime-filter-year')?.addEventListener('input', _debounce(() => {
+  _$el('anime-filter-year')?.addEventListener('input', window.debounce(() => {
     _filters.year = _$el('anime-filter-year').value;
     _currentPage = 1;
     _fetchAnime();
@@ -98,15 +103,8 @@ function _setupEventListeners() {
   _bulkToolbar?.addEventListener('click', (e) => {
     const btn = e.target.closest('.bulk-action-btn, #anime-bulk-cancel, #anime-bulk-export');
     if (!btn) return;
-    if (btn.id === 'anime-bulk-cancel') {
-      _selectedIds.clear();
-      _updateUI();
-      return;
-    }
-    if (btn.id === 'anime-bulk-export') {
-      _exportCSV();
-      return;
-    }
+    if (btn.id === 'anime-bulk-cancel') { _selectedIds.clear(); _updateUI(); return; }
+    if (btn.id === 'anime-bulk-export') { _exportCSV(); return; }
     const action = btn.dataset.action;
     if (action) _handleBulkAction(action, btn);
   });
@@ -117,11 +115,7 @@ function _setupEventListeners() {
     if (!tr) return;
     const cb = tr.querySelector('.anime-select-checkbox');
     const id = cb?.dataset?.id;
-
-    // Checkbox click
     if (e.target.closest('.anime-select-checkbox') || e.target.closest('#selectAll-anime')) return;
-
-    // Action buttons
     const actionBtn = e.target.closest('.btn-action');
     if (actionBtn) {
       e.preventDefault();
@@ -130,32 +124,36 @@ function _setupEventListeners() {
                      actionBtn.classList.contains('edit') ? 'edit' :
                      actionBtn.classList.contains('sync') ? 'sync' :
                      actionBtn.classList.contains('details') ? 'details' : null;
-      if (action) {
-        window.animeAction?.(action, id, actionBtn) || _handleRowAction(action, id, actionBtn);
-      }
+      if (action) { window.animeAction?.(action, id, actionBtn) || _handleRowAction(action, id, actionBtn); }
       return;
     }
-
-    // Click on row to toggle checkbox
     if (id) {
       const checked = !cb.checked;
       cb.checked = checked;
-      if (checked) _selectedIds.add(id);
-      else _selectedIds.delete(id);
+      if (checked) _selectedIds.add(id); else _selectedIds.delete(id);
       _updateUI();
     }
   });
 
-  // Checkbox changes
   _$el('anime-table')?.addEventListener('change', (e) => {
     const cb = e.target.closest('.anime-select-checkbox');
     if (!cb) return;
-    const id = cb.dataset.id;
-    if (cb.checked) _selectedIds.add(id);
-    else _selectedIds.delete(id);
+    if (cb.checked) _selectedIds.add(cb.dataset.id); else _selectedIds.delete(cb.dataset.id);
     _updateUI();
   });
 
+  _mobileCards?.addEventListener('change', (e) => {
+    const cb = e.target.closest('.anime-select-checkbox');
+    if (!cb) return;
+    if (cb.checked) _selectedIds.add(cb.dataset.id); else _selectedIds.delete(cb.dataset.id);
+    _updateUI();
+  });
+
+  _mobileCards?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-action');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.classList.contains('delete') ? 'delete' : btn.classList.contains('edit') ? 'edit' : btn.classList.contains('details') ? 'details' : null;
   // Mobile cards checkbox changes
   _mobileCards?.addEventListener('change', (e) => {
     const cb = e.target.closest('.anime-select-checkbox');
@@ -736,28 +734,20 @@ async function _showDetails(id) {
   }
 }
 
-// ─── Confirmation Modal ───────────────────────────────────────────────────────
+// ─── Confirmation Modal
+// Using shared _confirm() from shared.js
+let _confirmCallback = null;
+
 function _showConfirm(title, message) {
-  return new Promise((resolve) => {
-    const modal = _$el('confirm-modal');
-    _$el('confirm-modal-title').textContent = title;
-    _$el('confirm-modal-message').innerHTML = message.replace(/\n/g, '<br>');
-    modal.hidden = false;
-    _confirmCallback = () => {
-      resolve(true);
-      _confirmCallback = null;
-    };
-    // Override cancel to resolve false
-    const originalCancel = _$el('confirm-modal-cancel').onclick;
-    _$el('confirm-modal-cancel').onclick = () => {
-      _closeConfirmModal();
-      resolve(false);
-    };
-  });
+  return _confirm(
+    title,
+    message.replace(/\n/g, ' '),
+    'Confirm',
+    'Cancel'
+  );
 }
 
 function _closeConfirmModal() {
-  _$el('confirm-modal').hidden = true;
   _confirmCallback = null;
 }
 
@@ -900,7 +890,7 @@ async function _handleKitsuResultClick(e) {
   const kitsuId = item?.dataset.kitsuId;
   if (!kitsuId) return;
 
-  if (!confirm(`Import "${item.querySelector('strong').textContent}"? This will fetch metadata and episodes.`)) return;
+  if (!await _confirm('Import Anime', `Import "${item.querySelector('strong').textContent}"? This will fetch metadata and episodes.`)) return;
 
   if (await _importProviderAnime(kitsuId, item, importButton)) {
     _closeAnimeModal();
@@ -930,7 +920,7 @@ async function _importProviderAnime(providerId, item, button) {
 
 async function _importAllSearchResults(button) {
   if (!_importResults.length) return;
-  if (!confirm(`Import all ${_importResults.length} search results? They will be processed one at a time.`)) return;
+  if (!await _confirm('Import All', `Import all ${_importResults.length} search results? They will be processed one at a time.`)) return;
   button.disabled = true;
   let completed = 0;
   for (const result of _importResults) {
@@ -945,13 +935,7 @@ async function _importAllSearchResults(button) {
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
-function _debounce(fn, delay) {
-  let timer;
-  return function(...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn.apply(this, args), delay);
-  };
-}
+// Use shared _debounce from shared.js — no duplicate needed
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {

@@ -243,10 +243,23 @@
             <div class="section-box">
                 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:0.5rem;margin-bottom:1.5rem;">
                     <h4 style="border:none;margin:0;padding:0;"><i class="fas fa-ad"></i> Ads Configuration</h4>
-                    <button type="button" class="btn" id="save-ads-config-btn" onclick="saveAdsConfig()">&#128190; Save Changes</button>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button type="button" class="btn" id="add-ad-btn">+ Add Ad</button>
+                        <button type="button" class="btn secondary" id="save-ads-config-btn" onclick="saveAdsConfig()">&#128190; Save Changes</button>
+                    </div>
                 </div>
                 <p style="color:var(--text-sub);font-size:0.85rem;margin-bottom:1.5rem;">Configure remote monetization rules. The mobile app fetches these settings on boot.</p>
                 <div id="ads-config-status" style="margin-bottom:1rem;display:none;" role="alert"></div>
+                <div class="section-box" style="border:1px solid var(--border);padding:1rem;">
+                    <h4 style="border:none;margin-bottom:0.75rem;"><i class="fas fa-list"></i> Advertisements</h4>
+                    <div style="overflow-x:auto">
+                        <table id="ads-table">
+                            <thead><tr><th>Preview</th><th>Title</th><th>Type</th><th>Active</th><th>Target</th><th>Actions</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section id="logs" class="content-section">
@@ -268,6 +281,31 @@
                 </form>
             </div>
         </section>
+    </div>
+
+    <!-- Ad Modal (Add/Edit) -->
+    <div id="ad-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="ad-modal-title">
+        <div class="anime-import-dialog" style="max-width:560px;">
+            <div class="anime-import-header">
+                <h3 id="ad-modal-title" class="modal-title">Add New Ad</h3>
+                <button type="button" class="anime-import-close close-modal-btn" aria-label="Close">&times;</button>
+            </div>
+            <div class="anime-import-panel">
+                <form id="ad-form" class="form-grid">
+                    <label>Ad Title <input id="ad-title" name="title" required placeholder="e.g. Banner Ad 1"></label>
+                    <label>Type <select id="ad-type" name="type"><option value="banner">Banner</option><option value="interstitial">Interstitial</option><option value="rewarded">Rewarded</option></select></label>
+                    <label class="wide">Image URL <div class="img-uploader" data-target="ad-image-uploader"><input id="ad-image-uploader" name="image_url" type="hidden"></div></label>
+                    <label class="wide">Target Link <input id="ad-link" name="target_url" placeholder="https://..."></label>
+                    <label>Frequency (per session) <input id="ad-frequency" name="frequency" type="number" min="1" value="1"></label>
+                    <label><input id="ad-is-active" name="is_active" type="checkbox" checked> Active</label>
+                    <label><input id="ad-target-free-only" name="target_free_only" type="checkbox" checked> Free Users Only</label>
+                    <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
+                        <button type="submit" class="btn">Save Ad</button>
+                        <button type="button" class="btn secondary close-modal-btn">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <div id="confirm-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">

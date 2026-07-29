@@ -19,6 +19,16 @@ async function initGenres() {
         console.error('[Genres] Failed to load genres:', error);
         _genres_tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--danger);">Error loading genres. Check console.</td></tr>`;
     }
+
+    // Use event delegation for delete buttons (replace inline onclick)
+    const table = document.querySelector('#genres-table');
+    table?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-action.delete');
+        if (btn) {
+            const id = btn.dataset.id;
+            if (id) deleteGenre(id);
+        }
+    });
 }
 
 /**
@@ -32,7 +42,7 @@ function _renderGenres() {
         return;
     }
 
-    _genres_tbody.innerHTML = _genres_all.map(g => `<tr><td>${window._escapeHTML(g.name)}</td><td><button class="action-btn delete-btn" onclick="deleteGenre(${g.id})">Delete</button></td></tr>`).join('');
+    _genres_tbody.innerHTML = _genres_all.map(g => `<tr><td>${window._escapeHTML(g.name)}</td><td><button class="btn-action delete" data-id="${g.id}" title="Delete">🗑️</button></td></tr>`).join('');
 }
 
 // Event listener for adding a new genre
@@ -59,7 +69,14 @@ document.addEventListener('DOMContentLoaded', () => {
  * @param {number|string} id The ID of the genre to delete.
  */
 async function deleteGenre(id) {
-    if (!confirm('Are you sure you want to delete this genre? This action cannot be undone.')) return;
+    const genre = _genres_all.find(g => String(g.id) === String(id));
+    const confirmed = await _confirm(
+        'Delete Genre',
+        `Delete genre "${genre?.name || '#' + id}"? This action cannot be undone.`,
+        'Delete',
+        'Cancel'
+    );
+    if (!confirmed) return;
     try {
         await window.apiRequest(`/api/admin/genres/${id}`, { method: 'DELETE' });
         _genres_all = _genres_all.filter(g => String(g.id) !== String(id)); // Remove from local cache

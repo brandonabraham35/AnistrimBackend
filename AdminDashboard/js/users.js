@@ -44,15 +44,6 @@ function _diag_users(...args) {
     console.log('[Users]', ...args);
 }
 
-function _debounce(func, delay) {
-    let timeout;
-    return function(...args) {
-        const context = this;
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(context, args), delay);
-    };
-}
-
 // --- Data Fetching & Rendering ---
 
 async function _fetchAllUsers() {
@@ -78,14 +69,14 @@ function _renderUsersPage() {
     if (pageItems.length === 0) {
         _users_tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No users found.</td></tr>';
     } else {
-        _users_tableBody.innerHTML = pageItems.map(user => `
+    _users_tableBody.innerHTML = pageItems.map(user => `
             <tr>
                 <td><input type="checkbox" class="user-select-checkbox" data-id="${user.id}"></td>
                 <td>${window._escapeHTML(user.name)}</td>
                 <td>${window._escapeHTML(user.email)}</td>
-                <td>${user.is_admin ? 'Admin' : 'User'}</td>
-                <td>${user.is_premium ? '💎 Premium' : 'Free'}</td>
-                <td><span class="status-badge ${user.status}">${user.status}</span></td>
+                <td>${Badge.role(user.is_admin)}</td>
+                <td>${Badge.premium(user.is_premium)}</td>
+                <td>${Badge.status(user.status)}</td>
                 <td>
                     <button class="btn-action ban" data-id="${user.id}" data-status="${user.status}" title="${user.status === 'banned' ? 'Unban' : 'Ban'}">${user.status === 'banned' ? '✅' : '🚫'}</button>
                     <button class="btn-action delete" data-id="${user.id}" title="Delete">🗑️</button>
@@ -184,9 +175,14 @@ async function _updateUser(id, body) {
 }
 
 async function _handleDeleteUser(id) {
-    if (!confirm(`Are you sure you want to delete user ID: ${id}? This cannot be undone.`)) {
-        return;
-    }
+    const user = _users_all.find(u => String(u.id) === String(id));
+    const confirmed = await _confirm(
+        'Delete User',
+        `Delete user "${user?.name || '#' + id}"? This cannot be undone.`,
+        'Delete',
+        'Cancel'
+    );
+    if (!confirmed) return;
     try {
         // Note: The backend doesn't have a single user delete, so we use bulk delete.
         await window.apiRequest(`/api/admin/users/bulk-delete`, {
@@ -233,9 +229,13 @@ async function _handleBulkDelete() {
     const ids = _getSelectedIds();
     if (ids.length === 0) return;
 
-    if (!confirm(`Are you sure you want to delete ${ids.length} users? This cannot be undone.`)) {
-        return;
-    }
+    const confirmed = await _confirm(
+        'Delete Users',
+        `Delete ${ids.length} users? This cannot be undone.`,
+        'Delete',
+        'Cancel'
+    );
+    if (!confirmed) return;
 
     try {
         await window.apiRequest(`/api/admin/users/bulk-delete`, {

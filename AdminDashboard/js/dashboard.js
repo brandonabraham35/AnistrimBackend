@@ -10,63 +10,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const sections = document.querySelectorAll('.content-section');
   const navLinks = document.querySelectorAll('.sidebar .nav-links a:not(.logout-btn)');
 
-  // --- Security & Utility Functions ---
-  function _escapeHTML(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-  }
-  window._escapeHTML = _escapeHTML; // Expose for other modules
+  // shared.js provides _escapeHTML, showToast, _confirm, ModalManager, SkeletonLoader,
+  // EmptyState, ErrorState, Badge, DataTable, etc. globally.
+  // No fallbacks needed — shared.js is loaded before dashboard.js in dashboard.html.
 
-  // --- Toast Notifications ---
-  function showToast(msg, type = 'success') {
-    let toast = document.getElementById('admin-toast');
-    if (!toast) {
-      toast = document.createElement('div');
-      toast.id = 'admin-toast';
-      toast.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: var(--sidebar-bg);
-        border: 1px solid var(--border-color);
-        color: var(--text-color);
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-family: 'Outfit', sans-serif;
-        font-size: 0.9rem;
-        font-weight: 500;
-        z-index: 10000;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-        transition: opacity 0.3s, transform 0.3s;
-        transform: translateY(20px);
-        opacity: 0;
-        pointer-events: none;
-      `;
-      document.body.appendChild(toast);
-    }
-    toast.textContent = window._escapeHTML(msg);
-    toast.style.borderColor = type === 'error' ? 'var(--danger)' : 'var(--primary)';
-    toast.style.opacity = '1';
-    toast.style.transform = 'translateY(0)';
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateY(20px)'; }, 4000);
-  }
-  window.showToast = showToast; // Expose globally
-
-  // --- Helper Functions ---
+  // Simple helper to set text content on elements
   const setText = (selector, value, fallback = '0') => {
-    const el = document.querySelector(selector); // Use _escapeHTML for all text content to prevent XSS
-    if (el) el.textContent = window._escapeHTML(value || fallback);
+    const el = document.querySelector(selector);
+    if (el) el.textContent = value || fallback;
   };
 
   // --- SPA Routing ---
   function showSection(targetId) {
-    // Default to 'dashboard' if the targetId is invalid or not found
     const effectiveTargetId = document.getElementById(targetId) ? targetId : 'dashboard';
 
     sections.forEach(section => {
@@ -78,7 +33,6 @@ document.addEventListener('DOMContentLoaded', () => {
       link.classList.toggle('active', linkTargetId === effectiveTargetId);
     });
 
-    // Update URL hash. Using history.pushState is cleaner for SPAs.
     if (history.pushState) {
       if (window.location.hash !== `#${effectiveTargetId}`) {
         history.pushState(null, null, `#${effectiveTargetId}`);
@@ -103,11 +57,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Data Loading ---
   async function loadOverview() {
+    // Show skeleton loading on stat cards
+    const statCards = document.querySelectorAll('.card .value[id^="stats-"]');
+    statCards.forEach(el => {
+      el.innerHTML = window.SkeletonLoader ? window.SkeletonLoader.stat(1) : '...';
+    });
+
     try {
       const data = await window.apiRequest('/api/admin/dashboard/overview');
 
-      // The API nests the main stats under an "overview" key.
-      // We must access that key first.
       const overview = data.overview;
       if (!overview) {
         throw new Error('API response is missing the "overview" object.');
@@ -130,30 +88,26 @@ document.addEventListener('DOMContentLoaded', () => {
       setText('#stats-revenue-month', `UGX ${month.toLocaleString()}`);
       setText('#stats-revenue-total', `UGX ${total.toLocaleString()}`);
 
-      // Populate the new Uchiha-style lists
-      populateList('#top-anime-list', data.topAnime, item => `<span>${_escapeHTML(item.title)}</span><span class="list-value">${item.views || 0} views</span>`);
-      populateList('#recent-uploads', data.recentEpisodes, item => `<span>${_escapeHTML(item.anime_title || 'Unknown')} - Ep ${item.episode_number}</span><span class="list-value">${new Date(item.created_at).toLocaleDateString()}</span>`);
-      populateList('#latest-users', data.latestUsers, item => `<span>${_escapeHTML(item.name)}</span><span class="list-value">${_escapeHTML(item.email)}</span>`);
-      populateList('#activity-logs', data.activityLogs, item => `<span>${_escapeHTML(item.message)}</span><span class="list-value">${new Date(item.timestamp).toLocaleTimeString()}</span>`);
+      // Populate lists using shared EmptyState for empty data
+      populateList('#top-anime-list', data.topAnime, item => `<span>${window._escapeHTML(item.title)}</span><span class="list-value">${item.views || 0} views</span>`);
+      populateList('#recent-uploads', data.recentEpisodes, item => `<span>${window._escapeHTML(item.anime_title || 'Unknown')} - Ep ${item.episode_number}</span><span class="list-value">${new Date(item.created_at).toLocaleDateString()}</span>`);
+      populateList('#latest-users', data.latestUsers, item => `<span>${window._escapeHTML(item.name)}</span><span class="list-value">${window._escapeHTML(item.email)}</span>`);
+      populateList('#activity-logs', data.activityLogs, item => `<span>${window._escapeHTML(item.message)}</span><span class="list-value">${new Date(item.timestamp).toLocaleTimeString()}</span>`);
 
     } catch (error) {
       console.error('Failed to load or render dashboard overview:', error);
       const errorEl = document.getElementById('dashboard-error');
-      if (errorEl) {
-        // Replace the inline onclick with a proper event listener for a better UX.
-        errorEl.innerHTML = `
-          Dashboard Error: ${_escapeHTML(error.message)}.
-          <button id="dashboard-retry-btn" style="background:var(--primary);color:#fff;border:0;border-radius:4px;padding:4px 12px;margin-left:8px;cursor:pointer;">
-            ↺ Retry
-          </button>
-        `;
-        const retryBtn = document.getElementById('dashboard-retry-btn');
-        if (retryBtn) {
-          // Re-call the load function directly instead of reloading the whole page.
-          retryBtn.addEventListener('click', () => loadOverview());
-        }
+      if (errorEl && window.ErrorState) {
+        ErrorState.render({
+          container: errorEl,
+          message: 'Failed to load dashboard data',
+          details: error.message,
+          retryFn: () => loadOverview()
+        });
+      } else if (errorEl) {
+        errorEl.innerHTML = `Dashboard Error: ${window._escapeHTML(error.message)}.`;
       }
-      document.querySelectorAll('[id^="stats-"]').forEach(el => el.innerHTML = '<span style="color: #f87171;">Error</span>');
+      document.querySelectorAll('[id^="stats-"]').forEach(el => el.textContent = '—');
     }
   }
 
@@ -161,7 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = document.querySelector(selector);
     if (!container) return;
     if (!items || items.length === 0) {
-      container.innerHTML = '<div class="list-item empty">No data available.</div>';
+      if (window.EmptyState) {
+        EmptyState.render({
+          container: container,
+          icon: 'inbox',
+          title: 'No data available',
+          description: 'Check back later for updates.'
+        });
+      } else {
+        container.innerHTML = '<div class="list-item empty">No data available.</div>';
+      }
       return;
     }
     container.innerHTML = items.map(item => {
@@ -174,7 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
   navLinks.forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
-      // Support both `data-section` and `href` attributes for routing
       const targetSection = link.dataset.section || (link.getAttribute('href') || '').substring(1);
       if (targetSection) {
         showSection(targetSection);
@@ -182,19 +144,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // This listener handles direct hash changes (e.g., from bookmarks).
   window.addEventListener('hashchange', () => {
     const targetId = window.location.hash.substring(1) || 'dashboard';
     showSection(targetId);
   });
 
-  // This listener handles browser back/forward navigation.
   window.addEventListener('popstate', () => {
     const targetId = window.location.hash.substring(1) || 'dashboard';
     showSection(targetId);
   });
 
-  // --- Global Logout Handler ---
   function logout() {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
@@ -202,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window.logout = logout;
 
-  // --- Initial Load ---
   function initializeDashboard() {
     const initialSection = window.location.hash.substring(1) || 'dashboard';
     showSection(initialSection);

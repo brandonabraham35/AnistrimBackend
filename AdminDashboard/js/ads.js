@@ -191,7 +191,14 @@ async function _updateAd(id, partialBody) {
  * @param {number|string} id The ID of the ad to delete.
  */
 async function deleteAd(id) {
-    if (!confirm('Are you sure you want to delete this ad? This action cannot be undone.')) return;
+    const ad = _ads_all.find(a => String(a.id) === String(id));
+    const confirmed = await _confirm(
+        'Delete Ad',
+        `Delete ad "${ad?.title || '#' + id}"? This action cannot be undone.`,
+        'Delete',
+        'Cancel'
+    );
+    if (!confirmed) return;
     try {
         await window.apiRequest(`/api/admin/ads/${id}`, { method: 'DELETE' });
         _diag_ads(`Successfully deleted ad ${id}`);
