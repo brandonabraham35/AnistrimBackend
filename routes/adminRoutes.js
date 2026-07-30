@@ -16,6 +16,9 @@ router.get('/dashboard/activity/recent',    admin.getRecentActivity);
 
 // Users
 router.get('/users',                        admin.getAllUsers);
+router.get('/users/:id',                    admin.getUser);
+router.get('/users/:id/watch-history',      admin.getUserWatchHistory);
+router.get('/users/:id/login-history',      admin.getUserLoginHistory);
 router.put('/users/:id',                    admin.updateUser);
 // Deprecated: keeping togglePremium for compatibility if needed, but updateUser covers it
 router.put('/users/:id/premium',            admin.updateUser);
@@ -37,6 +40,7 @@ router.put('/anime/:id/sync',               imports.syncConsumetAnime);
 // Genres
 router.get('/genres',                       admin.getAllGenres);
 router.post('/genres',                      admin.createGenre);
+router.put('/genres/:id',                   admin.updateGenre);
 router.delete('/genres/:id',                admin.deleteGenre);
 
 // Episodes
@@ -59,6 +63,7 @@ router.put('/ads/:id',                      admin.updateAd);
 router.delete('/ads/:id',                   admin.deleteAd);
 
 // Payments
+router.get('/payments',                     admin.getPayments);
 router.put('/payments/:id',                 admin.updatePaymentStatus);
 
 // Logs

@@ -477,6 +477,53 @@ const adminController = {
     }
   },
 
+  async getPayments(req, res) {
+    try {
+      const { page = 1, limit = 25, search, status, from, to, sort = 'created_at', order = 'desc' } = req.query;
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
+      const offset = (pageNum - 1) * limitNum;
+      const params = [];
+      const where = [];
+
+      if (status) { where.push('p.status = ?'); params.push(status); }
+      if (from) { where.push('p.created_at >= ?'); params.push(from); }
+      if (to) { where.push('p.created_at <= ?'); params.push(to); }
+      if (search) {
+        where.push('(u.name LIKE ? OR u.email LIKE ? OR p.reference LIKE ? OR p.flw_tx_ref LIKE ?)');
+        const q = `%${search}%`;
+        params.push(q, q, q, q);
+      }
+
+      const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+      const sortColumn = ['created_at', 'amount', 'status', 'paid_at'].includes(sort) ? sort : 'created_at';
+      const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
+
+      const [countResult] = await db.query(
+        `SELECT COUNT(*) AS total FROM payments p LEFT JOIN users u ON u.id = p.user_id ${whereClause}`,
+        params
+      );
+      const total = countResult[0]?.total || 0;
+
+      const [rows] = await db.query(
+        `SELECT p.*, u.name, u.email FROM payments p LEFT JOIN users u ON u.id = p.user_id ${whereClause} ORDER BY p.${sortColumn} ${sortOrder} LIMIT ? OFFSET ?`,
+        [...params, limitNum, offset]
+      );
+
+      res.json({
+        data: rows.map(p => ({
+          ...p,
+          is_premium: toBool(p.is_premium),
+        })),
+        pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
+        summary: { total },
+      });
+    } catch (error) {
+      console.error('getPayments error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
   async bulkDeleteUsers(req, res) {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'No user IDs provided.' });
@@ -495,6 +542,80 @@ const adminController = {
       res.status(500).json({ message: error.message });
     }
   },
+async updateGenre(req, res) {
+    if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' });
+    try {
+      const [r] = await db.query('UPDATE genres SET name = ? WHERE id = ?', [req.body.name.trim(), req.params.id]);
+      if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' });
+      await logActivity(req, `Updated genre #${req.params.id} to: ${req.body.name.trim()}`, 'genre', req.params.id);
+      res.json({ id: parseInt(req.params.id), name: req.body.name.trim(), message: 'Genre updated.' });
+    } catch (error) {
+      res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre name already exists.' : error.message });
+    }
+  },
+
+  async getUser(req, res) {
+    try {
+      const schema = await getSchema();
+      const status = hasColumn(schema, 'users', 'status') ? 'status' : "'active' AS status";
+      const [rows] = await db.query(
+        `SELECT id, name, email, is_admin, is_premium, premium_expires_at, ${status}, created_at, updated_at, avatar_url FROM users WHERE id = ?`,
+        [req.params.id]
+      );
+      if (!rows.length) return res.status(404).json({ message: 'User not found.' });
+      const user = {
+        ...rows[0],
+        is_admin: toBool(rows[0].is_admin),
+        is_premium: toBool(rows[0].is_premium),
+      };
+      res.json(user);
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
+
+  async getUserWatchHistory(req, res) {
+    try {
+      const schema = await getSchema();
+      if (!hasColumn(schema, 'watch_history', 'user_id')) {
+        return res.json([]);
+      }
+      const [rows] = await db.query(
+        `SELECT wh.id, wh.episode_id, wh.progress_sec, wh.completed, wh.watched_at,
+                e.episode_number, e.title AS episode_title, a.title AS anime_title, a.id AS anime_id
+         FROM watch_history wh
+         JOIN episodes e ON e.id = wh.episode_id
+         JOIN anime a ON a.id = e.anime_id
+         WHERE wh.user_id = ?
+         ORDER BY wh.watched_at DESC
+         LIMIT 50`,
+        [req.params.id]
+      );
+      res.json(rows);
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
+
+  async getUserLoginHistory(req, res) {
+    try {
+      const schema = await getSchema();
+      if (!hasColumn(schema, 'users', 'last_login')) {
+        const [rows] = await db.query(
+          `SELECT id, created_at AS login_time, 'signup' AS method FROM users WHERE id = ?
+           UNION ALL
+           SELECT id, updated_at AS login_time, 'update' AS method FROM users WHERE id = ? AND updated_at != created_at
+           ORDER BY login_time DESC LIMIT 20`,
+          [req.params.id, req.params.id]
+        );
+        res.json(rows);
+      } else {
+        const [rows] = await db.query(
+          `SELECT last_login AS login_time, 'login' AS method FROM users WHERE id = ? AND last_login IS NOT NULL
+           ORDER BY login_time DESC LIMIT 20`,
+          [req.params.id]
+        );
+        res.json(rows);
+      }
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
+
   async getActivityLogs(req, res) {
     try {
       const schema = await getSchema();

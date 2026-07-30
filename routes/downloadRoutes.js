@@ -5,11 +5,10 @@ const axios   = require('axios');
 const db      = require('../config/db');
 const { protect } = require('../middleware/auth');
 
-// Support ?token= query param as fallback to Authorization header (for <a href> downloads)
+// NOTE: Token in query string is NOT accepted for security reasons.
+// Tokens in URLs are exposed to server logs, browser history, and referrer headers.
+// Only Authorization header is supported.
 function authMiddleware(req, res, next) {
-  if (req.query.token) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
   protect(req, res, next);
 }
 

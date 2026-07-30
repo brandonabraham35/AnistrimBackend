@@ -286,27 +286,47 @@
 
         <section id="payments" class="content-section">
             <div class="section-box"><h4><i class="fas fa-wallet"></i> Payment Records</h4>
+                <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;">
+                    <input type="search" id="payments-search" placeholder="Search name, email, reference..." style="flex:1;max-width:250px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                    <select id="payments-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="successful">Successful</option>
+                        <option value="failed">Failed</option>
+                        <option value="refunded">Refunded</option>
+                    </select>
+                    <input type="date" id="payments-date-from" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="From date">
+                    <input type="date" id="payments-date-to" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="To date">
+                    <button type="button" class="btn secondary" id="payments-export-csv" style="font-size:0.78rem;"><i class="fas fa-download"></i> Export CSV</button>
+                </div>
                 <div style="overflow-x:auto">
                     <table id="payments-table">
                         <thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th><th>Reference</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
+                <div id="payments-table-info" class="table-info"></div>
+                <div id="payments-pagination" class="pagination-controls"></div>
         </section>
 
-        <section id="genres" class="content-section">
+<section id="genres" class="content-section">
             <div class="section-box">
                 <h4><i class="fas fa-tags"></i> Manage Genres</h4>
                 <form id="genre-form" class="form-grid" style="grid-template-columns: 1fr auto; gap: 1rem; margin-bottom: 1.5rem;">
                     <input id="genre-name" placeholder="New genre name..." required>
                     <button type="submit" class="btn">Add Genre</button>
                 </form>
+                <div class="toolbar" style="margin-bottom:1rem;">
+                    <input type="search" id="genres-search" placeholder="Search genres..." style="flex:1;max-width:250px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                </div>
                 <div style="overflow-x:auto">
                     <table id="genres-table">
                         <thead><tr><th>Name</th><th>Actions</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
+                <div id="genres-table-info" class="table-info"></div>
+                <div id="genres-pagination" class="pagination-controls"></div>
         </section>
 
         <section id="ads-config" class="content-section">
@@ -332,15 +352,33 @@
             </div>
         </section>
 
-        <section id="logs" class="content-section">
+<section id="logs" class="content-section">
             <div class="section-box">
                 <h4><i class="fas fa-clipboard-list"></i> Activity Logs</h4>
+                <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;">
+                    <input type="search" id="logs-search" placeholder="Search logs..." style="flex:1;max-width:250px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                    <select id="logs-filter-category" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                        <option value="">All Categories</option>
+                        <option value="anime">Anime</option>
+                        <option value="episode">Episodes</option>
+                        <option value="user">Users</option>
+                        <option value="payment">Payments</option>
+                        <option value="genre">Genres</option>
+                        <option value="ad">Ads</option>
+                        <option value="settings">Settings</option>
+                    </select>
+                    <input type="date" id="logs-date-from" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="From date">
+                    <input type="date" id="logs-date-to" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="To date">
+                    <button type="button" class="btn secondary" id="logs-export" style="font-size:0.78rem;"><i class="fas fa-download"></i> Export CSV</button>
+                </div>
                 <div style="overflow-x:auto">
                     <table id="logs-table">
-                        <thead><tr><th>Admin</th><th>Action</th><th>Target</th><th>Timestamp</th></tr></thead>
+                        <thead><tr><th>Admin</th><th>Action</th><th>Target</th><th>Details</th><th>Timestamp</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
+                <div id="logs-table-info" class="table-info"></div>
+                <div id="logs-pagination" class="pagination-controls"></div>
         </section>
 
         <section id="settings" class="content-section">
@@ -367,6 +405,8 @@
                     <label class="wide">Image URL <div class="img-uploader" data-target="ad-image-uploader"><input id="ad-image-uploader" name="image_url" type="hidden"></div></label>
                     <label class="wide">Target Link <input id="ad-link" name="target_url" placeholder="https://..."></label>
                     <label>Frequency (per session) <input id="ad-frequency" name="frequency" type="number" min="1" value="1"></label>
+                    <label>Scheduling — Start Date <input id="ad-start-date" name="start_date" type="date" style="width:100%;margin-top:4px;"></label>
+                    <label>Scheduling — End Date <input id="ad-end-date" name="end_date" type="date" style="width:100%;margin-top:4px;"></label>
                     <label><input id="ad-is-active" name="is_active" type="checkbox" checked> Active</label>
                     <label><input id="ad-target-free-only" name="target_free_only" type="checkbox" checked> Free Users Only</label>
                     <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
@@ -421,7 +461,7 @@
             </div>
     </div>
 
-    <div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
+<div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
         <div class="anime-import-dialog">
             <div class="anime-import-header"><h3 id="add-anime-modal-title">Add Anime</h3><button type="button" class="anime-import-close" id="close-add-anime-modal" aria-label="Close">&times;</button></div>
             <div class="anime-import-tabs" role="tablist" aria-label="Anime source">
@@ -445,6 +485,86 @@
                 </form>
             </section>
         </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="edit-user-modal-title">
+        <div class="anime-import-dialog" style="max-width:520px;">
+            <div class="anime-import-header">
+                <h3 id="edit-user-modal-title" class="modal-title">Edit User</h3>
+                <button type="button" class="anime-import-close" id="close-edit-user-modal" aria-label="Close">&times;</button>
+            </div>
+            <div class="anime-import-panel">
+                <form id="edit-user-form" class="form-grid">
+                    <label>Name <input id="edit-user-name" name="name" required></label>
+                    <label>Email <input id="edit-user-email" name="email" type="email" required></label>
+                    <label>Status <select id="edit-user-status" name="status">
+                        <option value="active">Active</option>
+                        <option value="banned">Banned</option>
+                        <option value="suspended">Suspended</option>
+                    </select></label>
+                    <label><input id="edit-user-is-admin" name="is_admin" type="checkbox"> Admin</label>
+                    <label><input id="edit-user-is-premium" name="is_premium" type="checkbox"> Premium</label>
+                    <label>Premium Expiry <input id="edit-user-premium-expiry" name="premium_expires_at" type="date"></label>
+                    <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
+                        <button type="submit" class="btn">Save Changes</button>
+                        <button type="button" class="btn secondary" id="close-edit-user-modal-cancel">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Genre Modal -->
+    <div id="edit-genre-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="edit-genre-modal-title">
+        <div class="anime-import-dialog" style="max-width:420px;">
+            <div class="anime-import-header">
+                <h3 id="edit-genre-modal-title" class="modal-title">Edit Genre</h3>
+                <button type="button" class="anime-import-close" id="close-edit-genre-modal" aria-label="Close">&times;</button>
+            </div>
+            <div class="anime-import-panel">
+                <form id="edit-genre-form" class="form-grid">
+                    <label>Genre Name
+                        <input id="edit-genre-name" name="name" required placeholder="Enter genre name">
+                    </label>
+                    <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
+                        <button type="submit" class="btn">Save Changes</button>
+                        <button type="button" class="btn secondary" id="close-edit-genre-modal-cancel">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Episode Modal (Add/Edit) -->
+    <div id="episode-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="episode-modal-title">
+        <div class="anime-import-dialog" style="max-width:560px;">
+            <div class="anime-import-header">
+                <h3 id="episode-modal-title" class="modal-title">Add Episode</h3>
+                <button type="button" class="anime-import-close" id="close-episode-modal" aria-label="Close">&times;</button>
+            </div>
+            <div class="anime-import-panel">
+                <form id="episode-form" class="form-grid">
+                    <label>Anime
+                        <select id="ep-anime-id" name="anime_id">
+                            <option value="">Select Anime</option>
+                        </select>
+                    </label>
+                    <label>Episode Number <input id="ep-number" name="episode_number" type="number" min="1" required placeholder="e.g. 1"></label>
+                    <label>Title <input id="ep-title" name="title" placeholder="Episode title (optional)"></label>
+                    <label class="wide">Description <textarea id="ep-description" name="description" rows="3" placeholder="Episode description (optional)"></textarea></label>
+                    <label>Duration (seconds) <input id="ep-duration" name="duration_sec" type="number" min="0" placeholder="e.g. 1440"></label>
+                    <label class="wide">Video URL <input id="ep-video-url" name="video_url" placeholder="https://..."></label>
+                    <label class="wide">Thumbnail URL <input id="ep-thumbnail-url" name="thumbnail_url" placeholder="https://..."></label>
+                    <label><input id="ep-is-premium" name="is_premium" type="checkbox"> Premium only</label>
+                    <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
+                        <button type="submit" class="btn">Save Episode</button>
+                        <button type="button" class="btn secondary" id="close-episode-modal-cancel">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <script src="js/api.js"></script>
     <script src="js/shared.js"></script>

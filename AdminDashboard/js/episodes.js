@@ -1,122 +1,317 @@
-// Cloudinary-only episode helpers for dashboard variants that load this file.
-// The current dashboard supplies its own modal; these exports preserve the
-// established manageEpisodes(animeId, title) and loadEpisodes(animeId) hooks.
-(function () {
-  let currentAnimeId = null;
-  let _episodes_all = []; // Local cache for episodes
-  let _episodes_tbody = null; // Cached tbody element
+// AdminDashboard/js/episodes.js — Complete rewrite
+// Uses shared.js for: _escapeHTML, showToast, _debounce, _confirm, ModalManager, SkeletonLoader, EmptyState, ErrorState, Badge, DataTable
 
-  async function loadEpisodes(animeId = currentAnimeId) {
-    if (!animeId) return [];
-    currentAnimeId = animeId;
-    _episodes_tbody = document.querySelector('#episodes-table tbody'); // Cache tbody
-    if (!_episodes_tbody) return [];
-    _episodes_tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading episodes...</td></tr>';
+(function() {
+  'use strict';
 
-    try {
-        _episodes_all = await window.apiRequest(`/api/admin/anime/${animeId}/episodes`);
-        _renderEpisodes();
-        return _episodes_all;
-    } catch (error) {
-        console.error(`[Episodes] Failed to load episodes for anime ${animeId}:`, error);
-        _episodes_tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Error loading episodes. Check console.</td></tr>`;
-        return [];
-    }
+  // ─── State ──────────────────────────────────────────────────────────────
+  let _currentAnimeId = null;
+  let _currentAnimeTitle = '';
+  let _episodesEditId = null;
+  let _episodesData = [];
+  let _animeList = [];
+
+  // ─── DOM Cache ──────────────────────────────────────────────────────────
+  function _$el(id) { return document.getElementById(id); }
+
+  // ─── Initialization ─────────────────────────────────────────────────────
+  function initializeEpisodesSection() {
+    console.log('[Episodes] Initializing...');
+
+    _setupEventListeners();
+    _loadAnimeList();
+    _loadAllEpisodes();
+
+    // Expose manageEpisodes for anime.js to call
+    window.manageEpisodes = function(animeId, animeTitle) {
+      _currentAnimeId = animeId;
+      _currentAnimeTitle = animeTitle || '';
+      const titleEl = document.getElementById('current-anime-title');
+      if (titleEl) titleEl.textContent = animeTitle ? `Episodes: ${window._escapeHTML(animeTitle)}` : 'All Episodes';
+      _loadAllEpisodes();
+    };
   }
 
-  async function initializeEpisodesSection() {
-    _episodes_tbody = document.querySelector('#episodes-table tbody');
-    if (!_episodes_tbody) return;
+  // ─── Event Listeners ────────────────────────────────────────────────────
+  function _setupEventListeners() {
+    // Add Episode button
+    _$el('add-episode-button')?.addEventListener('click', () => _openEpisodeModal(null));
 
-    _episodes_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading episodes...</td></tr>';
-    try {
-      _episodes_all = await window.apiRequest('/api/admin/episodes');
-      if (!_episodes_all.length) {
-        _episodes_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No episodes added yet.</td></tr>';
-        return;
+    // Bulk delete
+    _$el('bulkDeleteBtn-episodes')?.addEventListener('click', _handleBulkDelete);
+
+    // Select all
+    _$el('selectAll-episodes')?.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      document.querySelectorAll('.episode-select-checkbox').forEach(cb => {
+        cb.checked = checked;
+      });
+      _updateBulkDeleteButton();
+    });
+
+    // Table delegation (edit, delete, checkbox)
+    _$el('episodes-table')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-action');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.classList.contains('edit')) {
+        _openEpisodeModal(id);
+      } else if (btn.classList.contains('delete')) {
+        _deleteEpisode(id);
       }
-      _episodes_tbody.innerHTML = _episodes_all.map(episode => `<tr>
-        <td><input type="checkbox" aria-label="Select episode ${episode.id}"></td>
-        <td>${window._escapeHTML(episode.anime_title || 'Unknown anime')}</td>
-        <td>${episode.episode_number || '-'}</td>
-        <td>${window._escapeHTML(episode.title || 'Untitled Episode')}</td>
-        <td>${episode.duration_sec ? `${episode.duration_sec} sec` : '-'}</td>
-        <td>${episode.view_count || 0}</td>
-        <td>${episode.is_premium ? 'Yes' : 'No'}</td>
-      </tr>`).join('');
-    } catch (error) {
-      console.error('[Episodes] Failed to load all episodes:', error);
-      _episodes_tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--danger);">Unable to load episodes.</td></tr>';
+    });
+
+    _$el('episodes-table')?.addEventListener('change', (e) => {
+      if (e.target.closest('.episode-select-checkbox')) {
+        _updateBulkDeleteButton();
+      }
+    });
+
+    // Episode Modal events
+    _$el('close-episode-modal')?.addEventListener('click', _closeEpisodeModal);
+    _$el('episode-modal')?.addEventListener('click', (e) => {
+      if (e.target === _$el('episode-modal')) _closeEpisodeModal();
+    });
+    _$el('episode-form')?.addEventListener('submit', _handleFormSubmit);
+
+    // Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') _closeEpisodeModal();
+    });
+  }
+
+  // ─── Data Loading ───────────────────────────────────────────────────────
+  async function _loadAnimeList() {
+    try {
+      const data = await window.apiRequest('/api/admin/anime?limit=1000');
+      _animeList = data.data || data || [];
+    } catch (e) {
+      console.warn('[Episodes] Could not load anime list:', e.message);
     }
   }
 
-  function _renderEpisodes() {
-    if (!_episodes_tbody) return;
+  async function _loadAllEpisodes() {
+    const tbody = _$el('episodes-table')?.querySelector('tbody');
+    if (!tbody) return;
 
-    if (_episodes_all.length === 0) {
-      _episodes_tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No episodes added yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7">' + window.SkeletonLoader.table(5, 7) + '</td></tr>';
+
+    try {
+      let data;
+      if (_currentAnimeId) {
+        data = await window.apiRequest(`/api/admin/anime/${_currentAnimeId}/episodes`);
+      } else {
+        data = await window.apiRequest('/api/admin/episodes');
+      }
+      _episodesData = Array.isArray(data) ? data : [];
+      _renderEpisodes(tbody);
+    } catch (error) {
+      console.error('[Episodes] Failed to load:', error);
+      tbody.innerHTML = '<tr><td colspan="7">' + window.ErrorState.render({
+        message: 'Failed to load episodes',
+        retryFn: () => _loadAllEpisodes()
+      }) + '</td></tr>';
+    }
+  }
+
+  // ─── Rendering ──────────────────────────────────────────────────────────
+  function _renderEpisodes(tbody) {
+    if (!tbody) tbody = _$el('episodes-table')?.querySelector('tbody');
+    if (!tbody) return;
+
+    if (_episodesData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7">' + window.EmptyState.render({
+        icon: '🎬',
+        title: 'No Episodes Found',
+        description: _currentAnimeId ? 'This anime has no episodes yet.' : 'No episodes in the database.',
+        actionText: '+ Add Episode',
+        actionFn: () => _openEpisodeModal(null)
+      }) + '</td></tr>';
       return;
     }
 
-    _episodes_tbody.innerHTML = _episodes_all.map(episode => `<tr>
-            <td>${episode.episode_number || '-'}</td>
-            <td>${episode.thumbnail_url ? `<img src="${episode.thumbnail_url}" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:6px;">` : '-'}</td>
-            <td>${window._escapeHTML(episode.title || 'Untitled Episode')}</td>
-            <td>${episode.duration_sec ? `${episode.duration_sec} sec` : '-'}</td>
-            <td>${episode.is_premium ? 'Yes' : 'No'}</td>
-            <td><button class="secondary-btn" data-action="edit" data-id="${episode.id}">Edit</button> <button class="danger-btn" data-action="delete" data-id="${episode.id}">Delete</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;">No episodes added yet.</td></tr>';
+    tbody.innerHTML = _episodesData.map(ep => {
+      const thumbnail = ep.thumbnail_url
+        ? `<img src="${ep.thumbnail_url}" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:4px;" loading="lazy">`
+        : '<span style="color:var(--text-muted);font-size:0.75rem;">No thumb</span>';
+      return `<tr>
+        <td><input type="checkbox" class="episode-select-checkbox" data-id="${ep.id}"></td>
+        <td>${window._escapeHTML(ep.anime_title || '—')}</td>
+        <td>${ep.episode_number || '-'}</td>
+        <td>${thumbnail}</td>
+        <td>${window._escapeHTML(ep.title || 'Untitled')}</td>
+        <td>${ep.duration_sec ? Math.floor(ep.duration_sec / 60) + 'm ' + (ep.duration_sec % 60) + 's' : '—'}</td>
+        <td>${window.Badge.premium(ep.is_premium)}</td>
+        <td>${(ep.view_count || 0).toLocaleString()}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn-action edit" data-id="${ep.id}" title="Edit Episode"><i class="fas fa-edit"></i></button>
+          <button class="btn-action delete" data-id="${ep.id}" title="Delete Episode"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    _updateBulkDeleteButton();
   }
 
-  function manageEpisodes(animeId, animeTitle = '') {
-    currentAnimeId = animeId;
-    // Ensure tbody is cached when managing episodes
-    if (!_episodes_tbody) {
-      _episodes_tbody = document.querySelector('#episodes-table tbody');
-    }
-    // Use event delegation for actions to be more secure and efficient
-    if (_episodes_tbody && !_episodes_tbody.dataset.listener) {
-      _episodes_tbody.addEventListener('click', _handleEpisodeTableClick);
-      _episodes_tbody.dataset.listener = 'true';
-    }
-
-    const title = document.getElementById('current-anime-title');
-    if (title) title.textContent = animeTitle ? `Episodes: ${window._escapeHTML(animeTitle)}` : 'Episodes';
-    if (typeof window.showSection === 'function') window.showSection('episodes');
-    return loadEpisodes(animeId);
-  }
-
-  function _handleEpisodeTableClick(e) {
-    const target = e.target.closest('button');
-    if (!target) return;
-
-    const action = target.dataset.action;
-    const id = target.dataset.id;
-
-    if (action === 'edit') {
-      if (window.openEpisodeModal) window.openEpisodeModal(id);
-    } else if (action === 'delete') {
-      deleteEpisode(id);
+  function _updateBulkDeleteButton() {
+    const selected = document.querySelectorAll('.episode-select-checkbox:checked');
+    const btn = _$el('bulkDeleteBtn-episodes');
+    const countEl = _$el('selectedCount-episodes');
+    if (btn && countEl) {
+      if (selected.length > 0) {
+        btn.style.display = 'inline-block';
+        countEl.textContent = selected.length;
+      } else {
+        btn.style.display = 'none';
+      }
     }
   }
 
-  async function deleteEpisode(episodeId) {
+  // ─── Episode Modal ──────────────────────────────────────────────────────
+  function _openEpisodeModal(id) {
+    _episodesEditId = id;
+    const modal = _$el('episode-modal');
+    const title = modal?.querySelector('.modal-title');
+    const form = _$el('episode-form');
+
+    if (!modal || !form) {
+      window.showToast?.('Episode modal is not available in the HTML.', 'error');
+      return;
+    }
+
+    form.reset();
+
+    // Populate anime dropdown
+    const animeSelect = form.querySelector('#ep-anime-id');
+    if (animeSelect) {
+      animeSelect.innerHTML = '<option value="">Select Anime</option>' +
+        _animeList.map(a => `<option value="${a.id}">${window._escapeHTML(a.title)}</option>`).join('');
+      if (_currentAnimeId) animeSelect.value = _currentAnimeId;
+    }
+
+    if (id) {
+      // Edit mode
+      title.textContent = 'Edit Episode';
+      const ep = _episodesData.find(e => String(e.id) === String(id));
+      if (!ep) {
+        window.showToast?.('Episode not found.', 'error');
+        return;
+      }
+      form.querySelector('#ep-number').value = ep.episode_number || '';
+      form.querySelector('#ep-title').value = ep.title || '';
+      form.querySelector('#ep-description').value = ep.description || '';
+      form.querySelector('#ep-duration').value = ep.duration_sec || '';
+      form.querySelector('#ep-video-url').value = ep.video_url || '';
+      form.querySelector('#ep-thumbnail-url').value = ep.thumbnail_url || '';
+      form.querySelector('#ep-is-premium').checked = !!ep.is_premium;
+      if (animeSelect) animeSelect.value = ep.anime_id || _currentAnimeId;
+    } else {
+      title.textContent = 'Add Episode';
+    }
+
+    modal.hidden = false;
+  }
+
+  function _closeEpisodeModal() {
+    const modal = _$el('episode-modal');
+    if (modal) modal.hidden = true;
+    _episodesEditId = null;
+  }
+
+  // ─── Form Submit ────────────────────────────────────────────────────────
+  async function _handleFormSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const episodeNumber = parseInt(form.querySelector('#ep-number').value, 10);
+    const animeId = form.querySelector('#ep-anime-id')?.value || _currentAnimeId;
+
+    if (!animeId) {
+      window.showToast?.('Please select an anime.', 'error');
+      return;
+    }
+    if (!episodeNumber || isNaN(episodeNumber)) {
+      window.showToast?.('Episode number is required.', 'error');
+      return;
+    }
+
+    const body = {
+      episode_number: episodeNumber,
+      title: form.querySelector('#ep-title').value || null,
+      description: form.querySelector('#ep-description').value || null,
+      duration_sec: parseInt(form.querySelector('#ep-duration').value, 10) || null,
+      video_url: form.querySelector('#ep-video-url').value || null,
+      thumbnail_url: form.querySelector('#ep-thumbnail-url').value || null,
+      is_premium: form.querySelector('#ep-is-premium').checked ? '1' : '0',
+    };
+
     try {
-        const confirmed = await _confirm('Delete Episode', 'Delete this episode? This action cannot be undone.', 'Delete', 'Cancel');
-        if (!confirmed) return;
-        await window.apiRequest(`/api/admin/episodes/${episodeId}`, { method: 'DELETE' });
-        _episodes_all = _episodes_all.filter(ep => String(ep.id) !== String(episodeId));
-        _renderEpisodes(); // Re-render from local cache
+      if (_episodesEditId) {
+        await window.apiRequest(`/api/admin/episodes/${_episodesEditId}`, { method: 'PUT', body });
+        window.showToast?.('Episode updated.', 'success');
+      } else {
+        await window.apiRequest(`/api/admin/anime/${animeId}/episodes`, { method: 'POST', body });
+        window.showToast?.('Episode created.', 'success');
+      }
+      _closeEpisodeModal();
+      await _loadAllEpisodes();
     } catch (error) {
-        console.error(`[Episodes] Failed to delete episode ${episodeId}:`, error);
-        window.showToast(`Failed to delete episode: ${error.message}`, 'error');
+      window.showToast?.(`Failed to save episode: ${error.message}`, 'error');
     }
   }
 
-  // File selection is handled by the dashboard modal. There is deliberately no
-  // URL field, status polling, or provider-specific playback state here.
-  window.loadEpisodes = loadEpisodes;
+  // ─── Delete Episode ─────────────────────────────────────────────────────
+  async function _deleteEpisode(id) {
+    const ep = _episodesData.find(e => String(e.id) === String(id));
+    const confirmed = await window._confirm(
+      'Delete Episode',
+      `Delete episode "${ep?.title || '#' + id}"? This cannot be undone.`,
+      'Delete',
+      'Cancel'
+    );
+    if (!confirmed) return;
+
+    try {
+      await window.apiRequest(`/api/admin/episodes/${id}`, { method: 'DELETE' });
+      _episodesData = _episodesData.filter(e => String(e.id) !== String(id));
+      _renderEpisodes();
+      window.showToast?.('Episode deleted.', 'success');
+    } catch (error) {
+      window.showToast?.(`Delete failed: ${error.message}`, 'error');
+    }
+  }
+
+  // ─── Bulk Delete ────────────────────────────────────────────────────────
+  async function _handleBulkDelete() {
+    const selected = document.querySelectorAll('.episode-select-checkbox:checked');
+    const ids = Array.from(selected).map(cb => cb.dataset.id);
+    if (ids.length === 0) return;
+
+    const confirmed = await window._confirm(
+      'Delete Episodes',
+      `Delete ${ids.length} episodes? This cannot be undone.`,
+      'Delete',
+      'Cancel'
+    );
+    if (!confirmed) return;
+
+    try {
+      await window.apiRequest('/api/admin/episodes/bulk-delete', { method: 'POST', body: { ids } });
+      _episodesData = _episodesData.filter(e => !ids.includes(String(e.id)));
+      _renderEpisodes();
+      window.showToast?.(`${ids.length} episodes deleted.`, 'success');
+    } catch (error) {
+      window.showToast?.(`Bulk delete failed: ${error.message}`, 'error');
+    }
+  }
+
+  // ─── Global Exposure ────────────────────────────────────────────────────
   window.initializeEpisodesSection = initializeEpisodesSection;
-  window.manageEpisodes = manageEpisodes;
-  window.deleteEpisode = deleteEpisode;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.location.hash === '#episodes') {
+      initializeEpisodesSection();
+    }
+  });
+
 })();
+

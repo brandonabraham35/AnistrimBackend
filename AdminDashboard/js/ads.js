@@ -1,285 +1,224 @@
-// AdminDashboard/js/ads.js
+// AdminDashboard/js/ads.js — Enhanced with scheduling, placement management, shared components
+// Uses shared.js for: _escapeHTML, showToast, _debounce, _confirm, ModalManager, SkeletonLoader, EmptyState, ErrorState, Badge
 
-// --- State ---
-let _ads_all = [];
-let _ads_editId = null; // null for 'Add' mode, ad.id for 'Edit' mode
-let _ads_tbody = null; // Cached tbody element
+(function() {
+  'use strict';
 
-/**
- * Initializes the Ads management section, fetches data, and sets up event listeners.
- */
-function initializeAdsSection() {
-    _diag_ads('Initializing Ads management section...');
+  // ─── State ──────────────────────────────────────────────────────────────
+  let _ads_all = [];
+  let _ads_editId = null;
+  let _ads_tbody = null;
 
-    // Initial data load
-    _loadAds();
+  // ─── Initialization ─────────────────────────────────────────────────────
+  function initializeAdsSection() {
+    console.log('[Ads] Initializing...');
 
-    // Cache DOM elements
     _ads_tbody = document.querySelector('#ads-table tbody');
+    _setupEventListeners();
+    _loadAds();
+  }
 
-    // Setup event listeners
-    const section = document.getElementById('ads-config'); // ID from dashboard.js
-    if (!section) return;
+  function _setupEventListeners() {
+    // Add ad button
+    document.getElementById('add-ad-btn')?.addEventListener('click', () => _openAdModal(null));
 
-    // Main actions
-    section.querySelector('#add-ad-btn')?.addEventListener('click', () => _openAdModal(null));
+    // Table delegation
+    const table = document.querySelector('#ads-table');
+    table?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-action');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.classList.contains('edit')) {
+        _openAdModal(id);
+      } else if (btn.classList.contains('delete')) {
+        _deleteAd(id);
+      }
+    });
+    table?.addEventListener('change', (e) => {
+      const toggle = e.target.closest('.status-toggle');
+      if (toggle) {
+        const id = toggle.dataset.id;
+        const isActive = toggle.checked;
+        _updateAd(id, { is_active: isActive });
+      }
+    });
 
-    // Table interaction (delegated)
-    const table = section.querySelector('#ads-table');
-    if (table) {
-        table.addEventListener('click', _handleTableClick);
-        table.addEventListener('change', _handleTableChange);
-    }
-
-    // Modal interaction - assuming a modal with ID 'ad-modal' exists in the HTML
+    // Modal events
     const modal = document.getElementById('ad-modal');
     if (modal) {
-        modal.querySelector('.close-modal-btn')?.addEventListener('click', () => _closeAdModal());
-        modal.addEventListener('click', (e) => { if (e.target === modal) _closeAdModal(); });
-        modal.querySelector('#ad-form')?.addEventListener('submit', _handleFormSubmit);
+      modal.querySelector('.close-modal-btn')?.addEventListener('click', () => _closeAdModal());
+      modal.querySelector('#ad-form')?.addEventListener('submit', _handleFormSubmit);
+      modal.addEventListener('click', (e) => { if (e.target === modal) _closeAdModal(); });
     }
-}
 
-/**
- * Diagnostic logger for the Ads module.
- */
-function _diag_ads(...args) {
-    console.log('[Ads]', ...args);
-}
+    // Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') _closeAdModal();
+    });
+  }
 
-/**
- * Handles the Escape key press to close the modal.
- */
-function _handleEscKeyForAdModal(e) {
-    if (e.key === 'Escape') _closeAdModal();
-}
-
-// --- Data Fetching & Rendering ---
-
-/**
- * Fetches all ads from the API and triggers a re-render.
- */
-async function _loadAds() {
+  // ─── Data Fetching ──────────────────────────────────────────────────────
+  async function _loadAds() {
     if (!_ads_tbody) return;
-    _ads_tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading ads...</td></tr>';
+    _ads_tbody.innerHTML = '<tr><td colspan="7">' + window.SkeletonLoader.table(3, 6) + '</td></tr>';
 
     try {
-        _ads_all = await window.apiRequest('/api/admin/ads');
-        _renderAds();
+      _ads_all = await window.apiRequest('/api/admin/ads');
+      _renderAds();
     } catch (error) {
-        _diag_ads('Failed to load ads:', error);
-        _ads_tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Error loading ads. Check console.</td></tr>`;
+      console.error('[Ads] Failed to load:', error);
+      _ads_tbody.innerHTML = '<tr><td colspan="7">' + window.ErrorState.render({
+        message: 'Failed to load ads',
+        retryFn: () => _loadAds()
+      }) + '</td></tr>';
     }
-}
+  }
 
-/**
- * Renders the list of ads into the table.
- */
-function _renderAds() {
+  function _renderAds() {
     if (!_ads_tbody) return;
 
     if (_ads_all.length === 0) {
-        _ads_tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No ads have been created yet.</td></tr>';
-        return;
+      _ads_tbody.innerHTML = '<tr><td colspan="7">' + window.EmptyState.render({
+        icon: '📢',
+        title: 'No Ads Created',
+        description: 'Click "Add Ad" to create your first advertisement.'
+      }) + '</td></tr>';
+      return;
     }
 
-    _ads_tbody.innerHTML = _ads_all.map(ad => `
-        <tr>
-            <td>
-                <div class="ad-preview">
-                    ${ad.image_url ? `<img src="${ad.image_url}" alt="Ad Preview">` : '<span>No Image</span>'}
-                </div>
-            </td>
-            <td>${window._escapeHTML(ad.title || 'Untitled Ad')}</td>
-            <td>${ad.type || 'N/A'}</td>
-            <td>
-                <label class="switch">
-                    <input type="checkbox" class="status-toggle" data-id="${ad.id}" ${ad.is_active ? 'checked' : ''}>
-                    <span class="slider round"></span>
-                </label>
-            </td>
-            <td>${ad.target_free_only ? 'Free Only' : 'All Users'}</td>
-            <td>
-                <button class="btn-action edit" data-id="${ad.id}" title="Edit">✏️</button>
-                <button class="btn-action delete" data-id="${ad.id}" title="Delete">🗑️</button>
-            </td>
-        </tr>
-    `).join('');
-}
+    _ads_tbody.innerHTML = _ads_all.map(ad => {
+      const scheduleInfo = ad.start_date || ad.end_date
+        ? `${ad.start_date ? window._formatDate(ad.start_date) : 'Any'} → ${ad.end_date ? window._formatDate(ad.end_date) : 'Any'}`
+        : 'Always';
+      return `
+      <tr>
+        <td>
+          <div class="ad-preview">
+            ${ad.image_url ? `<img src="${ad.image_url}" alt="Ad Preview" style="width:60px;height:40px;object-fit:cover;border-radius:4px;">` : '<span style="color:var(--text-muted);font-size:0.78rem;">No Image</span>'}
+          </div>
+        </td>
+        <td>${window._escapeHTML(ad.title || 'Untitled')}</td>
+        <td>${ad.type || 'N/A'}</td>
+        <td>
+          <label class="switch">
+            <input type="checkbox" class="status-toggle" data-id="${ad.id}" ${ad.is_active ? 'checked' : ''}>
+            <span class="slider round"></span>
+          </label>
+        </td>
+        <td>${ad.target_free_only ? 'Free Only' : 'All Users'}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted);">${scheduleInfo}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn-action edit" data-id="${ad.id}" title="Edit"><i class="fas fa-edit"></i></button>
+          <button class="btn-action delete" data-id="${ad.id}" title="Delete"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
 
-// --- Event Handlers ---
-
-/**
- * Handles delegated click events on the ads table for edit and delete actions.
- */
-function _handleTableClick(e) {
-    const target = e.target.closest('.btn-action');
-    if (!target) return;
-
-    const id = target.dataset.id;
-    if (target.classList.contains('edit')) {
-        _openAdModal(id);
-    } else if (target.classList.contains('delete')) {
-        deleteAd(id);
-    }
-}
-
-/**
- * Handles delegated change events on the ads table, specifically for the status toggle.
- */
-function _handleTableChange(e) {
-    const target = e.target;
-    if (target.matches('.status-toggle')) {
-        const id = target.dataset.id;
-        const isActive = target.checked;
-        _updateAd(id, { is_active: isActive });
-    }
-}
-
-/**
- * Handles the submission of the add/edit ad form.
- */
-async function _handleFormSubmit(e) {
+  // ─── Form Submit ───────────────────────────────────────────────────────
+  async function _handleFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
     const body = Object.fromEntries(formData.entries());
 
-    // Ensure checkbox values are correctly represented as booleans/numbers for the API
     body.is_active = form.querySelector('#ad-is-active').checked ? '1' : '0';
     body.target_free_only = form.querySelector('#ad-target-free-only').checked ? '1' : '0';
     body.frequency = parseInt(body.frequency, 10) || 1;
+    // Scheduling fields
+    body.start_date = body.start_date || null;
+    body.end_date = body.end_date || null;
 
     const endpoint = _ads_editId ? `/api/admin/ads/${_ads_editId}` : '/api/admin/ads';
     const method = _ads_editId ? 'PUT' : 'POST';
 
     try {
-        await window.apiRequest(endpoint, { method, body });
-        _diag_ads(`Successfully ${_ads_editId ? 'updated' : 'created'} ad.`);
-        _closeAdModal();
-        await _loadAds(); // Re-fetch and re-render to ensure data consistency and updated sort order
+      await window.apiRequest(endpoint, { method, body });
+      window.showToast?.(`Ad ${_ads_editId ? 'updated' : 'created'} successfully.`, 'success');
+      _closeAdModal();
+      await _loadAds();
     } catch (error) {
-        _diag_ads('Failed to save ad:', error);
-        window.showToast(`Failed to save ad: ${error.message}`, 'error');
+      window.showToast?.(`Failed to save ad: ${error.message}`, 'error');
     }
-}
+  }
 
-// --- CRUD & Modal Logic ---
-
-/**
- * Sends a PUT request to update an ad's properties.
- * Used for quick actions like toggling status.
- */
-async function _updateAd(id, partialBody) {
+  // ─── CRUD Operations ───────────────────────────────────────────────────
+  async function _updateAd(id, partialBody) {
     try {
-        await window.apiRequest(`/api/admin/ads/${id}`, { method: 'PUT', body: partialBody });
-        _diag_ads(`Successfully updated ad ${id}.`);
-        const adIndex = _ads_all.findIndex(a => String(a.id) === String(id));
-        if (adIndex > -1) {
-            _ads_all[adIndex] = { ..._ads_all[adIndex], ...partialBody };
-        }
-        _renderAds(); // Re-render from local cache
+      await window.apiRequest(`/api/admin/ads/${id}`, { method: 'PUT', body: partialBody });
+      const idx = _ads_all.findIndex(a => String(a.id) === String(id));
+      if (idx > -1) _ads_all[idx] = { ..._ads_all[idx], ...partialBody };
+      _renderAds();
     } catch (error) {
-        _diag_ads(`Failed to update ad ${id}:`, error);
-        window.showToast(`Failed to update ad: ${window._escapeHTML(error.message)}`, 'error');
-        await _loadAds(); // Revert UI on failure
+      window.showToast?.(`Failed to update ad: ${error.message}`, 'error');
+      await _loadAds();
     }
-}
+  }
 
-/**
- * Deletes an ad after confirmation.
- * @param {number|string} id The ID of the ad to delete.
- */
-async function deleteAd(id) {
+  async function _deleteAd(id) {
     const ad = _ads_all.find(a => String(a.id) === String(id));
-    const confirmed = await _confirm(
-        'Delete Ad',
-        `Delete ad "${ad?.title || '#' + id}"? This action cannot be undone.`,
-        'Delete',
-        'Cancel'
+    const confirmed = await window._confirm(
+      'Delete Ad',
+      `Delete ad "${ad?.title || '#' + id}"? This action cannot be undone.`,
+      'Delete',
+      'Cancel'
     );
     if (!confirmed) return;
-    try {
-        await window.apiRequest(`/api/admin/ads/${id}`, { method: 'DELETE' });
-        _diag_ads(`Successfully deleted ad ${id}`);
-        _ads_all = _ads_all.filter(ad => String(ad.id) !== String(id));
-        _renderAds(); // Re-render from local cache
-    } catch (error) {
-        console.error(`[Ads] Failed to delete ad ${id}:`, error);
-        window.showToast(`Failed to delete ad: ${window._escapeHTML(error.message)}`, 'error');
-    }
-}
 
-/**
- * Opens the ad modal for either adding a new ad or editing an existing one.
- * @param {number|string|null} adId The ID of the ad to edit, or null to add a new one.
- */
-async function _openAdModal(adId) {
+    try {
+      await window.apiRequest(`/api/admin/ads/${id}`, { method: 'DELETE' });
+      _ads_all = _ads_all.filter(a => String(a.id) !== String(id));
+      _renderAds();
+      window.showToast?.('Ad deleted successfully.', 'success');
+    } catch (error) {
+      window.showToast?.(`Failed to delete ad: ${error.message}`, 'error');
+    }
+  }
+
+  // ─── Modal Logic ───────────────────────────────────────────────────────
+  function _openAdModal(adId) {
     _ads_editId = adId;
     const modal = document.getElementById('ad-modal');
-    if (!modal) {
-        _diag_ads('Ad modal could not be found in the DOM.');
-        return;
-    }
+    if (!modal) return;
     const title = modal.querySelector('.modal-title');
     const form = modal.querySelector('#ad-form');
-
     form.reset();
-    if (window.refreshImagePreviews) {
-        window.refreshImagePreviews();
-    }
 
     if (adId) {
-        // --- Edit Mode ---
-        title.textContent = 'Edit Ad';
-        const ad = _ads_all.find(a => String(a.id) === String(adId));
-        if (!ad) {
-            window.showToast('Could not find ad data to edit.', 'error');
-            return;
-        }
-        // Populate form fields from the ad object
-        form.querySelector('#ad-title').value = ad.title || '';
-        form.querySelector('#ad-type').value = ad.type || 'banner';
-        form.querySelector('#ad-link').value = ad.link || '';
-        form.querySelector('#ad-frequency').value = ad.frequency || 1;
-        form.querySelector('#ad-is-active').checked = ad.is_active === 1 || ad.is_active === true;
-        form.querySelector('#ad-target-free-only').checked = ad.target_free_only === 1 || ad.target_free_only === true;
-
-        // Hydrate the image uploader with the existing image URL
-        const uploader = form.querySelector('#ad-image-uploader');
-        if (uploader && uploader._iuSet) {
-            uploader._iuSet(ad.image_url || '');
-        }
-
+      title.textContent = 'Edit Ad';
+      const ad = _ads_all.find(a => String(a.id) === String(adId));
+      if (!ad) {
+        window.showToast?.('Could not find ad data to edit.', 'error');
+        return;
+      }
+      form.querySelector('#ad-title').value = ad.title || '';
+      form.querySelector('#ad-type').value = ad.type || 'banner';
+      form.querySelector('#ad-link').value = ad.target_url || '';
+      form.querySelector('#ad-frequency').value = ad.frequency || 1;
+      form.querySelector('#ad-is-active').checked = ad.is_active === 1 || ad.is_active === true;
+      form.querySelector('#ad-target-free-only').checked = ad.target_free_only === 1 || ad.target_free_only === true;
+      form.querySelector('#ad-start-date').value = ad.start_date ? ad.start_date.slice(0, 10) : '';
+      form.querySelector('#ad-end-date').value = ad.end_date ? ad.end_date.slice(0, 10) : '';
     } else {
-        // --- Add Mode ---
-        title.textContent = 'Add New Ad';
+      title.textContent = 'Add New Ad';
     }
 
     modal.style.display = 'flex';
-    document.addEventListener('keydown', _handleEscKeyForAdModal);
-}
+  }
 
-/**
- * Closes the ad modal and resets the edit state.
- */
-function _closeAdModal() {
+  function _closeAdModal() {
     const modal = document.getElementById('ad-modal');
     if (modal) modal.style.display = 'none';
     _ads_editId = null;
-    document.removeEventListener('keydown', _handleEscKeyForAdModal);
-}
+  }
 
-// --- Global Exposure ---
-document.addEventListener('DOMContentLoaded', () => {
-    // Expose the initialization function for the main dashboard script
-    window.initializeAdsSection = initializeAdsSection;
-    
-    // Expose deleteAd globally to preserve any existing onclick handlers, though delegation is preferred
-    window.deleteAd = deleteAd;
+  // ─── Global Exposure ────────────────────────────────────────────────────
+  window.initializeAdsSection = initializeAdsSection;
 
-    // Initialize if the hash matches on page load
+  document.addEventListener('DOMContentLoaded', () => {
     if (window.location.hash === '#ads-config') {
-        initializeAdsSection();
+      initializeAdsSection();
     }
-});
+  });
+
+})();

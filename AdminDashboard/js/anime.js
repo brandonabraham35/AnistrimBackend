@@ -1,6 +1,6 @@
 // ─── AdminDashboard/js/anime.js ───
 // Complete Anime List CMS — bulk management table with full CRUD, filtering, sorting, pagination
-// Uses shared.js for: _escapeHTML, showToast, debounce, confirmDialog, SkeletonLoader, EmptyState, ErrorState
+// Uses shared.js for: _escapeHTML, showToast, _debounce, _confirm, ModalManager, SkeletonLoader, EmptyState, ErrorState, Badge, DataTable
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let _allAnime = [];
@@ -23,19 +23,6 @@ function _qa(sel, parent) { return Array.from((parent || document).querySelector
 
 let _tableBody, _pagination, _tableInfo, _mobileCards, _bulkToolbar, _selectedCountEl;
 
-// Ensure shared.js fallbacks
-if (typeof window._escapeHTML !== 'function') window._escapeHTML = function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'<').replace(/>/g,'>');};
-if (typeof window.showToast !== 'function') window.showToast = function(m){console.log('[Toast]',m);};
-if (typeof window.debounce !== 'function') {
-  window.debounce = function(fn, delay) {
-    let timer;
-    return function(...args) {
-      clearTimeout(timer);
-      timer = setTimeout(() => fn.apply(this, args), delay);
-    };
-  };
-}
-
 // ─── Initialization ───────────────────────────────────────────────────────────
 function initializeAnimeSection() {
   console.log('[Anime CMS] Initializing...');
@@ -56,8 +43,8 @@ function initializeAnimeSection() {
 }
 
 function _setupEventListeners() {
-  // Search (debounced)
-  _$el('anime-search')?.addEventListener('input', window.debounce(() => {
+// Search (debounced)
+  _$el('anime-search')?.addEventListener('input', window._debounce(() => {
     _filters.q = _$el('anime-search').value;
     _currentPage = 1;
     _fetchAnime();
@@ -82,7 +69,7 @@ function _setupEventListeners() {
   });
 
   // Year filter (debounced)
-  _$el('anime-filter-year')?.addEventListener('input', window.debounce(() => {
+  _$el('anime-filter-year')?.addEventListener('input', window._debounce(() => {
     _filters.year = _$el('anime-filter-year').value;
     _currentPage = 1;
     _fetchAnime();
@@ -149,22 +136,16 @@ function _setupEventListeners() {
     _updateUI();
   });
 
-  _mobileCards?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-action');
-    if (!btn) return;
-    const id = btn.dataset.id;
-    const action = btn.classList.contains('delete') ? 'delete' : btn.classList.contains('edit') ? 'edit' : btn.classList.contains('details') ? 'details' : null;
-  // Mobile cards checkbox changes
+  // Mobile cards — checkbox changes (delegated)
   _mobileCards?.addEventListener('change', (e) => {
     const cb = e.target.closest('.anime-select-checkbox');
     if (!cb) return;
-    const id = cb.dataset.id;
-    if (cb.checked) _selectedIds.add(id);
-    else _selectedIds.delete(id);
+    if (cb.checked) _selectedIds.add(cb.dataset.id);
+    else _selectedIds.delete(cb.dataset.id);
     _updateUI();
   });
 
-  // Mobile cards action buttons
+  // Mobile cards — action buttons (delegated)
   _mobileCards?.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-action');
     if (!btn) return;
@@ -339,9 +320,9 @@ function _renderTableRows(items) {
         <td><img src="${anime.cover_image || 'img/placeholder.png'}" alt="${anime.title}" style="width:40px;height:56px;object-fit:cover;border-radius:4px;" loading="lazy"></td>
         <td><strong>${window._escapeHTML(anime.title)}</strong>${anime.title_japanese ? `<br><small style="color:var(--text-muted);font-size:0.7rem;">${window._escapeHTML(anime.title_japanese)}</small>` : ''}</td>
         <td style="font-size:0.78rem;">${genres}${hasMoreGenres ? '...' : ''}</td>
-        <td><span class="status-badge ${anime.status || 'unknown'}">${anime.status || 'N/A'}</span></td>
-        <td>${anime.is_premium ? '<span style="color:var(--warning);font-weight:600;">Premium</span>' : 'Free'}</td>
-        <td>${anime.is_featured ? '<span style="color:var(--primary);font-weight:600;">Yes</span>' : 'No'}</td>
+        <td>${window.Badge.status(anime.status)}</td>
+        <td>${window.Badge.premium(anime.is_premium)}</td>
+        <td>${anime.is_featured ? window.Badge.featured(true) : '<span class="shared-badge shared-badge-muted">No</span>'}</td>
         <td>${anime.episode_count || 0}</td>
         <td>${(anime.view_count || 0).toLocaleString()}</td>
         <td style="white-space:nowrap;">
@@ -370,8 +351,8 @@ function _renderMobileCards(items) {
         <div class="card-body">
           <div class="card-title">${window._escapeHTML(anime.title)}</div>
           <div class="card-meta">
-            <span class="status-badge ${anime.status || 'unknown'}">${anime.status || 'N/A'}</span>
-            <span>${anime.is_premium ? '🔒 Premium' : '🔓 Free'}</span>
+            ${window.Badge.status(anime.status)}
+            ${window.Badge.premium(anime.is_premium)}
             <span>${anime.episode_count || 0} eps</span>
             <span>${(anime.view_count || 0).toLocaleString()} views</span>
           </div>
@@ -389,27 +370,31 @@ function _renderMobileCards(items) {
 
 function _renderEmpty() {
   if (_tableBody) {
-    _tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:3rem;">
-      <div style="font-size:3rem;margin-bottom:1rem;opacity:0.3;">🎬</div>
-      <h3 style="margin-bottom:0.5rem;">No Anime Found</h3>
-      <p style="color:var(--text-muted);margin-bottom:1.5rem;">${_filters.q ? 'Try adjusting your search or filters.' : 'Start building your catalogue.'}</p>
-      <button type="button" class="btn" onclick="document.getElementById('add-anime-button').click()">+ Add Anime</button>
-    </td></tr>`;
+    _tableBody.innerHTML = '<tr><td colspan="10">' + window.EmptyState.render({
+      icon: '🎬',
+      title: 'No Anime Found',
+      description: _filters.q ? 'Try adjusting your search or filters.' : 'Start building your catalogue.',
+      actionText: _filters.q ? '' : '+ Add Anime',
+      actionFn: _filters.q ? null : () => { document.getElementById('add-anime-button')?.click(); }
+    }) + '</td></tr>';
   }
-  _mobileCards.innerHTML = '';
+  if (_mobileCards) _mobileCards.innerHTML = '';
   if (_pagination) _pagination.innerHTML = '';
   if (_tableInfo) _tableInfo.textContent = '';
 }
 
 function _renderLoading() {
   if (_tableBody) {
-    _tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;"><div class="loading-spinner"></div> Loading...</td></tr>';
+    _tableBody.innerHTML = '<tr><td colspan="10">' + window.SkeletonLoader.table(5, 10) + '</td></tr>';
   }
 }
 
 function _showError(msg) {
   if (_tableBody) {
-    _tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--danger);">${window._escapeHTML(msg)}</td></tr>`;
+    _tableBody.innerHTML = '<tr><td colspan="10">' + window.ErrorState.render({
+      message: msg,
+      retryFn: () => _fetchAnime()
+    }) + '</td></tr>';
   }
 }
 

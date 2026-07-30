@@ -605,16 +605,28 @@ async function downloadEpisode(ep) {
   var dlBtn = document.getElementById('download-btn');
   if (dlBtn) { dlBtn.textContent = 'Starting download...'; dlBtn.disabled = true; }
   try {
+    // Use fetch with Authorization header instead of token in URL
     var token = State.token || localStorage.getItem('token') || '';
+    var response = await fetch(API + '/api/download/' + ep.id, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!response.ok) {
+      var errData = await response.json().catch(function() { return {}; });
+      throw new Error(errData.message || 'Download failed (status ' + response.status + ')');
+    }
+    // Get the blob from the response
+    var blob = await response.blob();
+    var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-a.href = API + '/api/download/' + ep.id + '?token=' + encodeURIComponent(token);
+    a.href = url;
     a.download = (currentAnime && currentAnime.title || 'anime') + '_ep' + currentEp + '.mp4';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); // a.download is safe as it's a filename
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     if (dlBtn) { dlBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download'; dlBtn.disabled = false; }
   } catch(e) {
     console.error('Download error:', e);
     if (dlBtn) { dlBtn.disabled = false; dlBtn.innerHTML = 'Download'; }
-    alert('Download failed. Please try again.');
+    alert('Download failed: ' + (e.message || 'Please try again.'));
   }
 }
 

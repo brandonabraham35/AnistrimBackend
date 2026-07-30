@@ -1,58 +1,82 @@
-# AniStrim Admin Dashboard - Live Dashboard & CMS Completion
+# AniStrim Admin Dashboard Restoration & CMS Completion
 
-## Phase 0: Foundation ✅ COMPLETE
+## Phase 1 — Critical Backend & Security ✅ COMPLETE
 
-- [x] Create `AdminDashboard/js/shared.js` - Shared component framework
-- [x] Create `AdminDashboard/css/shared.css` - Shared component styles
-- [x] Integrate shared.js + shared.css into `AdminDashboard/dashboard.html`
-- [x] Redirect `Frontend/admin.html` → AdminDashboard
+- [x] `GET /api/admin/payments` endpoint exists with pagination, search, status/date filtering
+- [x] Route `router.get('/payments', admin.getPayments)` exists in adminRoutes
+- [x] Download security fixed — uses Authorization header, no token in URL
+- [x] Frontend `downloadEpisode()` uses `fetch()` with `Authorization` header
 
-## Phase A: CMS Restoration ✅ COMPLETE
+## Phase 1b — Missing Backend Endpoints
 
-- [x] Fixed ErrorState.render() usage across all modules
-- [x] Updated anime.js: replaced window.confirm with \_confirm(), fixed confirm modal events
-- [x] Updated episodes.js: replaced window.confirm with \_confirm()
-- [x] Updated users.js: replaced window.confirm with \_confirm()
-- [x] Updated ads.js: replaced window.confirm with \_confirm(), fixed modal
-- [x] Updated genres.js: replaced window.confirm with \_confirm(), removed inline onclick
-- [x] Removed fallback definitions for \_escapeHTML and showToast from dashboard.js
-- [x] Fixed dashboard.js ErrorState function call to proper ErrorState.render()
-- [x] Updated populateList to use EmptyState.render() consistently
+- [ ] `PUT /api/admin/genres/:id` — Update genre name (controller + route)
+- [ ] `GET /api/admin/users/:id` — Single user details
+- [ ] `GET /api/admin/users/:id/watch-history` — Watch history
+- [ ] `GET /api/admin/users/:id/login-history` — Login history
 
-## Phase E: Live Dashboard ✅ COMPLETE
+## Phase 2 — Shared Component Migration (Anime Page) ✅ COMPLETE
 
-### Backend API Endpoints
+- [x] Anime page uses `_confirm()` for all confirmations
+- [x] Users page uses `_confirm()` for all confirmations
+- [x] Genres page uses `_confirm()` for all confirmations
+- [x] Ads page uses `_confirm()` for all confirmations
+- [x] `Badge.role()`, `Badge.premium()`, `Badge.status()` used in users.js
+- [x] shared.js provides all shared components globally
 
-- [x] `GET /api/admin/dashboard/health` - System health check
-- [x] `GET /api/admin/dashboard/charts/:type` - Chart data (6 chart types)
-- [x] `GET /api/admin/dashboard/activity/recent` - Recent activity timeline
+## Phase 3 — Restore Broken CMS Modules
 
-### Frontend Features
+### 3a. Episodes — Complete Rewrite
 
-- [x] Health widgets (Database, Streaming Providers, API, Server Uptime, Storage)
-- [x] Auto-refresh toggle with user control
-- [x] Manual refresh button
-- [x] Last refresh time indicator
-- [x] 6 interactive Chart.js charts:
-  - Daily Active Users (30-day line chart)
-  - Revenue (monthly bar chart)
-  - Anime Growth (cumulative line chart)
-  - Episode Views (30-day line chart)
-  - Genre Distribution (doughnut chart)
-  - Provider Usage (doughnut chart)
-- [x] Recent Activity Timeline (unified feed)
-- [x] All charts use dark theme matching the CMS
-- [x] Charts destroy and recreate on refresh (no memory leaks)
-- [x] Graceful error handling for empty chart data
+- [ ] Rewrite episodes.js with DataTable, CRUD modals, search, filters, pagination
+- [ ] Episode Modal HTML already exists in dashboard.html
 
-## Phase 2-4: Future Enhancements (Not Started)
+### 3b. Users Enhancement
 
-- [ ] Add skeleton loading states for dashboard cards
-- [ ] Add streaming provider health with detailed metrics
-- [ ] Add database health with query latency
-- [ ] Add storage usage widget with breakdown
-- [ ] Add cache health widget (future Redis)
-- [ ] Add advanced analytics page
-- [ ] Add notifications module
-- [ ] Add media manager
-- [ ] Add automation page
+- [x] Edit User Modal HTML added to dashboard.html
+- [ ] users.js — Add edit modal handler, premium management, subscription expiry
+- [ ] Use SkeletonLoader/EmptyState/ErrorState for loading states
+
+### 3c. Payments Enhancement
+
+- [x] Search, date filter, status filter, pagination controls added to dashboard.html
+- [x] Backend `GET /api/admin/payments` endpoint exists with full pagination
+- [x] Export CSV button added to dashboard.html
+- [ ] payments.js — Wire up search, filters, pagination, export
+
+### 3d. Genres Enhancement
+
+- [x] Edit Genre Modal HTML added to dashboard.html
+- [x] Search input added to dashboard.html
+- [x] Pagination container added to dashboard.html
+- [ ] genres.js — Add edit handler, search, pagination
+- [ ] Backend `PUT /api/admin/genres/:id` endpoint needed
+
+### 3e. Ads Enhancement ✅ COMPLETE
+
+- [x] ads.js rewritten with scheduling fields (start/end date)
+- [x] Scheduling fields added to ad modal in dashboard.html
+- [x] Uses `_confirm()` for delete
+- [x] Uses SkeletonLoader/EmptyState/ErrorState for loading states
+- [x] Schedule info displayed in ads table
+
+### 3f. Logs — Complete Rewrite ✅ COMPLETE
+
+- [x] logs.js rewritten with categories, search, date range, pagination, export
+- [x] Severity badges for different action types
+- [x] Log toolbar added to dashboard.html (search, category filter, date range, export)
+- [x] Pagination and table info added to dashboard.html
+
+### 3g. Settings Enhancement ✅ COMPLETE
+
+- [x] settings.js rewritten with validation, reset-to-defaults, import/export
+- [x] Category groups (General, Premium, Streaming, Maintenance)
+- [x] Real-time field validation on blur
+- [x] Reset button with confirmation dialog
+- [x] Export/Import settings as JSON files
+
+## Phase 4 — End-to-End Regression Testing
+
+- [ ] Test every CRUD operation on every page
+- [ ] Test Google auth flow end-to-end
+- [ ] Test streaming pipeline
+- [ ] Verify no console errors
