@@ -149,12 +149,14 @@ async function fetchAndRenderEpisodes(animeId) {
     }
 
     // ── Set "Start Watching" button to first unlocked episode ──
+    // CANONICAL URL: watch.html?id=<animeId>&ep=<episodeNumber>
     const watchBtn = document.getElementById('start-watching-btn');
     if (watchBtn) {
       const firstUnlocked = episodes.find(ep => !ep.is_premium || State.isPremium || State.isAdmin);
       if (firstUnlocked) {
+        const epNum = firstUnlocked.episode_number || firstUnlocked.number;
         watchBtn.onclick = () => {
-          location.href = `watch.html?animeId=${animeId}&epId=${firstUnlocked.id}`;
+          location.href = `watch.html?id=${animeId}&ep=${epNum}`;
         };
       } else {
         // All episodes are premium-locked for this user
@@ -207,8 +209,11 @@ function handleEpisodeClick(event) {
   }
 
   const animeId = row.dataset.animeId;
-  const epId = row.dataset.epId;
-  location.href = `watch.html?animeId=${animeId}&epId=${epId}`;
+  // We need to find the episode_number from the DOM since data attribute only stores DB id
+  // The episode number is displayed in .ep-num-badge
+  const epNumEl = row.querySelector('.ep-num-badge');
+  const epNum = epNumEl ? parseInt(epNumEl.textContent, 10) : 1;
+  location.href = `watch.html?id=${animeId}&ep=${epNum}`;
 }
 
 // ── Watchlist ────────────────────────────────────────────

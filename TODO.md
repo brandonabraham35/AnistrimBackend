@@ -1,17 +1,39 @@
-# Fix "Unknown column 'name' in 'field list'" Error
+# Episode Mapping Fix - Implementation Steps
 
 ## Root Cause
 
-The `getRecentActivity()` function in `controllers/adminController.js` hardcodes `name AS label` without checking if the `name` column exists in the `users` table. The live database schema may differ from `sql/schema.sql`.
+`Frontend/details.js` navigates to `watch.html?animeId=X&epId=Y` where `epId` is a **database record ID** (e.g., 33), but `watch.js` reads params `id`/`ep`, and when `epId=33` falls through as the episode number, it requests "Episode 33" for a movie that has no such episode.
 
-## Steps
+## Files to Modify
 
-- [x] Step 1: Read and analyze `controllers/adminController.js` — DONE
-- [x] Step 2: Read `sql/schema.sql` and migration files to understand actual schema — DONE
-- [x] Step 3: Identify all hardcoded `name` references across affected functions — DONE
-- [x] Step 4: Show plan to user and get approval — DONE
-- [x] Step 5: Fix `getRecentActivity()` — use `hasColumn()` for `name` in users query — DONE
-- [x] Step 6: Fix `getDashboardOverview()` — use `hasColumn()` for `u.name` in logs queries — DONE
-- [x] Step 7: Fix `getActivityLogs()` — use `hasColumn()` for `u.name` in logs queries — DONE
-- [x] Step 8: Fix `getPayments()` — use `hasColumn()` for `u.name` in SELECT/WHERE — DONE
-- [x] Step 9: Verify no other hardcoded `name` references remain in problematic functions — DONE
+### 1. `Frontend/details.js` — Fix URL navigation format
+
+- [x] Change `watch.html?animeId=${animeId}&epId=${firstUnlocked.id}` → `watch.html?id=${animeId}&ep=${firstUnlocked.episode_number}`
+- [x] Change `watch.html?animeId=${animeId}&epId=${epId}` → `watch.html?id=${animeId}&ep=${episode_number}`
+- [x] Store `episode_number` in data attributes instead of DB `ep.id`
+
+### 2. `Frontend/watch.js` — Fix parameter reading and navigation
+
+- [x] Fix `playNextEp()` to use `?ep=` with episode_number instead of `?epId=` with DB id
+- [x] Fix `renderMoreEpisodes()` to use `?ep=` with episode_number instead of `?epId=` with DB id
+- [x] Add warning log when legacy `epId` param is detected
+- [x] Ensure `ep` param is always preferred over `epId` for episode number
+
+### 3. `controllers/streamController.js` — Strengthen episode resolution
+
+- [x] Add media_type MOVIE detection with direct DB query
+- [x] Add deterministic mapping with clear error messages
+- [x] Improve logging for each resolution step
+
+### 4. `services/streamingService.js` — Add movie guard
+
+- [x] Add movie detection check before provider resolution
+
+### 5. Verify all navigation paths
+
+- [ ] Home hero → Watch (scrpt.js: `watch.html?id=${a.id}&ep=1` — ALREADY CORRECT)
+- [ ] Continue Watching → Watch (scrpt.js: `watch.html?id=${item.anime_id}&ep=${item.episode_number}` — ALREADY CORRECT)
+- [ ] Browse → Details → Watch (details.js: FIXED)
+- [ ] Search → Details → Watch (details.js: FIXED)
+- [ ] Play Next Episode (watch.js: FIXED)
+- [ ] More Episodes list (watch.js: FIXED)

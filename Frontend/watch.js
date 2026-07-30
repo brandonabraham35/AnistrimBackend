@@ -30,15 +30,26 @@ let lastAdPlayedAt = 0;
 const AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 async function loadWatch() {
-  const params   = new URLSearchParams(window.location.search);
-  const animeId  = params.get('animeId') || params.get('id');
-  const epIdRaw  = params.get('epId') || params.get('id'); // DB record ID for progress
-  const epNumRaw = params.get('ep');                       // Explicit episode number (streaming)
+  const params = new URLSearchParams(window.location.search);
 
-  // Set episode number: prefer ?ep=, fall back to ?epId=, fall back to 1
+  // ── CANONICAL URL PARAMS ──────────────────────────────────
+  // Primary:   ?id=<animeId>&ep=<episodeNumber>
+  // Legacy:    ?animeId=<animeId>&epId=<episodeDbId>
+  // NEVER pass database IDs as episode numbers to the player.
+  const animeId = params.get('id') || params.get('animeId');
+  const epNumRaw = params.get('ep');                        // Canonical: episode NUMBER
+  const epIdRaw = params.get('epId');                       // Legacy: DB record ID (for progress only)
+
+  // Warn if legacy params are used (helps migration)
+  if (params.get('animeId')) console.warn('[Watch] Legacy param "animeId" detected — use "id" instead');
+  if (params.get('epId') && !params.get('ep')) console.warn('[Watch] Legacy param "epId" detected — use "ep" with episode NUMBER instead');
+
+  // Set episode number: CANONICAL ?ep= takes priority, then legacy fallback
   if (epNumRaw) {
     currentEp = parseInt(epNumRaw, 10) || 1;
   } else {
+    // Legacy fallback: if only epId (DB ID) is provided, we still use it as episode number
+    // but this is only for backward compatibility — the backend will try to map it
     currentEp = parseInt(epIdRaw, 10) || 1;
   }
 
@@ -424,7 +435,7 @@ function toggleFullscreen() {
 window.toggleFullscreen = toggleFullscreen;
 function skipIntro() { if (!State.isPremium && !State.isAdmin) return; var video = document.getElementById('animePlayer'); if (introRange) video.currentTime = introRange.end; document.getElementById('skipIntroBtn').classList.add('hidden'); }
 window.skipIntro = skipIntro;
-function playNextEp() { cancelAutoplay(); if (!nextEpData || !currentAnime) return; location.href = 'watch.html?animeId=' + currentAnime.id + '&epId=' + nextEpData.id; }
+function playNextEp() { cancelAutoplay(); if (!nextEpData || !currentAnime) return; var nextNum = nextEpData.number || nextEpData.episode_number; location.href = 'watch.html?id=' + currentAnime.id + '&ep=' + nextNum; }
 window.playNextEp = playNextEp;
 function fmtTime(s) { if (!s || isNaN(s)) return '0:00'; return Math.floor(s/60) + ':' + Math.floor(s%60).toString().padStart(2,'0'); }
 
@@ -444,7 +455,9 @@ function renderMoreEpisodes(episodes, animeId) {
     var premiumTag = e.is_premium ? '<span style="color:var(--orange);font-size:0.72rem;">👑 Premium</span>' : '';
     var playSvg = isLocked ? '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>' : '<polygon points="5 3 19 12 5 21 5 3"/>';
     var playColor = isLocked ? 'var(--orange)' : 'var(--text-muted)';
-    return '<div class="episode-item" onclick="location.href=\'watch.html?animeId=' + animeId + '&epId=' + e.id + '\'"><div class="ep-thumb-wrap"><img src="' + thumbSrc + '" alt="' + epTitle.replace(/'/g,"\\'") + '" loading="lazy" onerror="cardImgError(this,\'' + epTitle.replace(/'/g,"\\'") + '\')" style="width:60px;height:40px;object-fit:cover;border-radius:4px;"></div><div class="ep-num" style="' + lockColor + '">' + lockIcon + '</div><div class="ep-info"><div class="ep-title">' + window._escapeHTML(epTitle) + premiumTag + '</div><div class="ep-duration">' + fmtTime(e.duration_sec || 1440) + '</div><span class="ep-play" style="color:' + playColor + '"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + playSvg + '</svg></span></div></div>';
+    // CANONICAL URL: watch.html?id=<animeId>&ep=<episodeNumber> — NEVER use database IDs
+    var targetEpNum = e.number || e.episode_number;
+    return '<div class="episode-item" onclick="location.href=\'watch.html?id=' + animeId + '&ep=' + targetEpNum + '\'"><div class="ep-thumb-wrap"><img src="' + thumbSrc + '" alt="' + epTitle.replace(/'/g,"\\'") + '" loading="lazy" onerror="cardImgError(this,\'' + epTitle.replace(/'/g,"\\'") + '\')" style="width:60px;height:40px;object-fit:cover;border-radius:4px;"></div><div class="ep-num" style="' + lockColor + '">' + lockIcon + '</div><div class="ep-info"><div class="ep-title">' + window._escapeHTML(epTitle) + premiumTag + '</div><div class="ep-duration">' + fmtTime(e.duration_sec || 1440) + '</div><span class="ep-play" style="color:' + playColor + '"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + playSvg + '</svg></span></div></div>';
   }).join('');
 }
 

@@ -47,24 +47,28 @@ exports.getStream = async (req, res) => {
 
   try {
     // ── Episode Number Resolution ─────────────────────────
-    // Priority:
-    //   1. Query param ?ep=N (frontend can explicitly pass episode number)
-    //   2. Try to look up in DB if episodeIdentifier looks like a DB ID
-    //      (check if media_type is MOVIE → use ep 1)
-    //   3. Try to map DB record ID → episode_number
-    //   4. Fallback: use episodeIdentifier as-is (assume it IS the episode number)
+    // PRIORITY ORDER (deterministic, not guessing):
+    //   1. Query param ?ep=N — explicit episode number from frontend
+    //   2. If media_type is MOVIE → always Episode 1
+    //   3. If identifier looks like a DB record ID, try to map it to episode_number
+    //   4. Fallback: use episodeIdentifier as-is (assumed to be episode number)
+    //
+    // RULE: Database IDs are NEVER passed to the player as episode numbers.
+    // If the frontend sends ?epId=33, the backend maps it to the real episode_number.
+    // If mapping fails, return an error instead of silently using a wrong number.
 
     let episodeNumber;
     let resolvedFrom = 'direct';
     let mediaType = null;
+    let mediaId = null;
 
-    // Priority 1: explicit ?ep=N query param
+    // Priority 1: explicit ?ep=N query param (frontend canonical)
     if (queryEp !== undefined && queryEp !== null && queryEp !== '') {
       episodeNumber = Number(queryEp);
       resolvedFrom = 'queryParam';
-      console.log(`[StreamController] Using explicit ?ep=${episodeNumber} from query param`);
+      console.log(`[StreamController] ✅ Using explicit ?ep=${episodeNumber} from query param`);
     } else {
-      // Priority 2 & 3: Check database
+      // Priority 2 & 3: Check database for media type and ID mapping
       try {
         const [mediaRows] = await db.query(
           'SELECT id, media_type FROM anime WHERE title = ? OR title_japanese = ? LIMIT 1',
@@ -73,24 +77,39 @@ exports.getStream = async (req, res) => {
 
         if (mediaRows && mediaRows.length > 0) {
           mediaType = (mediaRows[0].media_type || 'TV').toUpperCase();
+          mediaId = mediaRows[0].id;
 
+          // Priority 2: MOVIE detection — always override to Episode 1
           if (mediaType === 'MOVIE') {
-            console.log(`[StreamController] "${animeTitle}" is a MOVIE — overriding episode to 1`);
+            console.log(`[StreamController] 🎬 "${animeTitle}" (id=${mediaId}) is a MOVIE — forcing episode to 1`);
             episodeNumber = 1;
             resolvedFrom = 'movieOverride';
           } else {
-            // Try to map the identifier as a DB episode record ID
-            const [episodes] = await db.query(
-              'SELECT episode_number FROM episodes WHERE id = ?',
-              [episodeIdentifier]
-            );
+            // Priority 3: Try to map the identifier as a DB episode record ID
+            // Only attempt mapping if identifier is numeric and > 100 (DB IDs are typically large)
+            const numericId = Number(episodeIdentifier);
+            const isLikelyDbId = Number.isInteger(numericId) && numericId > 100;
 
-            if (episodes && episodes.length > 0) {
-              episodeNumber = episodes[0].episode_number;
-              resolvedFrom = 'dbMapping';
-              console.log(`[StreamController] Mapped DB id ${episodeIdentifier} → Episode ${episodeNumber}`);
+            if (isLikelyDbId) {
+              const [episodes] = await db.query(
+                'SELECT episode_number FROM episodes WHERE id = ? AND anime_id = ?',
+                [episodeIdentifier, mediaId]
+              );
+
+              if (episodes && episodes.length > 0) {
+                episodeNumber = episodes[0].episode_number;
+                resolvedFrom = 'dbMapping';
+                console.log(`[StreamController] 🔗 Mapped DB id ${episodeIdentifier} → Episode ${episodeNumber} for anime ${mediaId}`);
+              } else {
+                // DB ID not found in this anime's episodes — return error rather than guessing
+                console.error(`[StreamController] ❌ DB id ${episodeIdentifier} not found in episodes for anime ${mediaId}`);
+                return res.status(404).json({
+                  success: false,
+                  error: `Episode record ID ${episodeIdentifier} not found for "${animeTitle}".`
+                });
+              }
             } else {
-              // Not a valid DB ID — assume it IS the episode number
+              // Priority 4: Use identifier directly as episode number
               episodeNumber = episodeIdentifier;
               resolvedFrom = 'direct';
               console.log(`[StreamController] Using identifier as episode number: ${episodeNumber}`);
@@ -113,10 +132,10 @@ exports.getStream = async (req, res) => {
     // Validate episode number is reasonable
     const epNum = Number(episodeNumber);
     if (isNaN(epNum) || epNum < 1 || epNum > 10000) {
-      console.warn(`[StreamController] Unreasonable episode number: ${episodeNumber} — using as-is anyway`);
+      console.warn(`[StreamController] ⚠️ Unreasonable episode number: ${episodeNumber} — using as-is anyway`);
     }
 
-    console.log(`[StreamController] Resolving: "${animeTitle}" Ep ${episodeNumber} (resolvedFrom: ${resolvedFrom}, mediaType: ${mediaType})`);
+    console.log(`[StreamController] 📋 RESOLVED: "${animeTitle}" → Ep ${episodeNumber} (resolvedFrom: ${resolvedFrom}, mediaType: ${mediaType}, mediaId: ${mediaId})`);
 
     const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
@@ -230,4 +249,3 @@ exports.authorizeDownload = async (req, res) => {
     res.status(502).json({ error: err.message });
   }
 };
-

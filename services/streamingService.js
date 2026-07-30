@@ -333,6 +333,22 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   const tier = isPremium ? 'premium' : 'free';
   const overallStart = Date.now();
 
+  // ── Movie Guard: Normalize movie episode numbers to 1 ──
+  // If the title contains movie indicators (e.g., "Jujutsu Kaisen 0",
+  // "Movie", "Film", "OVA", "Special"), force episode to 1.
+  // This prevents the title's numeric suffix (e.g., "0") from being
+  // interpreted as an episode number.
+  const moviePattern = /\b(movie|film|ova|special|the movie)\b/i;
+  const titleWords = (animeTitle || '').split(' ');
+  const lastWord = titleWords[titleWords.length - 1];
+  const hasMovieSuffix = /^\d+$/.test(lastWord) && titleWords.length > 1;
+  const isMovieByTitle = moviePattern.test(animeTitle) || hasMovieSuffix;
+
+  if (isMovieByTitle && Number(episodeNumber) > 1) {
+    console.log(`[StreamingService] 🎬 MOVIE GUARD: "${animeTitle}" identified as movie — forcing Ep 1 (was ${episodeNumber})`);
+    episodeNumber = 1;
+  }
+
   console.log(`[StreamingService] 🎬 resolveStream | "${animeTitle}" Ep ${episodeNumber} | tier: ${tier}`);
 
   // ── Cache Check ──────────────────────────────────────────
@@ -473,4 +489,3 @@ module.exports = {
   getProviderHealthStatus,
   QUALITY_TIERS,
 };
-
