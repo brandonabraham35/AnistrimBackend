@@ -81,9 +81,10 @@ const adminController = {
       const schema = await getSchema();
       const usersSql = `SELECT COUNT(*) total, COALESCE(SUM(is_premium = 1 OR premium_expires_at > NOW()), 0) premium${hasColumn(schema, 'users', 'status') ? ', COALESCE(SUM(status = "banned"), 0) banned' : ', 0 banned'} FROM users`;
       const episodeSql = 'SELECT COUNT(*) totalEpisodes, COALESCE(SUM(view_count), 0) episodeViews, COALESCE(SUM(video_url IS NOT NULL AND video_url != ""), 0) videoCount, 0 processingCount, 0 failedCount FROM episodes';
+      const userNameExpr = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
       const logsSql = schema.activity_logs
-        ? 'SELECT l.action, l.created_at, l.ip_address, u.name user_name FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id ORDER BY l.created_at DESC LIMIT 10'
-        : 'SELECT l.action, l.created_at, NULL ip_address, u.name user_name FROM admin_logs l LEFT JOIN users u ON u.id = l.admin_id ORDER BY l.created_at DESC LIMIT 10';
+        ? `SELECT l.action, l.created_at, l.ip_address, ${userNameExpr} user_name FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id ORDER BY l.created_at DESC LIMIT 10`
+        : `SELECT l.action, l.created_at, NULL ip_address, ${userNameExpr} user_name FROM admin_logs l LEFT JOIN users u ON u.id = l.admin_id ORDER BY l.created_at DESC LIMIT 10`;
       const recentEpisodesSql = "SELECT e.id, e.episode_number, e.title, e.thumbnail_url, CASE WHEN e.video_url IS NULL OR e.video_url = '' THEN 'missing' ELSE 'available' END video_status, e.created_at, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT 5";
       const results = await Promise.all([
         dashboardQuery('users', usersSql),
@@ -477,8 +478,9 @@ const adminController = {
     }
   },
 
-  async getPayments(req, res) {
+async getPayments(req, res) {
     try {
+      const schema = await getSchema();
       const { page = 1, limit = 25, search, status, from, to, sort = 'created_at', order = 'desc' } = req.query;
       const pageNum = Math.max(1, parseInt(page, 10) || 1);
       const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
@@ -490,7 +492,8 @@ const adminController = {
       if (from) { where.push('p.created_at >= ?'); params.push(from); }
       if (to) { where.push('p.created_at <= ?'); params.push(to); }
       if (search) {
-        where.push('(u.name LIKE ? OR u.email LIKE ? OR p.reference LIKE ? OR p.flw_tx_ref LIKE ?)');
+        const userNameColumn = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
+        where.push(`(${userNameColumn} LIKE ? OR u.email LIKE ? OR p.reference LIKE ? OR p.flw_tx_ref LIKE ?)`);
         const q = `%${search}%`;
         params.push(q, q, q, q);
       }
@@ -505,8 +508,9 @@ const adminController = {
       );
       const total = countResult[0]?.total || 0;
 
+      const userNameColumn = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
       const [rows] = await db.query(
-        `SELECT p.*, u.name, u.email FROM payments p LEFT JOIN users u ON u.id = p.user_id ${whereClause} ORDER BY p.${sortColumn} ${sortOrder} LIMIT ? OFFSET ?`,
+        `SELECT p.*, ${userNameColumn} AS name, u.email FROM payments p LEFT JOIN users u ON u.id = p.user_id ${whereClause} ORDER BY p.${sortColumn} ${sortOrder} LIMIT ? OFFSET ?`,
         [...params, limitNum, offset]
       );
 
@@ -619,9 +623,10 @@ async updateGenre(req, res) {
   async getActivityLogs(req, res) {
     try {
       const schema = await getSchema();
+      const userNameExpr = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
       const sql = schema.activity_logs
-        ? 'SELECT a.action, a.created_at, a.ip_address, u.name user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50'
-        : 'SELECT a.action, a.created_at, NULL ip_address, u.name user_name FROM admin_logs a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 50';
+        ? `SELECT a.action, a.created_at, a.ip_address, ${userNameExpr} user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50`
+        : `SELECT a.action, a.created_at, NULL ip_address, ${userNameExpr} user_name FROM admin_logs a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 50`;
       const [rows] = await db.query(sql);
       res.json(rows);
     } catch (error) { res.status(500).json({ message: error.message }); }
@@ -807,9 +812,10 @@ async updateGenre(req, res) {
       );
 
       // Recent user registrations
+      const userNameColumn = hasColumn(schema, 'users', 'name') ? 'name' : 'email';
       queries.push(
         db.query(`
-          SELECT 'user' AS type, id, name AS label, email AS detail, created_at
+          SELECT 'user' AS type, id, ${userNameColumn} AS label, email AS detail, created_at
           FROM users ORDER BY created_at DESC LIMIT ?
         `, [limit])
       );
