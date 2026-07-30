@@ -10,6 +10,9 @@ router.use(protect, adminOnly);
 // Dashboard
 router.get('/stats',                        admin.getDashboardStats);
 router.get('/dashboard/overview',           admin.getDashboardOverview);
+router.get('/dashboard/health',             admin.getDashboardHealth);
+router.get('/dashboard/charts/:type',       admin.getChartData);
+router.get('/dashboard/activity/recent',    admin.getRecentActivity);
 
 // Users
 router.get('/users',                        admin.getAllUsers);

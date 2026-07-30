@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -33,6 +34,41 @@
                 <span>Administrative Overview</span>
             </h2>
             <div id="active-user-badge" class="live-badge"><i class="fas fa-circle"></i> Live Testing Environment</div>
+
+        <!-- Auto-refresh toggle -->
+        <div class="dashboard-controls" style="display:flex;justify-content:flex-end;align-items:center;gap:1rem;padding:0 0 0.5rem 0;">
+            <span style="font-size:0.82rem;color:var(--text-muted);" id="last-refresh-time">Last refresh: —</span>
+            <label class="switch" style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;color:var(--text-muted);">
+                <input type="checkbox" id="auto-refresh-toggle" checked>
+                <span class="slider round" style="width:32px;height:18px;display:inline-block;"></span>
+                Auto-refresh
+            </label>
+            <button type="button" class="btn secondary" id="refresh-now-btn" style="font-size:0.78rem;padding:0.35rem 0.75rem;">↻ Refresh</button>
+        </div>
+
+        <!-- System Health Widgets -->
+        <div class="health-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:0.75rem;margin-bottom:1.5rem;">
+            <div class="health-card" data-health="database">
+                <div class="health-icon"><i class="fas fa-database"></i></div>
+                <div class="health-info"><span class="health-label">Database</span><span class="health-status">—</span></div>
+            </div>
+            <div class="health-card" data-health="streaming_providers">
+                <div class="health-icon"><i class="fas fa-server"></i></div>
+                <div class="health-info"><span class="health-label">Providers</span><span class="health-status">—</span></div>
+            </div>
+            <div class="health-card" data-health="api">
+                <div class="health-icon"><i class="fas fa-code"></i></div>
+                <div class="health-info"><span class="health-label">API</span><span class="health-status">—</span></div>
+            </div>
+            <div class="health-card" data-health="server_uptime">
+                <div class="health-icon"><i class="fas fa-clock"></i></div>
+                <div class="health-info"><span class="health-label">Uptime</span><span class="health-status">—</span></div>
+            </div>
+            <div class="health-card" data-health="storage">
+                <div class="health-icon"><i class="fas fa-hdd"></i></div>
+                <div class="health-info"><span class="health-label">Storage</span><span class="health-status">—</span></div>
+            </div>
+        </div>
 
         <p class="page-error" id="dashboard-error" role="alert"></p>
         <section id="dashboard" class="content-section active">
@@ -64,6 +100,40 @@
             <div class="card skeleton-stat">
                 <div class="card-info"><h3>Collected Today</h3><div class="value" id="stats-revenue-today"><span class="skeleton-text">&nbsp;</span></div>
                 <div class="card-icon"><i class="fas fa-hand-holding-usd"></i></div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="charts-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
+            <div class="section-box">
+                <h4><i class="fas fa-users"></i> Daily Active Users <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(30 days)</span></h4>
+                <div class="chart-container" id="chart-daily-users" style="height:220px;"><canvas></canvas></div>
+            </div>
+            <div class="section-box">
+                <h4><i class="fas fa-money-bill-wave"></i> Revenue <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(monthly)</span></h4>
+                <div class="chart-container" id="chart-revenue" style="height:220px;"><canvas></canvas></div>
+            </div>
+            <div class="section-box">
+                <h4><i class="fas fa-chart-line"></i> Anime Growth <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(cumulative)</span></h4>
+                <div class="chart-container" id="chart-anime-growth" style="height:220px;"><canvas></canvas></div>
+            </div>
+            <div class="section-box">
+                <h4><i class="fas fa-play-circle"></i> Episode Views <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(30 days)</span></h4>
+                <div class="chart-container" id="chart-episode-views" style="height:220px;"><canvas></canvas></div>
+            </div>
+            <div class="section-box">
+                <h4><i class="fas fa-tags"></i> Genre Distribution</h4>
+                <div class="chart-container" id="chart-genre-distribution" style="height:220px;"><canvas></canvas></div>
+            </div>
+            <div class="section-box">
+                <h4><i class="fas fa-server"></i> Provider Usage</h4>
+                <div class="chart-container" id="chart-provider-usage" style="height:220px;"><canvas></canvas></div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Timeline -->
+        <div class="section-box">
+            <h4><i class="fas fa-clock-rotate"></i> Recent Activity Timeline</h4>
+            <div id="recent-activity-timeline" class="dashboard-list" style="max-height:400px;overflow-y:auto;"></div>
         </div>
 
         <div class="grid-sections" style="grid-template-columns: 2fr 1fr; gap: 1.5rem;">

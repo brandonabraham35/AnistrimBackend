@@ -505,6 +505,220 @@ const adminController = {
       res.json(rows);
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
+
+  // ─── Live Dashboard: Health Check ──────────────────────────────────
+  async getDashboardHealth(req, res) {
+    try {
+      const schema = await getSchema();
+      const start = Date.now();
+
+      // Database health
+      let dbStatus = 'healthy';
+      let dbLatency = 0;
+      try {
+        const dbStart = Date.now();
+        await db.query('SELECT 1');
+        dbLatency = Date.now() - dbStart;
+      } catch (e) {
+        dbStatus = 'error';
+      }
+
+      // Provider health — check consumet or kitsu availability
+      let providerStatus = 'unknown';
+      try {
+        const { default: kitsuProvider } = require('../services/kitsuProvider');
+        if (kitsuProvider && typeof kitsuProvider.checkHealth === 'function') {
+          const healthy = await kitsuProvider.checkHealth();
+          providerStatus = healthy ? 'healthy' : 'degraded';
+        } else {
+          providerStatus = 'healthy'; // Assume healthy if no check
+        }
+      } catch (e) {
+        providerStatus = 'degraded';
+      }
+
+      // API status (self-check)
+      const apiLatency = Date.now() - start;
+
+      // Server uptime
+      const uptimeSeconds = Math.floor(process.uptime());
+      const uptimeFormatted = uptimeSeconds >= 86400
+        ? `${Math.floor(uptimeSeconds / 86400)}d ${Math.floor((uptimeSeconds % 86400) / 3600)}h`
+        : uptimeSeconds >= 3600
+        ? `${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m`
+        : `${Math.floor(uptimeSeconds / 60)}m ${uptimeSeconds % 60}s`;
+
+      // Storage usage (approximate from episodes table)
+      let storageUsage = null;
+      try {
+        const [storageRows] = await db.query('SELECT COALESCE(SUM(LENGTH(video_url)), 0) AS total_bytes FROM episodes WHERE video_url IS NOT NULL');
+        storageUsage = Math.round((Number(storageRows[0]?.total_bytes || 0) / (1024 * 1024 * 1024)) * 100) / 100;
+      } catch (e) { /* non-critical */ }
+
+      res.json({
+        status: dbStatus === 'healthy' ? 'healthy' : 'degraded',
+        timestamp: new Date().toISOString(),
+        checks: {
+          database: { status: dbStatus, latency: `${dbLatency}ms` },
+          streaming_providers: { status: providerStatus },
+          api: { status: 'healthy', latency: `${apiLatency}ms` },
+          server_uptime: { status: 'healthy', uptime: uptimeFormatted, seconds: uptimeSeconds },
+          storage: { status: storageUsage !== null ? 'healthy' : 'unknown', usage_gb: storageUsage },
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ status: 'error', message: error.message });
+    }
+  },
+
+  // ─── Live Dashboard: Chart Data ────────────────────────────────────
+  async getChartData(req, res) {
+    const { type } = req.params;
+    const days = Math.min(parseInt(req.query.days) || 30, 90);
+
+    try {
+      switch (type) {
+        case 'daily-users': {
+          const [rows] = await db.query(`
+            SELECT DATE(watched_at) AS date, COUNT(DISTINCT user_id) AS count
+            FROM watch_history
+            WHERE watched_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            GROUP BY DATE(watched_at)
+            ORDER BY date ASC
+          `, [days]);
+          res.json({ labels: rows.map(r => r.date), values: rows.map(r => r.count) });
+          break;
+        }
+
+        case 'revenue': {
+          const [rows] = await db.query(`
+            SELECT DATE_FORMAT(paid_at, '%Y-%m') AS month, COALESCE(SUM(amount), 0) AS total
+            FROM payments WHERE status = 'successful' AND paid_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+            GROUP BY DATE_FORMAT(paid_at, '%Y-%m')
+            ORDER BY month ASC
+          `, [Math.ceil(days / 30)]);
+          res.json({ labels: rows.map(r => r.month), values: rows.map(r => r.total) });
+          break;
+        }
+
+        case 'anime-growth': {
+          const [rows] = await db.query(`
+            SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
+            FROM anime
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+            GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+            ORDER BY month ASC
+          `, [Math.ceil(days / 30)]);
+          // Cumulative
+          let cumulative = 0;
+          const values = rows.map(r => { cumulative += Number(r.count); return cumulative; });
+          res.json({ labels: rows.map(r => r.month), values });
+          break;
+        }
+
+        case 'episode-views': {
+          const [rows] = await db.query(`
+            SELECT DATE(watched_at) AS date, COUNT(*) AS views
+            FROM watch_history
+            WHERE watched_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            GROUP BY DATE(watched_at)
+            ORDER BY date ASC
+          `, [days]);
+          res.json({ labels: rows.map(r => r.date), values: rows.map(r => r.views) });
+          break;
+        }
+
+        case 'genre-distribution': {
+          const [rows] = await db.query(`
+            SELECT g.name, COUNT(ag.anime_id) AS count
+            FROM genres g
+            JOIN anime_genres ag ON ag.genre_id = g.id
+            GROUP BY g.id, g.name
+            ORDER BY count DESC
+            LIMIT 10
+          `);
+          res.json({ labels: rows.map(r => r.name), values: rows.map(r => r.count) });
+          break;
+        }
+
+        case 'provider-usage': {
+          const [rows] = await db.query(`
+            SELECT COALESCE(video_source, 'direct') AS provider, COUNT(*) AS count
+            FROM episodes
+            GROUP BY provider
+            ORDER BY count DESC
+          `);
+          res.json({ labels: rows.map(r => r.provider), values: rows.map(r => r.count) });
+          break;
+        }
+
+        default:
+          res.status(400).json({ message: `Unknown chart type: ${type}` });
+      }
+    } catch (error) {
+      console.error(`[Charts] Error fetching ${type}:`, error.message);
+      // Return empty data on error so the frontend can handle it gracefully
+      res.json({ labels: [], values: [] });
+    }
+  },
+
+  // ─── Live Dashboard: Recent Activity ───────────────────────────────
+  async getRecentActivity(req, res) {
+    try {
+      const schema = await getSchema();
+      const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+
+      // Combine recent anime, users, payments, and admin actions into a unified timeline
+      const queries = [];
+
+      // Recent anime additions
+      queries.push(
+        db.query(`
+          SELECT 'anime' AS type, id, title AS label, NULL AS detail, created_at
+          FROM anime ORDER BY created_at DESC LIMIT ?
+        `, [limit])
+      );
+
+      // Recent user registrations
+      queries.push(
+        db.query(`
+          SELECT 'user' AS type, id, name AS label, email AS detail, created_at
+          FROM users ORDER BY created_at DESC LIMIT ?
+        `, [limit])
+      );
+
+      // Recent payments
+      if (hasColumn(await getSchema(), 'payments', 'paid_at')) {
+        queries.push(
+          db.query(`
+            SELECT 'payment' AS type, id, name AS label, CONCAT(plan, ' - ', status) AS detail, paid_at AS created_at
+            FROM payments WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT ?
+          `, [limit])
+        );
+      }
+
+      // Recent admin actions
+      const logTable = schema.activity_logs ? 'activity_logs' : 'admin_logs';
+      const userIdCol = schema.activity_logs ? 'user_id' : 'admin_id';
+      queries.push(
+        db.query(`
+          SELECT 'admin_action' AS type, l.id, l.action AS label, l.target_type AS detail, l.created_at
+          FROM \`${logTable}\` l ORDER BY l.created_at DESC LIMIT ?
+        `, [limit])
+      );
+
+      const results = await Promise.all(queries);
+      const activities = results.flatMap(([rows]) => rows);
+
+      // Sort by created_at descending
+      activities.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      res.json(activities.slice(0, limit));
+    } catch (error) {
+      console.error('[Activity] Error fetching recent activity:', error.message);
+      res.json([]);
+    }
+  },
 };
 
 module.exports = adminController;
