@@ -1,53 +1,37 @@
-# SQL Schema Mismatch Fixes — COMPLETED ✅
+# Admin Dashboard Layout Redesign - COMPLETED
 
-## Root Causes Identified
+## Step 1: CSS Additions (style.css) ✅
 
-### Root Cause #1 — `provider-usage` chart
+- [x] Added dashboard container layout (max-width: 1400px, centered)
+- [x] Added page header styles (title, subtitle, actions)
+- [x] Added action/filter bar card styles (rounded 16px, shadow)
+- [x] Added stats grid layout (4-column responsive → 2-col → 1-col)
+- [x] Added two-column layout for dashboard analytics (70/30 split)
+- [x] Added section card component (consistent card styling)
+- [x] Added spacing utilities and consistent spacing rules
+- [x] Added responsive breakpoints
 
-**Error**: `Unknown column 'video_source' in 'field list'`
-**File**: `controllers/adminController.js` line 767
-**Issue**: Query used `COALESCE(video_source, 'direct')` but the `episodes` table has NEVER had a `video_source` column. Schema columns: `id, anime_id, episode_number, title, description, thumbnail_url, video_url, duration_sec, is_premium, view_count, created_at` + migrations added: `bunny_video_id, video_status, playback_url, embed_url, intro_start_time, intro_end_time, consumet_id`.
+## Step 2: Restructure dashboard.html ✅
 
-### Root Cause #2 — `recent-activity` timeline
+- [x] Fixed broken HTML structure (missing closing tags)
+- [x] Added page header section for each page (title + subtitle)
+- [x] Wrapped filter bars in action-bar card containers
+- [x] Organized dashboard section with proper hierarchy (header → health → stats → 2-col charts)
+- [x] Restructured Anime section (header → action bar → bulk toolbar → table)
+- [x] Restructured Episodes section (header → table)
+- [x] Restructured Users section (header → action bar → table)
+- [x] Restructured Payments section (header → action bar → table)
+- [x] Restructured Genres section (header → add form → search → table)
+- [x] Restructured Ads Config section (header → description → table)
+- [x] Restructured Logs section (header → action bar → table)
+- [x] Restructured Settings section (header → form)
+- [x] All JS-referenced IDs preserved
 
-**Error**: `Unknown column 'name' in 'field list'`
-**File**: `controllers/adminController.js` line 815
-**Issue**: Payments subquery used `name AS label` but the `payments` table has NO `name` column. The `hasColumn` guard only checked for `paid_at`, so the query ran but failed on `name`.
+## Step 3: Verify ✅
 
-## Changes Made — `controllers/adminController.js`
-
-### Fix 1: `getChartData` → `provider-usage` case (line ~765)
-
-```javascript
-// OLD: SELECT COALESCE(video_source, 'direct') AS provider, COUNT(*) AS count FROM episodes
-// NEW: Uses getSchema() + hasColumn() to dynamically pick the right column
-```
-
-- Checks for `video_source` first (in case a migration adds it later)
-- Falls back to `video_status` (from migration_v5 — always present)
-- Falls back to `'direct'` string literal (safest fallback)
-
-### Fix 2: `getRecentActivity` → payments subquery (line ~815)
-
-```javascript
-// OLD: SELECT 'payment' AS type, id, name AS label, ...
-// NEW: SELECT 'payment' AS type, id, flw_tx_ref AS label, ...
-```
-
-- Replaced `name` with `flw_tx_ref` (exists in `payments` table, per schema.sql)
-
-## Audit Verification
-
-All other dashboard SQL queries were audited against the schema:
-
-- ✅ `u.name` in activity_logs queries — correct (JOINs to users table which HAS `name`)
-- ✅ `u.name` in payments queries — correct (JOINs to users table)
-- ✅ `users.name` in getAllUsers, getUser, latestUsers — correct
-- ✅ `anime.title`, `anime.view_count`, etc. — correct
-- ✅ `episodes.video_url`, `episodes.view_count` — correct
-- ✅ `watch_history.*` queries — correct
-- ✅ `payments.*` queries (amount, status, plan, paid_at, flw_tx_ref) — correct
-
-## No Database Changes Required
-
-All fixes are in the backend controller logic only. The database schema remains untouched.
+- [x] All IDs preserved (anime-table, users-table, episodes-table, payments-table, etc.)
+- [x] No JavaScript functionality broken
+- [x] Added backward-compatible classes (card, card-info, card-icon for dashboard.js)
+- [x] Removed duplicate `active-user-badge` ID (kept only in global header)
+- [x] Removed duplicate `anime-pagination` ID from episodes section
+- [x] All modals preserved unchanged

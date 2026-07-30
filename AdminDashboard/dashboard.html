@@ -28,147 +28,259 @@
     </div>
 
     <div class="main-content">
-        <div class="header">
+        <div class="header" id="global-header" style="display:none;">
             <h2 id="page-title" style="display: flex; align-items: center; gap: 0.75rem;">
                 <i class="fa fa-shield-halved"></i>
                 <span>Administrative Overview</span>
             </h2>
             <div id="active-user-badge" class="live-badge"><i class="fas fa-circle"></i> Live Testing Environment</div>
-
-        <!-- Auto-refresh toggle -->
-        <div class="dashboard-controls" style="display:flex;justify-content:flex-end;align-items:center;gap:1rem;padding:0 0 0.5rem 0;">
-            <span style="font-size:0.82rem;color:var(--text-muted);" id="last-refresh-time">Last refresh: —</span>
-            <label class="switch" style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;color:var(--text-muted);">
-                <input type="checkbox" id="auto-refresh-toggle" checked>
-                <span class="slider round" style="width:32px;height:18px;display:inline-block;"></span>
-                Auto-refresh
-            </label>
-            <button type="button" class="btn secondary" id="refresh-now-btn" style="font-size:0.78rem;padding:0.35rem 0.75rem;">↻ Refresh</button>
         </div>
 
-        <!-- System Health Widgets -->
-        <div class="health-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:0.75rem;margin-bottom:1.5rem;">
-            <div class="health-card" data-health="database">
-                <div class="health-icon"><i class="fas fa-database"></i></div>
-                <div class="health-info"><span class="health-label">Database</span><span class="health-status">—</span></div>
-            </div>
-            <div class="health-card" data-health="streaming_providers">
-                <div class="health-icon"><i class="fas fa-server"></i></div>
-                <div class="health-info"><span class="health-label">Providers</span><span class="health-status">—</span></div>
-            </div>
-            <div class="health-card" data-health="api">
-                <div class="health-icon"><i class="fas fa-code"></i></div>
-                <div class="health-info"><span class="health-label">API</span><span class="health-status">—</span></div>
-            </div>
-            <div class="health-card" data-health="server_uptime">
-                <div class="health-icon"><i class="fas fa-clock"></i></div>
-                <div class="health-info"><span class="health-label">Uptime</span><span class="health-status">—</span></div>
-            </div>
-            <div class="health-card" data-health="storage">
-                <div class="health-icon"><i class="fas fa-hdd"></i></div>
-                <div class="health-info"><span class="health-label">Storage</span><span class="health-status">—</span></div>
-            </div>
-        </div>
+        <div class="dashboard-container">
 
         <p class="page-error" id="dashboard-error" role="alert"></p>
+
+        <!-- ════════════════════════════════════════════════════════════════
+             DASHBOARD SECTION
+             ════════════════════════════════════════════════════════════════ -->
         <section id="dashboard" class="content-section active">
-        <div class="grid-stats">
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Total Users</h3><div class="value" id="stats-total-users"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon"><i class="fas fa-users"></i></div>
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>VIP Users</h3><div class="value" id="stats-vip-users"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon" style="color: var(--accent-premium);"><i class="fas fa-crown"></i></div>
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Total Anime</h3><div class="value" id="stats-total-anime"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon"><i class="fas fa-compact-disc"></i></div>
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Total Episodes</h3><div class="value" id="stats-total-episodes"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon"><i class="fas fa-video"></i></div>
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Cloudinary Videos</h3><div class="value" id="stats-cloudinary-videos"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon"><i class="fas fa-eye"></i></div>
-        </div>
 
-        <div class="grid-stats">
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Total Earnings</h3><div class="value" id="stats-revenue-total"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon" style="color: var(--success);"><i class="fas fa-money-bill-wave"></i></div>
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Revenue (This Month)</h3><div class="value" id="stats-revenue-month"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon"><i class="fas fa-calendar-alt"></i></div>
-            <div class="card skeleton-stat">
-                <div class="card-info"><h3>Collected Today</h3><div class="value" id="stats-revenue-today"><span class="skeleton-text">&nbsp;</span></div>
-                <div class="card-icon"><i class="fas fa-hand-holding-usd"></i></div>
-        </div>
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-chart-pie"></i> Dashboard
+                    </h1>
+                    <p class="page-subtitle">Platform analytics, user activity, streaming statistics, and system health.</p>
+                </div>
+            </div>
 
-        <!-- Charts Row -->
-        <div class="charts-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
-            <div class="section-box">
-                <h4><i class="fas fa-users"></i> Daily Active Users <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(30 days)</span></h4>
-                <div class="chart-container" id="chart-daily-users" style="height:220px;"><canvas></canvas></div>
+            <!-- Dashboard Controls -->
+            <div class="dashboard-controls">
+                <span style="font-size:0.82rem;color:var(--text-muted);" id="last-refresh-time">Last refresh: —</span>
+                <label class="switch" style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;color:var(--text-muted);">
+                    <input type="checkbox" id="auto-refresh-toggle" checked>
+                    <span class="slider round" style="width:32px;height:18px;display:inline-block;"></span>
+                    Auto-refresh
+                </label>
+                <button type="button" class="btn secondary" id="refresh-now-btn" style="font-size:0.78rem;padding:0.35rem 0.75rem;">↻ Refresh</button>
             </div>
-            <div class="section-box">
-                <h4><i class="fas fa-money-bill-wave"></i> Revenue <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(monthly)</span></h4>
-                <div class="chart-container" id="chart-revenue" style="height:220px;"><canvas></canvas></div>
-            </div>
-            <div class="section-box">
-                <h4><i class="fas fa-chart-line"></i> Anime Growth <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(cumulative)</span></h4>
-                <div class="chart-container" id="chart-anime-growth" style="height:220px;"><canvas></canvas></div>
-            </div>
-            <div class="section-box">
-                <h4><i class="fas fa-play-circle"></i> Episode Views <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(30 days)</span></h4>
-                <div class="chart-container" id="chart-episode-views" style="height:220px;"><canvas></canvas></div>
-            </div>
-            <div class="section-box">
-                <h4><i class="fas fa-tags"></i> Genre Distribution</h4>
-                <div class="chart-container" id="chart-genre-distribution" style="height:220px;"><canvas></canvas></div>
-            </div>
-            <div class="section-box">
-                <h4><i class="fas fa-server"></i> Provider Usage</h4>
-                <div class="chart-container" id="chart-provider-usage" style="height:220px;"><canvas></canvas></div>
-            </div>
-        </div>
 
-        <!-- Recent Activity Timeline -->
-        <div class="section-box">
-            <h4><i class="fas fa-clock-rotate"></i> Recent Activity Timeline</h4>
-            <div id="recent-activity-timeline" class="dashboard-list" style="max-height:400px;overflow-y:auto;"></div>
-        </div>
-
-        <div class="grid-sections" style="grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-            <div>
-                <div class="section-box skeleton-section">
-                    <h4><i class="fas fa-credit-card"></i> Recent Subscriber Transactions</h4>
-                    <table id="recent-payments-table">
-                        <thead><tr><th>Subscriber</th><th>Amount Base</th><th>Gateway Status</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                    <div class="skeleton-table-rows">Loading...</div>
+            <!-- System Health Widgets -->
+            <div class="health-grid">
+                <div class="health-card" data-health="database">
+                    <div class="health-icon"><i class="fas fa-database"></i></div>
+                    <div class="health-info"><span class="health-label">Database</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="streaming_providers">
+                    <div class="health-icon"><i class="fas fa-server"></i></div>
+                    <div class="health-info"><span class="health-label">Providers</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="api">
+                    <div class="health-icon"><i class="fas fa-code"></i></div>
+                    <div class="health-info"><span class="health-label">API</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="server_uptime">
+                    <div class="health-icon"><i class="fas fa-clock"></i></div>
+                    <div class="health-info"><span class="health-label">Uptime</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="storage">
+                    <div class="health-icon"><i class="fas fa-hdd"></i></div>
+                    <div class="health-info"><span class="health-label">Storage</span><span class="health-status">—</span></div>
+                </div>
             </div>
-            <div>
-                <div class="section-box skeleton-section">
-                    <h4><i class="fas fa-fire"></i> Trending Catalogue</h4>
-                    <div id="top-anime-list" class="dashboard-list"><div class="skeleton-list-item">&nbsp;</div>
+
+<!-- Stats Grid Row 1 -->
+            <div class="stats-grid">
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Total Users</div>
+                        <div class="stat-card-value value" id="stats-total-users">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon"><i class="fas fa-users"></i></div>
                 </div>
-                <div class="section-box skeleton-section">
-                    <h4><i class="fas fa-cloud-upload-alt"></i> Recent Live Feeds</h4>
-                    <div id="recent-uploads" class="dashboard-list"><div class="skeleton-list-item">&nbsp;</div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">VIP Users</div>
+                        <div class="stat-card-value value" id="stats-vip-users">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon" style="color: var(--accent-premium, #f59e0b);"><i class="fas fa-crown"></i></div>
                 </div>
-                <div class="section-box skeleton-section">
-                    <h4><i class="fas fa-user-plus"></i> Newly Onboarded Users</h4>
-                    <div id="latest-users" class="dashboard-list"><div class="skeleton-list-item">&nbsp;</div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Total Anime</div>
+                        <div class="stat-card-value value" id="stats-total-anime">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon"><i class="fas fa-compact-disc"></i></div>
                 </div>
-                <div class="section-box skeleton-section">
-                    <h4><i class="fas fa-history"></i> System Activity Logs</h4>
-                    <div id="activity-logs" class="dashboard-list"><div class="skeleton-list-item">&nbsp;</div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Total Episodes</div>
+                        <div class="stat-card-value value" id="stats-total-episodes">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon"><i class="fas fa-video"></i></div>
                 </div>
-        </div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Cloudinary Videos</div>
+                        <div class="stat-card-value value" id="stats-cloudinary-videos">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon"><i class="fas fa-eye"></i></div>
+                </div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Total Earnings</div>
+                        <div class="stat-card-value value" id="stats-revenue-total">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon" style="color: var(--success);"><i class="fas fa-money-bill-wave"></i></div>
+                </div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Revenue (This Month)</div>
+                        <div class="stat-card-value value" id="stats-revenue-month">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon"><i class="fas fa-calendar-alt"></i></div>
+                </div>
+                <div class="stat-card card">
+                    <div class="stat-card-info card-info">
+                        <div class="stat-card-label" style="font-size:0.9rem;font-weight:600;color:var(--text-muted);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Collected Today</div>
+                        <div class="stat-card-value value" id="stats-revenue-today">—</div>
+                    </div>
+                    <div class="stat-card-icon card-icon"><i class="fas fa-hand-holding-usd"></i></div>
+                </div>
+            </div>
+
+            <!-- Charts Row - 2 Column Layout -->
+            <div class="two-column-layout">
+                <div class="main-section">
+                    <!-- Revenue Chart -->
+                    <div class="section-card" style="margin-bottom:24px;">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-money-bill-wave"></i> Revenue <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(monthly)</span></h4>
+                        </div>
+                        <div class="chart-container" id="chart-revenue" style="height:250px;"><canvas></canvas></div>
+                    </div>
+
+                    <!-- Recent Subscriber Transactions -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-credit-card"></i> Recent Subscriber Transactions</h4>
+                        </div>
+                        <table id="recent-payments-table" style="width:100%;">
+                            <thead><tr><th>Subscriber</th><th>Amount Base</th><th>Gateway Status</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Recent Activity Timeline -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-clock-rotate"></i> Recent Activity Timeline</h4>
+                        </div>
+                        <div id="recent-activity-timeline" class="dashboard-list" style="max-height:400px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+
+                <div class="main-section">
+                    <!-- Daily Active Users Chart -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-users"></i> Daily Active Users <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(30 days)</span></h4>
+                        </div>
+                        <div class="chart-container" id="chart-daily-users" style="height:200px;"><canvas></canvas></div>
+                    </div>
+
+                    <!-- Anime Growth -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-chart-line"></i> Anime Growth <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(cumulative)</span></h4>
+                        </div>
+                        <div class="chart-container" id="chart-anime-growth" style="height:200px;"><canvas></canvas></div>
+                    </div>
+
+                    <!-- Episode Views Chart -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-play-circle"></i> Episode Views <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(30 days)</span></h4>
+                        </div>
+                        <div class="chart-container" id="chart-episode-views" style="height:200px;"><canvas></canvas></div>
+                    </div>
+
+                    <!-- Genre Distribution -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-tags"></i> Genre Distribution</h4>
+                        </div>
+                        <div class="chart-container" id="chart-genre-distribution" style="height:200px;"><canvas></canvas></div>
+                    </div>
+
+                    <!-- Provider Usage -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-server"></i> Provider Usage</h4>
+                        </div>
+                        <div class="chart-container" id="chart-provider-usage" style="height:200px;"><canvas></canvas></div>
+                    </div>
+
+                    <!-- Trending Catalogue -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-fire"></i> Trending Catalogue</h4>
+                        </div>
+                        <div id="top-anime-list" class="dashboard-list"></div>
+                    </div>
+
+                    <!-- Recent Live Feeds -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-cloud-upload-alt"></i> Recent Live Feeds</h4>
+                        </div>
+                        <div id="recent-uploads" class="dashboard-list"></div>
+                    </div>
+
+                    <!-- Newly Onboarded Users -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-user-plus"></i> Newly Onboarded Users</h4>
+                        </div>
+                        <div id="latest-users" class="dashboard-list"></div>
+                    </div>
+
+                    <!-- System Activity Logs -->
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h4 class="section-card-title"><i class="fas fa-history"></i> System Activity Logs</h4>
+                        </div>
+                        <div id="activity-logs" class="dashboard-list"></div>
+                    </div>
+                </div>
+            </div>
         </section>
 
+        <!-- ════════════════════════════════════════════════════════════════
+             ANIME LIST SECTION
+             ════════════════════════════════════════════════════════════════ -->
         <section id="anime" class="content-section">
-            <div class="toolbar anime-toolbar">
-                <input type="search" id="anime-search" placeholder="Search title, studio, tags..." style="flex:1;max-width:200px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-tv"></i> Anime List
+                    </h1>
+                    <p class="page-subtitle">Manage your anime catalogue, import new titles, and configure content settings.</p>
+                </div>
+                <div class="page-header-actions">
+                    <button type="button" class="btn" id="add-anime-button">+ Add Anime</button>
+                </div>
+            </div>
+
+            <!-- Action / Filter Bar -->
+            <div class="action-bar">
+                <div class="search-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="search" id="anime-search" placeholder="Search title, studio, tags...">
+                </div>
                 <select id="anime-filter-status" class="anime-filter-select">
                     <option value="">All Status</option>
                     <option value="completed">Completed</option>
@@ -192,7 +304,7 @@
                     <option value="OVA">OVA</option>
                     <option value="SPECIAL">Special</option>
                 </select>
-                <input type="number" id="anime-filter-year" placeholder="Year" min="1900" max="2100" style="width:80px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <input type="number" id="anime-filter-year" placeholder="Year" min="1900" max="2100">
                 <select id="anime-filter-genre" class="anime-filter-select">
                     <option value="">All Genres</option>
                 </select>
@@ -212,9 +324,9 @@
                     <option value="50">50</option>
                     <option value="100">100</option>
                 </select>
-                <button type="button" class="btn" id="add-anime-button">+ Add Anime</button>
             </div>
 
+            <!-- Bulk Toolbar -->
             <div id="anime-bulk-toolbar" class="bulk-toolbar" style="display:none;">
                 <span class="bulk-count"><span id="anime-selected-count">0</span> Selected</span>
                 <div class="bulk-actions">
@@ -228,8 +340,13 @@
                     <button type="button" class="btn secondary" id="anime-bulk-export">Export CSV</button>
                     <button type="button" class="btn secondary" id="anime-bulk-cancel">✕ Cancel</button>
                 </div>
+            </div>
 
-            <div class="section-box"><h4><i class="fas fa-tv"></i> Anime Catalogue</h4>
+            <!-- Anime Table Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-tv"></i> Anime Catalogue</h4>
+                </div>
                 <div style="overflow-x:auto">
                     <table id="anime-table">
                         <thead>
@@ -251,145 +368,360 @@
                 </div>
                 <div id="anime-table-info" class="table-info"></div>
                 <div id="anime-pagination" class="pagination-controls"></div>
+            </div>
+
             <div id="anime-mobile-cards" class="mobile-cards" style="display:none;"></div>
         </section>
 
+        <!-- ════════════════════════════════════════════════════════════════
+             USERS MANAGEMENT SECTION
+             ════════════════════════════════════════════════════════════════ -->
         <section id="users" class="content-section">
-            <div class="toolbar">
-                <input type="search" id="user-search" placeholder="Search by name or email..." style="flex:1;max-width:300px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
-                <select id="user-filter-role" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-users"></i> Users Management
+                    </h1>
+                    <p class="page-subtitle">Manage registered users, roles, subscriptions, and account status.</p>
+                </div>
+                <div class="page-header-actions">
+                    <button type="button" id="bulkDeleteBtn-users" class="btn danger" style="display:none;">Delete Selected (<span id="selectedCount-users">0</span>)</button>
+                </div>
+            </div>
+
+            <!-- Action / Filter Bar -->
+            <div class="action-bar">
+                <div class="search-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="search" id="user-search" placeholder="Search by name or email...">
+                </div>
+                <select id="user-filter-role">
                     <option value="">All Roles</option>
                     <option value="admin">Admin</option>
                     <option value="user">User</option>
                 </select>
-                <select id="user-filter-plan" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <select id="user-filter-plan">
                     <option value="">All Plans</option>
                     <option value="premium">Premium</option>
                     <option value="free">Free</option>
                 </select>
-                <button type="button" id="bulkDeleteBtn-users" class="btn danger" style="display:none;">Delete Selected (<span id="selectedCount-users">0</span>)</button>
             </div>
-            <div class="section-box"><h4><i class="fas fa-users"></i> Registered Users</h4>
-                <div style="overflow-x:auto"><table id="users-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+
+            <!-- Users Table Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-users"></i> Registered Users</h4>
+                </div>
+                <div style="overflow-x:auto">
+                    <table id="users-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px"><input type="checkbox" id="selectAll-users" title="Select all"></th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Plan</th>
+                                <th>Status</th>
+                                <th>Expiry</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
                 <div id="users-pagination" class="pagination-controls"></div>
-        </section>
-
-        <section id="episodes" class="content-section">
-            <div class="toolbar">
-                <button type="button" class="btn" id="add-episode-button">Add Episode</button>
-                <button type="button" id="bulkDeleteBtn-episodes" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-episodes">0</span>)</button>
             </div>
-            <div class="section-box"><h4><i class="fas fa-video"></i> Episodes</h4>
-                <div style="overflow-x:auto"><table id="episodes-table"><thead><tr><th style="width:40px"><input type="checkbox" id="selectAll-episodes" title="Select all"></th><th>Anime</th><th>Ep #</th><th>Thumbnail</th><th>Title</th><th>Duration</th><th>Premium</th><th>Views</th><th style="width:100px">Actions</th></tr></thead><tbody></tbody></table></div>
-                <div id="anime-pagination" class="pagination-controls"></div>
         </section>
 
+        <!-- ════════════════════════════════════════════════════════════════
+             EPISODES SECTION
+             ════════════════════════════════════════════════════════════════ -->
+        <section id="episodes" class="content-section">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-video"></i> Episodes
+                    </h1>
+                    <p class="page-subtitle">Manage episode content, upload videos, and configure availability.</p>
+                </div>
+                <div class="page-header-actions">
+                    <button type="button" class="btn" id="add-episode-button">Add Episode</button>
+                    <button type="button" id="bulkDeleteBtn-episodes" class="btn danger hidden" style="display:none">Delete Selected (<span id="selectedCount-episodes">0</span>)</button>
+                </div>
+            </div>
+
+            <!-- Episodes Table Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-video"></i> Episodes</h4>
+                </div>
+                <div style="overflow-x:auto">
+                    <table id="episodes-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px"><input type="checkbox" id="selectAll-episodes" title="Select all"></th>
+                                <th>Anime</th>
+                                <th>Ep #</th>
+                                <th>Thumbnail</th>
+                                <th>Title</th>
+                                <th>Duration</th>
+                                <th>Premium</th>
+                                <th>Views</th>
+                                <th style="width:100px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="anime-pagination" class="pagination-controls"></div>
+            </div>
+        </section>
+
+        <!-- ════════════════════════════════════════════════════════════════
+             PAYMENTS SECTION
+             ════════════════════════════════════════════════════════════════ -->
         <section id="payments" class="content-section">
-            <div class="section-box"><h4><i class="fas fa-wallet"></i> Payment Records</h4>
-                <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;">
-                    <input type="search" id="payments-search" placeholder="Search name, email, reference..." style="flex:1;max-width:250px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
-                    <select id="payments-filter-status" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
-                        <option value="">All Status</option>
-                        <option value="pending">Pending</option>
-                        <option value="successful">Successful</option>
-                        <option value="failed">Failed</option>
-                        <option value="refunded">Refunded</option>
-                    </select>
-                    <input type="date" id="payments-date-from" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="From date">
-                    <input type="date" id="payments-date-to" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="To date">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-wallet"></i> Payments
+                    </h1>
+                    <p class="page-subtitle">View payment records, manage transactions, and export financial data.</p>
+                </div>
+                <div class="page-header-actions">
                     <button type="button" class="btn secondary" id="payments-export-csv" style="font-size:0.78rem;"><i class="fas fa-download"></i> Export CSV</button>
+                </div>
+            </div>
+
+            <!-- Action / Filter Bar -->
+            <div class="action-bar">
+                <div class="search-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="search" id="payments-search" placeholder="Search name, email, reference...">
+                </div>
+                <select id="payments-filter-status">
+                    <option value="">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="successful">Successful</option>
+                    <option value="failed">Failed</option>
+                    <option value="refunded">Refunded</option>
+                </select>
+                <input type="date" id="payments-date-from" title="From date">
+                <input type="date" id="payments-date-to" title="To date">
+            </div>
+
+            <!-- Payments Table Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-wallet"></i> Payment Records</h4>
                 </div>
                 <div style="overflow-x:auto">
                     <table id="payments-table">
-                        <thead><tr><th>Subscriber</th><th>Amount</th><th>Plan</th><th>Status</th><th>Date</th><th>Reference</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Subscriber</th>
+                                <th>Amount</th>
+                                <th>Plan</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Reference</th>
+                            </tr>
+                        </thead>
                         <tbody></tbody>
                     </table>
                 </div>
                 <div id="payments-table-info" class="table-info"></div>
                 <div id="payments-pagination" class="pagination-controls"></div>
+            </div>
         </section>
 
-<section id="genres" class="content-section">
-            <div class="section-box">
-                <h4><i class="fas fa-tags"></i> Manage Genres</h4>
-                <form id="genre-form" class="form-grid" style="grid-template-columns: 1fr auto; gap: 1rem; margin-bottom: 1.5rem;">
-                    <input id="genre-name" placeholder="New genre name..." required>
+        <!-- ════════════════════════════════════════════════════════════════
+             GENRES SECTION
+             ════════════════════════════════════════════════════════════════ -->
+        <section id="genres" class="content-section">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-tags"></i> Genres
+                    </h1>
+                    <p class="page-subtitle">Manage content categories and genre classifications.</p>
+                </div>
+            </div>
+
+            <!-- Add Genre Form -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-tags"></i> Manage Genres</h4>
+                </div>
+                <form id="genre-form" style="display:flex; gap: 1rem; margin-bottom: 1.5rem;">
+                    <input id="genre-name" placeholder="New genre name..." required style="flex:1;">
                     <button type="submit" class="btn">Add Genre</button>
                 </form>
-                <div class="toolbar" style="margin-bottom:1rem;">
-                    <input type="search" id="genres-search" placeholder="Search genres..." style="flex:1;max-width:250px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
+                <div class="action-bar" style="padding:12px 16px;">
+                    <div class="search-wrap" style="max-width:250px;">
+                        <i class="fas fa-search"></i>
+                        <input type="search" id="genres-search" placeholder="Search genres...">
+                    </div>
                 </div>
                 <div style="overflow-x:auto">
                     <table id="genres-table">
-                        <thead><tr><th>Name</th><th>Actions</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
                         <tbody></tbody>
                     </table>
                 </div>
                 <div id="genres-table-info" class="table-info"></div>
                 <div id="genres-pagination" class="pagination-controls"></div>
+            </div>
         </section>
 
+        <!-- ════════════════════════════════════════════════════════════════
+             ADS CONFIG SECTION
+             ════════════════════════════════════════════════════════════════ -->
         <section id="ads-config" class="content-section">
-            <div class="section-box">
-                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:0.5rem;margin-bottom:1.5rem;">
-                    <h4 style="border:none;margin:0;padding:0;"><i class="fas fa-ad"></i> Ads Configuration</h4>
-                    <div style="display:flex;gap:0.5rem;">
-                        <button type="button" class="btn" id="add-ad-btn">+ Add Ad</button>
-                        <button type="button" class="btn secondary" id="save-ads-config-btn" onclick="saveAdsConfig()">&#128190; Save Changes</button>
-                    </div>
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-ad"></i> Ads Configuration
+                    </h1>
+                    <p class="page-subtitle">Configure remote monetization rules and advertisement placements.</p>
                 </div>
-                <p style="color:var(--text-sub);font-size:0.85rem;margin-bottom:1.5rem;">Configure remote monetization rules. The mobile app fetches these settings on boot.</p>
-                <div id="ads-config-status" style="margin-bottom:1rem;display:none;" role="alert"></div>
-                <div class="section-box" style="border:1px solid var(--border);padding:1rem;">
-                    <h4 style="border:none;margin-bottom:0.75rem;"><i class="fas fa-list"></i> Advertisements</h4>
-                    <div style="overflow-x:auto">
-                        <table id="ads-table">
-                            <thead><tr><th>Preview</th><th>Title</th><th>Type</th><th>Active</th><th>Target</th><th>Actions</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
+                <div class="page-header-actions">
+                    <button type="button" class="btn" id="add-ad-btn">+ Add Ad</button>
+                    <button type="button" class="btn secondary" id="save-ads-config-btn" onclick="saveAdsConfig()">&#128190; Save Changes</button>
+                </div>
+            </div>
+
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.5rem;">Configure remote monetization rules. The mobile app fetches these settings on boot.</p>
+            <div id="ads-config-status" style="margin-bottom:1rem;display:none;" role="alert"></div>
+
+            <!-- Advertisements Table -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-list"></i> Advertisements</h4>
+                </div>
+                <div style="overflow-x:auto">
+                    <table id="ads-table">
+                        <thead>
+                            <tr>
+                                <th>Preview</th>
+                                <th>Title</th>
+                                <th>Type</th>
+                                <th>Active</th>
+                                <th>Target</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
         </section>
 
-<section id="logs" class="content-section">
-            <div class="section-box">
-                <h4><i class="fas fa-clipboard-list"></i> Activity Logs</h4>
-                <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;">
-                    <input type="search" id="logs-search" placeholder="Search logs..." style="flex:1;max-width:250px;background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
-                    <select id="logs-filter-category" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.55rem;">
-                        <option value="">All Categories</option>
-                        <option value="anime">Anime</option>
-                        <option value="episode">Episodes</option>
-                        <option value="user">Users</option>
-                        <option value="payment">Payments</option>
-                        <option value="genre">Genres</option>
-                        <option value="ad">Ads</option>
-                        <option value="settings">Settings</option>
-                    </select>
-                    <input type="date" id="logs-date-from" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="From date">
-                    <input type="date" id="logs-date-to" style="background:#182234;color:#fff;border:1px solid #475569;border-radius:8px;padding:.5rem;" title="To date">
+        <!-- ════════════════════════════════════════════════════════════════
+             LOGS SECTION
+             ════════════════════════════════════════════════════════════════ -->
+        <section id="logs" class="content-section">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-clipboard-list"></i> Activity Logs
+                    </h1>
+                    <p class="page-subtitle">View system activity, audit trails, and administrative actions.</p>
+                </div>
+                <div class="page-header-actions">
                     <button type="button" class="btn secondary" id="logs-export" style="font-size:0.78rem;"><i class="fas fa-download"></i> Export CSV</button>
+                </div>
+            </div>
+
+            <!-- Action / Filter Bar -->
+            <div class="action-bar">
+                <div class="search-wrap" style="max-width:250px;">
+                    <i class="fas fa-search"></i>
+                    <input type="search" id="logs-search" placeholder="Search logs...">
+                </div>
+                <select id="logs-filter-category">
+                    <option value="">All Categories</option>
+                    <option value="anime">Anime</option>
+                    <option value="episode">Episodes</option>
+                    <option value="user">Users</option>
+                    <option value="payment">Payments</option>
+                    <option value="genre">Genres</option>
+                    <option value="ad">Ads</option>
+                    <option value="settings">Settings</option>
+                </select>
+                <input type="date" id="logs-date-from" title="From date">
+                <input type="date" id="logs-date-to" title="To date">
+            </div>
+
+            <!-- Logs Table Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-clipboard-list"></i> Activity Logs</h4>
                 </div>
                 <div style="overflow-x:auto">
                     <table id="logs-table">
-                        <thead><tr><th>Admin</th><th>Action</th><th>Target</th><th>Details</th><th>Timestamp</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Admin</th>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Details</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
                         <tbody></tbody>
                     </table>
                 </div>
                 <div id="logs-table-info" class="table-info"></div>
                 <div id="logs-pagination" class="pagination-controls"></div>
+            </div>
         </section>
 
+        <!-- ════════════════════════════════════════════════════════════════
+             SETTINGS SECTION
+             ════════════════════════════════════════════════════════════════ -->
         <section id="settings" class="content-section">
-            <div class="section-box">
-                <h4><i class="fas fa-cog"></i> Site Settings</h4>
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <i class="fas fa-cog"></i> Settings
+                    </h1>
+                    <p class="page-subtitle">Configure platform settings, premium pricing, and system preferences.</p>
+                </div>
+            </div>
+
+            <!-- Settings Form -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-cog"></i> Site Settings</h4>
+                </div>
                 <form id="settings-form" class="form-grid">
                     <button type="submit" class="btn wide">Save Settings</button>
                 </form>
             </div>
         </section>
-    </div>
+
+        </div><!-- /dashboard-container -->
+    </div><!-- /main-content -->
 
     <!-- Ad Modal (Add/Edit) -->
     <div id="ad-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="ad-modal-title">
@@ -418,6 +750,7 @@
         </div>
     </div>
 
+    <!-- Confirm Modal -->
     <div id="confirm-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
         <div class="anime-import-dialog" style="max-width:420px;">
             <div class="anime-import-header"><h3 id="confirm-modal-title">Confirm Action</h3></div>
@@ -427,8 +760,11 @@
                     <button type="button" class="btn secondary" id="confirm-modal-cancel">Cancel</button>
                     <button type="button" class="btn danger" id="confirm-modal-confirm">Confirm</button>
                 </div>
+            </div>
         </div>
+    </div>
 
+    <!-- Anime Details Modal -->
     <div id="anime-details-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="anime-details-title">
         <div class="anime-import-dialog" style="max-width:700px;">
             <div class="anime-import-header"><h3 id="anime-details-title">Anime Details</h3><button type="button" class="anime-import-close" id="close-anime-details-modal" aria-label="Close">&times;</button></div>
@@ -458,10 +794,13 @@
                     <div><strong>Cloudinary Status:</strong> <span id="details-cloudinary"></span></div>
                     <div style="grid-column:1/-1;"><strong>Synopsis:</strong><p id="details-synopsis" style="margin-top:4px;color:var(--text-muted);line-height:1.6;"></p></div>
                     <div style="grid-column:1/-1;"><strong>Tags:</strong> <span id="details-tags"></span></div>
+                </div>
             </div>
+        </div>
     </div>
 
-<div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
+    <!-- Add Anime Modal -->
+    <div id="add-anime-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="add-anime-modal-title">
         <div class="anime-import-dialog">
             <div class="anime-import-header"><h3 id="add-anime-modal-title">Add Anime</h3><button type="button" class="anime-import-close" id="close-add-anime-modal" aria-label="Close">&times;</button></div>
             <div class="anime-import-tabs" role="tablist" aria-label="Anime source">
@@ -581,3 +920,4 @@
 
 </body>
 </html>
+
