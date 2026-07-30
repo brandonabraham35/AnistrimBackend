@@ -767,22 +767,7 @@ async updateGenre(req, res) {
           break;
         }
 
-        case 'provider-usage': {
-          const epSchema = await getSchema();
-          const providerColumn = hasColumn(epSchema, 'episodes', 'video_source')
-            ? 'COALESCE(video_source, \'direct\')'
-            : hasColumn(epSchema, 'episodes', 'video_status')
-              ? 'COALESCE(video_status, \'unknown\')'
-              : '\'direct\'';
-          const [rows] = await db.query(`
-            SELECT ${providerColumn} AS provider, COUNT(*) AS count
-            FROM episodes
-            GROUP BY provider
-            ORDER BY count DESC
-          `);
-          res.json({ labels: rows.map(r => r.provider), values: rows.map(r => r.count) });
-          break;
-        }
+case 'provider-usage': {
 
         default:
           res.status(400).json({ message: `Unknown chart type: ${type}` });
