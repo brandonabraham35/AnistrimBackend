@@ -763,8 +763,14 @@ async updateGenre(req, res) {
         }
 
         case 'provider-usage': {
+          const epSchema = await getSchema();
+          const providerColumn = hasColumn(epSchema, 'episodes', 'video_source')
+            ? 'COALESCE(video_source, \'direct\')'
+            : hasColumn(epSchema, 'episodes', 'video_status')
+              ? 'COALESCE(video_status, \'unknown\')'
+              : '\'direct\'';
           const [rows] = await db.query(`
-            SELECT COALESCE(video_source, 'direct') AS provider, COUNT(*) AS count
+            SELECT ${providerColumn} AS provider, COUNT(*) AS count
             FROM episodes
             GROUP BY provider
             ORDER BY count DESC
@@ -812,7 +818,7 @@ async updateGenre(req, res) {
       if (hasColumn(await getSchema(), 'payments', 'paid_at')) {
         queries.push(
           db.query(`
-            SELECT 'payment' AS type, id, name AS label, CONCAT(plan, ' - ', status) AS detail, paid_at AS created_at
+            SELECT 'payment' AS type, id, flw_tx_ref AS label, CONCAT(plan, ' - ', status) AS detail, paid_at AS created_at
             FROM payments WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT ?
           `, [limit])
         );
