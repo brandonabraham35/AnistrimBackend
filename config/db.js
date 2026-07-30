@@ -15,8 +15,6 @@ const pool = mysql.createPool({
   charset:            'utf8mb4',
   // Destroy connections that have been idle for 10s to free up pool slots
   idleTimeout:        10000,
-  // If a connection is acquired for > 60s, log a warning (helps catch leaks)
-  acquireTimeout:     60000,
 });
 
 /**
