@@ -1,78 +1,30 @@
-# AniStrim Admin Dashboard Restoration & CMS Completion
+# AniStrim Admin Dashboard — Complete Audit & Fixes
 
-## Phase 1 — Critical Backend & Security ✅ COMPLETE
+## ✅ COMPLETED — Structural Fixes (Phase 1-3)
 
-- [x] `GET /api/admin/payments` endpoint exists with pagination, search, status/date filtering
-- [x] Route `router.get('/payments', admin.getPayments)` exists in adminRoutes
-- [x] Download security fixed — uses Authorization header, no token in URL
-- [x] Frontend `downloadEpisode()` uses `fetch()` with `Authorization` header
+### Backend Fixes
 
-## Phase 1b — Missing Backend Endpoints
+- [x] `PUT /api/admin/genres/:id` — Update genre name (controller + route) ✅
+- [x] `GET /api/admin/users/:id` — Single user details ✅
+- [x] `GET /api/admin/users/:id/watch-history` — Watch history ✅
+- [x] `GET /api/admin/users/:id/login-history` — Login history ✅
+- [x] `adminController.updateUser` — Now supports `name`, `email`, `is_admin` in addition to existing fields ✅
 
-- [ ] `PUT /api/admin/genres/:id` — Update genre name (controller + route)
-- [ ] `GET /api/admin/users/:id` — Single user details
-- [ ] `GET /api/admin/users/:id/watch-history` — Watch history
-- [ ] `GET /api/admin/users/:id/login-history` — Login history
+### Frontend Fixes (dashboard.html)
 
-## Phase 2 — Shared Component Migration (Anime Page) ✅ COMPLETE
+- [x] Episodes table — Added missing `Thumbnail` and `Actions` column headers ✅
+- [x] Users table — Added missing `Expiry` column header ✅
 
-- [x] Anime page uses `_confirm()` for all confirmations
-- [x] Users page uses `_confirm()` for all confirmations
-- [x] Genres page uses `_confirm()` for all confirmations
-- [x] Ads page uses `_confirm()` for all confirmations
-- [x] `Badge.role()`, `Badge.premium()`, `Badge.status()` used in users.js
-- [x] shared.js provides all shared components globally
+### Fully Implemented JS Modules
 
-## Phase 3 — Restore Broken CMS Modules
-
-### 3a. Episodes — Complete Rewrite
-
-- [ ] Rewrite episodes.js with DataTable, CRUD modals, search, filters, pagination
-- [ ] Episode Modal HTML already exists in dashboard.html
-
-### 3b. Users Enhancement
-
-- [x] Edit User Modal HTML added to dashboard.html
-- [ ] users.js — Add edit modal handler, premium management, subscription expiry
-- [ ] Use SkeletonLoader/EmptyState/ErrorState for loading states
-
-### 3c. Payments Enhancement
-
-- [x] Search, date filter, status filter, pagination controls added to dashboard.html
-- [x] Backend `GET /api/admin/payments` endpoint exists with full pagination
-- [x] Export CSV button added to dashboard.html
-- [ ] payments.js — Wire up search, filters, pagination, export
-
-### 3d. Genres Enhancement
-
-- [x] Edit Genre Modal HTML added to dashboard.html
-- [x] Search input added to dashboard.html
-- [x] Pagination container added to dashboard.html
-- [ ] genres.js — Add edit handler, search, pagination
-- [ ] Backend `PUT /api/admin/genres/:id` endpoint needed
-
-### 3e. Ads Enhancement ✅ COMPLETE
-
-- [x] ads.js rewritten with scheduling fields (start/end date)
-- [x] Scheduling fields added to ad modal in dashboard.html
-- [x] Uses `_confirm()` for delete
-- [x] Uses SkeletonLoader/EmptyState/ErrorState for loading states
-- [x] Schedule info displayed in ads table
-
-### 3f. Logs — Complete Rewrite ✅ COMPLETE
-
-- [x] logs.js rewritten with categories, search, date range, pagination, export
-- [x] Severity badges for different action types
-- [x] Log toolbar added to dashboard.html (search, category filter, date range, export)
-- [x] Pagination and table info added to dashboard.html
-
-### 3g. Settings Enhancement ✅ COMPLETE
-
-- [x] settings.js rewritten with validation, reset-to-defaults, import/export
-- [x] Category groups (General, Premium, Streaming, Maintenance)
-- [x] Real-time field validation on blur
-- [x] Reset button with confirmation dialog
-- [x] Export/Import settings as JSON files
+- [x] **episodes.js** — Complete rewrite with DataTable, CRUD modals, search, filters, pagination ✅
+- [x] **users.js** — Edit modal handler, premium management, subscription expiry, SkeletonLoader/EmptyState/ErrorState ✅
+- [x] **payments.js** — Search, filters, pagination, CSV export, payment details modal, status updates ✅
+- [x] **genres.js** — Edit handler, search, pagination, add form ✅
+- [x] **ads.js** — Scheduling fields, CRUD, status toggle, SkeletonLoader/EmptyState/ErrorState ✅
+- [x] **logs.js** — Categories, search, date range, pagination, severity badges, CSV export ✅
+- [x] **settings.js** — Validation, reset-to-defaults, import/export, category groups ✅
+- [x] **anime.js** — Full CRUD, bulk operations, sorting, filtering, pagination, Kitsu import, CSV export ✅
 
 ## Phase 4 — End-to-End Regression Testing
 
