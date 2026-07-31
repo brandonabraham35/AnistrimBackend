@@ -2,16 +2,23 @@
 //  services/consumet/server.js — Consumet Express Microservice
 //
 //  Provides REST endpoints for Consumet-based streaming.
-//  Uses the SHARED proxy configuration from utils/providerHttp.js
-//  and the shared HTTP client for all outbound requests.
+//  Uses the SHARED HTTP layer from utils/providerHttp.js for
+//  ALL outbound requests — eliminating duplicate networking code.
 //
 //  This microservice is mounted at /consumet-api in server.js
 //  and is purely an alternative to the in-memory ConsumetProvider.
+//
+//  NETWORKING ARCHITECTURE (single implementation across project):
+//    watch.js → streamController → streamingService
+//      → consumetProvider / consumet microservice
+//        → providerHttp.request() ← SHARED
+//          → proxy rotation, retry, health tracking, logging
 // ============================================================
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios');
 const consumet = require('@consumet/extensions');
-const { buildHeaders, getProxyList, createProxyAgent } = require('../../utils/providerHttp');
+const { request: providerRequest, buildHeaders } = require('../../utils/providerHttp');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
@@ -24,10 +31,21 @@ if (!META || !META.Anilist || !ANIME) {
 
 console.log('[Consumet Microservice] ✅ Loaded META.Anilist');
 
-// ── Build shared axios instance ───────────────────────────
-const axios = require('axios');
-
-// Use unified headers from providerHttp
+// ── Shared HTTP Layer via providerHttp.request() ──────────
+// Instead of creating its own axios instance with independent proxy rotation,
+// retry logic, and headers (which was duplicated from utils/providerHttp.js),
+// this microservice now delegates ALL outbound HTTP to the shared
+// providerHttp.request() function via an axios adapter.
+//
+// Benefits of this approach:
+//   • Single networking stack across the entire project
+//   • Shared residential proxy rotation (round-robin)
+//   • Shared retry logic (3 attempts, exponential backoff, jitter)
+//   • Shared health tracking (per-provider success/failure rates)
+//   • Shared browser headers (buildHeaders) and timeouts
+//   • Shared structured logging (provider, attempt, status, time, proxy)
+//   • Error classification (11 categories via classifyError)
+//   • All managed in one place: utils/providerHttp.js
 const sharedHeaders = buildHeaders('consumet');
 
 const customAxios = axios.create({
@@ -35,45 +53,48 @@ const customAxios = axios.create({
   headers: sharedHeaders,
 });
 
-// Attach shared proxy rotation
-const PROXY_LIST = getProxyList();
-if (PROXY_LIST.length > 0) {
-  console.log(`[Consumet Microservice] Using shared proxy rotation (${PROXY_LIST.length} proxies)`);
+// Replace the default adapter to route through the shared HTTP layer.
+// The adapter receives axios config objects and delegates to
+// providerHttp.request(), which handles proxy rotation, retries,
+// health tracking, and structured logging internally.
+customAxios.defaults.adapter = async (config) => {
+  try {
+    const response = await providerRequest(config, {
+      providerName: 'consumet-http',
+      timeout: config.timeout || 15000,
+      extraHeaders: {
+        'Referer': 'https://consumet.org/',
+        'Origin': 'https://consumet.org',
+      },
+    });
 
-  let proxyIdx = 0;
-
-  customAxios.interceptors.request.use(config => {
-    const proxyUrl = PROXY_LIST[proxyIdx];
-    proxyIdx = (proxyIdx + 1) % PROXY_LIST.length;
-    if (proxyUrl) {
-      config.httpsAgent = createProxyAgent(proxyUrl);
-      config.headers['Referer'] = 'https://consumet.org/';
-      config.headers['Origin'] = 'https://consumet.org';
+    // Transform to axios-compatible response shape
+    return {
+      data: response.data,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      config,
+    };
+  } catch (err) {
+    // If providerHttp returned a response (non-2xx after retries exhausted),
+    // return it as a proper axios response so axios creates an AxiosError
+    // with the response attached — matching standard axios behavior.
+    if (err.response) {
+      return {
+        data: err.response.data,
+        status: err.response.status,
+        statusText: err.response.statusText,
+        headers: err.response.headers,
+        config,
+      };
     }
-    return config;
-  });
+    // Network-level error (timeout, DNS failure, ECONNREFUSED) — rethrow
+    throw err;
+  }
+};
 
-  // Retry 403 with next proxy
-  customAxios.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-      const config = error.config;
-      if (error.response?.status === 403 && !config._retry) {
-        config._retry = true;
-        console.warn('[Consumet Microservice] 403 — retrying with next proxy...');
-        const nextProxy = PROXY_LIST[proxyIdx];
-        proxyIdx = (proxyIdx + 1) % PROXY_LIST.length;
-        if (nextProxy) {
-          config.httpsAgent = createProxyAgent(nextProxy);
-          return customAxios.request(config);
-        }
-      }
-      return Promise.reject(error);
-    }
-  );
-} else {
-  console.log('[Consumet Microservice] No proxies configured. Using direct connections.');
-}
+console.log('[Consumet Microservice] ✅ Using shared providerHttp layer for all HTTP traffic');
 
 // ── Select best available provider ─────────────────────────
 const availableProviders = Object.keys(ANIME);
