@@ -62,10 +62,6 @@ customAxios.defaults.adapter = async (config) => {
     const response = await providerRequest(config, {
       providerName: 'consumet-http',
       timeout: config.timeout || 15000,
-      extraHeaders: {
-        'Referer': 'https://consumet.org/',
-        'Origin': 'https://consumet.org',
-      },
     });
 
     // Transform to axios-compatible response shape

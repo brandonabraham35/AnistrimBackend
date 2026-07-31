@@ -3,13 +3,18 @@
 // Primary: AniSkip API (public, 3-second timeout)
 // Fallback: Anime-Skip API (requires ANIMESKIP_API_KEY env var)
 // Used by the frontend "Skip Intro" / "Skip Outro" buttons during playback.
-const axios = require('axios');
+//
+// HTTP LAYER: Uses shared providerHttp client for consistent headers, logging,
+// retry, and proxy management. Proxy is intentionally skipped (skipProxy=true)
+// since AniSkip/Anime-Skip are metadata APIs, not streaming sources.
+const { get } = require('../utils/providerHttp');
 
 const ANISKIP_BASE = 'https://api.aniskip.com/v2';
 const ANIMESKIP_BASE = 'https://api.anime-skip.com/v1';
 
 /**
  * Attempt to fetch skip times from the primary AniSkip API.
+ * Uses the shared HTTP layer with skipProxy=true (metadata API, not streaming).
  * @param {number|string} malId
  * @param {number|string} episodeNumber
  * @returns {Promise<object|null>} Parsed result or null if unavailable
@@ -18,11 +23,14 @@ async function fetchFromAniSkip(malId, episodeNumber) {
   try {
     const url = `${ANISKIP_BASE}/skip-times/${malId}/episodes/${episodeNumber}?types=op&types=ed`;
 
-    const response = await axios.get(url, {
-      timeout: 3000, // 3-second timeout as required
-      headers: {
+    const response = await get(url, {
+      providerName: 'aniskip',
+      timeout: 3000,            // 3-second timeout as required
+      maxRetries: 0,            // No retries — fast failover to fallback
+      skipProxy: true,          // Metadata API — no proxy needed
+      dontTrackHealth: true,    // Skip health tracking (metadata-only)
+      extraHeaders: {
         'Accept': 'application/json',
-        'User-Agent': 'AniStrim2/1.0',
       },
     });
 
@@ -67,6 +75,7 @@ async function fetchFromAniSkip(malId, episodeNumber) {
 
 /**
  * Attempt to fetch skip times from the secondary Anime-Skip API.
+ * Uses the shared HTTP layer with skipProxy=true (metadata API, not streaming).
  * @param {number|string} malId
  * @param {number|string} episodeNumber
  * @returns {Promise<object|null>} Parsed result or null if unavailable
@@ -83,12 +92,15 @@ async function fetchFromAnimeSkip(malId, episodeNumber) {
   try {
     const url = `${ANIMESKIP_BASE}/skip-times/${malId}/${episodeNumber}`;
 
-    const response = await axios.get(url, {
-      timeout: 5000,
-      headers: {
+    const response = await get(url, {
+      providerName: 'anime-skip',
+      timeout: 5000,            // 5-second timeout for fallback
+      maxRetries: 0,            // No retries — both providers exhausted anyway
+      skipProxy: true,          // Metadata API — no proxy needed
+      dontTrackHealth: true,    // Skip health tracking (metadata-only)
+      extraHeaders: {
         'Accept': 'application/json',
         'x-api-key': apiKey,
-        'User-Agent': 'AniStrim2/1.0',
       },
     });
 

@@ -50,15 +50,14 @@ function createProviderAxios(providerName) {
   let proxyIdx = Math.floor(Math.random() * PROXY_LIST.length);
 
   if (PROXY_LIST.length > 0) {
-    // Request interceptor: attach next proxy in rotation
+    // Request interceptor: attach next proxy in rotation.
+    // Browser headers (Origin, Referer, etc.) are set by buildHeaders(providerName)
+    // when creating the axios instance above — no need to override them here.
     instance.interceptors.request.use(config => {
       const proxyUrl = PROXY_LIST[proxyIdx % PROXY_LIST.length];
       proxyIdx = (proxyIdx + 1) % PROXY_LIST.length;
       if (proxyUrl) {
         config.httpsAgent = createProxyAgent(proxyUrl);
-        // Cloudflare-bypass headers
-        config.headers['Referer'] = 'https://consumet.org/';
-        config.headers['Origin'] = 'https://consumet.org';
       }
       return config;
     });
