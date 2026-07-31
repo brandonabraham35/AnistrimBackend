@@ -1,166 +1,195 @@
 // ============================================================
-//  services/consumetProvider.js — Consumet In-Memory Provider
+//  services/consumetProvider.js — Multi-Provider Consumet Engine
 //
-//  Uses @consumet/extensions with:
-//    • Shared HTTP client from utils/providerHttp.js for proxy,
-//      retry, and header management
-//    • Unified proxy configuration (no duplicate proxy logic)
-//    • Provider health tracking via providerHttp
-//    • Rotating proxies with 403 retry handling
-//    • Cloudflare-bypass headers
-//    • Fallback across multiple Consumet-supported providers
+//  Instead of picking ONE sub-provider at module load time,
+//  this creates a REGISTRY of all available Consumet-backed anime
+//  providers. Each gets its OWN axios instance so proxy rotation
+//  and health tracking are independent per sub-provider.
+//
+//  USAGE:
+//    const { provider } = require('./consumetProvider');
+//    const result = await provider.resolveStreamUrl({
+//      provider: 'KickAssAnime',
+//      title: 'Attack on Titan',
+//      episode: 1,
+//    });
+//
+//  Available sub-providers (from @consumet/extensions):
+//    KickAssAnime, AnimePahe, AnimeKai, AnimeSaturn, Hianime, AnimeSama
 // ============================================================
 const consumet = require('@consumet/extensions');
-const { buildHeaders, getProxyList, createProxyAgent, getNextProxyUrl } = require('../utils/providerHttp');
+const { buildHeaders, getProxyList, createProxyAgent, isProviderHealthy, classifyError } = require('../utils/providerHttp');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
 const availableProviders = Object.keys(ANIME);
-console.log(`[ConsumetProvider] Available ANIME providers:`, availableProviders.join(', '));
+console.log(`[ConsumetProvider] Available ANIME providers: ${availableProviders.join(', ')}`);
 
-// ── Shared Proxy Integration ──────────────────────────────
-// Build a customAxios that uses the SAME proxy configuration as providerHttp.js
-// The @consumet/extensions library accepts an axios instance — we configure it
-// to use our shared proxy rotation and unified headers.
-
+// ── Shared dependencies ────────────────────────────────────
 const axios = require('axios');
-
-// Build the initial headers from our shared system
-const sharedHeaders = buildHeaders('consumet');
-
-const customAxios = axios.create({
-  timeout: 15000,
-  headers: sharedHeaders,
-});
-
-// Attach rotating proxy interceptor — uses same proxy list as providerHttp
 const PROXY_LIST = getProxyList();
 
-if (PROXY_LIST.length > 0) {
-  console.log(`[ConsumetProvider] Using shared proxy rotation (${PROXY_LIST.length} proxies)`);
+// ── Provider Instance Factory ──────────────────────────────
+// Creates an independent axios instance + proxy rotation for a given sub-provider.
 
-  // Request interceptor: attach proxy agent
-  customAxios.interceptors.request.use(config => {
-    const proxyUrl = getNextProxyUrl();
-    if (proxyUrl) {
-      config.httpsAgent = createProxyAgent(proxyUrl);
-      // Add Referer header for Cloudflare-bypass
-      config.headers['Referer'] = 'https://consumet.org/';
-      config.headers['Origin'] = 'https://consumet.org';
-    }
-    return config;
+/**
+ * Build an axios instance configured for a specific Consumet sub-provider.
+ * Each instance has its own proxy rotation index so providers don't share
+ * proxy state. This prevents one provider's failures from cascading.
+ */
+function createProviderAxios(providerName) {
+  const headers = buildHeaders(providerName);
+
+  const instance = axios.create({
+    timeout: 15000,
+    headers,
   });
 
-  // Response interceptor: on 403, retry with a different proxy once
-  customAxios.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-      const config = error.config;
-      if (error.response?.status === 403 && config.httpsAgent && !config._retry) {
-        config._retry = true;
-        console.warn(`[ConsumetProvider] 403 blocked — retrying with different proxy...`);
-        // Get a new proxy (next in rotation)
-        const newProxyUrl = getNextProxyUrl();
-        if (newProxyUrl) {
-          config.httpsAgent = createProxyAgent(newProxyUrl);
-          return customAxios.request(config);
+  // Independent proxy rotation index per provider
+  let proxyIdx = Math.floor(Math.random() * PROXY_LIST.length);
+
+  if (PROXY_LIST.length > 0) {
+    // Request interceptor: attach next proxy in rotation
+    instance.interceptors.request.use(config => {
+      const proxyUrl = PROXY_LIST[proxyIdx % PROXY_LIST.length];
+      proxyIdx = (proxyIdx + 1) % PROXY_LIST.length;
+      if (proxyUrl) {
+        config.httpsAgent = createProxyAgent(proxyUrl);
+        // Cloudflare-bypass headers
+        config.headers['Referer'] = 'https://consumet.org/';
+        config.headers['Origin'] = 'https://consumet.org';
+      }
+      return config;
+    });
+
+    // Response interceptor: on 403, retry ONCE with next proxy
+    instance.interceptors.response.use(
+      response => response,
+      async error => {
+        const config = error.config;
+        if (error.response?.status === 403 && !config._retry) {
+          config._retry = true;
+          console.warn(`[ConsumetProvider:${providerName}] 403 blocked — retrying with next proxy...`);
+          const nextProxyUrl = PROXY_LIST[proxyIdx % PROXY_LIST.length];
+          proxyIdx = (proxyIdx + 1) % PROXY_LIST.length;
+          if (nextProxyUrl) {
+            config.httpsAgent = createProxyAgent(nextProxyUrl);
+            return instance.request(config);
+          }
         }
+        // If 403 persists after proxy retry, try without proxy as last resort
+        if (error.response?.status === 403 && config._retry && config.httpsAgent) {
+          console.warn(`[ConsumetProvider:${providerName}] 403 persists — retrying WITHOUT proxy...`);
+          config.httpsAgent = null;
+          return instance.request(config);
+        }
+        return Promise.reject(error);
       }
-      // On 403 without proxy, or retry exhausted — try without proxy as last resort
-      if (error.response?.status === 403 && config.httpsAgent && config._retry) {
-        console.warn(`[ConsumetProvider] 403 persists with proxy — retrying WITHOUT proxy...`);
-        config._retry = true;
-        config.httpsAgent = null;
-        return customAxios.request(config);
-      }
-      return Promise.reject(error);
-    }
-  );
-} else {
-  console.log(`[ConsumetProvider] No proxies configured. Consumet uses direct connection.`);
+    );
+  }
+
+  return instance;
 }
 
-// ── Provider Selection ────────────────────────────────────
-// Priority order — Consumet's internal fallback chain.
-// AnimePahe and Hianime are included but will be attempted WITH proxy.
-// The proxy rotation should handle 403 blocks from these targets.
-const preferredOrder = [
-  'KickAssAnime',
-  'AnimePahe',
-  'AnimeKai',
-  'AnimeSaturn',
-  'Hianime',
-  'AnimeSama',
-];
+// ── Provider Registry ─────────────────────────────────────
+// Instantiate ALL available Consumet providers so we can fallback between them.
+// Each gets its own axios instance with independent proxy tracking.
 
-let fallbackProvider = null;
+const REGISTRY = new Map();
 
-for (const name of preferredOrder) {
-  const key = availableProviders.find(k => k.toLowerCase() === name.toLowerCase());
-  if (key && typeof ANIME[key] === 'function') {
+for (const name of availableProviders) {
+  if (typeof ANIME[name] === 'function') {
     try {
-      console.log(`[ConsumetProvider] ✅ Selected provider: ${key}`);
-      fallbackProvider = new ANIME[key](customAxios);
-      break;
+      const instance = createProviderAxios(name);
+      const providerInstance = new ANIME[name](instance);
+      // Wrap in AniList meta-provider
+      const metaProvider = new META.Anilist(providerInstance);
+      REGISTRY.set(name, metaProvider);
+      console.log(`[ConsumetProvider] ✅ Registered: ${name}`);
     } catch (e) {
-      console.warn(`[ConsumetProvider] Failed to instantiate ${key}:`, e.message);
+      console.warn(`[ConsumetProvider] ⚠️ Failed to register ${name}: ${e.message}`);
     }
   }
 }
 
-// Ultimate safe fallback — exclude known-broken providers
-if (!fallbackProvider) {
-  const safeKey = availableProviders.find(key =>
-    typeof ANIME[key] === 'function' &&
-    !key.toLowerCase().includes('pahe') &&
-    !key.toLowerCase().includes('hianime')
-  );
-  if (safeKey) {
-    console.log(`[ConsumetProvider] ⚠️  Blind fallback: ${safeKey}`);
-    fallbackProvider = new ANIME[safeKey](customAxios);
-  } else {
-    throw new Error("[ConsumetProvider] CRITICAL: No usable anime providers found in @consumet/extensions.");
-  }
-}
+console.log(`[ConsumetProvider] Registry ready: ${[...REGISTRY.keys()].join(', ')}`);
 
-// Wrap in AniList meta-provider
-const provider = new META.Anilist(fallbackProvider);
+// ── ConsumetProvider Class ─────────────────────────────────
+// Provides the public API used by streamingService.js
 
 class ConsumetProvider {
+  constructor() {
+    this.registry = REGISTRY;
+  }
+
+  /**
+   * Check if a specific sub-provider is available.
+   */
+  hasProvider(name) {
+    return this.registry.has(name);
+  }
+
+  /**
+   * Get list of all registered provider names.
+   */
+  listProviders() {
+    return [...this.registry.keys()];
+  }
+
+  /**
+   * Get count of registered providers.
+   */
+  get providerCount() {
+    return this.registry.size;
+  }
+
   configured() {
     return process.env.CONSUMET_BASE_URL !== 'disabled';
   }
 
   async fetchAnimeInfo(slug) {
-    return provider.fetchAnimeInfo(slug);
+    // Uses first available provider for info fetching (catalogue)
+    const firstProvider = this.registry.values().next().value;
+    if (!firstProvider) throw new Error('[ConsumetProvider] No providers registered');
+    return firstProvider.fetchAnimeInfo(slug);
   }
 
   async getEpisodes(slug) {
-    const info = await provider.fetchAnimeInfo(slug);
+    const info = await this.fetchAnimeInfo(slug);
     return info.episodes || [];
   }
 
   async getSources(episodeId) {
-    const sources = await provider.fetchEpisodeSources(episodeId);
-    return sources;
+    const firstProvider = this.registry.values().next().value;
+    if (!firstProvider) throw new Error('[ConsumetProvider] No providers registered');
+    return firstProvider.fetchEpisodeSources(episodeId);
   }
 
   async fetchTrendingAnime(page = 1, perPage = 15) {
-    return provider.fetchTrendingAnime(page, perPage);
+    const firstProvider = this.registry.values().next().value;
+    if (!firstProvider) throw new Error('[ConsumetProvider] No providers registered');
+    return firstProvider.fetchTrendingAnime(page, perPage);
   }
 
   async fetchPopularAnime(page = 1, perPage = 15) {
-    return provider.fetchPopularAnime(page, perPage);
+    const firstProvider = this.registry.values().next().value;
+    if (!firstProvider) throw new Error('[ConsumetProvider] No providers registered');
+    return firstProvider.fetchPopularAnime(page, perPage);
   }
 
   async searchAnime(query, limit = 10) {
-    try {
-      const searchResponse = await provider.search(query, limit);
-      const results = Array.isArray(searchResponse) ? searchResponse : (searchResponse.results || []);
-      if (results.length) return results;
-    } catch (error) {
-      console.warn(`[ConsumetProvider] Search failed: ${error.message || 'unknown error'}`);
+    // Try each registered provider for search, fallback to next on failure
+    const providers = [...this.registry.values()];
+
+    for (const p of providers) {
+      try {
+        const searchResponse = await p.search(query, limit);
+        const results = Array.isArray(searchResponse) ? searchResponse : (searchResponse.results || []);
+        if (results.length) return results;
+      } catch (error) {
+        console.warn(`[ConsumetProvider] Search failed on ${p.constructor?.name}: ${error.message || 'unknown error'}`);
+      }
     }
 
     // Kitsu fallback for catalogue search
@@ -170,7 +199,7 @@ class ConsumetProvider {
         providerName: 'kitsu',
         params: { 'filter[text]': query, 'page[limit]': Math.min(limit, 20) },
         timeout: 12000,
-        skipProxy: true, // Kitsu doesn't need proxy
+        skipProxy: true,
       });
       return (response.data?.data || []).map(item => ({
         id: `kitsu:${item.id}`,
@@ -188,6 +217,9 @@ class ConsumetProvider {
   }
 
   async advancedSearch({ query, page = 1, perPage = 15, genres, season, year, status, sort }) {
+    const firstProvider = this.registry.values().next().value;
+    if (!firstProvider) throw new Error('[ConsumetProvider] No providers registered');
+
     try {
       const options = { page, perPage };
 
@@ -198,7 +230,7 @@ class ConsumetProvider {
       if (status) options.status = status.toUpperCase();
       if (sort && Array.isArray(sort) && sort.length > 0) options.sort = sort;
 
-      const response = await provider.advancedSearch(options.query, options);
+      const response = await firstProvider.advancedSearch(options.query, options);
       return response;
     } catch (err) {
       console.error(`[ConsumetProvider] advancedSearch error: ${err.message}`);
@@ -207,71 +239,119 @@ class ConsumetProvider {
   }
 
   /**
-   * Resolve a streaming URL for a given anime title and episode number.
-   * Steps:
-   *   1. Search AniList by title to find the anime
-   *   2. Fetch full anime info (includes episode list)
-   *   3. Find the episode matching the given number
-   *   4. Resolve streaming sources for that episode
-   *   5. Return the highest quality .m3u8 URL
+   * Resolve a streaming URL for a given anime title and episode number,
+   * using a SPECIFIC Consumet sub-provider.
+   *
+   * @param {object} params
+   * @param {string} params.provider — The sub-provider name (e.g., 'KickAssAnime', 'AnimeKai')
+   * @param {string} params.title — Anime title
+   * @param {number|string} params.episode — Episode number
+   * @returns {Promise<{streamUrl: string|null, allSources: Array, subtitles: Array, provider: string}>}
    */
-  async resolveStreamUrl(animeTitle, episodeNumber) {
-    console.log(`[resolveStream] Searching Consumet for: "${animeTitle}" Ep ${episodeNumber}`);
+  async resolveStreamUrl({ provider: providerName, title, episode }) {
+    const startTime = Date.now();
+    const logTag = `[ConsumetProvider:${providerName}]`;
 
-    // 1. Search for the anime
-    let searchResponse = await provider.search(animeTitle);
-    let searchResults = searchResponse.results ? searchResponse.results : searchResponse;
+    console.log(`${logTag} ➡️ Resolving | "${title}" Ep ${episode}`);
 
-    // SMART RETRY: If 0 results, drop the last word (e.g., "Jujutsu Kaisen 0" -> "Jujutsu Kaisen")
-    // This handles movie titles that include a numeric suffix like "0" or "I".
-    if ((!Array.isArray(searchResults) || searchResults.length === 0) && animeTitle.includes(' ')) {
-      const simplifiedTitle = animeTitle.split(' ').slice(0, -1).join(' ');
-      console.log(`[resolveStream] 0 results — retrying with: "${simplifiedTitle}"`);
-      searchResponse = await provider.search(simplifiedTitle);
-      searchResults = searchResponse.results ? searchResponse.results : searchResponse;
+    // 1. Find the requested provider in registry
+    const metaProvider = this.registry.get(providerName);
+    if (!metaProvider) {
+      const errorMsg = `Provider "${providerName}" not registered. Available: ${this.listProviders().join(', ')}`;
+      console.warn(`${logTag} ⚠️ ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
-    if (!Array.isArray(searchResults) || searchResults.length === 0) {
-      throw new Error(`Consumet search returned 0 results for: "${animeTitle}"`);
+    // 2. Check provider health (via providerHttp)
+    const healthKey = `consumet-${providerName.toLowerCase()}`;
+    if (!isProviderHealthy(healthKey)) {
+      console.warn(`${logTag} ⏭ Provider is DEGRADED — skipping`);
+      const err = new Error(`Provider ${providerName} is degraded — skipping`);
+      err.code = 'PROVIDER_DEGRADED';
+      throw err;
     }
 
-    // Normalize the original search string
-    const targetTitle = animeTitle.toLowerCase().trim();
+    try {
+      // 3. Search for the anime via AniList
+      let searchResponse = await metaProvider.search(title);
+      let searchResults = searchResponse.results ? searchResponse.results : searchResponse;
 
-    // 1. Flexible Matcher
-    let targetAnime = searchResults.find(a => {
-      const titleStr = typeof a.title === 'string'
-        ? a.title.toLowerCase()
-        : (a.title?.english || a.title?.romaji || '').toLowerCase();
+      // SMART RETRY: If 0 results, drop last word (handles "Jujutsu Kaisen 0" → "Jujutsu Kaisen")
+      if ((!Array.isArray(searchResults) || searchResults.length === 0) && title.includes(' ')) {
+        const simplifiedTitle = title.split(' ').slice(0, -1).join(' ');
+        console.log(`${logTag} 0 results — retrying with: "${simplifiedTitle}"`);
+        searchResponse = await metaProvider.search(simplifiedTitle);
+        searchResults = searchResponse.results ? searchResponse.results : searchResponse;
+      }
 
-      return titleStr.includes(targetTitle) ||
-             targetTitle.includes(titleStr) ||
-             (a.id && a.id.toLowerCase().includes(targetTitle.replace(/\s+/g, '-')));
-    });
+      if (!Array.isArray(searchResults) || searchResults.length === 0) {
+        throw new Error(`Search returned 0 results for: "${title}"`);
+      }
 
-    // 2. Ultimate Fallback
-    if (!targetAnime && searchResults.length > 0) {
-      console.log(`[resolveStream] Fuzzy match failed — using first result`);
-      targetAnime = searchResults[0];
-    }
+      // 4. Match anime from search results
+      const targetTitle = title.toLowerCase().trim();
+      let targetAnime = searchResults.find(a => {
+        const titleStr = typeof a.title === 'string'
+          ? a.title.toLowerCase()
+          : (a.title?.english || a.title?.romaji || '').toLowerCase();
+        return titleStr.includes(targetTitle) ||
+               targetTitle.includes(titleStr) ||
+               (a.id && a.id.toLowerCase().includes(targetTitle.replace(/\s+/g, '-')));
+      });
 
-    if (!targetAnime || !targetAnime.id) {
-      throw new Error(`Failed to resolve a valid anime ID from search results.`);
-    }
+      // Ultimate fallback: use first result
+      if (!targetAnime && searchResults.length > 0) {
+        console.log(`${logTag} Fuzzy match failed — using first result`);
+        targetAnime = searchResults[0];
+      }
 
-    const slug = targetAnime.id;
+      if (!targetAnime || !targetAnime.id) {
+        throw new Error(`Failed to resolve a valid anime ID from search results.`);
+      }
 
-    // 3. Fetch full anime info (includes episodes)
-    const info = await provider.fetchAnimeInfo(slug);
-    const episodes = info?.episodes || [];
+      const slug = targetAnime.id;
 
-    // Movie-specific handling
-    if (!episodes.length) {
-      console.log(`[resolveStream] "${animeTitle}" has no episode list — treating as movie`);
-      try {
-        const sources = await provider.fetchEpisodeSources(slug);
-        const streamList = sources?.sources || [];
-        if (streamList.length > 0) {
+      // 5. Fetch full anime info (includes episodes)
+      const info = await metaProvider.fetchAnimeInfo(slug);
+      const episodes = info?.episodes || [];
+
+      // Movie-specific handling
+      if (!episodes.length) {
+        console.log(`${logTag} "${title}" has no episode list — treating as movie`);
+        try {
+          const sources = await metaProvider.fetchEpisodeSources(slug);
+          const streamList = sources?.sources || [];
+          if (streamList.length > 0) {
+            const bestSource = streamList.reduce((best, src) =>
+              (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
+            , streamList[0]);
+            return {
+              streamUrl: bestSource?.url || streamList[0]?.url,
+              allSources: streamList,
+              subtitles: sources?.subtitles || [],
+              episodeTitle: info.title || title,
+              episodeImage: info.image || null,
+              provider: providerName,
+            };
+          }
+        } catch (err) {
+          console.warn(`${logTag} Movie direct fetch failed: ${err.message}`);
+        }
+        throw new Error(`No playable sources found for "${title}".`);
+      }
+
+      // 6. Find target episode by number
+      const targetEp = episodes.find(ep => ep.number === Number(episode));
+      if (!targetEp) {
+        // For movies/episode-1 fallback
+        if (Number(episode) === 1 && episodes.length >= 1) {
+          console.log(`${logTag} Episode 1 not found by number — using first episode entry`);
+          const firstEp = episodes[0];
+          const sources = await metaProvider.fetchEpisodeSources(firstEp.id);
+          const streamList = sources?.sources || [];
+          if (!streamList.length) {
+            throw new Error(`No stream sources found for "${title}".`);
+          }
           const bestSource = streamList.reduce((best, src) =>
             (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
           , streamList[0]);
@@ -279,63 +359,48 @@ class ConsumetProvider {
             streamUrl: bestSource?.url || streamList[0]?.url,
             allSources: streamList,
             subtitles: sources?.subtitles || [],
-            episodeTitle: info.title || animeTitle,
-            episodeImage: info.image || null,
+            episodeTitle: firstEp.title || null,
+            episodeImage: firstEp.image || null,
+            provider: providerName,
           };
         }
-      } catch (err) {
-        console.warn(`[resolveStream] Movie direct fetch failed: ${err.message}`);
+        throw new Error(`Episode ${episode} not found for "${title}". Available: ${episodes.length} episodes`);
       }
-      throw new Error(`No playable sources found for "${animeTitle}".`);
-    }
 
-    // 4. Find the target episode by number (strict matching)
-    const targetEp = episodes.find(ep => ep.number === Number(episodeNumber));
-    if (!targetEp) {
-      // For movies/episode-1 fallback
-      if (Number(episodeNumber) === 1 && episodes.length >= 1) {
-        console.log(`[resolveStream] Episode 1 not found by number — using first episode entry`);
-        const firstEp = episodes[0];
-        const sources = await provider.fetchEpisodeSources(firstEp.id);
-        const streamList = sources?.sources || [];
-        if (!streamList.length) {
-          throw new Error(`No stream sources found for "${animeTitle}".`);
-        }
-        const bestSource = streamList.reduce((best, src) =>
-          (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
-        , streamList[0]);
-        return {
-          streamUrl: bestSource?.url || streamList[0]?.url,
-          allSources: streamList,
-          subtitles: sources?.subtitles || [],
-          episodeTitle: firstEp.title || null,
-          episodeImage: firstEp.image || null,
-        };
+      // 7. Resolve streaming sources
+      const sources = await metaProvider.fetchEpisodeSources(targetEp.id);
+      const streamList = sources?.sources || [];
+      if (!streamList.length) {
+        throw new Error(`No stream sources found for "${title}" Episode ${episode}.`);
       }
-      throw new Error(`Episode ${episodeNumber} not found for "${animeTitle}". Available: ${episodes.length} episodes`);
+
+      // 8. Return the highest quality
+      const bestSource = streamList.reduce((best, src) =>
+        (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
+      , streamList[0]);
+
+      const elapsed = Date.now() - startTime;
+      console.log(`${logTag} ✅ Resolved | ${elapsed}ms | ${streamList.length} sources | best: ${bestSource?.quality || 'auto'}`);
+
+      return {
+        streamUrl: bestSource?.url || streamList[0]?.url,
+        allSources: streamList,
+        subtitles: sources?.subtitles || [],
+        episodeTitle: targetEp.title || null,
+        episodeImage: targetEp.image || null,
+        provider: providerName,
+      };
+    } catch (err) {
+      const elapsed = Date.now() - startTime;
+      const { category, description } = classifyError(err);
+      console.warn(`${logTag} ❌ Failed | ${elapsed}ms | [${category}] ${description || err.message}`);
+      throw err;
     }
-
-    // 5. Resolve streaming sources
-    const sources = await provider.fetchEpisodeSources(targetEp.id);
-    const streamList = sources?.sources || [];
-    if (!streamList.length) {
-      throw new Error(`No stream sources found for "${animeTitle}" Episode ${episodeNumber}.`);
-    }
-
-    // 6. Return the highest quality
-    const bestSource = streamList.reduce((best, src) =>
-      (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
-    , streamList[0]);
-
-    return {
-      streamUrl: bestSource?.url || streamList[0]?.url,
-      allSources: streamList,
-      subtitles: sources?.subtitles || [],
-      episodeTitle: targetEp.title || null,
-      episodeImage: targetEp.image || null,
-    };
   }
 }
 
-module.exports = { ConsumetProvider };
+// ── Singleton export ───────────────────────────────────────
+const provider = new ConsumetProvider();
+
+module.exports = { ConsumetProvider, provider };
 

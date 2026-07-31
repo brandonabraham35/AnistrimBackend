@@ -226,6 +226,75 @@ function buildHeaders(providerName, extraHeaders = {}) {
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
+// ───────────────────────────────────────────────────────────────
+//  ERROR CLASSIFICATION
+// ───────────────────────────────────────────────────────────────
+
+const ERROR_CATEGORIES = {
+  FORBIDDEN: 'FORBIDDEN',       // 403 — Cloudflare / access denied
+  NOT_FOUND: 'NOT_FOUND',       // 404 — resource not found
+  RATE_LIMITED: 'RATE_LIMITED', // 429 — too many requests
+  SERVER_ERROR: 'SERVER_ERROR', // 500+ — server-side failure
+  TIMEOUT: 'TIMEOUT',           // network timeout
+  DNS_FAILURE: 'DNS_FAILURE',   // DNS resolution failed
+  CONNECTION_REFUSED: 'CONNECTION_REFUSED',
+  CONNECTION_RESET: 'CONNECTION_RESET',
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  PROVIDER_DEGRADED: 'PROVIDER_DEGRADED',
+  UNKNOWN: 'UNKNOWN',
+};
+
+/**
+ * Classify an error into a category for better logging and decision-making.
+ * @param {Error} err — The error object from axios
+ * @returns {{ category: string, status: number, retryable: boolean, description: string }}
+ */
+function classifyError(err) {
+  if (!err) return { category: ERROR_CATEGORIES.UNKNOWN, status: 0, retryable: false, description: 'No error object' };
+
+  const status = err.response?.status || 0;
+  const code = err.code || '';
+  const message = (err.message || '').toLowerCase();
+
+  // Provider was health-skipped
+  if (err.code === 'PROVIDER_DEGRADED') {
+    return { category: ERROR_CATEGORIES.PROVIDER_DEGRADED, status: 0, retryable: false, description: 'Provider marked degraded — skipped' };
+  }
+
+  // HTTP status-based classification
+  if (status === 403) {
+    return { category: ERROR_CATEGORIES.FORBIDDEN, status: 403, retryable: true, description: '403 Forbidden — likely Cloudflare/anti-bot block' };
+  }
+  if (status === 404) {
+    return { category: ERROR_CATEGORIES.NOT_FOUND, status: 404, retryable: false, description: '404 Not Found — resource does not exist' };
+  }
+  if (status === 429) {
+    return { category: ERROR_CATEGORIES.RATE_LIMITED, status: 429, retryable: true, description: '429 Rate Limited — back off and retry' };
+  }
+  if (status >= 500) {
+    return { category: ERROR_CATEGORIES.SERVER_ERROR, status, retryable: true, description: `${status} Server Error — may be transient` };
+  }
+
+  // Network-level classification
+  if (code === 'ECONNABORTED' || message.includes('timeout')) {
+    return { category: ERROR_CATEGORIES.TIMEOUT, status: 0, retryable: true, description: 'Timeout — request took too long' };
+  }
+  if (code === 'ENOTFOUND' || message.includes('enotfound')) {
+    return { category: ERROR_CATEGORIES.DNS_FAILURE, status: 0, retryable: true, description: 'DNS resolution failed' };
+  }
+  if (code === 'ECONNREFUSED' || message.includes('econnrefused')) {
+    return { category: ERROR_CATEGORIES.CONNECTION_REFUSED, status: 0, retryable: true, description: 'Connection refused — server may be down' };
+  }
+  if (code === 'ECONNRESET' || message.includes('socket hang up') || message.includes('econnreset')) {
+    return { category: ERROR_CATEGORIES.CONNECTION_RESET, status: 0, retryable: true, description: 'Connection reset — socket hang up' };
+  }
+  if (code === 'ERR_NETWORK' || message.includes('network')) {
+    return { category: ERROR_CATEGORIES.NETWORK_ERROR, status: 0, retryable: true, description: 'Network error' };
+  }
+
+  return { category: ERROR_CATEGORIES.UNKNOWN, status, retryable: false, description: message.substring(0, 120) || 'Unknown error' };
+}
+
 /**
  * Determine if an HTTP status code is retryable.
  */
@@ -250,17 +319,8 @@ function isRetryableStatus(status) {
  */
 function isRetryableError(err) {
   if (!err) return false;
-  // Timeout, DNS, ECONNREFUSED, ECONNRESET, ENOTFOUND, etc.
-  const codes = ['ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'ENETUNREACH', 'ETIMEDOUT', 'ERR_NETWORK'];
-  if (err.code && codes.includes(err.code)) return true;
-  if (err.message && (
-    err.message.includes('timeout') ||
-    err.message.includes('ENOTFOUND') ||
-    err.message.includes('ECONNREFUSED') ||
-    err.message.includes('socket hang up') ||
-    err.message.includes('network')
-  )) return true;
-  return false;
+  const { retryable } = classifyError(err);
+  return retryable;
 }
 
 /**
@@ -468,5 +528,9 @@ module.exports = {
   // Header builder
   buildHeaders,
   DEFAULT_HEADERS,
+
+  // Error classification
+  classifyError,
+  ERROR_CATEGORIES,
 };
 
