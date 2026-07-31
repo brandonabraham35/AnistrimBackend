@@ -532,5 +532,6 @@ module.exports = {
   // Error classification
   classifyError,
   ERROR_CATEGORIES,
+
 };
 
