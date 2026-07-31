@@ -491,11 +491,11 @@ async getPayments(req, res) {
       if (status) { where.push('p.status = ?'); params.push(status); }
       if (from) { where.push('p.created_at >= ?'); params.push(from); }
       if (to) { where.push('p.created_at <= ?'); params.push(to); }
-      if (search) {
+if (search) {
         const userNameColumn = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
-        where.push(`(${userNameColumn} LIKE ? OR u.email LIKE ? OR p.reference LIKE ? OR p.flw_tx_ref LIKE ?)`);
+        where.push(`(${userNameColumn} LIKE ? OR u.email LIKE ? OR p.flw_tx_ref LIKE ?)`);
         const q = `%${search}%`;
-        params.push(q, q, q, q);
+        params.push(q, q, q);
       }
 
       const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -768,6 +768,20 @@ async updateGenre(req, res) {
         }
 
 case 'provider-usage': {
+          // Count episodes with video_url (those with a provider source)
+          const [rows] = await db.query(`
+            SELECT COALESCE(video_url IS NOT NULL AND video_url != '', 0) AS has_video, COUNT(*) AS count
+            FROM episodes
+            GROUP BY has_video
+          `);
+          const hasVideo = rows.find(r => r.has_video == 1);
+          const noVideo = rows.find(r => r.has_video == 0);
+          res.json({
+            labels: ['With Video Source', 'No Video Source'],
+            values: [(hasVideo?.count || 0), (noVideo?.count || 0)]
+          });
+          break;
+        }
 
         default:
           res.status(400).json({ message: `Unknown chart type: ${type}` });
