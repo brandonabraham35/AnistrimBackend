@@ -22,6 +22,7 @@
 const { provider: consumetProvider } = require('./consumetProvider');
 const { request, isProviderHealthy, getProviderHealth, classifyError, recordSuccess, recordFailure } = require('../utils/providerHttp');
 const cache = require('../utils/cacheService');
+const logger = require('../utils/logger');
 
 // ── Quality Tier Definitions ────────────────────────────────
 const QUALITY_TIERS = {
@@ -100,7 +101,7 @@ const PROVIDER_ORDER = (process.env.STREAM_PROVIDERS || DEFAULT_PROVIDERS.join('
   .map(s => s.trim().toLowerCase())
   .filter(Boolean);
 
-console.log(`[StreamingService] Provider order: ${PROVIDER_ORDER.join(' → ')}`);
+logger.info('Provider order configured', { providers: PROVIDER_ORDER });
 
 // ─────────────────────────────────────────────────────────────
 //  INTERNAL RETRY LOGIC (per provider)
@@ -130,12 +131,12 @@ async function executeWithRetry(providerName, healthKey, resolverFn) {
     // Check provider health before attempting (skip only if degraded and attempt > 0)
     if (attempt === 0) {
       if (!isProviderHealthy(healthKey)) {
-        console.log(`[StreamingService] ⏭ ${providerName} | ${attemptLabel} | SKIPPED (degraded)`);
+        logger.stream({ provider: providerName, attempt: attempt + 1, result: 'skipped_degraded' });
         return null;
       }
     }
 
-    console.log(`[StreamingService] ➡️ ${providerName} | ${attemptLabel}`);
+    logger.stream({ provider: providerName, attempt: attempt + 1, status: 'pending' });
 
     try {
       const result = await resolverFn();
@@ -144,13 +145,13 @@ async function executeWithRetry(providerName, healthKey, resolverFn) {
       if (result && result.sources && result.sources.length > 0) {
         // Record success in health tracker
         recordSuccess(healthKey, elapsed);
-        console.log(`[StreamingService] ✅ ${providerName} | ${attemptLabel} | SUCCESS | ${elapsed}ms | ${result.sources.length} sources`);
+        logger.stream({ provider: providerName, attempt: attempt + 1, duration: elapsed, sources: result.sources.length, result: 'success' });
         return result;
       }
 
       // Resolver returned null/empty sources (not an error)
       const elapsed2 = Date.now() - attemptStart;
-      console.log(`[StreamingService] ⚠️ ${providerName} | ${attemptLabel} | NO_SOURCES | ${elapsed2}ms`);
+      logger.stream({ provider: providerName, attempt: attempt + 1, duration: elapsed2, result: 'no_sources' });
 
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, perRetryDelayMs));
@@ -160,9 +161,7 @@ async function executeWithRetry(providerName, healthKey, resolverFn) {
       const elapsed = Date.now() - attemptStart;
       const { category, description } = classifyError(err);
 
-      console.log(
-        `[StreamingService] ❌ ${providerName} | ${attemptLabel} | [${category}] ${elapsed}ms | ${description || err.message}`
-      );
+      logger.stream({ provider: providerName, attempt: attempt + 1, duration: elapsed, error: description || err.message, category, result: 'error' });
 
       // Record failure only on last attempt
       if (attempt === maxRetries) {
@@ -171,20 +170,20 @@ async function executeWithRetry(providerName, healthKey, resolverFn) {
 
       // Non-retryable errors: abandon provider immediately
       if (!classifyError(err).retryable && err.code !== 'PROVIDER_DEGRADED') {
-        console.log(`[StreamingService] ⛔ ${providerName} | Non-retryable error — moving on`);
+        logger.stream({ provider: providerName, attempt: attempt + 1, result: 'non_retryable' });
         return null;
       }
 
       // Retry if attempts remain
       if (attempt < maxRetries) {
         const delay = perRetryDelayMs * Math.pow(2, attempt); // exponential backoff
-        console.log(`[StreamingService] 🔄 ${providerName} | retrying in ${delay}ms (${maxRetries - attempt} retries left)`);
+        logger.stream({ provider: providerName, attempt: attempt + 1, retryDelay: delay, retriesLeft: maxRetries - attempt, result: 'retry' });
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
 
-  console.log(`[StreamingService] 🛑 ${providerName} | All retries exhausted`);
+  logger.stream({ provider: providerName, result: 'exhausted' });
   return null;
 }
 
@@ -208,7 +207,7 @@ function buildConsumetSubProviderResolver(providerTag) {
 
   return async (animeTitle, episodeNumber) => {
     if (!consumetProvider.hasProvider(subProviderName)) {
-      console.log(`[StreamingService] ⏭ ${providerTag} | Provider "${subProviderName}" not in Consumet registry`);
+      logger.stream({ provider: providerTag, result: 'not_in_registry', subProviderName });
       return null;
     }
 
@@ -229,16 +228,16 @@ function buildConsumetHttpResolver() {
   return async (animeTitle, episodeNumber) => {
     const baseUrl = process.env.CONSUMET_API_URL;
     if (!baseUrl) {
-      console.log(`[StreamingService] ⏭ consumet-http | SKIPPED (CONSUMET_API_URL not set)`);
+      logger.stream({ provider: 'consumet-http', result: 'skipped_config', reason: 'CONSUMET_API_URL not set' });
       return null;
     }
 
     const startTime = Date.now();
-    console.log(`[StreamingService] ➡️ consumet-http | "${animeTitle}" Ep ${episodeNumber}`);
+    logger.stream({ provider: 'consumet-http', anime: animeTitle, episode: episodeNumber, status: 'pending' });
 
     try {
       if (!isProviderHealthy(healthKey)) {
-        console.warn(`[StreamingService] ⏭ consumet-http | SKIPPED (degraded)`);
+        logger.stream({ provider: 'consumet-http', result: 'skipped_degraded' });
         return null;
       }
 
@@ -252,7 +251,7 @@ function buildConsumetHttpResolver() {
 
       const results = searchRes.data?.results || [];
       if (!results.length) {
-        console.warn(`[StreamingService] ⚠️ consumet-http search returned 0 results`);
+        logger.stream({ provider: 'consumet-http', result: 'no_search_results', duration: Date.now() - startTime });
         return null;
       }
 
@@ -270,7 +269,7 @@ function buildConsumetHttpResolver() {
       const episodes = epRes.data?.episodes || [];
       const targetEp = episodes.find(e => e.number === Number(episodeNumber));
       if (!targetEp?.id) {
-        console.warn(`[StreamingService] ⚠️ consumet-http episode ${episodeNumber} not found`);
+        logger.stream({ provider: 'consumet-http', result: 'episode_not_found', episode: episodeNumber, duration: Date.now() - startTime });
         return null;
       }
 
@@ -295,7 +294,7 @@ function buildConsumetHttpResolver() {
       , sources[0]);
 
       const elapsed = Date.now() - startTime;
-      console.log(`[StreamingService] ✅ consumet-http | ${elapsed}ms | ${sources.length} sources`);
+      logger.stream({ provider: 'consumet-http', result: 'success', duration: elapsed, sources: sources.length });
 
       return {
         provider: 'consumet-http',
@@ -309,7 +308,7 @@ function buildConsumetHttpResolver() {
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const { category } = classifyError(err);
-      console.warn(`[StreamingService] ❌ consumet-http | ${elapsed}ms | [${category}] ${err.message}`);
+      logger.stream({ provider: 'consumet-http', result: 'error', duration: elapsed, category, error: err.message });
       return null;
     }
   };
@@ -324,16 +323,16 @@ function buildMiruroResolver() {
   return async (animeTitle, episodeNumber) => {
     const baseUrl = process.env.MIRURO_API_URL;
     if (!baseUrl) {
-      console.log(`[StreamingService] ⏭ miruro | SKIPPED (MIRURO_API_URL not set)`);
+      logger.stream({ provider: 'miruro', result: 'skipped_config', reason: 'MIRURO_API_URL not set' });
       return null;
     }
 
     const startTime = Date.now();
-    console.log(`[StreamingService] ➡️ miruro | "${animeTitle}" Ep ${episodeNumber}`);
+    logger.stream({ provider: 'miruro', anime: animeTitle, episode: episodeNumber, status: 'pending' });
 
     try {
       if (!isProviderHealthy(healthKey)) {
-        console.warn(`[StreamingService] ⏭ miruro | SKIPPED (degraded)`);
+        logger.stream({ provider: 'miruro', result: 'skipped_degraded' });
         return null;
       }
 
@@ -347,7 +346,10 @@ function buildMiruroResolver() {
       });
 
       const results = searchRes.data?.results || [];
-      if (!results.length) return null;
+      if (!results.length) {
+        logger.stream({ provider: 'miruro', result: 'no_results' });
+        return null;
+      }
 
       const animeData = results[0];
       const animeId = animeData.id || animeData.slug;
@@ -371,7 +373,7 @@ function buildMiruroResolver() {
       , sources[0]);
 
       const elapsed = Date.now() - startTime;
-      console.log(`[StreamingService] ✅ miruro | ${elapsed}ms | ${sources.length} sources`);
+      logger.stream({ provider: 'miruro', result: 'success', duration: elapsed, sources: sources.length });
 
       return {
         provider: 'miruro',
@@ -385,7 +387,7 @@ function buildMiruroResolver() {
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const { category } = classifyError(err);
-      console.warn(`[StreamingService] ❌ miruro | ${elapsed}ms | [${category}] ${err.message}`);
+      logger.stream({ provider: 'miruro', result: 'error', duration: elapsed, category, error: err.message });
       return null;
     }
   };
@@ -423,7 +425,7 @@ function buildResolverForProvider(providerTag) {
   }
 
   // Unknown provider type
-  console.warn(`[StreamingService] ⚠️ Unknown provider type: "${providerTag}"`);
+  logger.warn('Unknown provider type', { providerTag });
   return null;
 }
 

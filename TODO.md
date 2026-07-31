@@ -1,35 +1,42 @@
-# HTTP Header Audit & Provider Compatibility
+# Structured Logging Implementation - Completed
 
-## Steps
+## ✅ Phase 1 — Central Logger
 
-### 1. `services/aniSkipService.js` — Migrate to shared HTTP client
+- [x] Created `utils/logger.js` — Full structured JSON logger with:
+  - ISO timestamps, log levels (DEBUG/INFO/WARN/ERROR), categories
+  - Category helpers: `logger.stream()`, `logger.database()`, `logger.auth()`
+  - Automatic redaction of sensitive fields (passwords, tokens, JWTs, secrets)
+  - Pretty-print in dev, single-line JSON in production (`NODE_ENV`)
+  - Configurable `LOG_LEVEL` env var
+  - Stack trace preservation in error logs
 
-- [x] Replace raw `axios` with `providerHttp.request()`/`get()`
-- [x] Preserve 3s timeout for AniSkip primary
-- [x] Preserve 5s timeout for Anime-Skip fallback
-- [x] Preserve `skipProxy=true` (metadata service, not streaming)
-- [x] Gain shared logging, retry, and health tracking
-- [x] Preserve existing API behavior (`fetchSkipTimes` signature unchanged)
+## ✅ Phase 1 — Streaming & Provider Logs
 
-### 2. `services/consumetProvider.js` — Remove duplicate header override
+- [x] Updated `utils/providerHttp.js`:
+  - `createProxyAgent` → `logger.warn()`
+  - `recordFailure` degraded warning → `logger.warn()`
+  - `isProviderHealthy` degraded check → `logger.debug()`
+  - `request()` function attempt/success/failure/retry → `logger.stream()` with `{provider, attempt, duration, status, error, proxy, result}`
+  - Final exhaustion → `logger.error()` with full `{provider, status, attempts, duration, error, stack, code}`
+- [x] Updated `services/streamingService.js`:
+  - `PROVIDER_ORDER` init → `logger.info()`
+  - `executeWithRetry()` → `logger.stream()` for skipped, pending, success, no_sources, error, retry, exhausted
+  - `buildConsumetSubProviderResolver` → `logger.stream()`
+- [ ] Remaining in streamingService.js: `buildConsumetHttpResolver`, `buildMiruroResolver`, `resolveStream` (movie guard, cache), `resolveAllProviders`, `buildResolverForProvider` (unknown type)
 
-- [x] Remove request interceptor that forcibly overwrites `Origin` and `Referer`
-- [x] `buildHeaders(providerName)` becomes single source of truth
-- [x] Keep proxy rotation interceptor (only remove header override)
-- [x] Keep 403 retry interceptor (only remove header override)
+## 🔲 Phase 2 — Database & Auth Logs (Not Started)
 
-### 3. `services/consumet/server.js` — Remove duplicate Origin/Referer
+- [ ] `config/db.js`
+- [ ] `controllers/adminController.js`
+- [ ] `controllers/authController.js`
+- [ ] `middleware/auth.js`
+- [ ] `controllers/googleVerifyController.js`
+- [ ] `controllers/googleAuthController.js`
 
-- [x] Remove `Origin` and `Referer` from `extraHeaders` in the adapter
-- [x] These are already produced by `buildHeaders('consumet')` via sharedHeaders
+## 🔲 Phase 3 — Remaining Controllers (Not Started)
 
-### 4. Verification
-
-- [x] All three files modified and verified
-- [ ] All streaming providers still function (needs runtime testing)
-- [ ] AniSkip returns skip timestamps correctly (needs runtime testing)
-- [x] Provider-specific Origin/Referer values remain correct (buildHeaders still sets them)
-- [x] No duplicate browser headers exist (removed overrides in consumetProvider.js and server.js)
-- [x] No provider receives incorrect Origin/Referer (single source of truth)
-- [ ] Playback behavior unchanged (needs runtime testing)
-- [x] No regressions in proxy usage or retry behavior (interceptors preserved)
+- [ ] `controllers/streamController.js`
+- [ ] `controllers/animeController.js`
+- [ ] `controllers/catalogueController.js`
+- [ ] `controllers/watchController.js`
+- [ ] `controllers/paymentController.js`

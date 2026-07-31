@@ -13,6 +13,7 @@
 
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const logger = require('./logger');
 
 // ───────────────────────────────────────────────────────────────
 //  SHARED PROXY MANAGER
@@ -70,7 +71,7 @@ function createProxyAgent(proxyUrl) {
   try {
     return new HttpsProxyAgent(proxyUrl);
   } catch (err) {
-    console.warn(`[ProviderHttp] Failed to create proxy agent for ${proxyUrl}: ${err.message}`);
+    logger.warn('Failed to create proxy agent', { proxy: proxyUrl ? '[REDACTED]' : null, error: err.message });
     return null;
   }
 }
@@ -123,7 +124,11 @@ function recordFailure(providerName, responseTimeMs) {
   // Mark degraded if consecutive failures exceed limit
   if (h.consecutiveFailures >= HEALTH_CONFIG.CONSECUTIVE_FAILURE_LIMIT) {
     h.degradedUntil = Date.now() + HEALTH_CONFIG.DEGRADE_COOLDOWN_MS;
-    console.warn(`[ProviderHttp] ⚠️  ${providerName} marked DEGRADED for ${HEALTH_CONFIG.DEGRADE_COOLDOWN_MS / 1000}s (${h.consecutiveFailures} consecutive failures)`);
+    logger.warn(`Provider marked degraded`, {
+      provider: providerName,
+      consecutiveFailures: h.consecutiveFailures,
+      cooldownSec: HEALTH_CONFIG.DEGRADE_COOLDOWN_MS / 1000,
+    });
   }
 }
 
@@ -136,7 +141,7 @@ function isProviderHealthy(providerName) {
   const h = healthStore.get(providerName);
   if (h.degradedUntil > Date.now()) {
     const remaining = Math.ceil((h.degradedUntil - Date.now()) / 1000);
-    console.log(`[ProviderHttp] ⏳ ${providerName} still degraded (${remaining}s remaining)`);
+    logger.debug(`Provider still degraded`, { provider: providerName, degradedRemainingSec: remaining });
     return false;
   }
   return true;
@@ -365,7 +370,7 @@ async function request(config, options = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Check provider health before attempting
     if (attempt === 0 && !isProviderHealthy(providerName)) {
-      console.log(`[ProviderHttp] ⏭ Skipping unhealthy provider: ${providerName}`);
+      logger.debug('Skipping unhealthy provider', { provider: providerName });
       const err = new Error(`Provider ${providerName} is degraded — skipping`);
       err.code = 'PROVIDER_DEGRADED';
       throw err;
@@ -395,9 +400,13 @@ async function request(config, options = {}) {
 
     // Log the attempt
     const attemptLabel = maxRetries > 0 ? `attempt ${attempt + 1}/${maxRetries + 1}` : 'attempt 1/1';
-    console.log(
-      `[ProviderHttp] ➡️  ${providerName} | ${attemptLabel} | ${config.method || 'GET'} ${config.url?.substring(0, 120)} | ${proxyAgent ? `proxy: ${proxiedUrl?.substring(0, 40)}...` : 'direct'}`
-    );
+    logger.stream({
+      provider: providerName,
+      attempt: attempt + 1,
+      status: 'pending',
+      message: `${config.method || 'GET'} ${config.url?.substring(0, 120)}`,
+      proxy: proxyAgent ? true : false,
+    });
 
     const attemptStart = Date.now();
 
@@ -410,9 +419,13 @@ async function request(config, options = {}) {
         recordSuccess(providerName, responseTime);
       }
 
-      console.log(
-        `[ProviderHttp] ✅ ${providerName} | ${attemptLabel} | ${response.status} | ${responseTime}ms`
-      );
+      logger.stream({
+        provider: providerName,
+        attempt: attempt + 1,
+        duration: responseTime,
+        status: response.status,
+        result: 'success',
+      });
 
       return response;
     } catch (err) {
@@ -422,9 +435,14 @@ async function request(config, options = {}) {
       const status = err.response?.status;
       const statusText = status ? `HTTP ${status}` : 'NETWORK_ERROR';
 
-      console.warn(
-        `[ProviderHttp] ❌ ${providerName} | ${attemptLabel} | ${statusText} | ${responseTime}ms | ${err.message?.substring(0, 100)}`
-      );
+      logger.stream({
+        provider: providerName,
+        attempt: attempt + 1,
+        duration: responseTime,
+        status: status || 0,
+        error: err.message?.substring(0, 200),
+        result: 'failure',
+      });
 
       // Track health on final failure only (to not count retries as separate failures)
       if (attempt === maxRetries && !dontTrackHealth) {
@@ -445,9 +463,15 @@ async function request(config, options = {}) {
         10000 // cap at 10s
       );
 
-      console.log(
-        `[ProviderHttp] 🔄 ${providerName} | retrying in ${Math.round(delay)}ms (${maxRetries - attempt} retries left)`
-      );
+      logger.stream({
+        provider: providerName,
+        attempt: attempt + 1,
+        duration: responseTime,
+        retryDelay: Math.round(delay),
+        retriesLeft: maxRetries - attempt,
+        result: 'retry',
+        status: status || 0,
+      });
 
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -467,9 +491,15 @@ async function request(config, options = {}) {
     proxied: !!proxiedUrl,
   };
 
-  console.error(
-    `[ProviderHttp] 🛑 ${providerName} | FAILED after ${maxRetries + 1} attempts | ${statusText} | ${Date.now() - startTime}ms`
-  );
+  logger.error(`Provider failed after ${maxRetries + 1} attempts`, {
+    provider: providerName,
+    status,
+    attempts: maxRetries + 1,
+    duration: Date.now() - startTime,
+    error: lastError.message,
+    stack: lastError.stack,
+    code: lastError.code,
+  });
 
   throw lastError;
 }
