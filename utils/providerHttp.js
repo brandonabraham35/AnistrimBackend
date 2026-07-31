@@ -339,6 +339,7 @@ function isRetryableError(err) {
  * @param {boolean} options.skipProxy — Skip proxy for this request
  * @param {object}  options.extraHeaders — Additional headers
  * @param {boolean} options.dontTrackHealth — Skip health tracking
+ * @param {object}  options.params — URL query params to merge into config (for get/post convenience functions)
  * @returns {Promise<object>} Axios response object
  */
 async function request(config, options = {}) {
@@ -349,6 +350,7 @@ async function request(config, options = {}) {
     skipProxy = false,
     extraHeaders = {},
     dontTrackHealth = false,
+    params = null,
   } = options;
 
   // Build merged headers
@@ -388,6 +390,9 @@ async function request(config, options = {}) {
       proxyAgent = createProxyAgent(proxiedUrl);
     }
 
+    // Merge params from options into config (params may be passed via convenience get/post functions)
+    const mergedParams = { ...(config.params || {}), ...(params || {}) };
+
     const requestConfig = {
       ...config,
       timeout: effectiveTimeout,
@@ -396,6 +401,7 @@ async function request(config, options = {}) {
         ...config.headers,
       },
       httpsAgent: proxyAgent || config.httpsAgent || undefined,
+      ...(Object.keys(mergedParams).length > 0 ? { params: mergedParams } : {}),
     };
 
     // Log the attempt

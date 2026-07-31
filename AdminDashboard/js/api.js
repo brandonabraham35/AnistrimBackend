@@ -17,7 +17,7 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
   const headers = { ...options.headers };
   const method = options.method || 'GET';
 
-  // Only set Content-Type for JSON. Let the browser handle it for FormData.
+// Only set Content-Type for JSON. Let the browser handle it for FormData.
   if (options.body && !(options.body instanceof FormData)) {
     // Add safe logging
     console.log(`[API] ${method} ${url} (JSON Body)`);
@@ -29,7 +29,7 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
     console.log(`[API] ${method} ${url}`);
   }
 
-  if (token) {
+if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 

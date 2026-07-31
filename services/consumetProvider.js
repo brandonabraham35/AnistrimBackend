@@ -177,7 +177,7 @@ class ConsumetProvider {
     return firstProvider.fetchPopularAnime(page, perPage);
   }
 
-  async searchAnime(query, limit = 10) {
+async searchAnime(query, limit = 10) {
     // Try each registered provider for search, fallback to next on failure
     const providers = [...this.registry.values()];
 
