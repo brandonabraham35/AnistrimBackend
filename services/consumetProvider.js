@@ -14,8 +14,8 @@
 //      episode: 1,
 //    });
 //
-//  Available sub-providers (from @consumet/extensions):
-//    KickAssAnime, AnimePahe, AnimeKai, AnimeSaturn, Hianime, AnimeSama
+//  Available sub-providers (verified against @consumet/extensions v1.8.8):
+//    KickAssAnime, AnimePahe, AnimeKai, AnimeSaturn, Hianime, AnimeSama, AnimeUnity
 // ============================================================
 const consumet = require('@consumet/extensions');
 const {

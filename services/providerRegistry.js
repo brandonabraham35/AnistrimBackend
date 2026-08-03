@@ -25,15 +25,23 @@ const logger = require('../utils/logger');
 //  from these constants.
 // ─────────────────────────────────────────────────────────────
 const PROVIDER_IDS = Object.freeze({
-  // Consumet-backed anime sub-providers
+  // Consumet-backed anime sub-providers.
+  // NOTE: These MUST match the classes actually exported by the installed
+  // @consumet/extensions version (verified against v1.8.8). Only providers
+  // listed here AND present in the ANIME namespace are instantiable.
   KICK_ASS_ANIME: 'kickassanime',
   ANIME_KAI: 'animekai',
   ANIME_PAHE: 'animepahe',
   HIANIME: 'hianime',
   ANIME_SATURN: 'animesaturn',
   ANIME_SAMA: 'animesama',
+  ANIME_UNITY: 'animeunity',
 
-  // Other anime providers
+  // Legacy / metadata-only identifiers (NOT instantiable via Consumet).
+  // GOGOANIME is used as a DB label in anime_mappings (catalogueService) and
+  // does NOT correspond to any @consumet/extensions class in v1.8.8.
+  // ZORO is retained as a legacy aniwatch alias but the 'Zoro' class does NOT
+  // exist in v1.8.8 either.
   GOGOANIME: 'gogoanime',
   ZORO: 'zoro',
 
@@ -59,6 +67,7 @@ const CONSUMET_SUB_PROVIDER_IDS = Object.freeze([
   PROVIDER_IDS.HIANIME,
   PROVIDER_IDS.ANIME_SATURN,
   PROVIDER_IDS.ANIME_SAMA,
+  PROVIDER_IDS.ANIME_UNITY,
 ]);
 
 // ─────────────────────────────────────────────────────────────
@@ -67,6 +76,10 @@ const CONSUMET_SUB_PROVIDER_IDS = Object.freeze([
 //  name (PascalCase). This replaces the manual pascal-case
 //  conversion that previously lived in streamingService.js.
 // ─────────────────────────────────────────────────────────────
+// Only classes that are ACTUALLY exported by @consumet/extensions v1.8.8 are
+// listed here. 'Gogoanime' and 'Zoro' were previously mapped but those classes
+// do NOT exist in v1.8.8 — mapping them caused silent instantiation failures.
+// GOGOANIME remains only as a DB metadata label and ZORO as a legacy alias.
 const CONSUMET_PROVIDER_CLASS_NAMES = Object.freeze({
   [PROVIDER_IDS.KICK_ASS_ANIME]: 'KickAssAnime',
   [PROVIDER_IDS.ANIME_KAI]: 'AnimeKai',
@@ -74,8 +87,7 @@ const CONSUMET_PROVIDER_CLASS_NAMES = Object.freeze({
   [PROVIDER_IDS.HIANIME]: 'Hianime',
   [PROVIDER_IDS.ANIME_SATURN]: 'AnimeSaturn',
   [PROVIDER_IDS.ANIME_SAMA]: 'AnimeSama',
-  [PROVIDER_IDS.GOGOANIME]: 'Gogoanime',
-  [PROVIDER_IDS.ZORO]: 'Zoro',
+  [PROVIDER_IDS.ANIME_UNITY]: 'AnimeUnity',
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -91,7 +103,7 @@ const PROVIDER_REFERERS = Object.freeze({
   [PROVIDER_IDS.ANIME_KAI]: 'https://animekai.to/',
   [PROVIDER_IDS.HIANIME]: 'https://hianime.to/',
   [PROVIDER_IDS.ANIME_SATURN]: 'https://animesaturn.mx/',
-  [PROVIDER_IDS.ZORO]: 'https://aniwatch.to/',
+  [PROVIDER_IDS.ANIME_UNITY]: 'https://animeunity.it/',
   [PROVIDER_IDS.MIRURO]: 'https://www.miruro.tv/',
   // 'consumet-http' referer is dynamic (based on CONSUMET_API_URL) and is
   // resolved inside getReferer() below.
@@ -285,6 +297,7 @@ function getDefaultProviderOrder() {
     PROVIDER_IDS.ANIME_PAHE,
     PROVIDER_IDS.HIANIME,
     PROVIDER_IDS.ANIME_SATURN,
+    PROVIDER_IDS.ANIME_UNITY,
     PROVIDER_IDS.CONSUMET_HTTP,
     PROVIDER_IDS.MIRURO,
   ].map(toProviderTag);
@@ -304,6 +317,7 @@ function getConsumetPreferredOrder() {
     PROVIDER_IDS.ANIME_SATURN,
     PROVIDER_IDS.HIANIME,
     PROVIDER_IDS.ANIME_SAMA,
+    PROVIDER_IDS.ANIME_UNITY,
   ].map(toConsumetClassName).filter(Boolean);
 }
 
