@@ -3,6 +3,7 @@ const cache = require('../utils/cacheService');
 const { KitsuProvider } = require('./kitsuProvider');
 const { MalSyncProvider } = require('./malSyncProvider');
 const { ConsumetProvider } = require('./consumetProvider');
+const { PROVIDER_IDS } = require('./providerRegistry');
 
 const kitsu = new KitsuProvider();
 const malSync = new MalSyncProvider();
@@ -13,7 +14,7 @@ const STREAM_TTL = 30 * 60;
 
 function publicAnime(row) {
   const cover = row.cover_image || null;
-  return { ...row, kitsu_id: row.source_provider === 'kitsu' ? row.source_id : null, cover_image: cover, poster_url: cover, thumbnail_url: cover, banner_url: row.banner_image || null, source: row.source_provider || 'admin' };
+  return { ...row, kitsu_id: row.source_provider === PROVIDER_IDS.KITSU ? row.source_id : null, cover_image: cover, poster_url: cover, thumbnail_url: cover, banner_url: row.banner_image || null, source: row.source_provider || 'admin' };
 }
 
 async function replaceGenres(animeId, names) {
@@ -30,15 +31,15 @@ async function replaceGenres(animeId, names) {
 }
 
 async function importKitsuAnime(metadata) {
-  const [existing] = await db.query('SELECT * FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', ['kitsu', metadata.kitsu_id]);
+  const [existing] = await db.query('SELECT * FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', [PROVIDER_IDS.KITSU, metadata.kitsu_id]);
   if (existing.length) return publicAnime(existing[0]);
   // Keep the normal Anime create contract intact. Provider identifiers are
   // internal catalogue metadata; the content fields are the same strict set
   // accepted by the existing admin create endpoint.
   const [result] = await db.query(
     `INSERT INTO anime (title, description, cover_image, banner_image, year, studio, status, media_type, is_premium, is_featured, source_provider, source_id, source_slug)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'kitsu', ?, ?)`,
-    [metadata.title, metadata.description, metadata.cover_image, metadata.banner_image, metadata.year, metadata.studio || null, metadata.status, metadata.media_type || 'TV', metadata.kitsu_id, metadata.slug]
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+    [metadata.title, metadata.description, metadata.cover_image, metadata.banner_image, metadata.year, metadata.studio || null, metadata.status, metadata.media_type || 'TV', PROVIDER_IDS.KITSU, metadata.kitsu_id, metadata.slug]
   );
   await replaceGenres(result.insertId, metadata.genres);
   const [rows] = await db.query('SELECT * FROM anime WHERE id = ?', [result.insertId]);
@@ -66,7 +67,7 @@ async function importFromKitsu(kitsuId) {
     anime = { ...anime, source_slug: slug };
   }
   await cache.delByPrefix('catalogue:');
-  return { anime, mapping: { provider: 'gogoanime', slug: slug || null, resolved: Boolean(slug) } };
+  return { anime, mapping: { provider: PROVIDER_IDS.GOGOANIME, slug: slug || null, resolved: Boolean(slug) } };
 }
 
 async function getAnime(id) {
@@ -78,32 +79,32 @@ async function getAnime(id) {
 
 async function getMapping(anime) {
   if (!anime.source_id) return null;
-  const [rows] = await db.query('SELECT provider_slug FROM anime_mappings WHERE kitsu_id = ? AND provider = ? LIMIT 1', [anime.source_id, 'gogoanime']);
+  const [rows] = await db.query('SELECT provider_slug FROM anime_mappings WHERE kitsu_id = ? AND provider = ? LIMIT 1', [anime.source_id, PROVIDER_IDS.GOGOANIME]);
   if (rows[0]) return rows[0].provider_slug;
   const slug = await malSync.resolveGogoSlug({ malId: anime.mal_id });
   if (!slug) return null;
-  await db.query(`INSERT INTO anime_mappings (kitsu_id, provider, provider_slug) VALUES (?, 'gogoanime', ?)
-                  ON DUPLICATE KEY UPDATE provider_slug = VALUES(provider_slug), updated_at = CURRENT_TIMESTAMP`, [anime.source_id, slug]);
+  await db.query(`INSERT INTO anime_mappings (kitsu_id, provider, provider_slug) VALUES (?, ?, ?)
+                  ON DUPLICATE KEY UPDATE provider_slug = VALUES(provider_slug), updated_at = CURRENT_TIMESTAMP`, [anime.source_id, PROVIDER_IDS.GOGOANIME, slug]);
   return slug;
 }
 
 async function getEpisodes(animeId) {
   const [custom] = await db.query('SELECT id, episode_number, title, description, thumbnail_url, duration_sec, is_premium, video_url FROM episodes WHERE anime_id = ? ORDER BY episode_number', [animeId]);
   if (custom.length) return custom.map(episode => ({ ...episode, source: 'cloudinary' }));
-  const anime = await getAnime(animeId); if (!anime || anime.source !== 'kitsu') return [];
+  const anime = await getAnime(animeId); if (!anime || anime.source !== PROVIDER_IDS.KITSU) return [];
   const cacheKey = `catalogue:episodes:${animeId}`; const cached = await cache.get(cacheKey); if (cached) return cached;
   const slug = await getMapping(anime); if (!slug || !consumet.configured()) return [];
   const episodes = await consumet.getEpisodes(slug);
-  return cache.set(cacheKey, episodes.map((episode, index) => ({ id: episode.id, episode_number: episode.number || index + 1, title: episode.title || `Episode ${index + 1}`, thumbnail_url: episode.image || anime.cover_image, is_premium: false, source: 'consumet' })), EPISODES_TTL);
+  return cache.set(cacheKey, episodes.map((episode, index) => ({ id: episode.id, episode_number: episode.number || index + 1, title: episode.title || `Episode ${index + 1}`, thumbnail_url: episode.image || anime.cover_image, is_premium: false, source: PROVIDER_IDS.CONSUMET })), EPISODES_TTL);
 }
 
 async function getStream(animeId, episodeId) {
   const cacheKey = `catalogue:stream:${animeId}:${episodeId}`; const cached = await cache.get(cacheKey); if (cached) return cached;
   const [custom] = await db.query('SELECT id, video_url, thumbnail_url, title, episode_number FROM episodes WHERE anime_id = ? AND (id = ? OR episode_number = ?) LIMIT 1', [animeId, episodeId, episodeId]);
   if (custom[0]?.video_url) return cache.set(cacheKey, { video_url: custom[0].video_url, subtitles: [], qualities: [], episode: custom[0], source: 'cloudinary' }, STREAM_TTL);
-  const anime = await getAnime(animeId); if (!anime || anime.source !== 'kitsu') return null;
+  const anime = await getAnime(animeId); if (!anime || anime.source !== PROVIDER_IDS.KITSU) return null;
   const sources = await consumet.getSources(episodeId);
-  return cache.set(cacheKey, { video_url: sources.sources?.[0]?.url || null, subtitles: sources.subtitles || [], qualities: sources.sources || [], episode: { id: episodeId }, source: 'consumet' }, STREAM_TTL);
+  return cache.set(cacheKey, { video_url: sources.sources?.[0]?.url || null, subtitles: sources.subtitles || [], qualities: sources.sources || [], episode: { id: episodeId }, source: PROVIDER_IDS.CONSUMET }, STREAM_TTL);
 }
 
 async function invalidate(animeId) { await Promise.all([cache.delByPrefix('catalogue:search:'), cache.delByPrefix(`catalogue:anime:${animeId}`), cache.delByPrefix(`catalogue:episodes:${animeId}`), cache.delByPrefix(`catalogue:stream:${animeId}:`)]); }

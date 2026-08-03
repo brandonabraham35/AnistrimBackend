@@ -2,6 +2,7 @@ require('dotenv').config();
 const { KitsuProvider } = require('../services/kitsuProvider');
 const catalogueService = require('../services/catalogueService');
 const db = require('../config/db');
+const { PROVIDER_IDS } = require('../services/providerRegistry');
 
 const kitsu = new KitsuProvider();
 
@@ -22,7 +23,7 @@ async function seedCatalogue() {
 
     for (const anime of animeToSeed) {
       // Check if this anime (by Kitsu ID) already exists in our database
-      const [existing] = await db.query('SELECT id FROM anime WHERE source_provider = ? AND source_id = ?', ['kitsu', anime.kitsu_id]);
+      const [existing] = await db.query('SELECT id FROM anime WHERE source_provider = ? AND source_id = ?', [PROVIDER_IDS.KITSU, anime.kitsu_id]);
 
       if (existing.length > 0) {
         console.log(`-  Skipping '${anime.title}' (already exists).`);

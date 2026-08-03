@@ -18,7 +18,20 @@
 //    KickAssAnime, AnimePahe, AnimeKai, AnimeSaturn, Hianime, AnimeSama
 // ============================================================
 const consumet = require('@consumet/extensions');
-const { buildHeaders, getProxyList, createProxyAgent, isProviderHealthy, classifyError } = require('../utils/providerHttp');
+const {
+  buildHeaders,
+  getProxyList,
+  createProxyAgent,
+  isProviderHealthy,
+  classifyError,
+} = require('../utils/providerHttp');
+const {
+  PROVIDER_IDS,
+  normalizeProviderName,
+  toConsumetClassName,
+  toHealthKey,
+  listKnownConsumetProviders,
+} = require('./providerRegistry');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
@@ -94,20 +107,25 @@ function createProviderAxios(providerName) {
 // ── Provider Registry ─────────────────────────────────────
 // Instantiate ALL available Consumet providers so we can fallback between them.
 // Each gets its own axios instance with independent proxy tracking.
+// Only providers listed in the centralized registry are instantiated, using
+// the canonical class names from services/providerRegistry.js.
 
 const REGISTRY = new Map();
 
-for (const name of availableProviders) {
-  if (typeof ANIME[name] === 'function') {
+for (const providerId of listKnownConsumetProviders()) {
+  const className = toConsumetClassName(providerId);
+  if (!className) continue;
+  const ProviderClass = ANIME[className];
+  if (typeof ProviderClass === 'function') {
     try {
-      const instance = createProviderAxios(name);
-      const providerInstance = new ANIME[name](instance);
+      const instance = createProviderAxios(className);
+      const providerInstance = new ProviderClass(instance);
       // Wrap in AniList meta-provider
       const metaProvider = new META.Anilist(providerInstance);
-      REGISTRY.set(name, metaProvider);
-      console.log(`[ConsumetProvider] ✅ Registered: ${name}`);
+      REGISTRY.set(className, metaProvider);
+      console.log(`[ConsumetProvider] ✅ Registered: ${className}`);
     } catch (e) {
-      console.warn(`[ConsumetProvider] ⚠️ Failed to register ${name}: ${e.message}`);
+      console.warn(`[ConsumetProvider] ⚠️ Failed to register ${className}: ${e.message}`);
     }
   }
 }
@@ -122,15 +140,20 @@ class ConsumetProvider {
     this.registry = REGISTRY;
   }
 
-  /**
+/**
    * Check if a specific sub-provider is available.
+   * Accepts any naming variant (e.g. 'KickAssAnime', 'kickassanime',
+   * 'consumet-kickassanime') and normalizes it safely.
    */
   hasProvider(name) {
-    return this.registry.has(name);
+    const normalized = normalizeProviderName(name);
+    if (!normalized) return false;
+    const className = toConsumetClassName(normalized);
+    return className ? this.registry.has(className) : false;
   }
 
   /**
-   * Get list of all registered provider names.
+   * Get list of all registered provider names (class names).
    */
   listProviders() {
     return [...this.registry.keys()];
@@ -195,7 +218,7 @@ async searchAnime(query, limit = 10) {
     try {
       const { get } = require('../utils/providerHttp');
       const response = await get('https://kitsu.io/api/edge/anime', {
-        providerName: 'kitsu',
+        providerName: PROVIDER_IDS.KITSU,
         params: { 'filter[text]': query, 'page[limit]': Math.min(limit, 20) },
         timeout: 12000,
         skipProxy: true,
@@ -249,20 +272,29 @@ async searchAnime(query, limit = 10) {
    */
   async resolveStreamUrl({ provider: providerName, title, episode }) {
     const startTime = Date.now();
-    const logTag = `[ConsumetProvider:${providerName}]`;
+
+    // Normalize the incoming provider name safely (handles 'KickAssAnime',
+    // 'kickassanime', 'consumet-kickassanime', 'kick-ass-anime', etc.).
+    const normalizedId = normalizeProviderName(providerName);
+    const className = normalizedId ? toConsumetClassName(normalizedId) : null;
+    const resolvedProvider = className || providerName;
+
+    const logTag = `[ConsumetProvider:${resolvedProvider}]`;
 
     console.log(`${logTag} ➡️ Resolving | "${title}" Ep ${episode}`);
 
     // 1. Find the requested provider in registry
-    const metaProvider = this.registry.get(providerName);
+    const metaProvider = className ? this.registry.get(className) : undefined;
     if (!metaProvider) {
       const errorMsg = `Provider "${providerName}" not registered. Available: ${this.listProviders().join(', ')}`;
       console.warn(`${logTag} ⚠️ ${errorMsg}`);
       throw new Error(errorMsg);
     }
 
-    // 2. Check provider health (via providerHttp)
-    const healthKey = `consumet-${providerName.toLowerCase()}`;
+// 2. Check provider health (via providerHttp)
+    // Health key derived solely from the registry. toHealthKey() always resolves
+    // known Consumet sub-providers to their 'consumet-<id>' key.
+    const healthKey = toHealthKey(providerName);
     if (!isProviderHealthy(healthKey)) {
       console.warn(`${logTag} ⏭ Provider is DEGRADED — skipping`);
       const err = new Error(`Provider ${providerName} is degraded — skipping`);

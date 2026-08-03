@@ -1,48 +1,131 @@
 {
-  "timestamp": "2026-07-31T04:21:49.532Z",
+  "timestamp": "2026-08-03T18:21:02.517Z",
   "summary": {
     "total": 30,
-    "passed": 28,
-    "failed": 2
+    "passed": 0,
+    "failed": 30
   },
-  "passed": [
-    "GET /api/health returns 200",
-    "POST /api/auth/login (admin)",
-    "POST /api/auth/login (invalid credentials)",
-    "POST /api/auth/signup validation",
-    "GET /api/admin/dashboard/overview",
-    "GET /api/admin/dashboard/health",
-    "GET /api/admin/dashboard/activity/recent",
-    "GET /api/admin/dashboard/charts/daily-users",
-    "GET /api/admin/dashboard/charts/revenue",
-    "GET /api/admin/dashboard/charts/anime-growth",
-    "GET /api/admin/dashboard/charts/episode-views",
-    "GET /api/admin/dashboard/charts/genre-distribution",
-    "GET /api/admin/dashboard/charts/provider-usage",
-    "GET /api/admin/anime",
-    "GET /api/admin/anime with filters",
-    "GET /api/admin/genres",
-    "GET /api/admin/episodes",
-    "GET /api/admin/users",
-    "GET /api/admin/payments",
-    "GET /api/admin/payments with filters",
-    "GET /api/admin/settings",
-    "GET /api/admin/ads",
-    "GET /api/admin/logs",
-    "Protected route without token returns 401",
-    "Protected route with invalid token returns 401",
-    "GET /api/stream (requires params — returns 400)",
-    "GET / (root) serves index.html",
-    "GET /api/nonexistent returns 404"
-  ],
+  "passed": [],
   "failed": [
     {
+      "name": "GET /api/health returns 200",
+      "error": ""
+    },
+    {
+      "name": "POST /api/auth/login (admin)",
+      "error": ""
+    },
+    {
+      "name": "POST /api/auth/login (invalid credentials)",
+      "error": ""
+    },
+    {
+      "name": "POST /api/auth/signup validation",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/overview",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/health",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/activity/recent",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/charts/daily-users",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/charts/revenue",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/charts/anime-growth",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/charts/episode-views",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/charts/genre-distribution",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/dashboard/charts/provider-usage",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/anime",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/anime with filters",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/genres",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/episodes",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/users",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/payments",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/payments with filters",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/settings",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/ads",
+      "error": ""
+    },
+    {
+      "name": "GET /api/admin/logs",
+      "error": ""
+    },
+    {
       "name": "GET /api/auth/google/client-id",
-      "error": "Expected 200, got 404"
+      "error": ""
+    },
+    {
+      "name": "Protected route without token returns 401",
+      "error": ""
+    },
+    {
+      "name": "Protected route with invalid token returns 401",
+      "error": ""
+    },
+    {
+      "name": "GET /api/stream (requires params — returns 400)",
+      "error": ""
+    },
+    {
+      "name": "GET / (root) serves index.html",
+      "error": ""
     },
     {
       "name": "GET /admin (serves dashboard.html)",
-      "error": "Expected 200, got 301"
+      "error": ""
+    },
+    {
+      "name": "GET /api/nonexistent returns 404",
+      "error": ""
     }
   ],
   "warnings": []

@@ -1,4 +1,5 @@
 const { request } = require('../utils/providerHttp');
+const { PROVIDER_IDS } = require('./providerRegistry');
 
 const BASE_URL = process.env.KITSU_BASE_URL || 'https://kitsu.io/api/edge';
 
@@ -33,7 +34,7 @@ function normalize(record) {
     popularity: Number(attributes.popularityRank || 0),
     slug: attributes.slug || null,
     genres: [],
-    source: 'kitsu',
+    source: PROVIDER_IDS.KITSU,
   };
 }
 

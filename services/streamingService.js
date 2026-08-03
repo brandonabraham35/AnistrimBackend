@@ -20,7 +20,21 @@
 //  Proxy: Uses the SHARED proxy manager from utils/providerHttp.js
 // ============================================================
 const { provider: consumetProvider } = require('./consumetProvider');
-const { request, isProviderHealthy, getProviderHealth, classifyError, recordSuccess, recordFailure } = require('../utils/providerHttp');
+const {
+  request,
+  isProviderHealthy,
+  getProviderHealth,
+  classifyError,
+  recordSuccess,
+  recordFailure,
+} = require('../utils/providerHttp');
+const {
+  PROVIDER_IDS,
+  normalizeProviderName,
+  toConsumetClassName,
+  toHealthKey,
+  getDefaultProviderOrder,
+} = require('./providerRegistry');
 const cache = require('../utils/cacheService');
 const logger = require('../utils/logger');
 
@@ -85,21 +99,23 @@ function getBestQualityLabel(sources, isPremium) {
  *
  * Set STREAM_PROVIDERS env var to override, e.g.:
  *   STREAM_PROVIDERS=consumet-kickassanime,consumet-animekai,miruro
+ *
+ * The default order is derived from the centralized provider registry
+ * (services/providerRegistry.js) so provider IDs stay consistent.
  */
-const DEFAULT_PROVIDERS = [
-  'consumet-kickassanime',
-  'consumet-animekai',
-  'consumet-animepahe',
-  'consumet-hianime',
-  'consumet-animesaturn',
-  'consumet-http',
-  'miruro',
-];
+const DEFAULT_PROVIDERS = getDefaultProviderOrder();
+
+// Runtime tag prefix for Consumet-backed sub-providers (e.g. 'consumet-kickassanime').
+const CONSUMET_TAG_PREFIX = `${PROVIDER_IDS.CONSUMET}-`;
 
 const PROVIDER_ORDER = (process.env.STREAM_PROVIDERS || DEFAULT_PROVIDERS.join(','))
   .split(',')
   .map(s => s.trim().toLowerCase())
-  .filter(Boolean);
+  .filter(Boolean)
+  // Normalize each configured tag through the registry; drop unknown providers.
+  // Since normalizeProviderName() now correctly resolves 'consumet-http' and
+  // 'miruro', no special-case allowlist is needed here anymore.
+  .filter(tag => !!normalizeProviderName(tag));
 
 logger.info('Provider order configured', { providers: PROVIDER_ORDER });
 
@@ -196,14 +212,13 @@ async function executeWithRetry(providerName, healthKey, resolverFn) {
  * Maps "consumet-kickassanime" → provider "KickAssAnime" in the registry.
  */
 function buildConsumetSubProviderResolver(providerTag) {
-  // Convert "consumet-kickassanime" → "KickAssAnime"
-  const subProviderName = providerTag
-    .replace(/^consumet-/, '')
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
+  // Convert "consumet-kickassanime" → "KickAssAnime" via the registry
+  const normalizedId = normalizeProviderName(providerTag);
+  const subProviderName = toConsumetClassName(normalizedId || providerTag) || providerTag;
 
-  const healthKey = `consumet-${subProviderName.toLowerCase()}`;
+  // Health key derived solely from the registry. toHealthKey() always resolves
+  // known Consumet sub-providers to their 'consumet-<id>' key.
+  const healthKey = toHealthKey(normalizedId || providerTag);
 
   return async (animeTitle, episodeNumber) => {
     if (!consumetProvider.hasProvider(subProviderName)) {
@@ -223,21 +238,21 @@ function buildConsumetSubProviderResolver(providerTag) {
  * Build a resolver for the consumet-http provider (external API).
  */
 function buildConsumetHttpResolver() {
-  const healthKey = 'consumet-http';
+  const healthKey = PROVIDER_IDS.CONSUMET_HTTP;
 
   return async (animeTitle, episodeNumber) => {
     const baseUrl = process.env.CONSUMET_API_URL;
     if (!baseUrl) {
-      logger.stream({ provider: 'consumet-http', result: 'skipped_config', reason: 'CONSUMET_API_URL not set' });
+      logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'skipped_config', reason: 'CONSUMET_API_URL not set' });
       return null;
     }
 
     const startTime = Date.now();
-    logger.stream({ provider: 'consumet-http', anime: animeTitle, episode: episodeNumber, status: 'pending' });
+    logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, anime: animeTitle, episode: episodeNumber, status: 'pending' });
 
     try {
       if (!isProviderHealthy(healthKey)) {
-        logger.stream({ provider: 'consumet-http', result: 'skipped_degraded' });
+        logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'skipped_degraded' });
         return null;
       }
 
@@ -251,7 +266,7 @@ function buildConsumetHttpResolver() {
 
       const results = searchRes.data?.results || [];
       if (!results.length) {
-        logger.stream({ provider: 'consumet-http', result: 'no_search_results', duration: Date.now() - startTime });
+        logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'no_search_results', duration: Date.now() - startTime });
         return null;
       }
 
@@ -269,7 +284,7 @@ function buildConsumetHttpResolver() {
       const episodes = epRes.data?.episodes || [];
       const targetEp = episodes.find(e => e.number === Number(episodeNumber));
       if (!targetEp?.id) {
-        logger.stream({ provider: 'consumet-http', result: 'episode_not_found', episode: episodeNumber, duration: Date.now() - startTime });
+        logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'episode_not_found', episode: episodeNumber, duration: Date.now() - startTime });
         return null;
       }
 
@@ -294,10 +309,10 @@ function buildConsumetHttpResolver() {
       , sources[0]);
 
       const elapsed = Date.now() - startTime;
-      logger.stream({ provider: 'consumet-http', result: 'success', duration: elapsed, sources: sources.length });
+      logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'success', duration: elapsed, sources: sources.length });
 
       return {
-        provider: 'consumet-http',
+        provider: PROVIDER_IDS.CONSUMET_HTTP,
         streamUrl: best?.url || null,
         sources,
         subtitles: subtitles.map(sub => ({
@@ -308,7 +323,7 @@ function buildConsumetHttpResolver() {
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const { category } = classifyError(err);
-      logger.stream({ provider: 'consumet-http', result: 'error', duration: elapsed, category, error: err.message });
+      logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'error', duration: elapsed, category, error: err.message });
       return null;
     }
   };
@@ -318,21 +333,21 @@ function buildConsumetHttpResolver() {
  * Build a resolver for the Miruro API provider.
  */
 function buildMiruroResolver() {
-  const healthKey = 'miruro';
+  const healthKey = PROVIDER_IDS.MIRURO;
 
   return async (animeTitle, episodeNumber) => {
     const baseUrl = process.env.MIRURO_API_URL;
     if (!baseUrl) {
-      logger.stream({ provider: 'miruro', result: 'skipped_config', reason: 'MIRURO_API_URL not set' });
+      logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'skipped_config', reason: 'MIRURO_API_URL not set' });
       return null;
     }
 
     const startTime = Date.now();
-    logger.stream({ provider: 'miruro', anime: animeTitle, episode: episodeNumber, status: 'pending' });
+    logger.stream({ provider: PROVIDER_IDS.MIRURO, anime: animeTitle, episode: episodeNumber, status: 'pending' });
 
     try {
       if (!isProviderHealthy(healthKey)) {
-        logger.stream({ provider: 'miruro', result: 'skipped_degraded' });
+        logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'skipped_degraded' });
         return null;
       }
 
@@ -347,7 +362,7 @@ function buildMiruroResolver() {
 
       const results = searchRes.data?.results || [];
       if (!results.length) {
-        logger.stream({ provider: 'miruro', result: 'no_results' });
+        logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'no_results' });
         return null;
       }
 
@@ -373,10 +388,10 @@ function buildMiruroResolver() {
       , sources[0]);
 
       const elapsed = Date.now() - startTime;
-      logger.stream({ provider: 'miruro', result: 'success', duration: elapsed, sources: sources.length });
+      logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'success', duration: elapsed, sources: sources.length });
 
       return {
-        provider: 'miruro',
+        provider: PROVIDER_IDS.MIRURO,
         streamUrl: best?.url || null,
         sources,
         subtitles: (epRes.data?.subtitles || []).map(sub => ({
@@ -387,7 +402,7 @@ function buildMiruroResolver() {
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const { category } = classifyError(err);
-      logger.stream({ provider: 'miruro', result: 'error', duration: elapsed, category, error: err.message });
+      logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'error', duration: elapsed, category, error: err.message });
       return null;
     }
   };
@@ -402,9 +417,9 @@ function buildMiruroResolver() {
  * This is the extensible registry — add new provider types here.
  */
 const RESOLVER_FACTORIES = {
-  'consumet-': buildConsumetSubProviderResolver,  // prefix match for consumet-*
-  'consumet-http': buildConsumetHttpResolver,
-  'miruro': buildMiruroResolver,
+  [CONSUMET_TAG_PREFIX]: buildConsumetSubProviderResolver,  // prefix match for consumet-*
+  [PROVIDER_IDS.CONSUMET_HTTP]: buildConsumetHttpResolver,
+  [PROVIDER_IDS.MIRURO]: buildMiruroResolver,
 };
 
 /**
@@ -416,11 +431,11 @@ function buildResolverForProvider(providerTag) {
   const tag = providerTag.toLowerCase();
 
   // Exact match first
-  if (tag === 'consumet-http') return buildConsumetHttpResolver();
-  if (tag === 'miruro') return buildMiruroResolver();
+  if (tag === PROVIDER_IDS.CONSUMET_HTTP) return buildConsumetHttpResolver();
+  if (tag === PROVIDER_IDS.MIRURO) return buildMiruroResolver();
 
   // Prefix match for consumet-* sub-providers
-  if (tag.startsWith('consumet-')) {
+  if (tag.startsWith(CONSUMET_TAG_PREFIX)) {
     return buildConsumetSubProviderResolver(tag);
   }
 
@@ -509,12 +524,9 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       continue;
     }
 
-    // Determine health key for this provider (used by providerHttp health tracking)
-    const healthKey = providerTag === 'miruro'
-      ? 'miruro'
-      : providerTag === 'consumet-http'
-        ? 'consumet-http'
-        : `consumet-${providerTag.replace('consumet-', '')}`;
+// Determine health key for this provider (used by providerHttp health tracking);
+    // derived solely from the registry so provider IDs stay consistent.
+    const healthKey = toHealthKey(providerTag);
 
     // Execute with per-provider retry logic
     // Each provider gets its own retry budget before the pipeline advances
@@ -594,11 +606,7 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
     if (!resolver) continue;
 
     try {
-      const healthKey = providerTag === 'miruro'
-        ? 'miruro'
-        : providerTag === 'consumet-http'
-          ? 'consumet-http'
-          : `consumet-${providerTag.replace('consumet-', '')}`;
+      const healthKey = toHealthKey(providerTag);
 
       const result = await executeWithRetry(providerTag, healthKey, () => {
         return resolver(animeTitle, episodeNumber);

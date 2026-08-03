@@ -3,6 +3,7 @@ const db = require('../config/db');
 const catalogue = require('../services/catalogueService');
 const { ConsumetProvider } = require('../services/consumetProvider');
 const { uploadBufferToCloudinary, hasCloudinaryConfig } = require('../utils/bunnyUpload');
+const { PROVIDER_IDS } = require('../services/providerRegistry');
 
 const consumet = new ConsumetProvider();
 let cloudinaryColumnsPromise = null;
@@ -186,7 +187,7 @@ exports.importAnime = async (req, res) => {
       episodes: {
         count: episodesCount,
         total: episodesCount,
-        source: 'kitsu'
+        source: PROVIDER_IDS.KITSU
       }
     });
 
@@ -235,7 +236,7 @@ exports.importConsumetAnime = async (req, res) => {
   try {
     await ensureCloudinaryColumns();
     const metadata = normaliseConsumetInfo(await consumet.fetchAnimeInfo(providerId), providerId);
-    const [existing] = await db.query('SELECT id FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', ['consumet', providerId]);
+    const [existing] = await db.query('SELECT id FROM anime WHERE source_provider = ? AND source_id = ? LIMIT 1', [PROVIDER_IDS.CONSUMET, providerId]);
     const cover = await persistRemoteImage(metadata.coverUrl, 'anime');
     const banner = await persistRemoteImage(metadata.bannerUrl, 'banners');
     let animeId = existing[0]?.id;
@@ -243,8 +244,8 @@ exports.importConsumetAnime = async (req, res) => {
       await db.query(`UPDATE anime SET title=?, description=?, cover_image=?, banner_image=?, year=?, studio=?, status=?, media_type=?, cover_public_id=COALESCE(?, cover_public_id), banner_public_id=COALESCE(?, banner_public_id) WHERE id=?`,
         [metadata.title, metadata.description, cover.url, banner.url, metadata.year, metadata.studio, metadata.status, metadata.media_type || 'TV', cover.publicId, banner.publicId, animeId]);
     } else {
-      const [result] = await db.query(`INSERT INTO anime (title, description, cover_image, banner_image, cover_public_id, banner_public_id, year, studio, status, media_type, is_premium, is_featured, source_provider, source_id, source_slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'consumet', ?, ?)`,
-        [metadata.title, metadata.description, cover.url, banner.url, cover.publicId, banner.publicId, metadata.year, metadata.studio, metadata.status, metadata.media_type || 'TV', providerId, providerId]);
+      const [result] = await db.query(`INSERT INTO anime (title, description, cover_image, banner_image, cover_public_id, banner_public_id, year, studio, status, media_type, is_premium, is_featured, source_provider, source_id, source_slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+        [metadata.title, metadata.description, cover.url, banner.url, cover.publicId, banner.publicId, metadata.year, metadata.studio, metadata.status, metadata.media_type || 'TV', PROVIDER_IDS.CONSUMET, providerId, providerId]);
       animeId = result.insertId;
     }
     for (const rawName of metadata.genres) {

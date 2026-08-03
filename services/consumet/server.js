@@ -19,6 +19,11 @@ const cors = require('cors');
 const axios = require('axios');
 const consumet = require('@consumet/extensions');
 const { request: providerRequest, buildHeaders } = require('../../utils/providerHttp');
+const {
+  PROVIDER_IDS,
+  getConsumetPreferredOrder,
+  toConsumetClassName,
+} = require('../providerRegistry');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
@@ -46,7 +51,7 @@ console.log('[Consumet Microservice] ✅ Loaded META.Anilist');
 //   • Shared structured logging (provider, attempt, status, time, proxy)
 //   • Error classification (11 categories via classifyError)
 //   • All managed in one place: utils/providerHttp.js
-const sharedHeaders = buildHeaders('consumet');
+const sharedHeaders = buildHeaders(PROVIDER_IDS.CONSUMET);
 
 const customAxios = axios.create({
   timeout: 15000,
@@ -60,7 +65,7 @@ const customAxios = axios.create({
 customAxios.defaults.adapter = async (config) => {
   try {
     const response = await providerRequest(config, {
-      providerName: 'consumet-http',
+      providerName: PROVIDER_IDS.CONSUMET_HTTP,
       timeout: config.timeout || 15000,
     });
 
@@ -96,14 +101,7 @@ console.log('[Consumet Microservice] ✅ Using shared providerHttp layer for all
 const availableProviders = Object.keys(ANIME);
 console.log(`[Consumet Microservice] Available ANIME providers: ${availableProviders.join(', ')}`);
 
-const preferredOrder = [
-  'KickAssAnime',
-  'AnimePahe',
-  'AnimeKai',
-  'AnimeSaturn',
-  'Hianime',
-  'AnimeSama',
-];
+const preferredOrder = getConsumetPreferredOrder();
 
 let fallbackProvider = null;
 
@@ -121,10 +119,16 @@ for (const name of preferredOrder) {
 }
 
 if (!fallbackProvider) {
+  // Blind fallback must avoid providers excluded for proxy/fetch reliability.
+  // The exclusion set is derived from the registry (canonical IDs → class names).
+  const excludedClassNames = new Set(
+    [PROVIDER_IDS.ANIME_PAHE, PROVIDER_IDS.HIANIME]
+      .map(id => toConsumetClassName(id))
+      .filter(Boolean)
+  );
   const safeKey = availableProviders.find(key =>
     typeof ANIME[key] === 'function' &&
-    !key.toLowerCase().includes('pahe') &&
-    !key.toLowerCase().includes('hianime')
+    !excludedClassNames.has(key)
   );
   if (safeKey) {
     console.log(`[Consumet Microservice] ⚠️  Blind fallback: ${safeKey}`);

@@ -14,6 +14,7 @@
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const logger = require('./logger');
+const { getReferer } = require('../services/providerRegistry');
 
 // ───────────────────────────────────────────────────────────────
 //  SHARED PROXY MANAGER
@@ -198,21 +199,10 @@ const DEFAULT_HEADERS = {
 function buildHeaders(providerName, extraHeaders = {}) {
   const headers = { ...DEFAULT_HEADERS };
 
-  // Add provider-specific Referer/Origin
+  // Add provider-specific Referer/Origin from the centralized registry.
+  // Provider referer metadata lives ONLY in services/providerRegistry.js.
   if (providerName) {
-    const referers = {
-      consumet: 'https://consumet.org/',
-      'consumet-http': process.env.CONSUMET_API_URL || 'https://api.consumet.org/',
-      kickassanime: 'https://kickassanime.am/',
-      animepahe: 'https://animepahe.ru/',
-      animekai: 'https://animekai.to/',
-      hianime: 'https://hianime.to/',
-      animesaturn: 'https://animesaturn.mx/',
-      zoro: 'https://aniwatch.to/',
-      miruro: 'https://www.miruro.tv/',
-    };
-
-    const ref = referers[providerName.toLowerCase()];
+    const ref = getReferer(providerName);
     if (ref) {
       headers['Referer'] = ref;
       headers['Origin'] = new URL(ref).origin;
