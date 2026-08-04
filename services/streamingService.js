@@ -1,27 +1,34 @@
 // ============================================================
 //  services/streamingService.js — Multi-Provider Fallback Engine
 //
-//  DYNAMIC RESOLVER PIPELINE (PARTIAL-PARALLEL):
+//  DYNAMIC RESOLVER PIPELINE (CONCURRENT, CONCURRENCY-LIMITED RACE):
 //    • Providers are configured via STREAM_PROVIDERS env var
 //    • Each provider has INDEPENDENT health tracking
 //    • The pipeline NEVER stops after a single failure
 //    • Every configured provider is attempted before giving up
-//    • Returns the FIRST successful stream
+//    • Returns the FIRST successful playable stream
 //
 //  EXECUTION MODEL:
-//    Sequential-first, then parallel race:
-//      1. The preferred provider (or first provider) is tried first
-//         with a short soft deadline — preserves the historical
-//         "preferred provider wins" behaviour and fast-path latency.
-//      2. If it fails/returns empty within the soft deadline, the
-//         REMAINING providers are launched IN PARALLEL and the first
-//         successful playable stream is returned.
-//      3. A global pipeline deadline (PIPELINE_TIMEOUT_MS) caps the
-//         whole operation so the request fails fast instead of
-//         dangling for ~80s (worst-case sequential).
-//      4. Every provider runs in its own error-isolated context — a
+//    Fully-concurrent, concurrency-limited race:
+//      1. Providers are launched IMMEDIATELY in a sliding window
+//         of up to STREAM_CONCURRENCY (default 3) at a time.
+//      2. The execution queue is ordered by provider health:
+//         preferred provider → healthy providers → degraded
+//         providers → providers in cooldown last. This keeps
+//         unhealthy providers from delaying resolution.
+//      3. The FIRST provider to return a valid playable stream WINS
+//         and the request resolves immediately. Remaining providers
+//         are NOT scheduled (cancelled) and late responses are
+//         ignored — no duplicate work, no unnecessary provider load.
+//      4. If a running provider fails, the next provider in the queue
+//         is launched to fill the concurrency window (sliding window).
+//      5. A global pipeline deadline (PIPELINE_TIMEOUT_MS) caps the
+//         whole operation so the request fails fast.
+//      6. Every provider runs in its own error-isolated context — a
 //         single provider crashing/timeout never crashes the request.
-//      5. Structured logs are collected per provider for diagnosis.
+//      7. Structured metrics are logged per provider (latency,
+//         success/failure, timeout, skipped) plus the winner and the
+//         total pipeline duration for diagnosis.
 //
 //  Provider Types:
 //    consumet-<name> — Consumet-backed sub-provider (KickAssAnime, AnimeKai, etc.)
@@ -82,10 +89,10 @@ const QUALITY_TIERS = {
 // exceed 80s). The individual HTTP layer already caps each call at 10s.
 const PIPELINE_TIMEOUT_MS = parseInt(process.env.STREAM_PIPELINE_TIMEOUT_MS || '15000', 10);
 
-// Soft deadline for the FIRST/preferred provider attempt. If the preferred
-// provider doesn't resolve within this window we fall through to the
-// parallel race. Kept short so the fast path stays fast.
-const PREFERRED_SOFT_DEADLINE_MS = parseInt(process.env.STREAM_PREFERRED_DEADLINE_MS || '6000', 10);
+// Maximum number of providers to run CONCURRENTLY at any moment. This is the
+// sliding-window concurrency limit that prevents unnecessary load on the
+// upstream providers. Override via STREAM_CONCURRENCY env var (default 3).
+const STREAM_CONCURRENCY = parseInt(process.env.STREAM_CONCURRENCY || '3', 10);
 
 // Provider retry budget BEFORE the pipeline advances to the next provider.
 const PROVIDER_RETRY_CONFIG = {
@@ -597,66 +604,154 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
 }
 
 /**
- * Execute a list of providers in PARALLEL and resolve with the first
- * successful playable stream. All providers run concurrently; each is
- * isolated so failures never crash the race. A global deadline aborts the
- * whole batch fast.
+ * Build the provider execution queue ordered by health.
  *
- * @param {Array<string>} providerTags - Provider tags to run
+ * Ordering (highest priority first):
+ *   1. Preferred provider (if specified)  — user-forced selection
+ *   2. Healthy providers (not degraded)   — in configured order
+ *   3. Degraded providers                 — currently in cooldown, last
+ *
+ * This keeps unhealthy/providers-in-cooldown from delaying resolution.
+ *
+ * @param {string[]} providerTags - All provider tags in configured order
+ * @param {string} [preferredProvider] - Optional preferred provider tag
+ * @returns {string[]} Reordered execution queue
+ */
+function buildExecutionQueue(providerTags, preferredProvider) {
+  const queue = [];
+
+  // 1. Preferred provider first (if it's a known provider).
+  if (preferredProvider) {
+    const match = providerTags.find(t => t === preferredProvider);
+    if (match) queue.push(match);
+  }
+
+  // 2. Healthy providers in configured order.
+  const healthy = providerTags.filter(t => {
+    if (preferredProvider && t === preferredProvider) return false; // already queued
+    return isProviderHealthy(toHealthKey(t));
+  });
+
+  // 3. Degraded / cooldown providers last.
+  const degraded = providerTags.filter(t => {
+    if (preferredProvider && t === preferredProvider) return false;
+    return !isProviderHealthy(toHealthKey(t));
+  });
+
+  return [...queue, ...healthy, ...degraded];
+}
+
+/**
+ * Execute providers concurrently with a configurable concurrency limit and
+ * resolve with the FIRST successful playable stream.
+ *
+ * This is a sliding-window race:
+ *   • Launch up to STREAM_CONCURRENCY providers at once.
+ *   • As soon as one returns a valid playable stream, resolve IMMEDIATELY.
+ *   • Stop scheduling remaining providers and ignore late responses
+ *     (prevents duplicate work / unnecessary provider load).
+ *   • If a running provider fails, launch the next one in the queue to fill
+ *     the window.
+ *   • A global deadline (PIPELINE_TIMEOUT_MS) aborts the whole race fast.
+ *
+ * Each provider is executed exactly once (no duplicate work). The returned
+ * object shape is preserved:
+ *   { result: object|null, logs: Array, winnerProvider: string|null }
+ *
+ * @param {Array<string>} providerTags - Provider tags in execution order
  * @param {string} animeTitle
  * @param {number|string} episodeNumber
  * @param {object} [options]
  * @param {number} [options.timeoutMs] - Overall deadline for this batch
- * @returns {Promise<{result: object|null, logs: Array}>}
+ * @param {number} [options.concurrency] - Concurrency limit (default STREAM_CONCURRENCY)
+ * @returns {Promise<{result: object|null, logs: Array, winnerProvider: string|null}>}
  */
-async function executeProvidersInParallel(providerTags, animeTitle, episodeNumber, options = {}) {
+async function raceWithConcurrency(providerTags, animeTitle, episodeNumber, options = {}) {
   const timeoutMs = options.timeoutMs || PIPELINE_TIMEOUT_MS;
+  const concurrency = Math.max(1, options.concurrency || STREAM_CONCURRENCY);
   const logs = [];
 
   if (!providerTags.length) {
-    return { result: null, logs };
+    return { result: null, logs, winnerProvider: null };
   }
 
   return new Promise((resolve) => {
     let settled = false;
+    let winnerFound = false;
+    let winnerProvider = null;
+    let cursor = 0;
+    const outcomes = [];
+
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      logs.push({ phase: 'parallel', result: 'timeout', timeoutMs });
+      logs.push({ phase: 'race', result: 'timeout', timeoutMs });
       logger.stream({ result: 'pipeline_timeout', timeoutMs, providers: providerTags.join(',') });
-      resolve({ result: null, logs, timedOut: true });
+      resolve({ result: null, logs, winnerProvider, timedOut: true });
     }, timeoutMs);
 
-    // Promise each provider; each returns an encapsulated outcome (never throws).
-    const promises = providerTags.map(async (tag) => {
-      const resolver = buildResolverForProvider(tag);
-      if (!resolver) {
-        return { resolved: false, result: null, error: 'no resolver', category: 'NO_RESOLVER', durationMs: 0, attempts: 0, tag };
+    const trySchedule = () => {
+      // Stop scheduling once a winner is found.
+      if (winnerFound || settled) return;
+
+      // Launch the next batch of providers up to the concurrency limit.
+      while (cursor < providerTags.length && !winnerFound && !settled) {
+        const tag = providerTags[cursor];
+        cursor += 1;
+
+        const resolver = buildResolverForProvider(tag);
+        if (!resolver) {
+          outcomes.push({ provider: tag, resolved: false, error: 'no resolver', category: 'NO_RESOLVER', durationMs: 0, attempts: 0, skipped: true });
+          continue;
+        }
+
+        // Execute the provider asynchronously; never throws.
+        executeProvider(tag, resolver, animeTitle, episodeNumber)
+          .then((outcome) => {
+            outcome.provider = tag;
+            outcomes.push(outcome);
+
+            if (outcome.resolved && outcome.result && outcome.result.sources.length > 0 && !winnerFound) {
+              // First playable stream wins — resolve immediately.
+              winnerFound = true;
+              winnerProvider = tag;
+              settled = true;
+              clearTimeout(timer);
+              resolve({ result: outcome.result, logs, winnerProvider });
+              return;
+            }
+
+            // Failure — fill the window with the next provider.
+            trySchedule();
+          })
+          .catch(() => {
+            // executeProvider never rejects, but be defensive.
+            outcomes.push({ provider: tag, resolved: false, error: 'unexpected error', category: 'UNKNOWN', durationMs: 0, attempts: 0 });
+            trySchedule();
+          });
       }
-      const outcome = await executeProvider(tag, resolver, animeTitle, episodeNumber);
-      outcome.tag = tag;
-      return outcome;
-    });
 
-    Promise.all(promises).then((outcomes) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-
-      for (const o of outcomes) {
-        logs.push({
-          provider: o.tag,
-          resolved: o.resolved,
-          category: o.category,
-          error: o.error,
-          durationMs: o.durationMs,
-          attempts: o.attempts,
-        });
+      // Exhausted the queue without a winner (all failed).
+      if (cursor >= providerTags.length && !winnerFound && !settled) {
+        settled = true;
+        clearTimeout(timer);
+        // Build logs from collected outcomes.
+        for (const o of outcomes) {
+          logs.push({
+            provider: o.provider,
+            resolved: o.resolved,
+            category: o.category,
+            error: o.error,
+            durationMs: o.durationMs,
+            attempts: o.attempts,
+            skipped: o.skipped,
+          });
+        }
+        resolve({ result: null, logs, winnerProvider });
       }
+    };
 
-      const winner = outcomes.find(o => o.resolved && o.result && o.result.sources.length > 0);
-      resolve({ result: winner ? winner.result : null, logs });
-    });
+    trySchedule();
   });
 }
 
@@ -713,53 +808,53 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     console.log(`[StreamingService] ⏭ Cache bypassed (skipCache=true)`);
   }
 
-  // ── Determine provider order ────────────────────────────
-  // If a preferred provider is specified, move it to the front.
-  const providerOrder = preferredProvider
-    ? [preferredProvider, ...PROVIDER_ORDER.filter(p => p !== preferredProvider)]
-    : PROVIDER_ORDER;
+// ── Build health-aware execution queue ──────────────────
+  // Ordered: preferred provider → healthy providers → degraded/cooldown last.
+  const executionQueue = buildExecutionQueue(PROVIDER_ORDER, preferredProvider);
 
-  console.log(`[StreamingService] 📋 Provider execution order:`);
-  providerOrder.forEach((p, i) => console.log(`   ${i + 1}. ${p}`));
+  console.log(`[StreamingService] 📋 Provider execution queue (concurrency=${STREAM_CONCURRENCY}, deadline=${PIPELINE_TIMEOUT_MS}ms):`);
+  executionQueue.forEach((p, i) => console.log(`   ${i + 1}. ${p}`));
 
-  // Preferred provider (first) — try alone with a short soft deadline.
-  const preferredTag = providerOrder[0];
-  const remainingTags = providerOrder.slice(1);
+  // ── Concurrent limited race ─────────────────────────────
+  // Launch up to STREAM_CONCURRENCY providers at once; first success wins.
+  // Remaining providers are cancelled (not scheduled) and late responses
+  // are ignored — no duplicate work, no unnecessary provider load.
+  const race = await raceWithConcurrency(executionQueue, animeTitle, episodeNumber, {
+    timeoutMs: PIPELINE_TIMEOUT_MS,
+    concurrency: STREAM_CONCURRENCY,
+  });
 
-  let winner = null;
-  let winnerProvider = null;
+  const winner = race.result;
+  const winnerProvider = race.winnerProvider;
 
-  if (preferredTag) {
-    const resolver = buildResolverForProvider(preferredTag);
-    if (resolver) {
-      console.log(`[StreamingService] 🚀 Trying preferred provider "${preferredTag}" first (soft deadline ${PREFERRED_SOFT_DEADLINE_MS}ms)`);
-      const preferredOutcome = await Promise.race([
-        executeProvider(preferredTag, resolver, animeTitle, episodeNumber),
-        new Promise(resolve => setTimeout(() => resolve({ resolved: false, result: null, error: 'soft deadline exceeded', category: 'SOFT_DEADLINE', durationMs: 0, attempts: 1, tag: preferredTag }), PREFERRED_SOFT_DEADLINE_MS)),
-      ]);
-
-      if (preferredOutcome.resolved && preferredOutcome.result && preferredOutcome.result.sources.length > 0) {
-        winner = preferredOutcome.result;
-        winnerProvider = preferredTag;
-      } else {
-        console.log(`[StreamingService] ➡️ Preferred "${preferredTag}" failed (${preferredOutcome.error || 'no sources'}) — launching parallel race`);
-      }
-    } else {
-      console.warn(`[StreamingService] ⚠️ ${preferredTag} | No resolver available — skipping`);
-    }
-  }
-
-  // ── Parallel race over remaining providers ──────────────
-  if (!winner && remainingTags.length > 0) {
-    console.log(`[StreamingService] ⚡ Racing ${remainingTags.length} providers in parallel (deadline ${PIPELINE_TIMEOUT_MS}ms)`);
-    const race = await executeProvidersInParallel(remainingTags, animeTitle, episodeNumber, {
-      timeoutMs: PIPELINE_TIMEOUT_MS,
+  // ── Structured metrics log ──────────────────────────────
+  const elapsed = Date.now() - overallStart;
+  if (winner && winner.sources.length > 0) {
+    const failedProviders = race.logs
+      .filter(l => !l.resolved)
+      .map(l => ({ provider: l.provider, category: l.category, durationMs: l.durationMs, skipped: l.skipped }));
+    logger.stream({
+      provider: winnerProvider,
+      result: 'winner',
+      duration: elapsed,
+      sources: winner.sources.length,
+      win: true,
+      winner: winnerProvider,
+      failedProviders,
+      totalDurationMs: elapsed,
     });
-
-    if (race.result && race.result.sources.length > 0) {
-      winner = race.result;
-      winnerProvider = race.result.provider;
-    }
+  } else {
+    logger.stream({
+      result: 'all_failed',
+      duration: elapsed,
+      totalDurationMs: elapsed,
+      providers: race.logs.map(l => ({
+        provider: l.provider,
+        category: l.category,
+        durationMs: l.durationMs,
+        skipped: l.skipped,
+      })),
+    });
   }
 
   // ── Build the final payload ─────────────────────────────
@@ -795,15 +890,13 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       console.warn(`[StreamingService] Cache write failed: ${cacheErr.message}`);
     }
 
-    const elapsed = Date.now() - overallStart;
     console.log(`[StreamingService] ✅ RESOLVED | "${animeTitle}" Ep ${episodeNumber} → ${payload.provider} (${best.quality}) | ${elapsed}ms`);
     return payload;
   }
 
   // ── All providers failed ────────────────────────────────
-  const elapsed = Date.now() - overallStart;
-  const attemptedProviders = providerOrder.join(', ');
-  const errorMsg = `No stream provider could resolve "${animeTitle}" Episode ${episodeNumber}. Attempted ${providerOrder.length} providers: ${attemptedProviders} (${elapsed}ms)`;
+  const attemptedProviders = executionQueue.join(', ');
+  const errorMsg = `No stream provider could resolve "${animeTitle}" Episode ${episodeNumber}. Attempted ${executionQueue.length} providers: ${attemptedProviders} (${elapsed}ms)`;
   console.error(`[StreamingService] 🛑 ALL PROVIDERS FAILED | ${errorMsg}`);
   throw new Error(errorMsg);
 }
@@ -823,18 +916,15 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
   const { isPremium = false } = options;
   const results = [];
 
-console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${episodeNumber}`);
+  console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${episodeNumber} | concurrency=${STREAM_CONCURRENCY}`);
 
-  // Run all providers in parallel; each outcome is isolated (never throws).
-  // A global deadline aborts the batch fast so a slow provider can't stall
-  // the server-switcher request. We collect ALL successes (not just the first).
-  const allOutcomes = await Promise.all(
-    PROVIDER_ORDER.map(async (tag) => {
-      const resolver = buildResolverForProvider(tag);
-      if (!resolver) return null;
-      return executeProvider(tag, resolver, animeTitle, episodeNumber);
-    })
-  );
+  // Run ALL providers with a concurrency limit (sliding window), collecting
+  // every successful outcome. Unlike resolveStream, this does NOT stop after
+  // the first success — it attempts every provider so the server switcher can
+  // list all available sources. Each outcome is isolated (never throws).
+  const allOutcomes = await runAllWithConcurrency(PROVIDER_ORDER, animeTitle, episodeNumber, {
+    concurrency: STREAM_CONCURRENCY,
+  });
 
   for (let i = 0; i < PROVIDER_ORDER.length; i++) {
     const outcome = allOutcomes[i];
@@ -855,6 +945,80 @@ console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${
 
   console.log(`[StreamingService] 📋 resolveAllProviders | ${results.length}/${PROVIDER_ORDER.length} providers resolved`);
   return results;
+}
+
+/**
+ * Execute ALL providers with a concurrency limit (sliding window), collecting
+ * every successful outcome. Used by resolveAllProviders (server switcher).
+ *
+ * Each provider runs exactly once; outcomes are returned in the SAME order as
+ * providerTags. A global deadline (PIPELINE_TIMEOUT_MS) aborts the batch fast.
+ *
+ * @param {Array<string>} providerTags - Provider tags in configured order
+ * @param {string} animeTitle
+ * @param {number|string} episodeNumber
+ * @param {object} [options]
+ * @param {number} [options.concurrency] - Concurrency limit (default STREAM_CONCURRENCY)
+ * @returns {Promise<Array<object|null>>} Outcomes aligned to providerTags
+ */
+async function runAllWithConcurrency(providerTags, animeTitle, episodeNumber, options = {}) {
+  const concurrency = Math.max(1, options.concurrency || STREAM_CONCURRENCY);
+  const outcomes = new Array(providerTags.length).fill(null);
+  let cursor = 0;
+  let inFlight = 0;
+
+  if (!providerTags.length) return outcomes;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      logger.stream({ result: 'resolve_all_timeout', timeoutMs: PIPELINE_TIMEOUT_MS, providers: providerTags.join(',') });
+      resolve(outcomes);
+    }, PIPELINE_TIMEOUT_MS);
+
+    const trySchedule = () => {
+      if (settled) return;
+
+      // Fill the concurrency window.
+      while (cursor < providerTags.length && inFlight < concurrency) {
+        const idx = cursor;
+        const tag = providerTags[idx];
+        cursor += 1;
+
+        const resolver = buildResolverForProvider(tag);
+        if (!resolver) {
+          outcomes[idx] = null;
+          continue;
+        }
+
+        inFlight += 1;
+        executeProvider(tag, resolver, animeTitle, episodeNumber)
+          .then((outcome) => {
+            outcome.provider = tag;
+            outcomes[idx] = outcome;
+            inFlight -= 1;
+            trySchedule();
+          })
+          .catch(() => {
+            outcomes[idx] = null;
+            inFlight -= 1;
+            trySchedule();
+          });
+      }
+
+      // All providers have settled (none in flight, cursor exhausted).
+      if (cursor >= providerTags.length && inFlight === 0) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(outcomes);
+      }
+    };
+
+    trySchedule();
+  });
 }
 
 // ── Provider Health Endpoint ───────────────────────────────
