@@ -1,38 +1,23 @@
-# Task: Dedicated Streaming Axios Client (No Global Timeout)
+# TODO — Provider Execution Pipeline Redesign (Sequential → Partial Parallel)
 
-## Goal
+## Objective
 
-Audit every axios instance in the backend. Do NOT set `axios.defaults.timeout` globally.
-Create a dedicated axios instance used ONLY for streaming providers with:
-
-- timeout: 8–10s → **10s**
-- retry disabled
-- proper timeout error handling
-- descriptive logging
-- preserve existing interceptors where appropriate
-
-Replace ONLY streaming-related requests with the dedicated client.
-
-## Approved Approach
-
-- Keep `providerHttp` in the request path for streaming resolvers (it provides
-  proxy rotation, header/referer injection, health tracking, retry coordination,
-  error classification — infrastructure must NOT be bypassed).
-- Make `providerHttp` configurable so streaming requests use the 10s timeout
-  (via a `streaming: true` option / `STREAMING_TIMEOUT` constant).
-- Reuse a single shared streaming client (`utils/streamingHttp.js`) across the
-  streaming stack; provider-specific interceptors wrap/extend it.
-- Preserve proxy rotation, adapter routing, health tracking, failover logic.
-- Do NOT modify payments, auth, uploads, downloads, Kitsu, MALSync, AniSkip,
-  admin imports, metadata providers.
+Audit the provider execution pipeline and redesign it from sequential to partial-parallel,
+preserving the exact API response format and frontend expectations.
 
 ## Steps
 
-- [x] 1. Audit all axios usage in the backend (no global `axios.defaults.timeout` exists).
-- [ ] 2. Create `utils/streamingHttp.js` — dedicated streaming client (10s, retry disabled, logging, timeout handling).
-- [ ] 3. Add `STREAMING_TIMEOUT` + `streaming` option to `utils/providerHttp.js`.
-- [ ] 4. `services/consumetProvider.js` — use `createStreamingInstance` (preserve proxy/403-retry interceptors).
-- [ ] 5. `services/consumet/server.js` — use `createStreamingInstance` (preserve adapter routing).
-- [ ] 6. `services/streamingService.js` — use `streaming: true` (10s) for consumet-http & miruro resolvers.
-- [ ] 7. Verify: syntax checks, no global axios.defaults, confirm other services untouched.
-- [ ] 8. Run regression suite (weather permitting) and document results.
+- [x] 1. Audit current pipeline (read streamingService, providerRegistry, consumetProvider, providerHttp, streamingHttp, logger, streamController, watch.js)
+- [x] 2. Confirm current execution mode = SEQUENTIAL
+- [x] 3. Identify bugs: `allSources` vs `sources` mismatch; no global pipeline deadline
+- [x] 4. Get plan approval from user
+- [x] 5. Add `normalizeProviderResult()` helper to map `allSources` → `sources` (fix Consumet sub-provider bug)
+- [x] 6. Add a global `PIPELINE_TIMEOUT_MS` deadline
+- [x] 7. Refactor `executeWithRetry` → `executeProvider` to be concurrency-safe and collect structured logs
+- [x] 8. Add `executeProvidersInParallel()` — parallel race across providers, returns first success
+- [x] 9. Rewrite `resolveStream()` → try preferred/first provider first, then parallel race; clean error on total failure
+- [x] 10. Rewrite `resolveAllProviders()` → parallel execution, same `providers[]` array shape
+- [x] 11. Add structured error handling for Cloudflare, timeout, provider unavailable, empty search, missing episode, invalid stream
+- [x] 12. Syntax-check the updated file (node --check → exit 0)
+- [x] 13. Verify no frontend/controller changes required (compatibility preserved)
+- [ ] 14. Deliver execution flow diagram + explanation + performance comparison

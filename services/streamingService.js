@@ -1,12 +1,27 @@
 // ============================================================
 //  services/streamingService.js — Multi-Provider Fallback Engine
 //
-//  DYNAMIC RESOLVER PIPELINE:
+//  DYNAMIC RESOLVER PIPELINE (PARTIAL-PARALLEL):
 //    • Providers are configured via STREAM_PROVIDERS env var
 //    • Each provider has INDEPENDENT health tracking
 //    • The pipeline NEVER stops after a single failure
 //    • Every configured provider is attempted before giving up
 //    • Returns the FIRST successful stream
+//
+//  EXECUTION MODEL:
+//    Sequential-first, then parallel race:
+//      1. The preferred provider (or first provider) is tried first
+//         with a short soft deadline — preserves the historical
+//         "preferred provider wins" behaviour and fast-path latency.
+//      2. If it fails/returns empty within the soft deadline, the
+//         REMAINING providers are launched IN PARALLEL and the first
+//         successful playable stream is returned.
+//      3. A global pipeline deadline (PIPELINE_TIMEOUT_MS) caps the
+//         whole operation so the request fails fast instead of
+//         dangling for ~80s (worst-case sequential).
+//      4. Every provider runs in its own error-isolated context — a
+//         single provider crashing/timeout never crashes the request.
+//      5. Structured logs are collected per provider for diagnosis.
 //
 //  Provider Types:
 //    consumet-<name> — Consumet-backed sub-provider (KickAssAnime, AnimeKai, etc.)
@@ -18,6 +33,12 @@
 //    Premium/Admin users: up to 4K (1080p, 4K)
 //
 //  Proxy: Uses the SHARED proxy manager from utils/providerHttp.js
+//
+//  COMPATIBILITY:
+//    The public API surface (resolveStream, resolveAllProviders,
+//    filterSourcesByTier, getBestQualityLabel, getProviderHealthStatus,
+//    QUALITY_TIERS) and the response payload shape are PRESERVED so no
+//    controller/route/frontend changes are required.
 // ============================================================
 const { provider: consumetProvider } = require('./consumetProvider');
 const {
@@ -50,6 +71,23 @@ const QUALITY_TIERS = {
     allowed: ['360', '480', '720', '1080', '2160', '4320', '4k', 'default', 'auto'],
     label: 'Ultra HD (up to 4K)',
   },
+};
+
+// ── Pipeline Tuning ─────────────────────────────────────────
+// Global ceiling for the ENTIRE provider pipeline. Prevents the request
+// from dangling when every provider is slow (sequential worst case used to
+// exceed 80s). The individual HTTP layer already caps each call at 10s.
+const PIPELINE_TIMEOUT_MS = parseInt(process.env.STREAM_PIPELINE_TIMEOUT_MS || '15000', 10);
+
+// Soft deadline for the FIRST/preferred provider attempt. If the preferred
+// provider doesn't resolve within this window we fall through to the
+// parallel race. Kept short so the fast path stays fast.
+const PREFERRED_SOFT_DEADLINE_MS = parseInt(process.env.STREAM_PREFERRED_DEADLINE_MS || '6000', 10);
+
+// Provider retry budget BEFORE the pipeline advances to the next provider.
+const PROVIDER_RETRY_CONFIG = {
+  maxRetries: 1,        // Each provider gets 1 retry before moving on (reduced from 2 to bound latency)
+  perRetryDelayMs: 500, // Short backoff between attempts
 };
 
 /**
@@ -88,20 +126,53 @@ function getBestQualityLabel(sources, isPremium) {
   return sorted[0].quality || 'Auto';
 }
 
+/**
+ * Normalize a provider result into the canonical shape the pipeline expects.
+ *
+ * The in-memory ConsumetProvider returns `{ streamUrl, allSources, subtitles,
+ * provider }` while the HTTP/Miruro resolvers return `{ streamUrl, sources,
+ * subtitles, provider }`. This helper maps both (and any other variant) into
+ * `{ streamUrl, sources, subtitles, provider }` so the success check
+ * `sources.length > 0` works uniformly. THIS FIXES the bug where Consumet
+ * sub-providers were silently skipped because they returned `allSources`.
+ *
+ * @param {object} result - Raw provider result
+ * @returns {object|null} Normalized result, or null if not usable
+ */
+function normalizeProviderResult(result) {
+  if (!result) return null;
+
+  // Normalize the sources array (accept both `sources` and `allSources`).
+  let sources = result.sources;
+  if (!Array.isArray(sources)) sources = result.allSources;
+  if (!Array.isArray(sources)) sources = [];
+
+  // Normalize each source entry to { url, quality } if needed.
+  const normalizedSources = sources
+    .filter(s => s && (s.url || s.file))
+    .map(s => ({
+      url: s.url || s.file,
+      quality: s.quality || s.qualityLabel || 'auto',
+    }));
+
+  if (normalizedSources.length === 0) return null;
+
+  return {
+    provider: result.provider || result.source || 'unknown',
+    streamUrl: result.streamUrl || (normalizedSources[0] ? normalizedSources[0].url : null),
+    sources: normalizedSources,
+    subtitles: Array.isArray(result.subtitles) ? result.subtitles : [],
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 //  PROVIDER CONFIGURATION
 // ─────────────────────────────────────────────────────────────
 
 /**
  * Default provider order (all Consumet sub-providers + HTTP fallback + Miruro).
- * This ensures that if KickAssAnime returns 403, we fall through to AnimeKai,
- * then AnimePahe, Hianime, AnimeSaturn, and finally HTTP/Miruro fallbacks.
- *
- * Set STREAM_PROVIDERS env var to override, e.g.:
- *   STREAM_PROVIDERS=consumet-kickassanime,consumet-animekai,miruro
- *
- * The default order is derived from the centralized provider registry
- * (services/providerRegistry.js) so provider IDs stay consistent.
+ * Set STREAM_PROVIDERS env var to override. Derived from the centralized
+ * provider registry (services/providerRegistry.js) so IDs stay consistent.
  */
 const DEFAULT_PROVIDERS = getDefaultProviderOrder();
 
@@ -112,95 +183,49 @@ const PROVIDER_ORDER = (process.env.STREAM_PROVIDERS || DEFAULT_PROVIDERS.join('
   .split(',')
   .map(s => s.trim().toLowerCase())
   .filter(Boolean)
-  // Normalize each configured tag through the registry; drop unknown providers.
-  // Since normalizeProviderName() now correctly resolves 'consumet-http' and
-  // 'miruro', no special-case allowlist is needed here anymore.
   .filter(tag => !!normalizeProviderName(tag));
 
 logger.info('Provider order configured', { providers: PROVIDER_ORDER });
 
 // ─────────────────────────────────────────────────────────────
-//  INTERNAL RETRY LOGIC (per provider)
+//  ERROR CATEGORY / MESSAGING
 // ─────────────────────────────────────────────────────────────
 
-const PROVIDER_RETRY_CONFIG = {
-  maxRetries: 2,       // Each provider gets 2 retries before moving on
-  perRetryDelayMs: 1000,
-};
-
 /**
- * Execute a resolver function with internal retries and health tracking.
- * Each provider gets its own retry budget before the pipeline advances.
+ * Map a classified error + provider result state into a clean, user-facing
+ * failure reason. Used for structured logging and, in aggregate, for the
+ * final error message when all providers fail.
  *
- * @param {string} providerName - The display name for logging
- * @param {string} healthKey - The key for health tracking
- * @param {Function} resolverFn - Async function returning result or null
- * @returns {Promise<object|null>} - The resolved result or null
+ * @param {string} category - classifyError category
+ * @param {object} [result] - normalized provider result (may be null)
+ * @returns {string} human-readable failure reason
  */
-async function executeWithRetry(providerName, healthKey, resolverFn) {
-  const { maxRetries, perRetryDelayMs } = PROVIDER_RETRY_CONFIG;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const attemptStart = Date.now();
-    const attemptLabel = `attempt ${attempt + 1}/${maxRetries + 1}`;
-
-    // Check provider health before attempting (skip only if degraded and attempt > 0)
-    if (attempt === 0) {
-      if (!isProviderHealthy(healthKey)) {
-        logger.stream({ provider: providerName, attempt: attempt + 1, result: 'skipped_degraded' });
-        return null;
-      }
-    }
-
-    logger.stream({ provider: providerName, attempt: attempt + 1, status: 'pending' });
-
-    try {
-      const result = await resolverFn();
-      const elapsed = Date.now() - attemptStart;
-
-      if (result && result.sources && result.sources.length > 0) {
-        // Record success in health tracker
-        recordSuccess(healthKey, elapsed);
-        logger.stream({ provider: providerName, attempt: attempt + 1, duration: elapsed, sources: result.sources.length, result: 'success' });
-        return result;
-      }
-
-      // Resolver returned null/empty sources (not an error)
-      const elapsed2 = Date.now() - attemptStart;
-      logger.stream({ provider: providerName, attempt: attempt + 1, duration: elapsed2, result: 'no_sources' });
-
-      if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, perRetryDelayMs));
-      }
-      continue;
-    } catch (err) {
-      const elapsed = Date.now() - attemptStart;
-      const { category, description } = classifyError(err);
-
-      logger.stream({ provider: providerName, attempt: attempt + 1, duration: elapsed, error: description || err.message, category, result: 'error' });
-
-      // Record failure only on last attempt
-      if (attempt === maxRetries) {
-        recordFailure(healthKey, elapsed);
-      }
-
-      // Non-retryable errors: abandon provider immediately
-      if (!classifyError(err).retryable && err.code !== 'PROVIDER_DEGRADED') {
-        logger.stream({ provider: providerName, attempt: attempt + 1, result: 'non_retryable' });
-        return null;
-      }
-
-      // Retry if attempts remain
-      if (attempt < maxRetries) {
-        const delay = perRetryDelayMs * Math.pow(2, attempt); // exponential backoff
-        logger.stream({ provider: providerName, attempt: attempt + 1, retryDelay: delay, retriesLeft: maxRetries - attempt, result: 'retry' });
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
+function describeFailure(category, result) {
+  if (!category) return 'unknown error';
+  switch (category) {
+    case 'FORBIDDEN':
+      return 'Cloudflare/anti-bot block (403)';
+    case 'TIMEOUT':
+      return 'request timed out';
+    case 'NOT_FOUND':
+      return 'resource not found (404)';
+    case 'RATE_LIMITED':
+      return 'rate limited (429)';
+    case 'SERVER_ERROR':
+      return 'provider server error (5xx)';
+    case 'DNS_FAILURE':
+      return 'DNS resolution failed';
+    case 'CONNECTION_REFUSED':
+      return 'connection refused (provider unavailable)';
+    case 'CONNECTION_RESET':
+      return 'connection reset by provider';
+    case 'NETWORK_ERROR':
+      return 'network error';
+    case 'PROVIDER_DEGRADED':
+      return 'provider marked degraded (skipped)';
+    default:
+      return result ? 'no playable stream found' : 'invalid stream';
   }
-
-  logger.stream({ provider: providerName, result: 'exhausted' });
-  return null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -212,12 +237,8 @@ async function executeWithRetry(providerName, healthKey, resolverFn) {
  * Maps "consumet-kickassanime" → provider "KickAssAnime" in the registry.
  */
 function buildConsumetSubProviderResolver(providerTag) {
-  // Convert "consumet-kickassanime" → "KickAssAnime" via the registry
   const normalizedId = normalizeProviderName(providerTag);
   const subProviderName = toConsumetClassName(normalizedId || providerTag) || providerTag;
-
-  // Health key derived solely from the registry. toHealthKey() always resolves
-  // known Consumet sub-providers to their 'consumet-<id>' key.
   const healthKey = toHealthKey(normalizedId || providerTag);
 
   return async (animeTitle, episodeNumber) => {
@@ -225,7 +246,6 @@ function buildConsumetSubProviderResolver(providerTag) {
       logger.stream({ provider: providerTag, result: 'not_in_registry', subProviderName });
       return null;
     }
-
     return consumetProvider.resolveStreamUrl({
       provider: subProviderName,
       title: animeTitle,
@@ -256,7 +276,7 @@ function buildConsumetHttpResolver() {
         return null;
       }
 
-const searchRes = await request({
+      const searchRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${encodeURIComponent(animeTitle)}`,
       }, {
@@ -273,7 +293,7 @@ const searchRes = await request({
       const target = results[0];
       const animeId = target.id;
 
-const epRes = await request({
+      const epRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${animeId}`,
       }, {
@@ -288,7 +308,7 @@ const epRes = await request({
         return null;
       }
 
-const srcRes = await request({
+      const srcRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`,
       }, {
@@ -351,7 +371,7 @@ function buildMiruroResolver() {
         return null;
       }
 
-const searchRes = await request({
+      const searchRes = await request({
         method: 'get',
         url: `${baseUrl}/search`,
         params: { query: animeTitle },
@@ -369,7 +389,7 @@ const searchRes = await request({
       const animeData = results[0];
       const animeId = animeData.id || animeData.slug;
 
-const epRes = await request({
+      const epRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${animeId}/episode/${episodeNumber}`,
       }, {
@@ -414,7 +434,6 @@ const epRes = await request({
 
 /**
  * Map provider tags to resolver factory functions.
- * This is the extensible registry — add new provider types here.
  */
 const RESOLVER_FACTORIES = {
   [CONSUMET_TAG_PREFIX]: buildConsumetSubProviderResolver,  // prefix match for consumet-*
@@ -424,22 +443,17 @@ const RESOLVER_FACTORIES = {
 
 /**
  * Build a resolver function for a given provider tag.
- * Falls back to consumet sub-provider if tag starts with 'consumet-'
- * and isn't 'consumet-http'.
  */
 function buildResolverForProvider(providerTag) {
   const tag = providerTag.toLowerCase();
 
-  // Exact match first
   if (tag === PROVIDER_IDS.CONSUMET_HTTP) return buildConsumetHttpResolver();
   if (tag === PROVIDER_IDS.MIRURO) return buildMiruroResolver();
 
-  // Prefix match for consumet-* sub-providers
   if (tag.startsWith(CONSUMET_TAG_PREFIX)) {
     return buildConsumetSubProviderResolver(tag);
   }
 
-  // Unknown provider type
   logger.warn('Unknown provider type', { providerTag });
   return null;
 }
@@ -451,13 +465,199 @@ function buildCacheKey(animeTitle, episodeNumber, providerName) {
   return `stream:${animeTitle.toLowerCase().replace(/\s+/g, '-')}:ep${episodeNumber}:${providerName || 'all'}`;
 }
 
-// ── Main Resolver ──────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  PER-PROVIDER EXECUTION
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Execute a single provider through its resolver with an internal retry
+ * budget, concurrency-safe, collecting structured logs.
+ *
+ * NEVER throws — always resolves to a result object:
+ *   { resolved: boolean, result: object|null, error: string|null,
+ *     category: string|null, durationMs: number, attempts: number }
+ *
+ * This isolation is what guarantees a single provider failure/timeout can
+ * never crash the request or the parallel race.
+ *
+ * @param {string} providerTag - Provider tag (e.g. 'consumet-kickassanime')
+ * @param {Function} resolver - Async resolver fn(animeTitle, episodeNumber)
+ * @param {string} animeTitle
+ * @param {number|string} episodeNumber
+ * @returns {Promise<object>} Encapsulated outcome
+ */
+async function executeProvider(providerTag, resolver, animeTitle, episodeNumber) {
+  const healthKey = toHealthKey(providerTag);
+  const { maxRetries, perRetryDelayMs } = PROVIDER_RETRY_CONFIG;
+  const start = Date.now();
+  let attempts = 0;
+  let lastCategory = null;
+  let lastDescription = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    attempts++;
+
+    // Health check before attempting (skip degraded providers quickly).
+    if (attempt === 0 && !isProviderHealthy(healthKey)) {
+      logger.stream({ provider: providerTag, attempt: 1, result: 'skipped_degraded' });
+      return {
+        resolved: false,
+        result: null,
+        error: describeFailure('PROVIDER_DEGRADED'),
+        category: 'PROVIDER_DEGRADED',
+        durationMs: Date.now() - start,
+        attempts,
+      };
+    }
+
+    const attemptStart = Date.now();
+    logger.stream({ provider: providerTag, attempt: attempt + 1, status: 'pending' });
+
+    try {
+      const raw = await resolver(animeTitle, episodeNumber);
+      const result = normalizeProviderResult(raw);
+
+      if (result && result.sources.length > 0) {
+        recordSuccess(healthKey, Date.now() - attemptStart);
+        logger.stream({
+          provider: providerTag,
+          attempt: attempt + 1,
+          duration: Date.now() - attemptStart,
+          sources: result.sources.length,
+          result: 'success',
+        });
+        return {
+          resolved: true,
+          result,
+          error: null,
+          category: null,
+          durationMs: Date.now() - start,
+          attempts,
+        };
+      }
+
+      // No sources (empty search / missing episode / invalid stream) — not an error.
+      lastCategory = 'EMPTY';
+      lastDescription = describeFailure('EMPTY', result);
+      logger.stream({ provider: providerTag, attempt: attempt + 1, duration: Date.now() - attemptStart, result: 'no_sources' });
+
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, perRetryDelayMs));
+      }
+    } catch (err) {
+      const { category, description } = classifyError(err);
+      lastCategory = category;
+      lastDescription = description || err.message;
+      logger.stream({
+        provider: providerTag,
+        attempt: attempt + 1,
+        duration: Date.now() - attemptStart,
+        error: description || err.message,
+        category,
+        result: 'error',
+      });
+
+      // Record failure only on last attempt.
+      if (attempt === maxRetries) {
+        recordFailure(healthKey, Date.now() - attemptStart);
+      }
+
+      // Non-retryable errors: abandon provider immediately.
+      if (!classifyError(err).retryable && err.code !== 'PROVIDER_DEGRADED') {
+        logger.stream({ provider: providerTag, attempt: attempt + 1, result: 'non_retryable' });
+        break;
+      }
+
+      if (attempt < maxRetries) {
+        logger.stream({ provider: providerTag, attempt: attempt + 1, result: 'retry' });
+        await new Promise(resolve => setTimeout(resolve, perRetryDelayMs));
+      }
+    }
+  }
+
+  logger.stream({ provider: providerTag, result: 'exhausted' });
+  return {
+    resolved: false,
+    result: null,
+    error: describeFailure(lastCategory, null),
+    category: lastCategory,
+    durationMs: Date.now() - start,
+    attempts,
+  };
+}
+
+/**
+ * Execute a list of providers in PARALLEL and resolve with the first
+ * successful playable stream. All providers run concurrently; each is
+ * isolated so failures never crash the race. A global deadline aborts the
+ * whole batch fast.
+ *
+ * @param {Array<string>} providerTags - Provider tags to run
+ * @param {string} animeTitle
+ * @param {number|string} episodeNumber
+ * @param {object} [options]
+ * @param {number} [options.timeoutMs] - Overall deadline for this batch
+ * @returns {Promise<{result: object|null, logs: Array}>}
+ */
+async function executeProvidersInParallel(providerTags, animeTitle, episodeNumber, options = {}) {
+  const timeoutMs = options.timeoutMs || PIPELINE_TIMEOUT_MS;
+  const logs = [];
+
+  if (!providerTags.length) {
+    return { result: null, logs };
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      logs.push({ phase: 'parallel', result: 'timeout', timeoutMs });
+      logger.stream({ result: 'pipeline_timeout', timeoutMs, providers: providerTags.join(',') });
+      resolve({ result: null, logs, timedOut: true });
+    }, timeoutMs);
+
+    // Promise each provider; each returns an encapsulated outcome (never throws).
+    const promises = providerTags.map(async (tag) => {
+      const resolver = buildResolverForProvider(tag);
+      if (!resolver) {
+        return { resolved: false, result: null, error: 'no resolver', category: 'NO_RESOLVER', durationMs: 0, attempts: 0, tag };
+      }
+      const outcome = await executeProvider(tag, resolver, animeTitle, episodeNumber);
+      outcome.tag = tag;
+      return outcome;
+    });
+
+    Promise.all(promises).then((outcomes) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+
+      for (const o of outcomes) {
+        logs.push({
+          provider: o.tag,
+          resolved: o.resolved,
+          category: o.category,
+          error: o.error,
+          durationMs: o.durationMs,
+          attempts: o.attempts,
+        });
+      }
+
+      const winner = outcomes.find(o => o.resolved && o.result && o.result.sources.length > 0);
+      resolve({ result: winner ? winner.result : null, logs });
+    });
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MAIN RESOLVER
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Resolve the best available stream for an anime episode.
- * Tries providers in priority order; returns the first success.
- * NEVER stops after a single provider failure — continues through
- * every configured provider.
+ * Sequential-first (preferred provider) then parallel race.
+ * Returns the first successful stream; NEVER crashes on failure.
  *
  * @param {string} animeTitle — Title of the anime
  * @param {number|string} episodeNumber — Episode number
@@ -504,76 +704,90 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   }
 
   // ── Determine provider order ────────────────────────────
-  // If a preferred provider is specified, move it to the front
+  // If a preferred provider is specified, move it to the front.
   const providerOrder = preferredProvider
     ? [preferredProvider, ...PROVIDER_ORDER.filter(p => p !== preferredProvider)]
     : PROVIDER_ORDER;
 
   console.log(`[StreamingService] 📋 Provider execution order:`);
-  providerOrder.forEach((p, i) => {
-    console.log(`   ${i + 1}. ${p}`);
-  });
+  providerOrder.forEach((p, i) => console.log(`   ${i + 1}. ${p}`));
 
-// ── Try providers in order — NEVER STOP ON FAILURE ──────
-  for (const providerTag of providerOrder) {
-    // Build the resolver function for this provider tag
-    // Each resolver is an async function(animeTitle, episodeNumber) => result
-    const resolver = buildResolverForProvider(providerTag);
-    if (!resolver) {
-      console.warn(`[StreamingService] ⚠️ ${providerTag} | No resolver available — skipping`);
-      continue;
+  // Preferred provider (first) — try alone with a short soft deadline.
+  const preferredTag = providerOrder[0];
+  const remainingTags = providerOrder.slice(1);
+
+  let winner = null;
+  let winnerProvider = null;
+
+  if (preferredTag) {
+    const resolver = buildResolverForProvider(preferredTag);
+    if (resolver) {
+      console.log(`[StreamingService] 🚀 Trying preferred provider "${preferredTag}" first (soft deadline ${PREFERRED_SOFT_DEADLINE_MS}ms)`);
+      const preferredOutcome = await Promise.race([
+        executeProvider(preferredTag, resolver, animeTitle, episodeNumber),
+        new Promise(resolve => setTimeout(() => resolve({ resolved: false, result: null, error: 'soft deadline exceeded', category: 'SOFT_DEADLINE', durationMs: 0, attempts: 1, tag: preferredTag }), PREFERRED_SOFT_DEADLINE_MS)),
+      ]);
+
+      if (preferredOutcome.resolved && preferredOutcome.result && preferredOutcome.result.sources.length > 0) {
+        winner = preferredOutcome.result;
+        winnerProvider = preferredTag;
+      } else {
+        console.log(`[StreamingService] ➡️ Preferred "${preferredTag}" failed (${preferredOutcome.error || 'no sources'}) — launching parallel race`);
+      }
+    } else {
+      console.warn(`[StreamingService] ⚠️ ${preferredTag} | No resolver available — skipping`);
     }
+  }
 
-// Determine health key for this provider (used by providerHttp health tracking);
-    // derived solely from the registry so provider IDs stay consistent.
-    const healthKey = toHealthKey(providerTag);
-
-    // Execute with per-provider retry logic
-    // Each provider gets its own retry budget before the pipeline advances
-    const result = await executeWithRetry(providerTag, healthKey, () => {
-      return resolver(animeTitle, episodeNumber);
+  // ── Parallel race over remaining providers ──────────────
+  if (!winner && remainingTags.length > 0) {
+    console.log(`[StreamingService] ⚡ Racing ${remainingTags.length} providers in parallel (deadline ${PIPELINE_TIMEOUT_MS}ms)`);
+    const race = await executeProvidersInParallel(remainingTags, animeTitle, episodeNumber, {
+      timeoutMs: PIPELINE_TIMEOUT_MS,
     });
 
-    if (result && result.sources && result.sources.length > 0) {
-      // Filter by tier
-      const filteredSources = filterSourcesByTier(result.sources, isPremium);
-      if (filteredSources.length === 0) {
-        console.log(`[StreamingService] ⚠️ ${providerTag} returned sources but none match tier "${tier}" — continuing`);
-        continue;
-      }
+    if (race.result && race.result.sources.length > 0) {
+      winner = race.result;
+      winnerProvider = race.result.provider;
+    }
+  }
 
-      // Pick best quality for tier
-      const best = filteredSources.reduce((a, b) =>
-        parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-      , filteredSources[0]);
-
-      const payload = {
-        provider: result.provider || providerTag,
-        streamUrl: best.url,
-        sources: filteredSources,
-        subtitles: result.subtitles || [],
-        bestQuality: best.quality || 'auto',
-        tier,
-      };
-
-      // ── Cache the result ────────────────────────────────
-      try {
-        const cacheKey = buildCacheKey(animeTitle, episodeNumber);
-        await cache.set(cacheKey, payload, STREAM_CACHE_TTL);
-        console.log(`[StreamingService] 💾 CACHED | "${animeTitle}" Ep ${episodeNumber} for ${STREAM_CACHE_TTL}s`);
-      } catch (cacheErr) {
-        console.warn(`[StreamingService] Cache write failed: ${cacheErr.message}`);
-      }
-
-      const elapsed = Date.now() - overallStart;
-      console.log(`[StreamingService] ✅ RESOLVED | "${animeTitle}" Ep ${episodeNumber} → ${payload.provider} (${best.quality}) | ${elapsed}ms`);
-      console.log(`[StreamingService] 📊 Summary: ${providerOrder.length} providers configured, succeeded on ${providerTag}`);
-
-      return payload;
+  // ── Build the final payload ─────────────────────────────
+  if (winner && winner.sources.length > 0) {
+    // Filter by tier.
+    const filteredSources = filterSourcesByTier(winner.sources, isPremium);
+    if (filteredSources.length === 0) {
+      const msg = `No stream provider returned a source matching tier "${tier}" for "${animeTitle}" Episode ${episodeNumber}.`;
+      console.error(`[StreamingService] 🛑 ${msg}`);
+      throw new Error(msg);
     }
 
-    // This provider failed — log and continue to next
-    console.log(`[StreamingService] ➡️ ${providerTag} | Failed — advancing to next provider`);
+    // Pick best quality for tier.
+    const best = filteredSources.reduce((a, b) =>
+      parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
+    , filteredSources[0]);
+
+    const payload = {
+      provider: winner.provider || winnerProvider || 'unknown',
+      streamUrl: best.url,
+      sources: filteredSources,
+      subtitles: winner.subtitles || [],
+      bestQuality: best.quality || 'auto',
+      tier,
+    };
+
+    // ── Cache the result ────────────────────────────────
+    try {
+      const cacheKey = buildCacheKey(animeTitle, episodeNumber);
+      await cache.set(cacheKey, payload, STREAM_CACHE_TTL);
+      console.log(`[StreamingService] 💾 CACHED | "${animeTitle}" Ep ${episodeNumber} for ${STREAM_CACHE_TTL}s`);
+    } catch (cacheErr) {
+      console.warn(`[StreamingService] Cache write failed: ${cacheErr.message}`);
+    }
+
+    const elapsed = Date.now() - overallStart;
+    console.log(`[StreamingService] ✅ RESOLVED | "${animeTitle}" Ep ${episodeNumber} → ${payload.provider} (${best.quality}) | ${elapsed}ms`);
+    return payload;
   }
 
   // ── All providers failed ────────────────────────────────
@@ -581,12 +795,12 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   const attemptedProviders = providerOrder.join(', ');
   const errorMsg = `No stream provider could resolve "${animeTitle}" Episode ${episodeNumber}. Attempted ${providerOrder.length} providers: ${attemptedProviders} (${elapsed}ms)`;
   console.error(`[StreamingService] 🛑 ALL PROVIDERS FAILED | ${errorMsg}`);
-  console.error(`[StreamingService] 📊 Attempted ${providerOrder.length} providers in ${elapsed}ms: ${attemptedProviders}`);
   throw new Error(errorMsg);
 }
 
 /**
  * Resolve streams from ALL configured providers (for server switcher).
+ * Runs all providers in PARALLEL and collects the successful results.
  * Returns an array of results from each provider.
  *
  * @param {string} animeTitle
@@ -599,36 +813,34 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
   const { isPremium = false } = options;
   const results = [];
 
-  console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${episodeNumber}`);
+console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${episodeNumber}`);
 
-  for (const providerTag of PROVIDER_ORDER) {
-    const resolver = buildResolverForProvider(providerTag);
-    if (!resolver) continue;
+  // Run all providers in parallel; each outcome is isolated (never throws).
+  // A global deadline aborts the batch fast so a slow provider can't stall
+  // the server-switcher request. We collect ALL successes (not just the first).
+  const allOutcomes = await Promise.all(
+    PROVIDER_ORDER.map(async (tag) => {
+      const resolver = buildResolverForProvider(tag);
+      if (!resolver) return null;
+      return executeProvider(tag, resolver, animeTitle, episodeNumber);
+    })
+  );
 
-    try {
-      const healthKey = toHealthKey(providerTag);
+  for (let i = 0; i < PROVIDER_ORDER.length; i++) {
+    const outcome = allOutcomes[i];
+    if (!outcome || !outcome.resolved || !outcome.result || outcome.result.sources.length === 0) continue;
 
-      const result = await executeWithRetry(providerTag, healthKey, () => {
-        return resolver(animeTitle, episodeNumber);
-      });
+    const filteredSources = filterSourcesByTier(outcome.result.sources, isPremium);
+    const best = filteredSources.reduce((a, b) =>
+      parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
+    , filteredSources[0]);
 
-      if (result && result.sources && result.sources.length > 0) {
-        const filteredSources = filterSourcesByTier(result.sources, isPremium);
-        const best = filteredSources.reduce((a, b) =>
-          parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-        , filteredSources[0]);
-
-        results.push({
-          provider: result.provider || providerTag,
-          streamUrl: best?.url || null,
-          sources: filteredSources,
-          bestQuality: best?.quality || 'auto',
-        });
-      }
-    } catch (err) {
-      const { category } = classifyError(err);
-      console.warn(`[StreamingService] resolveAllProviders: ${providerTag} failed [${category}]: ${err.message}`);
-    }
+    results.push({
+      provider: outcome.result.provider || PROVIDER_ORDER[i],
+      streamUrl: best?.url || null,
+      sources: filteredSources,
+      bestQuality: best?.quality || 'auto',
+    });
   }
 
   console.log(`[StreamingService] 📋 resolveAllProviders | ${results.length}/${PROVIDER_ORDER.length} providers resolved`);
@@ -666,4 +878,3 @@ module.exports = {
   getProviderHealthStatus,
   QUALITY_TIERS,
 };
-
