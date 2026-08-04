@@ -1,21 +1,35 @@
-# Streaming Logging Audit — Implementation TODO
+# Nightly Validation Suite — Implementation TODO
 
-## Objective
+## Phase 1: Core Framework
 
-Replace generic console logging with structured diagnostic logging across the
-streaming pipeline. Every provider attempt records: provider ID, anime title,
-episode, start/end time, latency, result, failure reason, HTTP status, timeout
-status, Cloudflare detection, search success, stream success.
+- [ ] Create `validation/reporters.js` — report writer + reports dir management (latest + date-stamped)
+- [ ] Create `validation/context.js` — shared validation context factory
+- [ ] Create `validation/runner.js` — plugin loader/executor with PASS/PARTIAL/FAIL exit codes
 
-## Steps
+## Phase 2: Validators
 
-- [ ] 1. `utils/logger.js` — Add `STREAM_DEBUG` env support + `streamAttempt()` + `debugStream()` helpers
-- [ ] 2. `services/streamingService.js` — Replace raw `console.*` with structured logging; thread title/episode into attempts
-- [ ] 3. `services/consumetProvider.js` — Replace `console.*` with structured logging (search/stream success, Cloudflare, timeout)
-- [ ] 4. `services/hostedConsumetProvider.js` — Replace `console.log` with structured logger
-- [ ] 5. `services/consumet/server.js` — Replace `console.*` with structured logger
-- [ ] 6. `utils/providerHttp.js` — Enhance logging (timeout status, Cloudflare detection, HTTP status)
-- [ ] 7. `utils/streamingHttp.js` — Enhance logging (timeout + Cloudflare detection)
-- [ ] 8. `controllers/streamController.js` — Structured start/end/latency logging + stop leaking internal errors to users
-- [ ] 9. `.env.example` + `README.md` — Document `STREAM_DEBUG` env var
-- [ ] 10. Syntax-check all modified files
+- [ ] Create `validation/validators/providerValidator.js`
+- [ ] Create `validation/validators/streamValidator.js`
+- [ ] Create `validation/validators/subtitleValidator.js`
+- [ ] Create `validation/validators/metadataValidator.js`
+- [ ] Create `validation/validators/cacheValidator.js`
+- [ ] Create `validation/validators/concurrencyValidator.js`
+- [ ] Create `validation/validators/failureValidator.js`
+- [ ] Create `validation/validators/searchValidator.js`
+- [ ] Create `validation/validators/healthValidator.js`
+
+## Phase 3: Aggregation
+
+- [ ] Create `validation/readiness.js` — aggregate reports → production-readiness-report.md + .json
+- [ ] Create `validation/index.js` — orchestrator entry point
+
+## Phase 4: Wiring
+
+- [ ] Add `validate:nightly` script to `package.json`
+
+## Phase 5: Verification
+
+- [ ] Syntax-check all validation files
+- [ ] Run `npm run validate:nightly`
+- [ ] Verify all 10 reports exist under `reports/nightly/` + `reports/latest/`
+- [ ] Verify exit codes (PASS=0, PARTIAL=0+warnings, FAIL=1)

@@ -3,7 +3,10 @@
     "start": "node server.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "seed:catalogue": "node scripts/seed-catalogue.js"
+    "seed:catalogue": "node scripts/seed-catalogue.js",
+    "validate:nightly": "node validation/index.js",
+    "validate:quick": "node validation/index.js --quick",
+    "validate:concurrency": "node validation/index.js --skipConcurrency"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
