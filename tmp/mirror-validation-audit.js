@@ -12,7 +12,13 @@ const { request } = require('../utils/providerHttp');
 const TARGET_EPISODES = 50;
 const MAX_REDIRECT_HOPS = 12;
 const MAX_IFRAME_DEPTH = 4;
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 7000;
+const PROVIDER_CALL_TIMEOUT_MS = 12000;
+const EPISODE_PROCESS_TIMEOUT_MS = 30000;
+const MAX_SOURCE_CHAIN_PROBES = 3;
+const MAX_ENDPOINT_PROBES_PER_EPISODE = 2;
+const MAX_ENDPOINT_CANDIDATES_PER_EPISODE = 20;
+const MAX_DISCOVERED_URLS_PER_EPISODE = 160;
 
 const MIRROR_HINTS = [
   'vidstream',
@@ -73,6 +79,106 @@ function extractAllUrls(raw) {
   return [...out];
 }
 
+function decodeBase64Maybe(value) {
+  const token = String(value || '').trim();
+  if (!token || token.length < 16) return null;
+  if (!/^[A-Za-z0-9+/=]+$/.test(token)) return null;
+  try {
+    const decoded = Buffer.from(token, 'base64').toString('utf8');
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractBase64DecodedUrls(raw) {
+  const text = String(raw || '');
+  const out = new Set();
+  const tokenRx = /['"]([A-Za-z0-9+/=]{20,})['"]/g;
+  let m;
+  while ((m = tokenRx.exec(text)) !== null) {
+    const decoded = decodeBase64Maybe(m[1]);
+    if (!decoded) continue;
+    const urls = decoded.match(/https?:\/\/[^'"\s<>]+/gi) || [];
+    for (const u of urls) out.add(u);
+  }
+  return [...out];
+}
+
+function extractJsonStrings(raw) {
+  const text = String(raw || '');
+  const snippets = text.match(/\{[\s\S]{20,4000}?\}|\[[\s\S]{20,4000}?\]/g) || [];
+  const out = [];
+  for (const snippet of snippets) {
+    try {
+      const parsed = JSON.parse(snippet);
+      out.push(parsed);
+    } catch {
+      // ignore invalid JSON-like snippets
+    }
+  }
+  return out;
+}
+
+function collectUrlsFromObject(root, out = new Set()) {
+  const queue = [root];
+  const seen = new Set();
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node || typeof node !== 'object') continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) queue.push(item);
+      continue;
+    }
+
+    for (const value of Object.values(node)) {
+      if (typeof value === 'string') {
+        const urls = value.match(/https?:\/\/[^'"\s<>]+/gi) || [];
+        for (const u of urls) out.add(u);
+      } else if (value && typeof value === 'object') {
+        queue.push(value);
+      }
+    }
+  }
+  return out;
+}
+
+function analyzeDynamicSignals(rawHtml) {
+  const html = String(rawHtml || '');
+  const lower = html.toLowerCase();
+  return {
+    hasFetch: /fetch\s*\(/i.test(html),
+    hasXHR: /xmlhttprequest|\bxhr\b|new\s+xhr/i.test(html),
+    hasAjax: /\$\.ajax|jquery\.ajax|axios\.|\bajax\s*\(/i.test(html),
+    hasEmbeddedJson: /<script[^>]+type=['"]application\/(ld\+json|json)['"]/i.test(html),
+    hasBase64Payloads: /[A-Za-z0-9+/=]{24,}/.test(html),
+    hasRedirectPatterns: /location\.(assign|replace|href)|window\.location|http-equiv=['"]refresh/i.test(html),
+    hasGatePattern: /gate\.php|\bgatea\s*\(/i.test(lower),
+  };
+}
+
+function extractEndpointCandidates(rawHtml, baseUrl) {
+  const html = String(rawHtml || '');
+  const out = new Set();
+
+  const directAbs = html.match(/https?:\/\/[^'"\s<>]+/gi) || [];
+  for (const url of directAbs) {
+    if (/\/(api|ajax|embed|player|stream|source|mirror|gate)\b/i.test(url)) out.add(url);
+  }
+
+  const relRx = /['"](\/(?:api|ajax|embed|player|stream|source|mirror|gate)[^'"\s<>]*)['"]/gi;
+  let m;
+  while ((m = relRx.exec(html)) !== null) {
+    const abs = toAbs(baseUrl, m[1]);
+    if (abs) out.add(abs);
+  }
+
+  return [...out].slice(0, MAX_ENDPOINT_CANDIDATES_PER_EPISODE);
+}
+
 function extractIframeUrls(html, baseUrl) {
   const out = new Set();
   const text = String(html || '');
@@ -124,6 +230,7 @@ async function fetchWithRedirects(url, referer = null, maxHops = MAX_REDIRECT_HO
           providerName: 'animeheaven',
           timeout: REQUEST_TIMEOUT_MS,
           streaming: true,
+          dontTrackHealth: true,
           extraHeaders: referer ? { Referer: referer } : undefined,
         }
       );
@@ -183,6 +290,20 @@ async function fetchWithRedirects(url, referer = null, maxHops = MAX_REDIRECT_HO
   };
 }
 
+async function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timeout:${label}:${timeoutMs}`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function crawlNestedIframes(html, baseUrl, depth = 0, visited = new Set(), trace = []) {
   if (depth > MAX_IFRAME_DEPTH) {
     return { streamUrls: [], maxDepth: depth - 1, trace };
@@ -219,6 +340,118 @@ async function crawlNestedIframes(html, baseUrl, depth = 0, visited = new Set(),
     maxDepth,
     trace,
   };
+}
+
+async function crawlNestedEvidence(html, baseUrl, depth = 0, visited = new Set()) {
+  if (depth > MAX_IFRAME_DEPTH) {
+    return {
+      maxDepth: Math.max(0, depth - 1),
+      urls: [],
+      mirrorUrls: [],
+      endpointCandidates: [],
+      iframeTrace: [],
+      dynamicSignals: {
+        hasFetch: false,
+        hasXHR: false,
+        hasAjax: false,
+        hasEmbeddedJson: false,
+        hasBase64Payloads: false,
+        hasRedirectPatterns: false,
+        hasGatePattern: false,
+      },
+    };
+  }
+
+  const urls = new Set();
+  const mirrorUrls = new Set();
+  const endpointCandidates = new Set();
+  const iframeTrace = [];
+
+  const mergeSignals = (lhs, rhs) => ({
+    hasFetch: lhs.hasFetch || rhs.hasFetch,
+    hasXHR: lhs.hasXHR || rhs.hasXHR,
+    hasAjax: lhs.hasAjax || rhs.hasAjax,
+    hasEmbeddedJson: lhs.hasEmbeddedJson || rhs.hasEmbeddedJson,
+    hasBase64Payloads: lhs.hasBase64Payloads || rhs.hasBase64Payloads,
+    hasRedirectPatterns: lhs.hasRedirectPatterns || rhs.hasRedirectPatterns,
+    hasGatePattern: lhs.hasGatePattern || rhs.hasGatePattern,
+  });
+
+  let dynamicSignals = analyzeDynamicSignals(html);
+
+  const directUrls = extractAllUrls(html);
+  const decodedUrls = extractBase64DecodedUrls(html);
+  const jsonPayloads = extractJsonStrings(html);
+  const jsonUrls = new Set();
+  for (const payload of jsonPayloads) {
+    for (const u of collectUrlsFromObject(payload)) jsonUrls.add(u);
+  }
+
+  for (const u of [...directUrls, ...decodedUrls, ...jsonUrls]) {
+    const abs = /^https?:\/\//i.test(u) ? u : toAbs(baseUrl, u);
+    if (!abs) continue;
+    urls.add(abs);
+    if (isMirrorUrl(abs)) mirrorUrls.add(abs);
+  }
+
+  for (const ep of extractEndpointCandidates(html, baseUrl)) endpointCandidates.add(ep);
+
+  let maxDepth = depth;
+  const iframeUrls = extractIframeUrls(html, baseUrl);
+  for (const iframeUrl of iframeUrls) {
+    if (!iframeUrl || visited.has(iframeUrl)) continue;
+    visited.add(iframeUrl);
+
+    const fetched = await fetchWithRedirects(iframeUrl, baseUrl);
+    iframeTrace.push({
+      depth,
+      iframeUrl,
+      finalUrl: fetched.finalUrl,
+      status: fetched.finalStatus,
+      redirectCount: fetched.redirectCount,
+      redirectChain: fetched.hops,
+      error: fetched.error,
+    });
+
+    if (!fetched.ok || !fetched.html) continue;
+    const nested = await crawlNestedEvidence(fetched.html, fetched.finalUrl || iframeUrl, depth + 1, visited);
+    maxDepth = Math.max(maxDepth, nested.maxDepth);
+    dynamicSignals = mergeSignals(dynamicSignals, nested.dynamicSignals);
+
+    for (const u of nested.urls) {
+      urls.add(u);
+      if (isMirrorUrl(u)) mirrorUrls.add(u);
+    }
+    for (const ep2 of nested.endpointCandidates) endpointCandidates.add(ep2);
+    for (const t of nested.iframeTrace) iframeTrace.push(t);
+  }
+
+  return {
+    maxDepth,
+    urls: [...urls],
+    mirrorUrls: [...mirrorUrls],
+    endpointCandidates: [...endpointCandidates].slice(0, MAX_ENDPOINT_CANDIDATES_PER_EPISODE),
+    iframeTrace,
+    dynamicSignals,
+  };
+}
+
+async function probeEndpoints(urls, referer) {
+  const out = [];
+  for (const endpointUrl of (urls || []).slice(0, MAX_ENDPOINT_PROBES_PER_EPISODE)) {
+    const hit = await fetchWithRedirects(endpointUrl, referer, 4);
+    out.push({
+      url: endpointUrl,
+      success: !!hit.ok,
+      status: hit.finalStatus,
+      finalUrl: hit.finalUrl,
+      redirectCount: hit.redirectCount,
+      redirectChain: hit.hops,
+      responseSample: String(hit.html || '').slice(0, 220),
+      error: hit.error,
+    });
+  }
+  return out;
 }
 
 async function validateMirror(mirrorUrl, context) {
@@ -332,7 +565,11 @@ async function gatherEpisodeTargets(minEpisodes) {
     if (episodeTargets.length >= minEpisodes) break;
 
     try {
-      const episodes = await provider.getEpisodeList(title.identifier);
+      const episodes = await withTimeout(
+        provider.getEpisodeList(title.identifier),
+        PROVIDER_CALL_TIMEOUT_MS,
+        `episode_list:${title.identifier}`
+      );
       if (!Array.isArray(episodes) || !episodes.length) {
         titleScan.push({ identifier: title.identifier, title: title.title, episodeCount: 0 });
         continue;
@@ -367,6 +604,18 @@ async function run() {
   const mirrorUrlSeen = new Set();
   const mirrorHostSeen = new Set();
   const nonMirrorHostsSeen = new Set();
+  const discoveredUrlsSeen = new Set();
+  const globalRedirectChains = [];
+  const playerEvidenceSummary = {
+    episodesWithFetchSignal: 0,
+    episodesWithXHRSignal: 0,
+    episodesWithAjaxSignal: 0,
+    episodesWithEmbeddedJson: 0,
+    episodesWithBase64Payloads: 0,
+    episodesWithRedirectPatterns: 0,
+    episodesWithGatePattern: 0,
+    episodesWithNestedIframes: 0,
+  };
 
   for (const target of episodeTargets.slice(0, TARGET_EPISODES)) {
     const episodeRow = {
@@ -378,15 +627,23 @@ async function run() {
       sourceCount: 0,
       discoveredMirrorUrls: [],
       discoveredSourceHosts: [],
+      discoveredUrls: [],
+      mirrorCandidates: [],
+      redirectChains: [],
+      endpointProbeResults: [],
+      iframeDepth: 0,
+      iframeTrace: [],
+      playerEvidence: null,
       pageUrl: null,
     };
 
     try {
-      const player = await provider.resolvePlayer({
+      await withTimeout((async () => {
+      const player = await withTimeout(provider.resolvePlayer({
         title: target.title,
         identifier: target.identifier,
         episode: target.episodeNumber,
-      });
+      }), PROVIDER_CALL_TIMEOUT_MS, `resolve_player:${target.identifier}:${target.episodeNumber}`);
 
       episodeRow.resolvePlayerStatus = (player && !player.reason) ? 'success' : 'failure';
       episodeRow.resolveReason = player ? (player.reason || null) : 'null_player';
@@ -394,25 +651,107 @@ async function run() {
 
       const sourceUrls = [];
       const sources = Array.isArray(player && player.sources) ? player.sources : [];
+      const sourceChainProbes = [];
 
       for (const s of sources) {
         if (!s || !s.url) continue;
         sourceUrls.push(s.url);
+        if (sourceChainProbes.length < MAX_SOURCE_CHAIN_PROBES) {
+          sourceChainProbes.push({
+            url: s.url,
+            quality: s.quality || null,
+            language: s.language || s.lang || null,
+            priority: Number.isFinite(Number(s.priority)) ? Number(s.priority) : null,
+          });
+        }
       }
 
       if (player && player.html) {
         for (const u of extractAllUrls(player.html)) sourceUrls.push(u);
+        for (const u of extractBase64DecodedUrls(player.html)) sourceUrls.push(u);
+        const jsonPayloads = extractJsonStrings(player.html);
+        for (const payload of jsonPayloads) {
+          for (const u of collectUrlsFromObject(payload)) sourceUrls.push(u);
+        }
       }
 
-      const uniqueSourceUrls = [...new Set(sourceUrls)];
+      const nestedEvidence = await crawlNestedEvidence(player && player.html ? player.html : '', player.pageUrl || null, 0, new Set());
+      for (const u of nestedEvidence.urls) sourceUrls.push(u);
+
+      const uniqueSourceUrls = [...new Set(sourceUrls)]
+        .filter(Boolean)
+        .slice(0, MAX_DISCOVERED_URLS_PER_EPISODE);
       episodeRow.sourceCount = uniqueSourceUrls.length;
+      episodeRow.iframeDepth = nestedEvidence.maxDepth;
+      episodeRow.iframeTrace = nestedEvidence.iframeTrace;
+
+      const dynamicSignals = nestedEvidence.dynamicSignals;
+      episodeRow.playerEvidence = {
+        ...dynamicSignals,
+        iframeCount: extractIframeUrls(player && player.html ? player.html : '', player.pageUrl || null).length,
+        endpointCandidates: nestedEvidence.endpointCandidates,
+      };
+
+      if (dynamicSignals.hasFetch) playerEvidenceSummary.episodesWithFetchSignal += 1;
+      if (dynamicSignals.hasXHR) playerEvidenceSummary.episodesWithXHRSignal += 1;
+      if (dynamicSignals.hasAjax) playerEvidenceSummary.episodesWithAjaxSignal += 1;
+      if (dynamicSignals.hasEmbeddedJson) playerEvidenceSummary.episodesWithEmbeddedJson += 1;
+      if (dynamicSignals.hasBase64Payloads) playerEvidenceSummary.episodesWithBase64Payloads += 1;
+      if (dynamicSignals.hasRedirectPatterns) playerEvidenceSummary.episodesWithRedirectPatterns += 1;
+      if (dynamicSignals.hasGatePattern) playerEvidenceSummary.episodesWithGatePattern += 1;
+      if ((episodeRow.playerEvidence.iframeCount || 0) > 0 || episodeRow.iframeTrace.length > 0) {
+        playerEvidenceSummary.episodesWithNestedIframes += 1;
+      }
+
+      const playerChain = player.pageUrl
+        ? await fetchWithRedirects(player.pageUrl, null, MAX_REDIRECT_HOPS)
+        : null;
+      if (playerChain) {
+        episodeRow.redirectChains.push({
+          type: 'player_page',
+          originUrl: player.pageUrl,
+          finalUrl: playerChain.finalUrl,
+          redirectCount: playerChain.redirectCount,
+          chain: playerChain.hops,
+        });
+      }
+
+      for (const sourceProbe of sourceChainProbes) {
+        const chain = await fetchWithRedirects(sourceProbe.url, player.pageUrl || null, 4);
+        const chainRow = {
+          type: 'source_url',
+          originUrl: sourceProbe.url,
+          quality: sourceProbe.quality,
+          language: sourceProbe.language,
+          priority: sourceProbe.priority,
+          finalUrl: chain.finalUrl,
+          redirectCount: chain.redirectCount,
+          chain: chain.hops,
+        };
+        episodeRow.redirectChains.push(chainRow);
+      }
+
+      episodeRow.endpointProbeResults = await probeEndpoints(
+        nestedEvidence.endpointCandidates,
+        player.pageUrl || null
+      );
+
+      for (const chainRow of episodeRow.redirectChains) {
+        globalRedirectChains.push({
+          identifier: target.identifier,
+          episodeNumber: target.episodeNumber,
+          ...chainRow,
+        });
+      }
 
       const sourceHosts = new Set();
       for (const u of uniqueSourceUrls) {
         const host = getHost(u);
         if (host) sourceHosts.add(host);
+        if (u) discoveredUrlsSeen.add(u);
       }
       episodeRow.discoveredSourceHosts = [...sourceHosts];
+      episodeRow.discoveredUrls = uniqueSourceUrls;
 
       const mirrorCandidates = new Set();
       for (const u of uniqueSourceUrls) {
@@ -426,7 +765,25 @@ async function run() {
         }
       }
 
+      for (const u of nestedEvidence.mirrorUrls) {
+        mirrorCandidates.add(u);
+        mirrorUrlSeen.add(u);
+        const host = getHost(u);
+        if (host) mirrorHostSeen.add(host);
+      }
+
       episodeRow.discoveredMirrorUrls = [...mirrorCandidates];
+      episodeRow.mirrorCandidates = [...mirrorCandidates].map((url) => {
+        const sourceMeta = sources.find((s) => s && s.url === url) || null;
+        return {
+          host: getHost(url) || null,
+          url,
+          quality: sourceMeta ? (sourceMeta.quality || null) : null,
+          language: sourceMeta ? (sourceMeta.language || sourceMeta.lang || null) : null,
+          priority: sourceMeta && Number.isFinite(Number(sourceMeta.priority)) ? Number(sourceMeta.priority) : null,
+          availability: null,
+        };
+      });
 
       for (const mirrorUrl of mirrorCandidates) {
         const mirrorRow = await validateMirror(mirrorUrl, {
@@ -436,19 +793,48 @@ async function run() {
           pageUrl: player.pageUrl || null,
         });
         mirrorResults.push(mirrorRow);
+
+        const idx = episodeRow.mirrorCandidates.findIndex((x) => x.url === mirrorUrl);
+        if (idx >= 0) {
+          episodeRow.mirrorCandidates[idx].availability = mirrorRow.success ? 'available' : 'unavailable';
+        }
       }
+      })(), EPISODE_PROCESS_TIMEOUT_MS, `episode_process:${target.identifier}:${target.episodeNumber}`);
     } catch (error) {
       episodeRow.resolvePlayerStatus = 'failure';
       episodeRow.resolveReason = error.message || String(error);
     }
 
     episodes.push(episodeRow);
+
+    if (episodes.length % 5 === 0) {
+      console.log('PROGRESS', episodes.length, '/', Math.min(TARGET_EPISODES, episodeTargets.length));
+    }
   }
 
   const successCount = mirrorResults.filter((m) => m.success).length;
   const failureCount = mirrorResults.filter((m) => !m.success).length;
 
   const mirrorNeverAppeared = mirrorResults.length === 0;
+  const mirrorCount = mirrorUrlSeen.size;
+
+  const dynamicSignalEpisodes = [
+    playerEvidenceSummary.episodesWithFetchSignal,
+    playerEvidenceSummary.episodesWithXHRSignal,
+    playerEvidenceSummary.episodesWithAjaxSignal,
+    playerEvidenceSummary.episodesWithGatePattern,
+  ].reduce((a, b) => a + (b > 0 ? 1 : 0), 0);
+
+  const episodesWithAnyDynamicSignal = episodes.filter((ep) => {
+    const p = ep.playerEvidence || {};
+    return !!(p.hasFetch || p.hasXHR || p.hasAjax || p.hasGatePattern);
+  }).length;
+
+  const conclusion = mirrorCount > 0
+    ? 'mirrors_exposed'
+    : (episodesWithAnyDynamicSignal > Math.floor(Math.max(1, episodes.length) * 0.6)
+      ? 'mirrors_likely_dynamically_loaded_or_hidden_behind_runtime_api'
+      : 'no_runtime_evidence_of_mirror_exposure');
 
   const output = {
     generatedAt: new Date().toISOString(),
@@ -463,12 +849,38 @@ async function run() {
     discovery: {
       seedTitleCount,
       titleScan,
+      mirrorCount,
       discoveredMirrorUrls: [...mirrorUrlSeen],
       discoveredMirrorHosts: [...mirrorHostSeen],
       discoveredNonMirrorHosts: [...nonMirrorHostsSeen],
+      discoveredUrls: [...discoveredUrlsSeen],
       mirrorNeverAppeared,
     },
+    playerEvidence: {
+      episodesWithAnyDynamicSignal,
+      signalCoverage: {
+        fetch: playerEvidenceSummary.episodesWithFetchSignal,
+        xhr: playerEvidenceSummary.episodesWithXHRSignal,
+        ajax: playerEvidenceSummary.episodesWithAjaxSignal,
+        embeddedJson: playerEvidenceSummary.episodesWithEmbeddedJson,
+        base64Payloads: playerEvidenceSummary.episodesWithBase64Payloads,
+        redirectPatterns: playerEvidenceSummary.episodesWithRedirectPatterns,
+        gatePattern: playerEvidenceSummary.episodesWithGatePattern,
+        nestedIframes: playerEvidenceSummary.episodesWithNestedIframes,
+      },
+      dynamicSignalFamiliesObserved: dynamicSignalEpisodes,
+    },
+    redirectChains: {
+      totalChainsCaptured: globalRedirectChains.length,
+      chains: globalRedirectChains,
+    },
+    iframeDepth: {
+      maxObservedDepth: episodes.reduce((max, ep) => Math.max(max, Number(ep.iframeDepth || 0)), 0),
+      episodesWithIframeTraversal: episodes.filter((ep) => Array.isArray(ep.iframeTrace) && ep.iframeTrace.length > 0).length,
+    },
+    conclusion,
     mirrorValidationSummary: {
+      mirrorCount,
       mirrorsValidated: mirrorResults.length,
       successCount,
       failureCount,

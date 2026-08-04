@@ -9,6 +9,8 @@ const { provider } = require('../services/animeHeavenProvider');
 
 const TARGET_TITLES = 200;
 const RESULT_LIMIT = 10;
+const OUTPUT_FILE = 'search-quality-report.json';
+const REQUEST_TIMEOUT_MS = 20000;
 
 const seeds = [
   ...'abcdefghijklmnopqrstuvwxyz',
@@ -128,6 +130,44 @@ function makePartial(input) {
   return words.slice(0, 2).join(' ');
 }
 
+function readPreviousReport() {
+  if (!fs.existsSync(OUTPUT_FILE)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function buildPreviousComparison(previous, summary) {
+  if (!previous || !previous.summary) return null;
+  const prev = previous.summary;
+  return {
+    previousGeneratedAt: previous.generatedAt || null,
+    deltas: {
+      avgScore: Number((summary.avgScore - Number(prev.avgScore || 0)).toFixed(4)),
+      top1Accuracy: Number((summary.top1Accuracy - Number(prev.top1Rate || prev.top1Accuracy || 0)).toFixed(4)),
+      top10Recall: Number((summary.top10Recall - Number(prev.top10Recall || 0)).toFixed(4)),
+      falsePositives: Number((summary.falsePositives - Number(prev.falsePositiveMentions || prev.falsePositives || 0)).toFixed(0)),
+      falseNegatives: Number((summary.falseNegatives - Number(prev.falseNegativeQueries || prev.falseNegatives || 0)).toFixed(0)),
+    },
+  };
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timeout:${label}:${timeoutMs}`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function discoverTitles() {
   const found = new Map();
 
@@ -135,7 +175,7 @@ async function discoverTitles() {
     if (found.size >= 260) break;
 
     try {
-      const rows = await provider.searchAnime(q, 12);
+      const rows = await withTimeout(provider.searchAnime(q, 12), REQUEST_TIMEOUT_MS, `discover:${q}`);
       for (const row of rows || []) {
         if (!row || !row.identifier || !row.title) continue;
         if (found.has(row.identifier)) continue;
@@ -153,7 +193,7 @@ async function discoverTitles() {
 
   for (const mapped of titleMappings) {
     try {
-      const rows = await provider.searchAnime(mapped.english, 8);
+      const rows = await withTimeout(provider.searchAnime(mapped.english, 8), REQUEST_TIMEOUT_MS, `mapping:${mapped.english}`);
       const match = (rows || []).find((r) => titleMatches(mapped.english, r.title));
       if (match && match.identifier && !found.has(match.identifier)) {
         found.set(match.identifier, {
@@ -176,7 +216,7 @@ async function buildAliasMap(titles) {
 
   for (const t of sample) {
     try {
-      const details = await provider.getAnimeDetails(t.identifier);
+      const details = await withTimeout(provider.getAnimeDetails(t.identifier), REQUEST_TIMEOUT_MS, `details:${t.identifier}`);
       const aliases = Array.isArray(details && details.aliases) ? details.aliases : [];
       const useful = aliases.filter((a) => a && normalize(a) && normalize(a) !== normalize(t.title));
       if (useful.length) aliasMap.set(t.identifier, useful[0]);
@@ -290,7 +330,7 @@ async function evaluateCase(c) {
   let error = null;
 
   try {
-    rows = await provider.searchAnime(c.query, RESULT_LIMIT);
+    rows = await withTimeout(provider.searchAnime(c.query, RESULT_LIMIT), REQUEST_TIMEOUT_MS, `evaluate:${c.query}`);
   } catch (e) {
     error = e.message || String(e);
     rows = [];
@@ -335,6 +375,7 @@ async function evaluateCase(c) {
 }
 
 async function run() {
+  const previousReport = readPreviousReport();
   const discovered = await discoverTitles();
   if (discovered.length < TARGET_TITLES) {
     throw new Error(`discovered_titles_insufficient:${discovered.length}`);
@@ -344,9 +385,13 @@ async function run() {
   const cases = buildQueryCases(discovered.slice(0, TARGET_TITLES), aliasMap);
 
   const rows = [];
-  for (const c of cases) {
+  for (let i = 0; i < cases.length; i += 1) {
+    const c = cases[i];
     // eslint-disable-next-line no-await-in-loop
     rows.push(await evaluateCase(c));
+    if ((i + 1) % 20 === 0) {
+      console.log('PROGRESS', i + 1, '/', cases.length);
+    }
   }
 
   const typeSummary = {};
@@ -384,6 +429,18 @@ async function run() {
   const top1 = rows.filter((r) => r.rankingPosition === 1).length;
   const avgScore = Number((rows.reduce((a, r) => a + r.score, 0) / Math.max(1, rows.length)).toFixed(4));
 
+  const summary = {
+    totalQueries: rows.length,
+    avgScore,
+    top10Recall: Number((found / Math.max(1, rows.length)).toFixed(4)),
+    top1Rate: Number((top1 / Math.max(1, rows.length)).toFixed(4)),
+    top1Accuracy: Number((top1 / Math.max(1, rows.length)).toFixed(4)),
+    falseNegativeQueries: rows.filter((r) => r.falseNegatives.length).length,
+    falseNegatives: rows.filter((r) => r.falseNegatives.length).length,
+    falsePositiveMentions: rows.reduce((a, r) => a + r.falsePositives.length, 0),
+    falsePositives: rows.reduce((a, r) => a + r.falsePositives.length, 0),
+  };
+
   const out = {
     generatedAt: new Date().toISOString(),
     provider: 'services/animeHeavenProvider.js',
@@ -392,21 +449,15 @@ async function run() {
       resultLimit: RESULT_LIMIT,
       queryTypesRequired: ['misspelling', 'aliases', 'japanese', 'english', 'romaji', 'partial'],
     },
-    summary: {
-      totalQueries: rows.length,
-      avgScore,
-      top10Recall: Number((found / Math.max(1, rows.length)).toFixed(4)),
-      top1Rate: Number((top1 / Math.max(1, rows.length)).toFixed(4)),
-      falseNegativeQueries: rows.filter((r) => r.falseNegatives.length).length,
-      falsePositiveMentions: rows.reduce((a, r) => a + r.falsePositives.length, 0),
-    },
+    summary,
+    comparisonAgainstPreviousAudit: buildPreviousComparison(previousReport, summary),
     typeSummary,
     rows,
   };
 
-  fs.writeFileSync('search-quality-report.json', JSON.stringify(out, null, 2));
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(out, null, 2));
 
-  console.log('WROTE search-quality-report.json');
+  console.log('WROTE', OUTPUT_FILE);
   console.log('TOTAL', rows.length, 'AVG_SCORE', avgScore, 'TOP10_RECALL', out.summary.top10Recall, 'TOP1_RATE', out.summary.top1Rate);
 }
 

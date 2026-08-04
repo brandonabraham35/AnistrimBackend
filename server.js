@@ -14,6 +14,9 @@ process.on('uncaughtException', (error) => {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const providerHealthMonitor = require('./services/providerHealthMonitor');
+
+providerHealthMonitor.initialize();
 
 // ─── CORS Configuration ────────────────────────────────────
 const allowedOrigins = new Set([
@@ -67,6 +70,19 @@ try {
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development'
   });
+});
+
+app.get('/health/provider', (req, res) => {
+  try {
+    const snapshot = providerHealthMonitor.getSnapshot();
+    res.status(200).json(snapshot);
+  } catch (error) {
+    res.status(500).json({
+      provider: 'animeheaven',
+      status: 'error',
+      message: error && error.message ? error.message : 'health_snapshot_failed',
+    });
+  }
 });
 
 // ─── Static Files ──────────────────────────────────────────

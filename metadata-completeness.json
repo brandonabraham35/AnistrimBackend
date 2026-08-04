@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-04T13:11:17.044Z",
+  "generatedAt": "2026-08-04T14:17:59.630Z",
   "provider": "services/animeHeavenProvider.js",
   "constraints": {
     "requestedTitles": 200,
@@ -15,7 +15,7 @@
       "releaseYear": 200,
       "status": 0,
       "duration": 0,
-      "rating": 0,
+      "rating": 178,
       "banner": 200,
       "cover": 200,
       "episodeCount": 200
@@ -29,19 +29,205 @@
       "releaseYear": 100,
       "status": 0,
       "duration": 0,
-      "rating": 0,
+      "rating": 89,
       "banner": 100,
       "cover": 100,
       "episodeCount": 100
     },
-    "overallCompleteness": 66.67,
+    "overallCompleteness": 74.08,
     "totalTitles": 200
+  },
+  "beforeVsAfter": {
+    "baseline": "requested_validation_baseline",
+    "overall": {
+      "before": 66.67,
+      "after": 74.08,
+      "delta": 7.41
+    },
+    "fields": {
+      "studios": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 0,
+          "percentage": 0
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      },
+      "rating": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 178,
+          "percentage": 89
+        },
+        "deltaCount": 178,
+        "deltaPercentage": 89
+      },
+      "status": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 0,
+          "percentage": 0
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      },
+      "duration": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 0,
+          "percentage": 0
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      }
+    }
+  },
+  "previousRunComparison": {
+    "overall": {
+      "before": 74.08,
+      "after": 74.08,
+      "delta": 0
+    },
+    "fields": {
+      "studios": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 0,
+          "percentage": 0
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      },
+      "rating": {
+        "before": {
+          "count": 178,
+          "percentage": 89
+        },
+        "after": {
+          "count": 178,
+          "percentage": 89
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      },
+      "status": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 0,
+          "percentage": 0
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      },
+      "duration": {
+        "before": {
+          "count": 0,
+          "percentage": 0
+        },
+        "after": {
+          "count": 0,
+          "percentage": 0
+        },
+        "deltaCount": 0,
+        "deltaPercentage": 0
+      }
+    }
+  },
+  "perFieldStatistics": {
+    "studios": {
+      "count": 0,
+      "percentage": 0
+    },
+    "rating": {
+      "count": 178,
+      "percentage": 89
+    },
+    "status": {
+      "count": 0,
+      "percentage": 0
+    },
+    "duration": {
+      "count": 0,
+      "percentage": 0
+    }
+  },
+  "newlyExtractedExamples": {
+    "studios": [],
+    "rating": [],
+    "status": [],
+    "duration": []
+  },
+  "baselineExtractedExamples": {
+    "studios": [],
+    "rating": [
+      {
+        "identifier": "b9s90",
+        "title": "A Certain Magical Index",
+        "value": "7.6"
+      },
+      {
+        "identifier": "ea1z6",
+        "title": "A Certain Magical Index II",
+        "value": "7.9"
+      },
+      {
+        "identifier": "rk3og",
+        "title": "A Certain Magical Index III",
+        "value": "7.2"
+      },
+      {
+        "identifier": "hcte7",
+        "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+        "value": "7.6"
+      },
+      {
+        "identifier": "u95rf",
+        "title": "A Condition Called Love",
+        "value": "6.9"
+      },
+      {
+        "identifier": "xqjzb",
+        "title": "A Couple of Cuckoos",
+        "value": "7"
+      },
+      {
+        "identifier": "phnd3",
+        "title": "A Couple of Cuckoos Season 2",
+        "value": "6.8"
+      },
+      {
+        "identifier": "ryvby",
+        "title": "A Galaxy Next Door",
+        "value": "7.1"
+      }
+    ],
+    "status": [],
+    "duration": []
   },
   "fieldExamples": {
     "synopsis": "100%",
     "genres": "100%",
     "studios": "0%",
-    "rating": "0%",
+    "rating": "89%",
     "aliases": "100%",
     "duration": "0%",
     "status": "0%",
@@ -79,7 +265,7 @@
       "releaseYear": "2008",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.6",
       "banner": "https://animeheaven.me/image.php?6esra",
       "cover": "https://animeheaven.me/image.php?6esra",
       "episodeCount": 24
@@ -111,7 +297,7 @@
       "releaseYear": "2010",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.9",
       "banner": "https://animeheaven.me/image.php?ob24y",
       "cover": "https://animeheaven.me/image.php?ob24y",
       "episodeCount": 24
@@ -147,7 +333,7 @@
       "releaseYear": "2018",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.2",
       "banner": "https://animeheaven.me/image.php?33df4",
       "cover": "https://animeheaven.me/image.php?33df4",
       "episodeCount": 26
@@ -181,7 +367,7 @@
       "releaseYear": "2013",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.6",
       "banner": "https://animeheaven.me/image.php?tgh5h",
       "cover": "https://animeheaven.me/image.php?tgh5h",
       "episodeCount": 1
@@ -209,7 +395,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?bbxli",
       "cover": "https://animeheaven.me/image.php?bbxli",
       "episodeCount": 12
@@ -241,7 +427,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?qnbc0",
       "cover": "https://animeheaven.me/image.php?qnbc0",
       "episodeCount": 24
@@ -273,7 +459,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?2gym5",
       "cover": "https://animeheaven.me/image.php?2gym5",
       "episodeCount": 12
@@ -307,7 +493,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?yzayh",
       "cover": "https://animeheaven.me/image.php?yzayh",
       "episodeCount": 12
@@ -353,7 +539,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.3",
       "banner": "https://animeheaven.me/image.php?daqo8",
       "cover": "https://animeheaven.me/image.php?daqo8",
       "episodeCount": 12
@@ -387,7 +573,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?n79fy",
       "cover": "https://animeheaven.me/image.php?n79fy",
       "episodeCount": 12
@@ -421,7 +607,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.8",
       "banner": "https://animeheaven.me/image.php?kvd2v",
       "cover": "https://animeheaven.me/image.php?kvd2v",
       "episodeCount": 13
@@ -453,7 +639,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?y0n54",
       "cover": "https://animeheaven.me/image.php?y0n54",
       "episodeCount": 12
@@ -493,7 +679,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.6",
       "banner": "https://animeheaven.me/image.php?kwoaj",
       "cover": "https://animeheaven.me/image.php?kwoaj",
       "episodeCount": 12
@@ -523,7 +709,7 @@
       "releaseYear": "2019",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.7",
       "banner": "https://animeheaven.me/image.php?8dqrx",
       "cover": "https://animeheaven.me/image.php?8dqrx",
       "episodeCount": 12
@@ -555,7 +741,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?znotj",
       "cover": "https://animeheaven.me/image.php?znotj",
       "episodeCount": 12
@@ -585,7 +771,7 @@
       "releaseYear": "2010",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?lcrl0",
       "cover": "https://animeheaven.me/image.php?lcrl0",
       "episodeCount": 13
@@ -615,7 +801,7 @@
       "releaseYear": "2011",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?lh4j8",
       "cover": "https://animeheaven.me/image.php?lh4j8",
       "episodeCount": 13
@@ -651,7 +837,7 @@
       "releaseYear": "2009",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?eyyq0",
       "cover": "https://animeheaven.me/image.php?eyyq0",
       "episodeCount": 15
@@ -685,7 +871,7 @@
       "releaseYear": "2018",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.4",
       "banner": "https://animeheaven.me/image.php?mom4t",
       "cover": "https://animeheaven.me/image.php?mom4t",
       "episodeCount": 26
@@ -715,7 +901,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?ww5ij",
       "cover": "https://animeheaven.me/image.php?ww5ij",
       "episodeCount": 13
@@ -745,7 +931,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.8",
       "banner": "https://animeheaven.me/image.php?f1pfd",
       "cover": "https://animeheaven.me/image.php?f1pfd",
       "episodeCount": 12
@@ -775,7 +961,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?9ww37",
       "cover": "https://animeheaven.me/image.php?9ww37",
       "episodeCount": 27
@@ -809,7 +995,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.8",
       "banner": "https://animeheaven.me/image.php?6ju8v",
       "cover": "https://animeheaven.me/image.php?6ju8v",
       "episodeCount": 13
@@ -855,7 +1041,7 @@
       "releaseYear": "2018",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?pv9l9",
       "cover": "https://animeheaven.me/image.php?pv9l9",
       "episodeCount": 24
@@ -881,7 +1067,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.7",
       "banner": "https://animeheaven.me/image.php?v4580",
       "cover": "https://animeheaven.me/image.php?v4580",
       "episodeCount": 12
@@ -925,7 +1111,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?rnfu5",
       "cover": "https://animeheaven.me/image.php?rnfu5",
       "episodeCount": 13
@@ -969,7 +1155,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?wxba2",
       "cover": "https://animeheaven.me/image.php?wxba2",
       "episodeCount": 12
@@ -1009,7 +1195,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?bt4du",
       "cover": "https://animeheaven.me/image.php?bt4du",
       "episodeCount": 12
@@ -1055,7 +1241,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.1",
       "banner": "https://animeheaven.me/image.php?gkxxd",
       "cover": "https://animeheaven.me/image.php?gkxxd",
       "episodeCount": 12
@@ -1085,7 +1271,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.6",
       "banner": "https://animeheaven.me/image.php?lz34n",
       "cover": "https://animeheaven.me/image.php?lz34n",
       "episodeCount": 12
@@ -1107,7 +1293,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.2",
       "banner": "https://animeheaven.me/image.php?81a82",
       "cover": "https://animeheaven.me/image.php?81a82",
       "episodeCount": 12
@@ -1129,7 +1315,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?apq33",
       "cover": "https://animeheaven.me/image.php?apq33",
       "episodeCount": 13
@@ -1151,7 +1337,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.2",
       "banner": "https://animeheaven.me/image.php?egx68",
       "cover": "https://animeheaven.me/image.php?egx68",
       "episodeCount": 13
@@ -1189,7 +1375,7 @@
       "releaseYear": "2010",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?b06ma",
       "cover": "https://animeheaven.me/image.php?b06ma",
       "episodeCount": 12
@@ -1219,7 +1405,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.6",
       "banner": "https://animeheaven.me/image.php?rwyia",
       "cover": "https://animeheaven.me/image.php?rwyia",
       "episodeCount": 12
@@ -1267,7 +1453,7 @@
       "releaseYear": "2019",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?pqfuu",
       "cover": "https://animeheaven.me/image.php?pqfuu",
       "episodeCount": 12
@@ -1293,7 +1479,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.2",
       "banner": "https://animeheaven.me/image.php?rd9g9",
       "cover": "https://animeheaven.me/image.php?rd9g9",
       "episodeCount": 12
@@ -1321,7 +1507,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?nvzf1",
       "cover": "https://animeheaven.me/image.php?nvzf1",
       "episodeCount": 13
@@ -1385,7 +1571,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?8b9rt",
       "cover": "https://animeheaven.me/image.php?8b9rt",
       "episodeCount": 12
@@ -1421,7 +1607,7 @@
       "releaseYear": "2012",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?fzvyv",
       "cover": "https://animeheaven.me/image.php?fzvyv",
       "episodeCount": 12
@@ -1451,7 +1637,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?579eq",
       "cover": "https://animeheaven.me/image.php?uqcm3",
       "episodeCount": 12
@@ -1481,7 +1667,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.7",
       "banner": "https://animeheaven.me/image.php?vjl82",
       "cover": "https://animeheaven.me/image.php?m5mbe",
       "episodeCount": 12
@@ -1515,7 +1701,7 @@
       "releaseYear": "2013",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?xwhlg",
       "cover": "https://animeheaven.me/image.php?xwhlg",
       "episodeCount": 13
@@ -1589,7 +1775,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?0d1a9",
       "cover": "https://animeheaven.me/image.php?0d1a9",
       "episodeCount": 25
@@ -1633,7 +1819,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.5",
       "banner": "https://animeheaven.me/image.php?rqx3m",
       "cover": "https://animeheaven.me/image.php?rqx3m",
       "episodeCount": 12
@@ -1663,7 +1849,7 @@
       "releaseYear": "2007",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?ywnp3",
       "cover": "https://animeheaven.me/image.php?ywnp3",
       "episodeCount": 25
@@ -1701,7 +1887,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?b7v4c",
       "cover": "https://animeheaven.me/image.php?b7v4c",
       "episodeCount": 12
@@ -1733,7 +1919,7 @@
       "releaseYear": "2019",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?ftmuu",
       "cover": "https://animeheaven.me/image.php?ftmuu",
       "episodeCount": 11
@@ -1785,7 +1971,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?hurm8",
       "cover": "https://animeheaven.me/image.php?hurm8",
       "episodeCount": 25
@@ -1827,7 +2013,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.6",
       "banner": "https://animeheaven.me/image.php?l0l1c",
       "cover": "https://animeheaven.me/image.php?l0l1c",
       "episodeCount": 25
@@ -1875,7 +2061,7 @@
       "releaseYear": "2004",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?aq09t",
       "cover": "https://animeheaven.me/image.php?aq09t",
       "episodeCount": 13
@@ -1903,7 +2089,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.3",
       "banner": "https://animeheaven.me/image.php?3stpn",
       "cover": "https://animeheaven.me/image.php?3stpn",
       "episodeCount": 12
@@ -1939,7 +2125,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.4",
       "banner": "https://animeheaven.me/image.php?fj976",
       "cover": "https://animeheaven.me/image.php?fj976",
       "episodeCount": 12
@@ -1971,7 +2157,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?tz1mq",
       "cover": "https://animeheaven.me/image.php?tz1mq",
       "episodeCount": 13
@@ -2025,7 +2211,7 @@
       "releaseYear": "2016",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.7",
       "banner": "https://animeheaven.me/image.php?4rvhz",
       "cover": "https://animeheaven.me/image.php?4rvhz",
       "episodeCount": 12
@@ -2093,7 +2279,7 @@
       "releaseYear": "2006",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?t40rb",
       "cover": "https://animeheaven.me/image.php?t40rb",
       "episodeCount": 23
@@ -2167,7 +2353,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?b5qqq",
       "cover": "https://animeheaven.me/image.php?b5qqq",
       "episodeCount": 12
@@ -2205,7 +2391,7 @@
       "releaseYear": "2009",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?6ux41",
       "cover": "https://animeheaven.me/image.php?6ux41",
       "episodeCount": 175
@@ -2239,7 +2425,7 @@
       "releaseYear": "2014",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?tm2r5",
       "cover": "https://animeheaven.me/image.php?tm2r5",
       "episodeCount": 102
@@ -2275,7 +2461,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?24fzz",
       "cover": "https://animeheaven.me/image.php?24fzz",
       "episodeCount": 25
@@ -2309,7 +2495,7 @@
       "releaseYear": "2018",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?g1v4c",
       "cover": "https://animeheaven.me/image.php?g1v4c",
       "episodeCount": 51
@@ -2339,7 +2525,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.2",
       "banner": "https://animeheaven.me/image.php?5iwv6",
       "cover": "https://animeheaven.me/image.php?5iwv6",
       "episodeCount": 12
@@ -2375,7 +2561,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.9",
       "banner": "https://animeheaven.me/image.php?89573",
       "cover": "https://animeheaven.me/image.php?89573",
       "episodeCount": 12
@@ -2449,7 +2635,7 @@
       "releaseYear": "2006",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?8azxd",
       "cover": "https://animeheaven.me/image.php?8azxd",
       "episodeCount": 24
@@ -2483,7 +2669,7 @@
       "releaseYear": "2017",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?xrngl",
       "cover": "https://animeheaven.me/image.php?xrngl",
       "episodeCount": 3
@@ -2519,7 +2705,7 @@
       "releaseYear": "2014",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?ywmdn",
       "cover": "https://animeheaven.me/image.php?ywmdn",
       "episodeCount": 12
@@ -2555,7 +2741,7 @@
       "releaseYear": "2015",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?c2dim",
       "cover": "https://animeheaven.me/image.php?c2dim",
       "episodeCount": 13
@@ -2589,7 +2775,7 @@
       "releaseYear": "2008",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?h6ont",
       "cover": "https://animeheaven.me/image.php?h6ont",
       "episodeCount": 12
@@ -2623,7 +2809,7 @@
       "releaseYear": "2009",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?qahbu",
       "cover": "https://animeheaven.me/image.php?qahbu",
       "episodeCount": 12
@@ -2661,7 +2847,7 @@
       "releaseYear": "2017",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?uhynp",
       "cover": "https://animeheaven.me/image.php?uhynp",
       "episodeCount": 12
@@ -2697,7 +2883,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?2qgiq",
       "cover": "https://animeheaven.me/image.php?2qgiq",
       "episodeCount": 24
@@ -2747,7 +2933,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.2",
       "banner": "https://animeheaven.me/image.php?kobzi",
       "cover": "https://animeheaven.me/image.php?kobzi",
       "episodeCount": 24
@@ -2787,7 +2973,7 @@
       "releaseYear": "2015",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.8",
       "banner": "https://animeheaven.me/image.php?tmjex",
       "cover": "https://animeheaven.me/image.php?tmjex",
       "episodeCount": 12
@@ -2843,7 +3029,7 @@
       "releaseYear": "2004",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?jay78",
       "cover": "https://animeheaven.me/image.php?jay78",
       "episodeCount": 26
@@ -2887,7 +3073,7 @@
       "releaseYear": "2013",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.8",
       "banner": "https://animeheaven.me/image.php?afbi2",
       "cover": "https://animeheaven.me/image.php?afbi2",
       "episodeCount": 13
@@ -2933,7 +3119,7 @@
       "releaseYear": "2015",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?t1g7e",
       "cover": "https://animeheaven.me/image.php?t1g7e",
       "episodeCount": 12
@@ -2983,7 +3169,7 @@
       "releaseYear": "2016",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?g3o10",
       "cover": "https://animeheaven.me/image.php?g3o10",
       "episodeCount": 12
@@ -3067,7 +3253,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.2",
       "banner": "https://animeheaven.me/image.php?3ljew",
       "cover": "https://animeheaven.me/image.php?3ljew",
       "episodeCount": 13
@@ -3099,7 +3285,7 @@
       "releaseYear": "2014",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?lwnjo",
       "cover": "https://animeheaven.me/image.php?lwnjo",
       "episodeCount": 25
@@ -3133,7 +3319,7 @@
       "releaseYear": "2016",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "9",
       "banner": "https://animeheaven.me/image.php?k9ake",
       "cover": "https://animeheaven.me/image.php?k9ake",
       "episodeCount": 10
@@ -3163,7 +3349,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.9",
       "banner": "https://animeheaven.me/image.php?an2oa",
       "cover": "https://animeheaven.me/image.php?an2oa",
       "episodeCount": 1
@@ -3195,7 +3381,7 @@
       "releaseYear": "2015",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "9",
       "banner": "https://animeheaven.me/image.php?gjk96",
       "cover": "https://animeheaven.me/image.php?gjk96",
       "episodeCount": 25
@@ -3227,7 +3413,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?d3xr1",
       "cover": "https://animeheaven.me/image.php?d3xr1",
       "episodeCount": 13
@@ -3259,7 +3445,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.9",
       "banner": "https://animeheaven.me/image.php?rux6x",
       "cover": "https://animeheaven.me/image.php?rux6x",
       "episodeCount": 12
@@ -3283,7 +3469,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.3",
       "banner": "https://animeheaven.me/image.php?n52z1",
       "cover": "https://animeheaven.me/image.php?n52z1",
       "episodeCount": 12
@@ -3321,7 +3507,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?futcv",
       "cover": "https://animeheaven.me/image.php?futcv",
       "episodeCount": 12
@@ -3387,7 +3573,7 @@
       "releaseYear": "2014",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.1",
       "banner": "https://animeheaven.me/image.php?odtij",
       "cover": "https://animeheaven.me/image.php?odtij",
       "episodeCount": 5
@@ -3423,7 +3609,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?kz2dx",
       "cover": "https://animeheaven.me/image.php?kz2dx",
       "episodeCount": 13
@@ -3501,7 +3687,7 @@
       "releaseYear": "2014",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.4",
       "banner": "https://animeheaven.me/image.php?i15o7",
       "cover": "https://animeheaven.me/image.php?i15o7",
       "episodeCount": 13
@@ -3543,7 +3729,7 @@
       "releaseYear": "2015",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.5",
       "banner": "https://animeheaven.me/image.php?tfv8f",
       "cover": "https://animeheaven.me/image.php?tfv8f",
       "episodeCount": 13
@@ -3585,7 +3771,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?s934i",
       "cover": "https://animeheaven.me/image.php?s934i",
       "episodeCount": 13
@@ -3621,7 +3807,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?ueb6z",
       "cover": "https://animeheaven.me/image.php?ueb6z",
       "episodeCount": 1
@@ -3655,7 +3841,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.3",
       "banner": "https://animeheaven.me/image.php?ysjhd",
       "cover": "https://animeheaven.me/image.php?ysjhd",
       "episodeCount": 12
@@ -3681,7 +3867,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.6",
       "banner": "https://animeheaven.me/image.php?xv2gx",
       "cover": "https://animeheaven.me/image.php?xv2gx",
       "episodeCount": 24
@@ -3745,7 +3931,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?74caj",
       "cover": "https://animeheaven.me/image.php?74caj",
       "episodeCount": 12
@@ -3779,7 +3965,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.2",
       "banner": "https://animeheaven.me/image.php?psoly",
       "cover": "https://animeheaven.me/image.php?psoly",
       "episodeCount": 12
@@ -3799,7 +3985,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.5",
       "banner": "https://animeheaven.me/image.php?k6xdg",
       "cover": "https://animeheaven.me/image.php?k6xdg",
       "episodeCount": 12
@@ -3857,7 +4043,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?8gkp9",
       "cover": "https://animeheaven.me/image.php?8gkp9",
       "episodeCount": 12
@@ -3883,7 +4069,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.5",
       "banner": "https://animeheaven.me/image.php?wokvo",
       "cover": "https://animeheaven.me/image.php?wokvo",
       "episodeCount": 12
@@ -3911,7 +4097,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?8ii65",
       "cover": "https://animeheaven.me/image.php?8ii65",
       "episodeCount": 12
@@ -3977,7 +4163,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?3phqx",
       "cover": "https://animeheaven.me/image.php?3phqx",
       "episodeCount": 14
@@ -4013,7 +4199,7 @@
       "releaseYear": "2012",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?yayzp",
       "cover": "https://animeheaven.me/image.php?yayzp",
       "episodeCount": 12
@@ -4049,7 +4235,7 @@
       "releaseYear": "2012",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?6ic79",
       "cover": "https://animeheaven.me/image.php?6ic79",
       "episodeCount": 12
@@ -4077,7 +4263,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?4mwde",
       "cover": "https://animeheaven.me/image.php?4mwde",
       "episodeCount": 1
@@ -4117,7 +4303,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?w452f",
       "cover": "https://animeheaven.me/image.php?w452f",
       "episodeCount": 13
@@ -4153,7 +4339,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?l6ahp",
       "cover": "https://animeheaven.me/image.php?l6ahp",
       "episodeCount": 12
@@ -4219,7 +4405,7 @@
       "releaseYear": "2009",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?2jgcv",
       "cover": "https://animeheaven.me/image.php?2jgcv",
       "episodeCount": 13
@@ -4257,7 +4443,7 @@
       "releaseYear": "2010",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?j3oa3",
       "cover": "https://animeheaven.me/image.php?j3oa3",
       "episodeCount": 26
@@ -4311,7 +4497,7 @@
       "releaseYear": "2016",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?e2y7j",
       "cover": "https://animeheaven.me/image.php?e2y7j",
       "episodeCount": 12
@@ -4351,7 +4537,7 @@
       "releaseYear": "2019",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?itbsf",
       "cover": "https://animeheaven.me/image.php?itbsf",
       "episodeCount": 12
@@ -4385,7 +4571,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?uemlu",
       "cover": "https://animeheaven.me/image.php?uemlu",
       "episodeCount": 4
@@ -4419,7 +4605,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?dk0ke",
       "cover": "https://animeheaven.me/image.php?dk0ke",
       "episodeCount": 2
@@ -4455,7 +4641,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "9",
       "banner": "https://animeheaven.me/image.php?qm52g",
       "cover": "https://animeheaven.me/image.php?qm52g",
       "episodeCount": 13
@@ -4493,7 +4679,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.7",
       "banner": "https://animeheaven.me/image.php?jvzqb",
       "cover": "https://animeheaven.me/image.php?jvzqb",
       "episodeCount": 12
@@ -4527,7 +4713,7 @@
       "releaseYear": "2008",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.9",
       "banner": "https://animeheaven.me/image.php?c3v0x",
       "cover": "https://animeheaven.me/image.php?c3v0x",
       "episodeCount": 12
@@ -4607,7 +4793,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?3wivr",
       "cover": "https://animeheaven.me/image.php?dzwhp",
       "episodeCount": 12
@@ -4649,7 +4835,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.3",
       "banner": "https://animeheaven.me/image.php?tcbna",
       "cover": "https://animeheaven.me/image.php?ncylv",
       "episodeCount": 11
@@ -4685,7 +4871,7 @@
       "releaseYear": "2018",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.3",
       "banner": "https://animeheaven.me/image.php?nipss",
       "cover": "https://animeheaven.me/image.php?nipss",
       "episodeCount": 12
@@ -4719,7 +4905,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?0i8hk",
       "cover": "https://animeheaven.me/image.php?0i8hk",
       "episodeCount": 13
@@ -4753,7 +4939,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?v54bn",
       "cover": "https://animeheaven.me/image.php?141v8",
       "episodeCount": 12
@@ -4787,7 +4973,7 @@
       "releaseYear": "2017",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.3",
       "banner": "https://animeheaven.me/image.php?n1ktn",
       "cover": "https://animeheaven.me/image.php?n1ktn",
       "episodeCount": 12
@@ -4813,7 +4999,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?20wxp",
       "cover": "https://animeheaven.me/image.php?20wxp",
       "episodeCount": 13
@@ -4837,7 +5023,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.6",
       "banner": "https://animeheaven.me/image.php?ehokx",
       "cover": "https://animeheaven.me/image.php?ehokx",
       "episodeCount": 7
@@ -4861,7 +5047,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?fq4qf",
       "cover": "https://animeheaven.me/image.php?fq4qf",
       "episodeCount": 9
@@ -4889,7 +5075,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.5",
       "banner": "https://animeheaven.me/image.php?v5c51",
       "cover": "https://animeheaven.me/image.php?v5c51",
       "episodeCount": 12
@@ -4923,7 +5109,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?p584q",
       "cover": "https://animeheaven.me/image.php?p584q",
       "episodeCount": 11
@@ -4957,7 +5143,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?p3xor",
       "cover": "https://animeheaven.me/image.php?p3xor",
       "episodeCount": 13
@@ -5015,7 +5201,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?rcxth",
       "cover": "https://animeheaven.me/image.php?rcxth",
       "episodeCount": 5
@@ -5069,7 +5255,7 @@
       "releaseYear": "2017",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?i2s6n",
       "cover": "https://animeheaven.me/image.php?kb5as",
       "episodeCount": 13
@@ -5119,7 +5305,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?ky1q6",
       "cover": "https://animeheaven.me/image.php?ky1q6",
       "episodeCount": 1
@@ -5177,7 +5363,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?87m3i",
       "cover": "https://animeheaven.me/image.php?a718y",
       "episodeCount": 12
@@ -5205,7 +5391,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.6",
       "banner": "https://animeheaven.me/image.php?oahbf",
       "cover": "https://animeheaven.me/image.php?oahbf",
       "episodeCount": 12
@@ -5251,7 +5437,7 @@
       "releaseYear": "2016",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?xi4o5",
       "cover": "https://animeheaven.me/image.php?xi4o5",
       "episodeCount": 13
@@ -5293,7 +5479,7 @@
       "releaseYear": "2013",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?lsebz",
       "cover": "https://animeheaven.me/image.php?lsebz",
       "episodeCount": 25
@@ -5331,7 +5517,7 @@
       "releaseYear": "2012",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.2",
       "banner": "https://animeheaven.me/image.php?do66y",
       "cover": "https://animeheaven.me/image.php?do66y",
       "episodeCount": 25
@@ -5367,7 +5553,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?j3pdr",
       "cover": "https://animeheaven.me/image.php?j3pdr",
       "episodeCount": 12
@@ -5455,7 +5641,7 @@
       "releaseYear": "2018",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.4",
       "banner": "https://animeheaven.me/image.php?8zbq4",
       "cover": "https://animeheaven.me/image.php?8zbq4",
       "episodeCount": 12
@@ -5517,7 +5703,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?jb5fh",
       "cover": "https://animeheaven.me/image.php?jb5fh",
       "episodeCount": 12
@@ -5559,7 +5745,7 @@
       "releaseYear": "2006",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.3",
       "banner": "https://animeheaven.me/image.php?rwxv9",
       "cover": "https://animeheaven.me/image.php?rwxv9",
       "episodeCount": 47
@@ -5585,7 +5771,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.1",
       "banner": "https://animeheaven.me/image.php?0ecs9",
       "cover": "https://animeheaven.me/image.php?0ecs9",
       "episodeCount": 12
@@ -5619,7 +5805,7 @@
       "releaseYear": "2002",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?ez7kl",
       "cover": "https://animeheaven.me/image.php?ez7kl",
       "episodeCount": 220
@@ -5653,7 +5839,7 @@
       "releaseYear": "2007",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.1",
       "banner": "https://animeheaven.me/image.php?4itn1",
       "cover": "https://animeheaven.me/image.php?4itn1",
       "episodeCount": 500
@@ -5699,7 +5885,7 @@
       "releaseYear": "2008",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?uv9nq",
       "cover": "https://animeheaven.me/image.php?uv9nq",
       "episodeCount": 13
@@ -5745,7 +5931,7 @@
       "releaseYear": "2009",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.7",
       "banner": "https://animeheaven.me/image.php?23s8u",
       "cover": "https://animeheaven.me/image.php?23s8u",
       "episodeCount": 13
@@ -5791,7 +5977,7 @@
       "releaseYear": "2011",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.7",
       "banner": "https://animeheaven.me/image.php?71yce",
       "cover": "https://animeheaven.me/image.php?71yce",
       "episodeCount": 13
@@ -5837,7 +6023,7 @@
       "releaseYear": "2012",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?zjhex",
       "cover": "https://animeheaven.me/image.php?zjhex",
       "episodeCount": 13
@@ -5883,7 +6069,7 @@
       "releaseYear": "2016",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.8",
       "banner": "https://animeheaven.me/image.php?ikrc2",
       "cover": "https://animeheaven.me/image.php?ikrc2",
       "episodeCount": 11
@@ -5929,7 +6115,7 @@
       "releaseYear": "2017",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.9",
       "banner": "https://animeheaven.me/image.php?v0gft",
       "cover": "https://animeheaven.me/image.php?v0gft",
       "episodeCount": 11
@@ -5975,7 +6161,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.6",
       "banner": "https://animeheaven.me/image.php?jaxtz",
       "cover": "https://animeheaven.me/image.php?jaxtz",
       "episodeCount": 12
@@ -6009,7 +6195,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.8",
       "banner": "https://animeheaven.me/image.php?www8k",
       "cover": "https://animeheaven.me/image.php?www8k",
       "episodeCount": 12
@@ -6051,7 +6237,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "9",
       "banner": "https://animeheaven.me/image.php?q1ix4",
       "cover": "https://animeheaven.me/image.php?q1ix4",
       "episodeCount": 11
@@ -6083,7 +6269,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.4",
       "banner": "https://animeheaven.me/image.php?gmp27",
       "cover": "https://animeheaven.me/image.php?gmp27",
       "episodeCount": 12
@@ -6117,7 +6303,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?iyr0i",
       "cover": "https://animeheaven.me/image.php?iyr0i",
       "episodeCount": 13
@@ -6145,7 +6331,7 @@
       "releaseYear": "2026",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.4",
       "banner": "https://animeheaven.me/image.php?mto1k",
       "cover": "https://animeheaven.me/image.php?mto1k",
       "episodeCount": 12
@@ -6211,7 +6397,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?sravb",
       "cover": "https://animeheaven.me/image.php?sravb",
       "episodeCount": 12
@@ -6243,7 +6429,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.8",
       "banner": "https://animeheaven.me/image.php?l6ttz",
       "cover": "https://animeheaven.me/image.php?l6ttz",
       "episodeCount": 12
@@ -6275,7 +6461,7 @@
       "releaseYear": "2008",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?l8khj",
       "cover": "https://animeheaven.me/image.php?l8khj",
       "episodeCount": 25
@@ -6309,7 +6495,7 @@
       "releaseYear": "1999",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.4",
       "banner": "https://animeheaven.me/image.php?zbt7y",
       "cover": "https://animeheaven.me/image.php?zbt7y",
       "episodeCount": 1172
@@ -6373,7 +6559,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?blmvm",
       "cover": "https://animeheaven.me/image.php?blmvm",
       "episodeCount": 5
@@ -6409,7 +6595,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.1",
       "banner": "https://animeheaven.me/image.php?ibgi5",
       "cover": "https://animeheaven.me/image.php?ibgi5",
       "episodeCount": 21
@@ -6441,7 +6627,7 @@
       "releaseYear": "2010",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.6",
       "banner": "https://animeheaven.me/image.php?338al",
       "cover": "https://animeheaven.me/image.php?338al",
       "episodeCount": 13
@@ -6471,7 +6657,7 @@
       "releaseYear": "2023",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.1",
       "banner": "https://animeheaven.me/image.php?7rojj",
       "cover": "https://animeheaven.me/image.php?7rojj",
       "episodeCount": 12
@@ -6509,7 +6695,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?13rm4",
       "cover": "https://animeheaven.me/image.php?13rm4",
       "episodeCount": 12
@@ -6553,7 +6739,7 @@
       "releaseYear": "2014",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8.5",
       "banner": "https://animeheaven.me/image.php?w12dl",
       "cover": "https://animeheaven.me/image.php?w12dl",
       "episodeCount": 24
@@ -6619,7 +6805,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.4",
       "banner": "https://animeheaven.me/image.php?4h41p",
       "cover": "https://animeheaven.me/image.php?4h41p",
       "episodeCount": 12
@@ -6693,7 +6879,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.5",
       "banner": "https://animeheaven.me/image.php?ycilf",
       "cover": "https://animeheaven.me/image.php?ycilf",
       "episodeCount": 12
@@ -6729,7 +6915,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.6",
       "banner": "https://animeheaven.me/image.php?wz0c4",
       "cover": "https://animeheaven.me/image.php?wz0c4",
       "episodeCount": 12
@@ -6761,7 +6947,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?zy3ih",
       "cover": "https://animeheaven.me/image.php?zy3ih",
       "episodeCount": 10
@@ -6795,7 +6981,7 @@
       "releaseYear": "2012",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?7tskv",
       "cover": "https://animeheaven.me/image.php?okpox",
       "episodeCount": 13
@@ -6827,7 +7013,7 @@
       "releaseYear": "2015",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "8",
       "banner": "https://animeheaven.me/image.php?3y8ih",
       "cover": "https://animeheaven.me/image.php?3y8ih",
       "episodeCount": 13
@@ -6861,7 +7047,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.3",
       "banner": "https://animeheaven.me/image.php?c785a",
       "cover": "https://animeheaven.me/image.php?c785a",
       "episodeCount": 13
@@ -6895,7 +7081,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7",
       "banner": "https://animeheaven.me/image.php?vrwek",
       "cover": "https://animeheaven.me/image.php?vrwek",
       "episodeCount": 13
@@ -6931,7 +7117,7 @@
       "releaseYear": "2025",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "5.7",
       "banner": "https://animeheaven.me/image.php?h8r09",
       "cover": "https://animeheaven.me/image.php?h8r09",
       "episodeCount": 12
@@ -6973,7 +7159,7 @@
       "releaseYear": "2021",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.3",
       "banner": "https://animeheaven.me/image.php?1wp2i",
       "cover": "https://animeheaven.me/image.php?1wp2i",
       "episodeCount": 13
@@ -7011,7 +7197,7 @@
       "releaseYear": "2024",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "6.9",
       "banner": "https://animeheaven.me/image.php?w8i7r",
       "cover": "https://animeheaven.me/image.php?w8i7r",
       "episodeCount": 12
@@ -7047,7 +7233,7 @@
       "releaseYear": "2022",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.4",
       "banner": "https://animeheaven.me/image.php?yp76h",
       "cover": "https://animeheaven.me/image.php?yp76h",
       "episodeCount": 12
@@ -7083,7 +7269,7 @@
       "releaseYear": "2019",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?0255c",
       "cover": "https://animeheaven.me/image.php?0255c",
       "episodeCount": 12
@@ -7119,7 +7305,7 @@
       "releaseYear": "2020",
       "status": null,
       "duration": null,
-      "rating": null,
+      "rating": "7.7",
       "banner": "https://animeheaven.me/image.php?udx6i",
       "cover": "https://animeheaven.me/image.php?udx6i",
       "episodeCount": 12

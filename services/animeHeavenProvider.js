@@ -37,6 +37,35 @@ const MIRROR_HINTS = [
   'filelions',
 ];
 
+const COMMON_ANIME_SYNONYMS = Object.freeze({
+  aot: ['attack on titan', 'shingeki no kyojin', '進撃の巨人'],
+  snk: ['shingeki no kyojin', 'attack on titan', '進撃の巨人'],
+  mha: ['my hero academia', 'boku no hero academia', '僕のヒーローアカデミア'],
+  op: ['one piece', 'ワンピース'],
+  sao: ['sword art online', 'ソードアートオンライン'],
+  hxh: ['hunter x hunter', 'ハンター ハンター'],
+  fmab: ['fullmetal alchemist brotherhood', 'hagane no renkinjutsushi', '鋼の錬金術師'],
+  jjk: ['jujutsu kaisen', '呪術廻戦'],
+  kny: ['kimetsu no yaiba', 'demon slayer', '鬼滅の刃'],
+  rezero: ['re zero', 'rezero', 're zero kara hajimeru isekai seikatsu', 're ゼロ から始める異世界生活'],
+  oregairu: ['my teen romantic comedy snafu', 'yahari ore no seishun love comedy wa machigatteiru'],
+  monogatari: ['bakemonogatari', '物語'],
+});
+
+const ROMAJI_ALIASES = Object.freeze({
+  shingeki: ['attack'],
+  kyojin: ['titan'],
+  kimetsu: ['demon'],
+  yaiba: ['slayer'],
+  boku: ['my'],
+  hero: ['academia'],
+  jujutsu: ['sorcery'],
+  kaisen: ['battle'],
+  kusuriya: ['apothecary'],
+  hitorigoto: ['diaries'],
+  kokurasetai: ['love is war'],
+});
+
 const CLOUDFLARE_PATTERNS = [
   /cloudflare/i,
   /checking your browser/i,
@@ -75,6 +104,11 @@ const pageCache = new Map();
 const redirectCache = new Map();
 const cookieJar = new Map();
 const mirrorHealth = new Map();
+const subtitleProbeCache = new Map();
+
+const SUBTITLE_PROBE_TTL_MS = 20 * 60 * 1000;
+const MAX_SUBTITLE_SOURCE_PROBES = 2;
+const MAX_SUBTITLE_URL_PROBES = 12;
 
 const providerStats = {
   attempts: 0,
@@ -174,13 +208,123 @@ function stripDiacritics(value) {
   return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 }
 
-function normalizeTitle(input) {
+function toHiragana(input) {
+  return String(input || '').replace(/[\u30A1-\u30F6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+}
+
+function collapseWhitespace(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeJapanese(input) {
+  const normalized = toHiragana(String(input || '').normalize('NFKC'));
+  return normalized
+    .replace(/[ー〜～・･]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function normalizeRomaji(input) {
   return stripDiacritics(String(input || ''))
     .toLowerCase()
-    .replace(/&amp;/g, '&')
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .normalize('NFKC')
+    .replace(/ou/g, 'o')
+    .replace(/oo/g, 'o')
+    .replace(/uu/g, 'u')
+    .replace(/aa/g, 'a')
+    .replace(/ii/g, 'i')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeTitle(input) {
+  return stripDiacritics(String(input || '').normalize('NFKC'))
+    .toLowerCase()
+    .replace(/&amp;/g, ' and ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeNormalized(input) {
+  return normalizeTitle(input).split(' ').filter(Boolean);
+}
+
+function sortedTokenSignature(input) {
+  const tokens = tokenizeNormalized(input);
+  return tokens.sort().join(' ');
+}
+
+function hasJapaneseChars(input) {
+  return /[\u3040-\u30ff\u3400-\u9fff]/.test(String(input || ''));
+}
+
+function buildSynonymMap() {
+  const map = new Map();
+  for (const [key, values] of Object.entries(COMMON_ANIME_SYNONYMS)) {
+    const bucket = [key, ...values].map(v => normalizeTitle(v)).filter(Boolean);
+    for (const term of bucket) {
+      const row = map.get(term) || new Set();
+      for (const b of bucket) row.add(b);
+      map.set(term, row);
+    }
+  }
+  return map;
+}
+
+const SYNONYM_LOOKUP = buildSynonymMap();
+
+function expandWithSynonyms(terms) {
+  const out = new Set(terms.filter(Boolean));
+  for (const t of terms) {
+    const n = normalizeTitle(t);
+    if (!n) continue;
+    const hit = SYNONYM_LOOKUP.get(n);
+    if (hit) {
+      for (const v of hit) out.add(v);
+    }
+
+    const tokens = n.split(' ').filter(Boolean);
+    for (const tok of tokens) {
+      const hit2 = SYNONYM_LOOKUP.get(tok);
+      if (hit2) {
+        for (const v of hit2) out.add(v);
+      }
+      const ra = ROMAJI_ALIASES[tok];
+      if (ra) {
+        for (const rv of ra) out.add(normalizeTitle(rv));
+      }
+    }
+  }
+  return [...out].filter(Boolean);
+}
+
+function buildMatchVariants(input) {
+  const raw = String(input || '');
+  const base = normalizeTitle(raw);
+  const variants = new Set();
+  if (base) variants.add(base);
+
+  const romaji = normalizeRomaji(raw);
+  if (romaji) variants.add(romaji);
+
+  const sorted = sortedTokenSignature(raw);
+  if (sorted) variants.add(sorted);
+
+  if (hasJapaneseChars(raw)) {
+    const ja = normalizeJapanese(raw);
+    if (ja) variants.add(ja);
+  }
+
+  const expanded = expandWithSynonyms([...variants]);
+  for (const ex of expanded) {
+    variants.add(ex);
+    const s2 = sortedTokenSignature(ex);
+    if (s2) variants.add(s2);
+  }
+
+  return [...variants].filter(Boolean);
 }
 
 function cleanTitle(input) {
@@ -222,20 +366,33 @@ function expandSearchTerms(query) {
   const base = String(query || '').trim();
   if (!base) return [];
 
-  const out = new Set([base]);
+  const out = new Set([base, collapseWhitespace(base)]);
   out.add(base.replace(/&/g, ' and '));
   out.add(base.replace(/\band\b/gi, '&'));
   out.add(base.replace(/\bseason\b/gi, 's'));
-  out.add(base.replace(/\s+/g, ' '));
+  out.add(base.replace(/[\-_:]/g, ' '));
 
-  const map = {
-    aot: 'attack on titan',
-    snk: 'shingeki no kyojin',
-    mha: 'my hero academia',
-  };
-  const words = base.toLowerCase().split(/\s+/).filter(Boolean);
+  const words = normalizeTitle(base).split(/\s+/).filter(Boolean);
   for (const w of words) {
-    if (map[w]) out.add(map[w]);
+    const hit = COMMON_ANIME_SYNONYMS[w];
+    if (hit) hit.forEach(v => out.add(v));
+    const romajiHints = ROMAJI_ALIASES[w];
+    if (romajiHints) romajiHints.forEach(v => out.add(v));
+  }
+
+  if (hasJapaneseChars(base)) {
+    const jp = normalizeJapanese(base);
+    if (jp) out.add(jp);
+  }
+
+  const romaji = normalizeRomaji(base);
+  if (romaji && romaji !== normalizeTitle(base)) {
+    out.add(romaji);
+  }
+
+  const expanded = expandWithSynonyms([...out]);
+  for (const e of expanded) {
+    out.add(e);
   }
 
   return [...out].map(v => v.trim()).filter(Boolean);
@@ -316,42 +473,72 @@ function extractAllUrls(blob) {
 }
 
 function scoreTitleCandidate(candidate, query, aliases = []) {
-  const c = normalizeTitle(candidate);
-  const q = normalizeTitle(query);
-  if (!c || !q) return 0;
+  const queryVariants = buildMatchVariants(query);
+  const candidateVariants = buildMatchVariants(candidate);
+  if (!queryVariants.length || !candidateVariants.length) return 0;
 
-  if (c === q) return 130;
-  if (c.startsWith(q)) return 115;
-  if (c.includes(q)) return 105;
+  let best = 0;
+  const baseCandidate = candidateVariants[0] || normalizeTitle(candidate);
 
-  const cTokens = new Set(c.split(' ').filter(Boolean));
-  const qTokens = q.split(' ').filter(Boolean);
-  const qTokenSet = new Set(qTokens);
-  let overlap = 0;
-  for (const token of qTokens) {
-    if (cTokens.has(token)) overlap++;
+  for (const q of queryVariants) {
+    for (const c of candidateVariants) {
+      let score = 0;
+
+      if (c === q) score = Math.max(score, 140);
+      else if (c.startsWith(q)) score = Math.max(score, 122);
+      else if (c.includes(q)) score = Math.max(score, 108);
+
+      const cTokens = new Set(c.split(' ').filter(Boolean));
+      const qTokens = q.split(' ').filter(Boolean);
+      const qTokenSet = new Set(qTokens);
+      let overlap = 0;
+      for (const token of qTokens) {
+        if (cTokens.has(token)) overlap += 1;
+      }
+
+      const union = new Set([...cTokens, ...qTokenSet]);
+      const jaccard = union.size ? (overlap / union.size) : 0;
+      score += overlap * 9;
+      if (overlap >= Math.max(2, Math.floor(qTokens.length * 0.65))) score += 24;
+      score += Math.round(jaccard * 35);
+
+      const distance = levenshtein(c, q);
+      const maxLen = Math.max(c.length, q.length) || 1;
+      const similarity = 1 - (distance / maxLen);
+      score += Math.max(0, Math.round(similarity * 42));
+
+      const sortedC = sortedTokenSignature(c);
+      const sortedQ = sortedTokenSignature(q);
+      if (sortedC && sortedQ && sortedC === sortedQ) score += 18;
+
+      if (hasJapaneseChars(q) && hasJapaneseChars(c)) {
+        const jaQ = normalizeJapanese(q);
+        const jaC = normalizeJapanese(c);
+        if (jaQ && jaC && (jaQ === jaC || jaC.includes(jaQ) || jaQ.includes(jaC))) {
+          score += 28;
+        }
+      }
+
+      best = Math.max(best, score);
+    }
   }
-
-  const union = new Set([...cTokens, ...qTokenSet]);
-  const jaccard = union.size ? (overlap / union.size) : 0;
-
-  let score = overlap * 9;
-  if (overlap >= Math.max(2, Math.floor(qTokens.length * 0.65))) score += 24;
-  score += Math.round(jaccard * 35);
-
-  const distance = levenshtein(c, q);
-  const maxLen = Math.max(c.length, q.length) || 1;
-  const similarity = 1 - (distance / maxLen);
-  score += Math.max(0, Math.round(similarity * 40));
 
   for (const alias of aliases) {
-    const a = normalizeTitle(alias);
-    if (!a) continue;
-    if (a === q) score = Math.max(score, 120);
-    else if (a.includes(q) || q.includes(a)) score = Math.max(score, 98);
+    const aliasVariants = buildMatchVariants(alias);
+    for (const av of aliasVariants) {
+      for (const qv of queryVariants) {
+        if (!av || !qv) continue;
+        if (av === qv) best = Math.max(best, 130);
+        else if (av.includes(qv) || qv.includes(av)) best = Math.max(best, 104);
+      }
+    }
   }
 
-  return score;
+  if (baseCandidate && queryVariants.some(qv => baseCandidate.includes(qv))) {
+    best += 2;
+  }
+
+  return best;
 }
 
 function classifyFailure({ status, message, html }) {
@@ -706,6 +893,71 @@ function normalizeSubtitleLang(value) {
   return raw;
 }
 
+function detectSubtitleFormat(url, contentType = '') {
+  const value = String(url || '').toLowerCase();
+  const type = String(contentType || '').toLowerCase();
+  if (/\.vtt(\?|$)/.test(value) || type.includes('text/vtt') || type.includes('webvtt')) return 'vtt';
+  if (/\.srt(\?|$)/.test(value) || type.includes('application/x-subrip') || type.includes('text/srt')) return 'srt';
+  if (/\.ass(\?|$)/.test(value) || type.includes('text/x-ass')) return 'ass';
+  if (/\.ssa(\?|$)/.test(value) || type.includes('text/x-ssa')) return 'ssa';
+  return 'unknown';
+}
+
+function isLikelySubtitleResponse(text, contentType = '') {
+  const body = String(text || '').slice(0, 2000);
+  const type = String(contentType || '').toLowerCase();
+  if (type.includes('text/vtt') || type.includes('webvtt')) return true;
+  if (type.includes('application/x-subrip') || type.includes('text/srt') || type.includes('text/x-ass') || type.includes('text/x-ssa')) return true;
+  if (/^\s*WEBVTT/i.test(body)) return true;
+  if (/\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}/.test(body)) return true;
+  return false;
+}
+
+function parseSubtitleTracksFromJson(value, baseUrl, out = []) {
+  if (!value || typeof value !== 'object') return out;
+  const queue = [value];
+  const seen = new Set();
+
+  const pushTrack = (url, lang, meta = {}) => {
+    const absolute = safeAbsoluteUrl(baseUrl, url);
+    if (!absolute) return;
+    if (out.some(x => x.url === absolute)) return;
+    out.push({
+      lang: normalizeSubtitleLang(lang || meta.label || meta.srclang || 'Unknown'),
+      url: absolute,
+      format: detectSubtitleFormat(absolute),
+      default: !!meta.default || /default/i.test(String(meta.kind || '')),
+      forced: !!meta.forced || /forced/i.test(String(meta.kind || '')),
+    });
+  };
+
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node || typeof node !== 'object') continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) queue.push(item);
+      continue;
+    }
+
+    const directUrl = node.file || node.src || node.url || node.uri;
+    if (directUrl && /\.(vtt|srt|ass|ssa)(\?|$)/i.test(String(directUrl))) {
+      pushTrack(directUrl, node.lang || node.language || node.label || node.srclang || 'Unknown', node);
+    }
+
+    const trackLike = node.tracks || node.subtitles || node.captions || node.textTracks || node.subtitleTracks;
+    if (trackLike) queue.push(trackLike);
+
+    for (const value2 of Object.values(node)) {
+      if (value2 && typeof value2 === 'object') queue.push(value2);
+    }
+  }
+
+  return out;
+}
+
 function parseSubtitles(html, baseUrl) {
   const $ = cheerio.load(String(html || ''));
   const out = [];
@@ -718,6 +970,7 @@ function parseSubtitles(html, baseUrl) {
     out.push({
       lang: normalizeSubtitleLang(lang),
       url: absolute,
+      format: detectSubtitleFormat(absolute),
       default: !!meta.default || /default/i.test(lowerMeta),
       forced: !!meta.forced || /forced/i.test(lowerMeta),
     });
@@ -750,8 +1003,232 @@ function parseSubtitles(html, baseUrl) {
   while ((m = subtitleJsonRegex.exec(blob)) !== null) {
     const urls = extractAllUrls(m[2]);
     for (const u of urls) {
-      if (/\.(vtt|srt|ass)(\?|$)/i.test(u)) push(u, 'Unknown');
+      if (/\.(vtt|srt|ass|ssa)(\?|$)/i.test(u)) push(u, 'Unknown');
     }
+
+    const maybeJson = parseJsonMaybe(m[2]);
+    if (maybeJson) {
+      const parsed = parseSubtitleTracksFromJson(maybeJson, baseUrl, []);
+      for (const track of parsed) {
+        push(track.url, track.lang, track);
+      }
+    }
+  }
+
+  const jsonObjRegex = /\{[\s\S]{40,6000}?\}/g;
+  while ((m = jsonObjRegex.exec(blob)) !== null) {
+    const parsed = parseJsonMaybe(m[0]);
+    if (!parsed) continue;
+    const tracks = parseSubtitleTracksFromJson(parsed, baseUrl, []);
+    for (const track of tracks) {
+      push(track.url, track.lang, track);
+    }
+  }
+
+  return out;
+}
+
+function cacheGetSubtitleProbe(key) {
+  const hit = subtitleProbeCache.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.expiresAt) {
+    subtitleProbeCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function cacheSetSubtitleProbe(key, value) {
+  subtitleProbeCache.set(key, {
+    value,
+    expiresAt: Date.now() + SUBTITLE_PROBE_TTL_MS,
+  });
+}
+
+async function fetchTextAsset(url, referer = null) {
+  const extraHeaders = {};
+  const cookie = getCookiesForUrl(url);
+  if (cookie) extraHeaders.Cookie = cookie;
+  if (referer) extraHeaders.Referer = referer;
+
+  const res = await request(
+    { method: 'get', url },
+    {
+      providerName: PROVIDER_NAME,
+      streaming: true,
+      timeout: 8000,
+      extraHeaders,
+      dontTrackHealth: true,
+    }
+  );
+
+  const contentType = String(res.headers?.['content-type'] || '');
+  const body = String(res.data || '');
+  return {
+    status: Number(res.status || 0),
+    contentType,
+    body,
+  };
+}
+
+function parseHlsSubtitleTracks(manifestBody, manifestUrl) {
+  const out = [];
+  const lines = String(manifestBody || '').split(/\r?\n/);
+  for (const line of lines) {
+    if (!/^#EXT-X-MEDIA:/i.test(line)) continue;
+    if (!/TYPE=SUBTITLES/i.test(line)) continue;
+    const uri = line.match(/URI="([^"]+)"/i)?.[1] || line.match(/URI=([^,]+)/i)?.[1] || null;
+    if (!uri) continue;
+    const lang = line.match(/LANGUAGE="([^"]+)"/i)?.[1]
+      || line.match(/NAME="([^"]+)"/i)?.[1]
+      || 'Unknown';
+    const def = /DEFAULT=YES/i.test(line);
+    const forced = /FORCED=YES/i.test(line);
+    const abs = safeAbsoluteUrl(manifestUrl, uri);
+    if (!abs || out.some(x => x.url === abs)) continue;
+    out.push({
+      lang: normalizeSubtitleLang(lang),
+      url: abs,
+      format: detectSubtitleFormat(abs),
+      default: def,
+      forced,
+    });
+  }
+  return out;
+}
+
+async function extractNestedIframeSubtitles(html, pageUrl, depth = 0, visited = new Set()) {
+  if (depth > MAX_NESTED_IFRAME_DEPTH) return [];
+  if (visited.has(pageUrl)) return [];
+  visited.add(pageUrl);
+
+  const $ = cheerio.load(String(html || ''));
+  const iframeUrls = $('iframe[src], embed[src], object[data], param[name="movie"]')
+    .map((_, el) => {
+      const src = $(el).attr('src') || $(el).attr('data') || $(el).attr('value');
+      return safeAbsoluteUrl(pageUrl, src);
+    })
+    .get()
+    .filter(Boolean);
+
+  const out = [];
+  for (const iframeUrl of iframeUrls) {
+    const page = await fetchHtml(iframeUrl, { referer: pageUrl, attempts: 1 });
+    if (!page.ok || !page.html) continue;
+
+    const direct = parseSubtitles(page.html, page.url || iframeUrl);
+    for (const s of direct) {
+      if (!out.some(x => x.url === s.url)) out.push(s);
+    }
+
+    const deeper = await extractNestedIframeSubtitles(page.html, page.url || iframeUrl, depth + 1, visited);
+    for (const s of deeper) {
+      if (!out.some(x => x.url === s.url)) out.push(s);
+    }
+  }
+
+  return out;
+}
+
+function buildMp4SubtitleProbeUrls(sourceUrl) {
+  const out = [];
+  try {
+    const parsed = new URL(sourceUrl);
+    const query = String(parsed.search || '').replace(/^\?/, '');
+    const token = query.split('&').filter(Boolean)[0] || '';
+    const origin = parsed.origin;
+
+    if (query) {
+      out.push(`${origin}/subtitles.vtt?${query}`);
+      out.push(`${origin}/caption.vtt?${query}`);
+      out.push(`${origin}/subtitle.vtt?${query}`);
+      out.push(`${origin}/video.vtt?${query}`);
+      out.push(`${origin}/subtitles.srt?${query}`);
+      out.push(`${origin}/subtitle.srt?${query}`);
+    }
+
+    if (token) {
+      out.push(`${origin}/subtitles/${token}.vtt`);
+      out.push(`${origin}/subtitle/${token}.vtt`);
+      out.push(`${origin}/captions/${token}.vtt`);
+      out.push(`${origin}/subtitles/${token}.srt`);
+      out.push(`${origin}/subtitle/${token}.srt`);
+      out.push(`${origin}/captions/${token}.srt`);
+    }
+  } catch {
+    return [];
+  }
+  return [...new Set(out)].slice(0, MAX_SUBTITLE_URL_PROBES);
+}
+
+async function discoverSubtitlesFromSources(sources, context = {}) {
+  const referer = context.referer || null;
+  const out = [];
+
+  const add = (row) => {
+    if (!row || !row.url) return;
+    if (out.some(x => x.url === row.url)) return;
+    out.push({
+      lang: normalizeSubtitleLang(row.lang || row.language || 'Unknown'),
+      url: row.url,
+      format: row.format || detectSubtitleFormat(row.url),
+      default: !!row.default,
+      forced: !!row.forced,
+    });
+  };
+
+  const limited = (Array.isArray(sources) ? sources : []).slice(0, MAX_SUBTITLE_SOURCE_PROBES);
+  for (const src of limited) {
+    const sourceUrl = String(src && src.url || '');
+    if (!sourceUrl) continue;
+
+    const cacheKey = `subprobe:${sourceUrl}`;
+    const cached = cacheGetSubtitleProbe(cacheKey);
+    if (cached) {
+      for (const row of cached) add(row);
+      continue;
+    }
+
+    const discovered = [];
+
+    if (/\.m3u8(\?|$)/i.test(sourceUrl)) {
+      try {
+        const manifest = await fetchTextAsset(sourceUrl, referer);
+        const parsed = parseHlsSubtitleTracks(manifest.body, sourceUrl);
+        for (const row of parsed) discovered.push(row);
+      } catch {
+        // ignore m3u8 probe errors
+      }
+    }
+
+    if (/\.mp4(\?|$)|video\.mp4\?/i.test(sourceUrl)) {
+      const candidates = buildMp4SubtitleProbeUrls(sourceUrl);
+      for (const candidate of candidates) {
+        try {
+          const res = await fetchTextAsset(candidate, referer);
+          if (res.status < 200 || res.status >= 300) continue;
+          if (!isLikelySubtitleResponse(res.body, res.contentType)) {
+            const payload = parseSubtitles(res.body, candidate);
+            if (!payload.length) continue;
+            for (const row of payload) discovered.push(row);
+            continue;
+          }
+
+          discovered.push({
+            lang: 'Unknown',
+            url: candidate,
+            format: detectSubtitleFormat(candidate, res.contentType),
+            default: false,
+            forced: false,
+          });
+        } catch {
+          // ignore candidate probe errors
+        }
+      }
+    }
+
+    cacheSetSubtitleProbe(cacheKey, discovered);
+    for (const row of discovered) add(row);
   }
 
   return out;
@@ -1007,6 +1484,17 @@ function parseInfoMap($) {
     const text = $(el).text().replace(/\s+/g, ' ').trim();
     if (!text || text.length < 3 || text.length > 220) return;
     lines.push(text);
+
+    const pairs = [...text.matchAll(/([A-Za-z][A-Za-z\s]{1,24})\s*:\s*([^:]+?)(?=\s+[A-Za-z][A-Za-z\s]{1,24}\s*:|$)/g)];
+    if (pairs.length) {
+      for (const pair of pairs) {
+        const key = normalizeTitle(pair[1]);
+        const value = String(pair[2] || '').trim();
+        if (key && value) map[key] = value;
+      }
+      return;
+    }
+
     const m = text.match(/^([A-Za-z\s]+)\s*:\s*(.+)$/);
     if (m) map[normalizeTitle(m[1])] = m[2].trim();
   });
@@ -1032,6 +1520,242 @@ function parseAliases($, title) {
   });
 
   return [...aliases];
+}
+
+function normalizeStudios(value) {
+  if (!value) return [];
+  const items = Array.isArray(value) ? value : [value];
+  const out = [];
+  for (const item of items) {
+    const text = String(item || '')
+      .replace(/[\[\]{}]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text) continue;
+
+    const parts = text
+      .split(/\s*(?:,|\||\/|;| and )\s*/i)
+      .map(v => v.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      if (part.length < 2 || part.length > 80) continue;
+      if (/^https?:\/\//i.test(part)) continue;
+      if (/^(n\/a|none|unknown|null)$/i.test(part)) continue;
+      out.push(part);
+    }
+  }
+  return [...new Set(out)];
+}
+
+function normalizeStatus(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (/ongoing|currently\s+airing|airing|broadcasting|releasing/i.test(text)) return 'Ongoing';
+  if (/completed|finished|ended|finale/i.test(text)) return 'Completed';
+  if (/upcoming|not\s+yet\s+aired|tba|announced|soon/i.test(text)) return 'Upcoming';
+  if (/hiatus|on\s+break/i.test(text)) return 'Hiatus';
+  return null;
+}
+
+function normalizeDuration(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+
+  const iso = text.match(/P(?:\d+Y)?(?:\d+M)?(?:\d+D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/i);
+  if (iso) {
+    const hours = Number(iso[1] || 0);
+    const mins = Number(iso[2] || 0);
+    const totalMins = (hours * 60) + mins;
+    if (totalMins > 0) return `${totalMins} min`;
+  }
+
+  const h = text.match(/(\d{1,2})\s*(?:h|hr|hrs|hour|hours)\b/i);
+  const m = text.match(/(\d{1,3})\s*(?:m|min|mins|minute|minutes)\b/i);
+  const onlyNum = text.match(/^\s*(\d{1,3})\s*$/);
+  if (h || m) {
+    const mins = (Number(h?.[1] || 0) * 60) + Number(m?.[1] || 0);
+    if (mins > 0) return `${mins} min`;
+  }
+  if (onlyNum) {
+    const mins = Number(onlyNum[1]);
+    if (mins > 0) return `${mins} min`;
+  }
+
+  const rawMin = text.match(/(\d{1,3})\s*(?:min|minutes)\b/i);
+  if (rawMin) return `${Number(rawMin[1])} min`;
+  return null;
+}
+
+function normalizeRating(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const numeric = text.match(/\b(\d+(?:\.\d+)?)\b/);
+  if (numeric) return numeric[1];
+  const content = text.match(/\b(g|pg|pg-?13|r|r-?17\+|nc-?17|rx|tv-?ma|tv-?14)\b/i);
+  if (content) return content[1].toUpperCase().replace(/^TV/, 'TV-').replace('R17+', 'R-17+');
+  return null;
+}
+
+function parseJsonMaybe(blob) {
+  const raw = String(blob || '').trim();
+  if (!raw) return null;
+  const trimmed = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/^\s*<!--/, '')
+    .replace(/-->\s*$/, '');
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  return [value];
+}
+
+function collectJsonCandidates($) {
+  const candidates = [];
+
+  $('script[type="application/ld+json"],script[type="application/json"]').each((_, el) => {
+    const parsed = parseJsonMaybe($(el).contents().text());
+    if (parsed) candidates.push(parsed);
+  });
+
+  $('script').each((_, el) => {
+    const body = $(el).contents().text() || '';
+    const snippets = body.match(/\{[\s\S]{40,5000}?\}/g) || [];
+    for (const snippet of snippets) {
+      const parsed = parseJsonMaybe(snippet);
+      if (parsed) candidates.push(parsed);
+    }
+  });
+
+  return candidates;
+}
+
+function walkObjects(root, visit) {
+  const queue = [root];
+  const seen = new Set();
+
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node || typeof node !== 'object') continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    visit(node);
+    if (Array.isArray(node)) {
+      for (const item of node) queue.push(item);
+      continue;
+    }
+    for (const value of Object.values(node)) queue.push(value);
+  }
+}
+
+function extractMetadataFromStructuredSources($, html) {
+  const out = {
+    studios: [],
+    rating: null,
+    status: null,
+    duration: null,
+  };
+
+  const lines = [];
+  $('[hidden], [style*="display:none"], [style*="display: none"], input[type="hidden"], noscript').each((_, el) => {
+    const t = $(el).text().replace(/\s+/g, ' ').trim();
+    if (t) lines.push(t);
+    const valueAttr = $(el).attr('value');
+    if (valueAttr) lines.push(String(valueAttr));
+  });
+
+  const dataKeys = [
+    'studio', 'studios', 'production', 'rating', 'score', 'status', 'duration', 'runtime',
+  ];
+  $('*').each((_, el) => {
+    const attrs = el.attribs || {};
+    for (const [k, v] of Object.entries(attrs)) {
+      if (!k || !k.startsWith('data-') || !v) continue;
+      if (dataKeys.some(key => k.toLowerCase().includes(key))) {
+        lines.push(`${k}:${v}`);
+      }
+    }
+  });
+
+  const scriptsText = $('script')
+    .map((_, el) => $(el).contents().text() || '')
+    .get()
+    .join('\n');
+  lines.push(scriptsText);
+
+  const rawText = lines.join('\n');
+
+  const studioMatches = [
+    ...rawText.matchAll(/(?:studio|studios|production\s*company)\s*[:=]\s*["']([^"'\n]{2,120})["']/gi),
+    ...rawText.matchAll(/(?:studio|studios|production\s*company)\s*:\s*([^\n<]{2,120})/gi),
+  ];
+  for (const m of studioMatches) {
+    out.studios.push(...normalizeStudios(m[1]));
+  }
+
+  const ratingMatch = rawText.match(/(?:rating|score|imdb|mal|contentrating|ratingvalue)\s*[:=]\s*["']?([^"'\n<]{1,24})/i);
+  if (ratingMatch) out.rating = normalizeRating(ratingMatch[1]);
+
+  const statusMatch = rawText.match(/(?:status|airing\s*status|creativeworkstatus)\s*[:=]\s*["']?([^"'\n<]{2,36})/i);
+  if (statusMatch) out.status = normalizeStatus(statusMatch[1]);
+
+  const durationMatch = rawText.match(/(?:duration|runtime|episode[_\s-]?runtime|episode[_\s-]?run[_\s-]?time)\s*[:=]\s*["']?([^"'\n<]{1,40})/i)
+    || rawText.match(/\bP(?:\d+Y)?(?:\d+M)?(?:\d+D)?T(?:\d+H)?(?:\d+M)?(?:\d+S)?\b/i);
+  if (durationMatch) out.duration = normalizeDuration(durationMatch[1] || durationMatch[0]);
+
+  const jsonCandidates = collectJsonCandidates($);
+  for (const root of jsonCandidates) {
+    walkObjects(root, (node) => {
+      const obj = node || {};
+
+      if (!out.rating) {
+        const ratingValue = obj.ratingValue
+          || obj.contentRating
+          || obj.rating
+          || obj.score
+          || obj.imdbRating
+          || obj.averageRating
+          || obj.value;
+        if (ratingValue) out.rating = normalizeRating(ratingValue);
+      }
+
+      if (!out.status) {
+        const statusValue = obj.status || obj.airingStatus || obj.creativeWorkStatus;
+        if (statusValue) out.status = normalizeStatus(statusValue);
+      }
+
+      if (!out.duration) {
+        const durationValue = obj.duration || obj.runtime || obj.episode_run_time || obj.episodeRuntime;
+        if (durationValue) out.duration = normalizeDuration(durationValue);
+      }
+
+      if (!out.studios.length) {
+        const studioValue = obj.studio
+          || obj.studios
+          || obj.productionCompany
+          || obj.productionCompanies
+          || obj.animation_studio;
+        if (studioValue) out.studios.push(...normalizeStudios(asArray(studioValue).map(v => (typeof v === 'object' ? (v.name || v.title || '') : v))));
+
+        const creatorNames = asArray(obj.creator)
+          .map(v => (typeof v === 'object' ? (v.name || v.title || '') : v))
+          .filter(Boolean);
+        if (!out.studios.length && creatorNames.length) {
+          out.studios.push(...normalizeStudios(creatorNames));
+        }
+      }
+    });
+  }
+
+  out.studios = [...new Set(out.studios)];
+  return out;
 }
 
 function parseDetails(html, pageUrl) {
@@ -1065,20 +1789,31 @@ function parseDetails(html, pageUrl) {
     || null;
 
   const statusText = [map.status, lines.join(' ')].filter(Boolean).join(' ');
-  const status = /ongoing|airing/i.test(statusText)
+  let status = /ongoing|airing/i.test(statusText)
     ? 'Ongoing'
     : (/completed|finished/i.test(statusText) ? 'Completed' : null);
 
   const ratingText = map.rating || map.score || map.imdb || $('meta[itemprop="ratingValue"]').attr('content') || '';
-  const rating = String(ratingText).match(/\d+(?:\.\d+)?/)?.[0] || null;
+  let rating = String(ratingText).match(/\d+(?:\.\d+)?/)?.[0] || null;
 
-  const studios = (map.studio || map.studios || '')
+  let studios = (map.studio || map.studios || '')
     .split(/[,|/]/)
     .map(v => v.trim())
     .filter(Boolean);
 
   const season = map.season || (lines.join(' ').match(/\b(spring|summer|fall|autumn|winter)\b/i)?.[0] || null);
-  const duration = map.duration || (lines.join(' ').match(/\b\d+\s*(min|minutes|m)\b/i)?.[0] || null);
+  let duration = map.duration || (lines.join(' ').match(/\b\d+\s*(min|minutes|m)\b/i)?.[0] || null);
+
+  const structured = extractMetadataFromStructuredSources($, html);
+  if (!status) status = structured.status || null;
+  if (!rating) rating = structured.rating || null;
+  if (!duration) duration = structured.duration || null;
+  if (!studios.length) studios = structured.studios || [];
+
+  status = status ? normalizeStatus(status) || status : null;
+  rating = normalizeRating(rating);
+  duration = normalizeDuration(duration);
+  studios = normalizeStudios(studios);
 
   const cover = safeAbsoluteUrl(
     pageUrl,
@@ -1113,7 +1848,7 @@ function parseDetails(html, pageUrl) {
     image: cover,
     banner,
     rating,
-    studios,
+    studios: studios.length ? studios : null,
     season,
     duration,
     aliases,
@@ -1531,6 +2266,20 @@ class AnimeHeavenProvider {
       }
 
       const subtitles = parseSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
+      const nestedSubtitleRows = await extractNestedIframeSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
+      for (const row of nestedSubtitleRows) {
+        if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
+      }
+
+      if (!subtitles.length) {
+        const sourceDerived = await discoverSubtitlesFromSources(sources, {
+          referer: player.pageUrl || (await pickBaseUrl()),
+        });
+        for (const row of sourceDerived) {
+          if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
+        }
+      }
+
       if (subtitles.length) {
         logger.info('[AnimeHeaven] Subtitle found', { count: subtitles.length });
         recordProviderMetric('subtitle_success');
