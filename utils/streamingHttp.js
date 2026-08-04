@@ -91,24 +91,34 @@ function createStreamingInstance(options = {}) {
       const method = (error.config?.method || 'GET').toUpperCase();
       const effectiveTimeout = error.config?.timeout || timeout;
 
-      // Timeout-specific error handling.
+// Timeout-specific error handling.
       if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) {
         logger.error(`[${tag}] TIMEOUT after ${effectiveTimeout}ms → ${method} ${url}`, {
           code: error.code,
           timeout: effectiveTimeout,
           method,
           url: error.config?.url,
+          timedOut: true,
+          timeoutStatus: true,
+          cloudflareDetected: false,
         });
       } else if (error.response) {
-        logger.error(`[${tag}] HTTP ${error.response.status} → ${method} ${url}`, {
-          status: error.response.status,
+        const status = error.response.status;
+        logger.error(`[${tag}] HTTP ${status} → ${method} ${url}`, {
+          status,
           method,
           url: error.config?.url,
+          timedOut: false,
+          timeoutStatus: false,
+          cloudflareDetected: status === 403 || /cloudflare/i.test(error.message || ''),
         });
       } else {
         logger.error(`[${tag}] NETWORK error → ${method} ${url}`, {
           code: error.code || null,
           message: error.message,
+          timedOut: false,
+          timeoutStatus: false,
+          cloudflareDetected: /cloudflare/i.test(error.message || ''),
         });
       }
 

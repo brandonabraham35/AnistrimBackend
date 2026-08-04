@@ -436,9 +436,22 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     attempts++;
 
-    // Health check before attempting (skip degraded providers quickly).
+// Health check before attempting (skip degraded providers quickly).
     if (attempt === 0 && !isProviderHealthy(healthKey)) {
-      logger.stream({ provider: providerTag, attempt: 1, result: 'skipped_degraded' });
+      logger.streamAttempt({
+        provider: providerTag,
+        anime: animeTitle,
+        episode: episodeNumber,
+        attempt: 1,
+        result: 'skipped',
+        failureReason: 'provider marked degraded (skipped)',
+        httpStatus: 0,
+        timedOut: false,
+        cloudflareDetected: false,
+        startTime: new Date(start).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: Date.now() - start,
+      });
       return {
         resolved: false,
         result: null,
@@ -450,7 +463,7 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
     }
 
     const attemptStart = Date.now();
-    logger.stream({ provider: providerTag, attempt: attempt + 1, status: 'pending' });
+    logger.debugStream('Provider attempt pending', { provider: providerTag, anime: animeTitle, episode: episodeNumber, attempt: attempt + 1 });
 
     try {
       const raw = await resolver(animeTitle, episodeNumber);
@@ -458,12 +471,21 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
 
       if (result && result.sources.length > 0) {
         recordSuccess(healthKey, Date.now() - attemptStart);
-        logger.stream({
+        logger.streamAttempt({
           provider: providerTag,
+          anime: animeTitle,
+          episode: episodeNumber,
           attempt: attempt + 1,
-          duration: Date.now() - attemptStart,
-          sources: result.sources.length,
           result: 'success',
+          httpStatus: 0,
+          timedOut: false,
+          cloudflareDetected: false,
+          searchSuccess: true,
+          streamSuccess: true,
+          sources: result.sources.length,
+          startTime: new Date(attemptStart).toISOString(),
+          endTime: new Date().toISOString(),
+          latencyMs: Date.now() - attemptStart,
         });
         return {
           resolved: true,
@@ -478,7 +500,22 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
       // No sources (empty search / missing episode / invalid stream) — not an error.
       lastCategory = 'EMPTY';
       lastDescription = describeFailure('EMPTY', result);
-      logger.stream({ provider: providerTag, attempt: attempt + 1, duration: Date.now() - attemptStart, result: 'no_sources' });
+      logger.streamAttempt({
+        provider: providerTag,
+        anime: animeTitle,
+        episode: episodeNumber,
+        attempt: attempt + 1,
+        result: 'no_sources',
+        failureReason: 'no playable stream found',
+        httpStatus: 0,
+        timedOut: false,
+        cloudflareDetected: false,
+        searchSuccess: null,
+        streamSuccess: false,
+        startTime: new Date(attemptStart).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: Date.now() - attemptStart,
+      });
 
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, perRetryDelayMs));
@@ -487,13 +524,24 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
       const { category, description } = classifyError(err);
       lastCategory = category;
       lastDescription = description || err.message;
-      logger.stream({
+      const timedOut = isTimeoutError(err);
+      const cloudflareDetected = category === 'FORBIDDEN' || category === 'SERVER_ERROR';
+      logger.streamAttempt({
         provider: providerTag,
+        anime: animeTitle,
+        episode: episodeNumber,
         attempt: attempt + 1,
-        duration: Date.now() - attemptStart,
+        result: timedOut ? 'timeout' : 'failure',
+        failureReason: describeFailure(category, null),
+        httpStatus: err.response?.status || 0,
+        timedOut,
+        cloudflareDetected,
+        searchSuccess: null,
+        streamSuccess: false,
         error: description || err.message,
-        category,
-        result: 'error',
+        startTime: new Date(attemptStart).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: Date.now() - attemptStart,
       });
 
 // Record failure only on last attempt. Genuine timeouts are tracked via
@@ -510,18 +558,30 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
 
       // Non-retryable errors: abandon provider immediately.
       if (!classifyError(err).retryable && err.code !== 'PROVIDER_DEGRADED') {
-        logger.stream({ provider: providerTag, attempt: attempt + 1, result: 'non_retryable' });
+        logger.debugStream('Provider non-retryable error', { provider: providerTag, anime: animeTitle, episode: episodeNumber, attempt: attempt + 1 });
         break;
       }
 
       if (attempt < maxRetries) {
-        logger.stream({ provider: providerTag, attempt: attempt + 1, result: 'retry' });
+        logger.debugStream('Provider will retry', { provider: providerTag, anime: animeTitle, episode: episodeNumber, attempt: attempt + 1 });
         await new Promise(resolve => setTimeout(resolve, perRetryDelayMs));
       }
     }
   }
 
-  logger.stream({ provider: providerTag, result: 'exhausted' });
+  logger.streamAttempt({
+    provider: providerTag,
+    anime: animeTitle,
+    episode: episodeNumber,
+    result: 'failure',
+    failureReason: describeFailure(lastCategory, null),
+    httpStatus: 0,
+    timedOut: false,
+    cloudflareDetected: false,
+    startTime: new Date(start).toISOString(),
+    endTime: new Date().toISOString(),
+    latencyMs: Date.now() - start,
+  });
   return {
     resolved: false,
     result: null,
@@ -713,12 +773,12 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   const hasMovieSuffix = /^\d+$/.test(lastWord) && titleWords.length > 1;
   const isMovieByTitle = moviePattern.test(animeTitle) || hasMovieSuffix;
 
-  if (isMovieByTitle && Number(episodeNumber) > 1) {
-    console.log(`[StreamingService] 🎬 MOVIE GUARD: "${animeTitle}" identified as movie — forcing Ep 1 (was ${episodeNumber})`);
+if (isMovieByTitle && Number(episodeNumber) > 1) {
+    logger.debugStream('Movie guard triggered', { anime: animeTitle, episode: episodeNumber, forcedEpisode: 1 });
     episodeNumber = 1;
   }
 
-  console.log(`[StreamingService] 🎬 resolveStream | "${animeTitle}" Ep ${episodeNumber} | tier: ${tier}`);
+  logger.debugStream('resolveStream start', { anime: animeTitle, episode: episodeNumber, tier });
 
   // ── Cache Check ─────────────────────────────────────────
   if (!skipCache) {
@@ -726,23 +786,28 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     try {
       const cached = await cache.get(cacheKey);
       if (cached) {
-        console.log(`[StreamingService] 💾 CACHE HIT | "${animeTitle}" Ep ${episodeNumber}`);
+        logger.debugStream('Cache hit', { anime: animeTitle, episode: episodeNumber });
         return cached;
       }
-      console.log(`[StreamingService] 💾 CACHE MISS | "${animeTitle}" Ep ${episodeNumber}`);
+      logger.debugStream('Cache miss', { anime: animeTitle, episode: episodeNumber });
     } catch (cacheErr) {
-      console.warn(`[StreamingService] Cache read failed: ${cacheErr.message} — proceeding without cache`);
+      logger.warn('Cache read failed — proceeding without cache', { anime: animeTitle, episode: episodeNumber, error: cacheErr.message });
     }
   } else {
-    console.log(`[StreamingService] ⏭ Cache bypassed (skipCache=true)`);
+    logger.debugStream('Cache bypassed (skipCache=true)', { anime: animeTitle, episode: episodeNumber });
   }
 
 // ── Build health-aware execution queue ──────────────────
   // Ordered: preferred provider → healthy providers → degraded/cooldown last.
   const executionQueue = buildExecutionQueue(PROVIDER_ORDER, preferredProvider);
 
-  console.log(`[StreamingService] 📋 Provider execution queue (concurrency=${STREAM_CONCURRENCY}, deadline=${PIPELINE_TIMEOUT_MS}ms):`);
-  executionQueue.forEach((p, i) => console.log(`   ${i + 1}. ${p}`));
+  logger.debugStream('Provider execution queue', {
+    anime: animeTitle,
+    episode: episodeNumber,
+    concurrency: STREAM_CONCURRENCY,
+    deadlineMs: PIPELINE_TIMEOUT_MS,
+    queue: executionQueue,
+  });
 
   // ── Concurrent limited race ─────────────────────────────
   // Launch up to STREAM_CONCURRENCY providers at once; first success wins.
@@ -789,10 +854,22 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   // ── Build the final payload ─────────────────────────────
   if (winner && winner.sources.length > 0) {
     // Filter by tier.
-    const filteredSources = filterSourcesByTier(winner.sources, isPremium);
+const filteredSources = filterSourcesByTier(winner.sources, isPremium);
     if (filteredSources.length === 0) {
       const msg = `No stream provider returned a source matching tier "${tier}" for "${animeTitle}" Episode ${episodeNumber}.`;
-      console.error(`[StreamingService] 🛑 ${msg}`);
+      logger.streamAttempt({
+        provider: winnerProvider,
+        anime: animeTitle,
+        episode: episodeNumber,
+        result: 'failure',
+        failureReason: 'no source matching tier',
+        httpStatus: 0,
+        timedOut: false,
+        cloudflareDetected: false,
+        startTime: new Date(overallStart).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: elapsed,
+      });
       throw new Error(msg);
     }
 
@@ -810,23 +887,50 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       tier,
     };
 
-    // ── Cache the result ────────────────────────────────
+// ── Cache the result ────────────────────────────────
     try {
       const cacheKey = buildCacheKey(animeTitle, episodeNumber);
       await cache.set(cacheKey, payload, STREAM_CACHE_TTL);
-      console.log(`[StreamingService] 💾 CACHED | "${animeTitle}" Ep ${episodeNumber} for ${STREAM_CACHE_TTL}s`);
+      logger.debugStream('Stream cached', { anime: animeTitle, episode: episodeNumber, ttlSec: STREAM_CACHE_TTL });
     } catch (cacheErr) {
-      console.warn(`[StreamingService] Cache write failed: ${cacheErr.message}`);
+      logger.warn('Cache write failed', { anime: animeTitle, episode: episodeNumber, error: cacheErr.message });
     }
 
-    console.log(`[StreamingService] ✅ RESOLVED | "${animeTitle}" Ep ${episodeNumber} → ${payload.provider} (${best.quality}) | ${elapsed}ms`);
+    logger.streamAttempt({
+      provider: payload.provider,
+      anime: animeTitle,
+      episode: episodeNumber,
+      result: 'success',
+      httpStatus: 0,
+      timedOut: false,
+      cloudflareDetected: false,
+      searchSuccess: true,
+      streamSuccess: true,
+      sources: filteredSources.length,
+      bestQuality: payload.bestQuality,
+      startTime: new Date(overallStart).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: elapsed,
+    });
     return payload;
   }
 
   // ── All providers failed ────────────────────────────────
   const attemptedProviders = executionQueue.join(', ');
   const errorMsg = `No stream provider could resolve "${animeTitle}" Episode ${episodeNumber}. Attempted ${executionQueue.length} providers: ${attemptedProviders} (${elapsed}ms)`;
-  console.error(`[StreamingService] 🛑 ALL PROVIDERS FAILED | ${errorMsg}`);
+  logger.streamAttempt({
+    provider: executionQueue.join(','),
+    anime: animeTitle,
+    episode: episodeNumber,
+    result: 'failure',
+    failureReason: 'all providers failed',
+    httpStatus: 0,
+    timedOut: false,
+    cloudflareDetected: false,
+    startTime: new Date(overallStart).toISOString(),
+    endTime: new Date().toISOString(),
+    latencyMs: elapsed,
+  });
   throw new Error(errorMsg);
 }
 
@@ -845,7 +949,7 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
   const { isPremium = false } = options;
   const results = [];
 
-  console.log(`[StreamingService] 📋 resolveAllProviders | "${animeTitle}" Ep ${episodeNumber} | concurrency=${STREAM_CONCURRENCY}`);
+logger.debugStream('resolveAllProviders start', { anime: animeTitle, episode: episodeNumber, concurrency: STREAM_CONCURRENCY });
 
   // Run ALL providers with a concurrency limit (sliding window), collecting
   // every successful outcome. Unlike resolveStream, this does NOT stop after
@@ -872,7 +976,13 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
     });
   }
 
-  console.log(`[StreamingService] 📋 resolveAllProviders | ${results.length}/${PROVIDER_ORDER.length} providers resolved`);
+logger.debugStream('resolveAllProviders complete', {
+    anime: animeTitle,
+    episode: episodeNumber,
+    resolved: results.length,
+    attempted: PROVIDER_ORDER.length,
+    providers: results.map(r => r.provider),
+  });
   return results;
 }
 

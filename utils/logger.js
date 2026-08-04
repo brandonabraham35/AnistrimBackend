@@ -14,6 +14,19 @@ const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
 const CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.INFO;
 const IS_DEV = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev';
 
+// ── Streaming Debug Mode ────────────────────────────────────
+// Enables verbose, per-attempt streaming diagnostics when STREAM_DEBUG is
+// truthy ('1', 'true', 'yes'). Off by default. Overrides the INFO-level
+// gate so detailed provider attempts are emitted even at default log level.
+// Streaming debug mode — controlled via STREAM_DEBUG env var (default OFF).
+// When enabled, the streaming pipeline emits verbose DEBUG-level diagnostics
+// (per-request resolution, search/stream success flags, raw provider context).
+// Internal error details are NEVER sent to the frontend — this only affects
+// server-side log output.
+const STREAM_DEBUG = ['1', 'true', 'yes', 'on'].includes(
+  (process.env.STREAM_DEBUG || '').toLowerCase()
+);
+
 // ── Sensitive field redaction ─────────────────────────────────
 const SENSITIVE_KEYS = new Set([
   'password',
@@ -174,7 +187,71 @@ const logger = {
         ? `${prefix} ${provider} fallback${duration}`
         : `${prefix} ${provider} resolved${duration}`;
 
+log(level, 'stream', message, meta);
+  },
+
+  /**
+   * Structured streaming diagnostic — emits a single, comprehensive record for
+   * EVERY provider attempt (the audit trail requested for the streaming log).
+   *
+   * Unlike the lightweight `stream()` summary, this helper captures the full
+   * diagnostic field set so each attempt is independently auditable:
+   *
+   *   provider          — Provider ID (e.g. 'consumet-kickassanime')
+   *   anime             — Anime title
+   *   episode           — Episode number
+   *   attempt           — Retry attempt number (1-based)
+   *   startTime         — ISO timestamp of attempt start
+   *   endTime           — ISO timestamp of attempt end
+   *   latencyMs         — Attempt duration in ms
+   *   result            — 'success' | 'failure' | 'no_sources' | 'skipped' | 'timeout'
+   *   failureReason     — Human-readable failure reason (never internal detail)
+   *   httpStatus        — HTTP status code (0 if none)
+   *   timedOut          — Boolean: whether the attempt timed out
+   *   cloudflareDetected— Boolean: whether a Cloudflare/anti-bot block was detected
+   *   searchSuccess     — Boolean (or null): whether the search step succeeded
+   *   streamSuccess     — Boolean (or null): whether the stream-sources step succeeded
+   *   sources           — Number of playable sources returned (if any)
+   *
+   * Internal error details are logged at ERROR level on the server side ONLY;
+   * they are never forwarded to the frontend.
+   */
+streamAttempt(meta = {}) {
+    const provider = meta.provider || 'unknown';
+    const hasError = !!meta.error;
+    const isTimeout = meta.timedOut === true || meta.timeoutStatus === true;
+    const isCloudflare = meta.cloudflareDetected === true;
+    const result = meta.result || (hasError ? (isTimeout ? 'timeout' : 'failure') : 'success');
+
+    // Level selection: timeout/cloudflare/error → ERROR, else INFO.
+    const level = hasError || isTimeout || isCloudflare ? 'ERROR' : 'INFO';
+    const prefix = hasError ? '❌' : isTimeout ? '⏱' : isCloudflare ? '🛡' : '✅';
+    const anime = meta.anime || meta.animeTitle;
+    const ctx = `${provider}${anime ? ` | "${anime}"` : ''}${meta.episode !== undefined ? ` Ep ${meta.episode}` : ''}`;
+    const latency = meta.latencyMs !== undefined ? ` (${meta.latencyMs}ms)` : '';
+    const detail = meta.failureReason || meta.error || '';
+
+    const message = `${prefix} ${ctx} → ${result}${latency}${detail ? `: ${detail}` : ''}`;
+
     log(level, 'stream', message, meta);
+  },
+
+  /**
+   * Debug-only streaming diagnostic. Only emitted when STREAM_DEBUG=true and
+   * LOG_LEVEL=DEBUG. Used for verbose per-request tracing (raw provider context,
+   * search/stream step flags) that would otherwise flood production logs.
+   */
+  debugStream(message, meta = {}) {
+    if (!STREAM_DEBUG) return;
+    log('DEBUG', 'stream', message, meta);
+  },
+
+  /**
+   * Whether streaming debug mode is enabled (STREAM_DEBUG env var).
+   * @returns {boolean}
+   */
+  isStreamDebugEnabled() {
+    return STREAM_DEBUG;
   },
 
   /**

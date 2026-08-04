@@ -570,7 +570,7 @@ async function request(config, options = {}) {
       ...(Object.keys(mergedParams).length > 0 ? { params: mergedParams } : {}),
     };
 
-    // Log the attempt
+// Log the attempt
     const attemptLabel = effectiveMaxRetries > 0 ? `attempt ${attempt + 1}/${effectiveMaxRetries + 1}` : 'attempt 1/1';
     logger.stream({
       provider: providerName,
@@ -602,6 +602,8 @@ async function request(config, options = {}) {
         duration: responseTime,
         status: response.status,
         result: 'success',
+        timedOut: false,
+        cloudflareDetected: response.status === 403,
       });
 
       return response;
@@ -611,6 +613,8 @@ async function request(config, options = {}) {
 
       const status = err.response?.status;
       const statusText = status ? `HTTP ${status}` : 'NETWORK_ERROR';
+      const isTimeout = isTimeoutError(err);
+      const cloudflareDetected = status === 403 || /cloudflare/i.test(err.message || '');
 
       logger.stream({
         provider: providerName,
@@ -619,6 +623,9 @@ async function request(config, options = {}) {
         status: status || 0,
         error: err.message?.substring(0, 200),
         result: 'failure',
+        timedOut: isTimeout,
+        cloudflareDetected,
+        timeoutStatus: isTimeout,
       });
 
 // Track health on final failure only (to not count retries as separate failures).

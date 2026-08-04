@@ -1,56 +1,21 @@
-# Hosted Consumet Fallback Architecture — Implementation Todo
+# Streaming Logging Audit — Implementation TODO
 
-## Goals
+## Objective
 
-- [x] Inspect existing project & understand current architecture
-- [x] Approve implementation plan
+Replace generic console logging with structured diagnostic logging across the
+streaming pipeline. Every provider attempt records: provider ID, anime title,
+episode, start/end time, latency, result, failure reason, HTTP status, timeout
+status, Cloudflare detection, search success, stream success.
 
 ## Steps
 
-- [x] Create `services/hostedConsumetProvider.js` (dedicated axios client, configurable endpoints, independent timeout)
-- [x] Wire it into `services/streamingService.js` `buildConsumetHttpResolver()`
-- [x] Document new env vars in `README.md` (`.env.example` is read-only/blocked)
-- [x] Document fallback flow + env vars in `README.md`
-- [x] Syntax-check changed files
-- [x] Smoke test fallback activation
-
----
-
-# Miruro Provider — Disable & Future Verified Adapter Roadmap
-
-## Status
-
-- [x] Complete Miruro compatibility audit → `MIRURO_COMPATIBILITY_REPORT.md`
-- [x] Remove Miruro from active provider order (`providerRegistry.getDefaultProviderOrder()`)
-- [x] Replace `buildMiruroResolver()` with an intentionally-disabled no-op stub
-- [x] Document the disabled state in `streamingService.js`, `streamRoutes.js`, `_verify_proxy.js`
-- [x] Keep `MIRURO_API_URL` reading optional (never activates provider by itself)
-
-## Phase 1 — Capture real browser traffic (NOT yet done)
-
-- [ ] Capture real browser traffic for:
-  - `GET /api/search`
-  - `GET /api/episodes`
-  - `GET /api/sources`
-- [ ] Record: JSON schemas, request headers, cookies, Cloudflare requirements, provider identifiers
-- [ ] Document the exact playable URL + quality token shape for each native (non-embed) provider
-
-## Phase 2 — Implement verified adapter
-
-- [ ] Create `services/miruroProvider.js` implementing:
-  - title → AniList lookup
-  - episode resolution
-  - source retrieval
-  - subtitle retrieval
-  - normalization into the existing internal stream model `{ provider, streamUrl, sources, subtitles }`
-- [ ] Wire `services/miruroProvider.js` into `buildMiruroResolver()` (replacing the stub)
-
-## Phase 3 — Enable Miruro only as final fallback
-
-- [ ] Re-add `PROVIDER_IDS.MIRURO` to `getDefaultProviderOrder()` AFTER:
-  - KickAssAnime
-  - AnimePahe
-  - AnimeSaturn
-  - HiAnime
-  - Hosted Consumet
-- [ ] Validate in staging before production
+- [ ] 1. `utils/logger.js` — Add `STREAM_DEBUG` env support + `streamAttempt()` + `debugStream()` helpers
+- [ ] 2. `services/streamingService.js` — Replace raw `console.*` with structured logging; thread title/episode into attempts
+- [ ] 3. `services/consumetProvider.js` — Replace `console.*` with structured logging (search/stream success, Cloudflare, timeout)
+- [ ] 4. `services/hostedConsumetProvider.js` — Replace `console.log` with structured logger
+- [ ] 5. `services/consumet/server.js` — Replace `console.*` with structured logger
+- [ ] 6. `utils/providerHttp.js` — Enhance logging (timeout status, Cloudflare detection, HTTP status)
+- [ ] 7. `utils/streamingHttp.js` — Enhance logging (timeout + Cloudflare detection)
+- [ ] 8. `controllers/streamController.js` — Structured start/end/latency logging + stop leaking internal errors to users
+- [ ] 9. `.env.example` + `README.md` — Document `STREAM_DEBUG` env var
+- [ ] 10. Syntax-check all modified files

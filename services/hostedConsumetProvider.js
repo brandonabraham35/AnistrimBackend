@@ -30,6 +30,7 @@
 // ============================================================
 const { createStreamingInstance } = require('../utils/streamingHttp');
 const { PROVIDER_IDS } = require('./providerRegistry');
+const logger = require('../utils/logger');
 
 // ── Configuration ───────────────────────────────────────────
 // No hardcoded endpoint URLs. All paths derive from env vars with sensible
@@ -126,66 +127,126 @@ function normalizeSources(rawSources) {
  * @returns {Promise<{provider: string, streamUrl: string, sources: Array, subtitles: Array}>}
  */
 async function resolveStream({ title, episode }) {
-  if (!isConfigured()) {
-    const err = new Error('Hosted Consumet fallback is not configured (CONSUMET_API_URL not set).');
-    err.code = 'CONSUMET_NOT_CONFIGURED';
-    throw err;
-  }
-
   const startTime = Date.now();
   const logTag = `[HostedConsumet]`;
 
-  // 1. Search for the anime.
-  const searchUrl = buildUrl(CONFIG.searchPath, { query: title });
-  const searchRes = await client.get(searchUrl);
-  const results = searchRes.data?.results || [];
-  if (!results.length) {
-    throw new Error(`Hosted Consumet search returned no results for "${title}"`);
+  if (!isConfigured()) {
+    const err = new Error('Hosted Consumet fallback is not configured (CONSUMET_API_URL not set).');
+    err.code = 'CONSUMET_NOT_CONFIGURED';
+    logger.streamAttempt({
+      provider: PROVIDER_IDS.CONSUMET_HTTP,
+      animeTitle: title,
+      episode,
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: Date.now() - startTime,
+      result: 'failure',
+      failureReason: 'Hosted Consumet not configured (CONSUMET_API_URL not set)',
+      httpStatus: 0,
+      timeoutStatus: false,
+      cloudflareDetected: false,
+      searchSuccess: false,
+      streamSuccess: false,
+    });
+    throw err;
   }
 
-  const target = results[0];
-  const animeId = target.id;
-  if (!animeId) {
-    throw new Error(`Hosted Consumet search returned a result without an id for "${title}"`);
+  logger.streamAttempt({
+    provider: PROVIDER_IDS.CONSUMET_HTTP,
+    animeTitle: title,
+    episode,
+    startTime: new Date(startTime).toISOString(),
+    status: 'pending',
+  });
+
+  try {
+    // 1. Search for the anime.
+    const searchUrl = buildUrl(CONFIG.searchPath, { query: title });
+    const searchRes = await client.get(searchUrl);
+    const results = searchRes.data?.results || [];
+    if (!results.length) {
+      throw new Error(`Hosted Consumet search returned no results for "${title}"`);
+    }
+
+    const target = results[0];
+    const animeId = target.id;
+    if (!animeId) {
+      throw new Error(`Hosted Consumet search returned a result without an id for "${title}"`);
+    }
+
+    // 2. Fetch anime info to locate the requested episode.
+    const infoUrl = buildUrl(CONFIG.infoPath, { id: animeId });
+    const infoRes = await client.get(infoUrl);
+    const episodes = infoRes.data?.episodes || [];
+    const targetEp = episodes.find(e => e.number === Number(episode));
+    if (!targetEp?.id) {
+      throw new Error(`Hosted Consumet could not find episode ${episode} for "${title}"`);
+    }
+
+    // 3. Fetch streaming sources for the episode.
+    const sourcesUrl = buildUrl(CONFIG.sourcesPath, { id: animeId, episodeId: targetEp.id });
+    const srcRes = await client.get(sourcesUrl);
+
+    const sources = normalizeSources(srcRes.data?.sources);
+    if (!sources.length) {
+      throw new Error(`Hosted Consumet returned no playable sources for "${title}" Ep ${episode}`);
+    }
+
+    const subtitles = (srcRes.data?.subtitles || []).map(sub => ({
+      lang: sub.lang || sub.language || 'Unknown',
+      url: sub.url,
+    }));
+
+    const best = sources.reduce(
+      (a, b) => (parseInt(String(b.quality).replace(/[^0-9k]/g, '') || 0, 10) >
+                parseInt(String(a.quality).replace(/[^0-9k]/g, '') || 0, 10) ? b : a),
+      sources[0]
+    );
+
+    logger.streamAttempt({
+      provider: PROVIDER_IDS.CONSUMET_HTTP,
+      animeTitle: title,
+      episode,
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: Date.now() - startTime,
+      result: 'success',
+      httpStatus: 200,
+      timeoutStatus: false,
+      cloudflareDetected: false,
+      searchSuccess: true,
+      streamSuccess: true,
+      sourceCount: sources.length,
+      bestQuality: best.quality || 'auto',
+    });
+
+    return {
+      provider: PROVIDER_IDS.CONSUMET_HTTP, // 'consumet-http'
+      streamUrl: best?.url || sources[0]?.url || null,
+      sources,
+      subtitles,
+    };
+  } catch (err) {
+    const httpStatus = err.response?.status || 0;
+    const isTimeout = /timeout/i.test(err.message || '') || err.code === 'ECONNABORTED';
+    const cloudflareDetected = httpStatus === 403 || /cloudflare/i.test(err.message || '');
+    logger.streamAttempt({
+      provider: PROVIDER_IDS.CONSUMET_HTTP,
+      animeTitle: title,
+      episode,
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: Date.now() - startTime,
+      result: 'failure',
+      failureReason: err.message,
+      httpStatus,
+      timeoutStatus: isTimeout,
+      cloudflareDetected,
+      searchSuccess: false,
+      streamSuccess: false,
+    });
+    throw err;
   }
-
-  // 2. Fetch anime info to locate the requested episode.
-  const infoUrl = buildUrl(CONFIG.infoPath, { id: animeId });
-  const infoRes = await client.get(infoUrl);
-  const episodes = infoRes.data?.episodes || [];
-  const targetEp = episodes.find(e => e.number === Number(episode));
-  if (!targetEp?.id) {
-    throw new Error(`Hosted Consumet could not find episode ${episode} for "${title}"`);
-  }
-
-  // 3. Fetch streaming sources for the episode.
-  const sourcesUrl = buildUrl(CONFIG.sourcesPath, { id: animeId, episodeId: targetEp.id });
-  const srcRes = await client.get(sourcesUrl);
-
-  const sources = normalizeSources(srcRes.data?.sources);
-  if (!sources.length) {
-    throw new Error(`Hosted Consumet returned no playable sources for "${title}" Ep ${episode}`);
-  }
-
-  const subtitles = (srcRes.data?.subtitles || []).map(sub => ({
-    lang: sub.lang || sub.language || 'Unknown',
-    url: sub.url,
-  }));
-
-  const best = sources.reduce(
-    (a, b) => (parseInt(String(b.quality).replace(/[^0-9k]/g, '') || 0, 10) >
-              parseInt(String(a.quality).replace(/[^0-9k]/g, '') || 0, 10) ? b : a),
-    sources[0]
-  );
-
-  console.log(`${logTag} ✅ Resolved "${title}" Ep ${episode} in ${Date.now() - startTime}ms | ${sources.length} sources | best: ${best.quality || 'auto'}`);
-
-  return {
-    provider: PROVIDER_IDS.CONSUMET_HTTP, // 'consumet-http'
-    streamUrl: best?.url || sources[0]?.url || null,
-    sources,
-    subtitles,
-  };
 }
 
 /**

@@ -107,6 +107,25 @@ CONSUMET_HOSTED_INFO_PATH=/anime/{id}
 CONSUMET_HOSTED_SOURCES_PATH=/anime/{id}/episodes/{episodeId}
 ```
 
+### Structured Streaming Diagnostics (Debug Mode)
+
+All streaming/provider activity is emitted as **structured JSON logs** through the
+centralized `utils/logger.js`. Every provider attempt records: provider ID, anime
+title, episode, start/end time, latency, result, failure reason, HTTP status,
+timeout status, Cloudflare detection, search success, and stream success.
+
+Enable verbose per-attempt debug logging (default `off` for production):
+
+```env
+# Set to '1'/'true' to enable verbose stream diagnostics (recommended only
+# during development/troubleshooting). Off by default.
+STREAM_DEBUG=1
+```
+
+> **Security:** Internal error messages are **never** returned to frontend users.
+> The API returns generic messages (e.g. `"Could not resolve a stream."`) while
+> full diagnostic details are logged server-side only.
+
 ### Miruro Provider — Intentionally Disabled
 
 Miruro is **registered but intentionally disabled** in the streaming pipeline. The

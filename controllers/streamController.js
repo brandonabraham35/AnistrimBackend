@@ -14,6 +14,7 @@
 // ============================================================
 const db = require('../config/db');
 const streamingService = require('../services/streamingService');
+const logger = require('../utils/logger');
 
 /**
  * GET /api/stream/:animeTitle/:episodeIdentifier
@@ -66,7 +67,7 @@ exports.getStream = async (req, res) => {
     if (queryEp !== undefined && queryEp !== null && queryEp !== '') {
       episodeNumber = Number(queryEp);
       resolvedFrom = 'queryParam';
-      console.log(`[StreamController] ✅ Using explicit ?ep=${episodeNumber} from query param`);
+      logger.debugStream(`[StreamController] Using explicit ?ep=${episodeNumber} from query param`, { animeTitle, episode: episodeNumber });
     } else {
       // Priority 2 & 3: Check database for media type and ID mapping
       try {
@@ -81,7 +82,7 @@ exports.getStream = async (req, res) => {
 
           // Priority 2: MOVIE detection — always override to Episode 1
           if (mediaType === 'MOVIE') {
-            console.log(`[StreamController] 🎬 "${animeTitle}" (id=${mediaId}) is a MOVIE — forcing episode to 1`);
+            logger.debugStream(`[StreamController] "${animeTitle}" (id=${mediaId}) is a MOVIE — forcing episode to 1`, { animeTitle, mediaId });
             episodeNumber = 1;
             resolvedFrom = 'movieOverride';
           } else {
@@ -99,10 +100,10 @@ exports.getStream = async (req, res) => {
               if (episodes && episodes.length > 0) {
                 episodeNumber = episodes[0].episode_number;
                 resolvedFrom = 'dbMapping';
-                console.log(`[StreamController] 🔗 Mapped DB id ${episodeIdentifier} → Episode ${episodeNumber} for anime ${mediaId}`);
+                logger.debugStream(`[StreamController] Mapped DB id ${episodeIdentifier} → Episode ${episodeNumber} for anime ${mediaId}`, { animeTitle, episode: episodeNumber });
               } else {
                 // DB ID not found in this anime's episodes — return error rather than guessing
-                console.error(`[StreamController] ❌ DB id ${episodeIdentifier} not found in episodes for anime ${mediaId}`);
+                logger.warn(`[StreamController] DB id ${episodeIdentifier} not found in episodes for anime ${mediaId}`, { animeTitle, episodeIdentifier });
                 return res.status(404).json({
                   success: false,
                   error: `Episode record ID ${episodeIdentifier} not found for "${animeTitle}".`
@@ -112,18 +113,18 @@ exports.getStream = async (req, res) => {
               // Priority 4: Use identifier directly as episode number
               episodeNumber = episodeIdentifier;
               resolvedFrom = 'direct';
-              console.log(`[StreamController] Using identifier as episode number: ${episodeNumber}`);
+              logger.debugStream(`[StreamController] Using identifier as episode number: ${episodeNumber}`, { animeTitle, episode: episodeNumber });
             }
           }
         } else {
           // Anime not found in DB — identifier is the episode number
           episodeNumber = episodeIdentifier;
           resolvedFrom = 'direct';
-          console.log(`[StreamController] Anime "${animeTitle}" not in DB — using identifier "${episodeIdentifier}" as episode number`);
+          logger.debugStream(`[StreamController] Anime "${animeTitle}" not in DB — using identifier "${episodeIdentifier}" as episode number`, { animeTitle });
         }
       } catch (dbErr) {
         // DB error — fallback to using identifier directly
-        console.warn(`[StreamController] DB lookup failed: ${dbErr.message} — using identifier as-is`);
+        logger.warn(`[StreamController] DB lookup failed — using identifier as-is`, { animeTitle, error: dbErr.message });
         episodeNumber = episodeIdentifier;
         resolvedFrom = 'dbError';
       }
@@ -132,10 +133,10 @@ exports.getStream = async (req, res) => {
     // Validate episode number is reasonable
     const epNum = Number(episodeNumber);
     if (isNaN(epNum) || epNum < 1 || epNum > 10000) {
-      console.warn(`[StreamController] ⚠️ Unreasonable episode number: ${episodeNumber} — using as-is anyway`);
+      logger.warn(`[StreamController] Unreasonable episode number — using as-is anyway`, { animeTitle, episodeNumber });
     }
 
-    console.log(`[StreamController] 📋 RESOLVED: "${animeTitle}" → Ep ${episodeNumber} (resolvedFrom: ${resolvedFrom}, mediaType: ${mediaType}, mediaId: ${mediaId})`);
+    logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episodeNumber}`, { animeTitle, episode: episodeNumber, resolvedFrom, mediaType, mediaId });
 
     const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
@@ -143,7 +144,23 @@ exports.getStream = async (req, res) => {
     });
 
     const elapsed = Date.now() - startTime;
-    console.log(`[StreamController] ✅ Resolved "${animeTitle}" Ep ${episodeNumber} → ${result.provider} (${elapsed}ms)`);
+    logger.streamAttempt({
+      provider: result.provider,
+      animeTitle,
+      episode: episodeNumber,
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: elapsed,
+      result: 'success',
+      httpStatus: 200,
+      timeoutStatus: false,
+      cloudflareDetected: false,
+      searchSuccess: true,
+      streamSuccess: true,
+      sourceCount: result.sources?.length || 0,
+      bestQuality: result.bestQuality,
+      resolvedFrom,
+    });
 
     res.json({
       success: true,
@@ -153,11 +170,25 @@ exports.getStream = async (req, res) => {
     });
   } catch (err) {
     const elapsed = Date.now() - startTime;
-    console.error(`[StreamController] ❌ getStream failed for "${animeTitle}" identifier ${episodeIdentifier} (${elapsed}ms): ${err.message}`);
+    logger.streamAttempt({
+      provider: 'stream-endpoint',
+      animeTitle,
+      episode: episodeIdentifier,
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: elapsed,
+      result: 'failure',
+      failureReason: 'Could not resolve a stream.',
+      error: err.message, // internal detail — server-side only, never shipped to client
+      httpStatus: 0,
+      timeoutStatus: /timeout/i.test(err.message || ''),
+      cloudflareDetected: /cloudflare/i.test(err.message || ''),
+      searchSuccess: false,
+      streamSuccess: false,
+    });
     res.status(502).json({
       success: false,
-      error: err.message,
-      message: 'Could not resolve a stream. Try another provider or check back later.',
+      error: 'Could not resolve a stream. Try another provider or check back later.',
     });
   }
 };
@@ -188,11 +219,11 @@ exports.listProviders = async (req, res) => {
       success: true,
       providers,
     });
-  } catch (err) {
-    console.error('[StreamController] listProviders error:', err.message);
+} catch (err) {
+    logger.error('[StreamController] listProviders error', { animeTitle, episodeNumber, error: err.message });
     res.status(502).json({
       success: false,
-      error: err.message,
+      error: 'Could not load providers. Try again later.',
       providers: [],
     });
   }
@@ -244,8 +275,8 @@ exports.authorizeDownload = async (req, res) => {
       animeTitle,
       episodeNumber,
     });
-  } catch (err) {
-    console.error('[StreamController] authorizeDownload error:', err.message);
-    res.status(502).json({ error: err.message });
+} catch (err) {
+    logger.error('[StreamController] authorizeDownload error', { animeTitle, episodeNumber, error: err.message });
+    res.status(502).json({ error: 'Could not resolve a stream source for download.' });
   }
 };

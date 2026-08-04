@@ -33,12 +33,13 @@ const {
   listKnownConsumetProviders,
 } = require('./providerRegistry');
 const { createStreamingInstance } = require('../utils/streamingHttp');
+const logger = require('../utils/logger');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
 const availableProviders = Object.keys(ANIME);
-console.log(`[ConsumetProvider] Available ANIME providers: ${availableProviders.join(', ')}`);
+logger.info(`[ConsumetProvider] Available ANIME providers: ${availableProviders.join(', ')}`);
 
 // ── Shared dependencies ────────────────────────────────────
 const PROXY_LIST = getProxyList();
@@ -83,9 +84,9 @@ function createProviderAxios(providerName) {
       response => response,
       async error => {
         const config = error.config;
-        if (error.response?.status === 403 && !config._retry) {
+if (error.response?.status === 403 && !config._retry) {
           config._retry = true;
-          console.warn(`[ConsumetProvider:${providerName}] 403 blocked — retrying with next proxy...`);
+          logger.warn(`[ConsumetProvider:${providerName}] 403 blocked — retrying with next proxy`, { provider: providerName, httpStatus: 403, cloudflareDetected: true });
           const nextProxyUrl = PROXY_LIST[proxyIdx % PROXY_LIST.length];
           proxyIdx = (proxyIdx + 1) % PROXY_LIST.length;
           if (nextProxyUrl) {
@@ -95,7 +96,7 @@ function createProviderAxios(providerName) {
         }
         // If 403 persists after proxy retry, try without proxy as last resort
         if (error.response?.status === 403 && config._retry && config.httpsAgent) {
-          console.warn(`[ConsumetProvider:${providerName}] 403 persists — retrying WITHOUT proxy...`);
+          logger.warn(`[ConsumetProvider:${providerName}] 403 persists — retrying WITHOUT proxy`, { provider: providerName, httpStatus: 403, cloudflareDetected: true });
           config.httpsAgent = null;
           return instance.request(config);
         }
@@ -121,19 +122,19 @@ for (const providerId of listKnownConsumetProviders()) {
   const ProviderClass = ANIME[className];
   if (typeof ProviderClass === 'function') {
     try {
-      const instance = createProviderAxios(className);
+const instance = createProviderAxios(className);
       const providerInstance = new ProviderClass(instance);
       // Wrap in AniList meta-provider
       const metaProvider = new META.Anilist(providerInstance);
       REGISTRY.set(className, metaProvider);
-      console.log(`[ConsumetProvider] ✅ Registered: ${className}`);
+      logger.info(`[ConsumetProvider] Registered: ${className}`);
     } catch (e) {
-      console.warn(`[ConsumetProvider] ⚠️ Failed to register ${className}: ${e.message}`);
+      logger.warn(`[ConsumetProvider] Failed to register ${className}`, { error: e.message });
     }
   }
 }
 
-console.log(`[ConsumetProvider] Registry ready: ${[...REGISTRY.keys()].join(', ')}`);
+logger.info(`[ConsumetProvider] Registry ready: ${[...REGISTRY.keys()].join(', ')}`);
 
 // ── ConsumetProvider Class ─────────────────────────────────
 // Provides the public API used by streamingService.js
@@ -212,8 +213,8 @@ async searchAnime(query, limit = 10) {
         const searchResponse = await p.search(query, limit);
         const results = Array.isArray(searchResponse) ? searchResponse : (searchResponse.results || []);
         if (results.length) return results;
-      } catch (error) {
-        console.warn(`[ConsumetProvider] Search failed on ${p.constructor?.name}: ${error.message || 'unknown error'}`);
+} catch (error) {
+        logger.warn(`[ConsumetProvider] Search failed on ${p.constructor?.name}`, { provider: p.constructor?.name, searchSuccess: false, error: error.message || 'unknown error' });
       }
     }
 
@@ -236,7 +237,7 @@ async searchAnime(query, limit = 10) {
         totalEpisodes: item.attributes?.episodeCount || null,
       }));
     } catch (error) {
-      console.error(`[ConsumetProvider] Kitsu fallback failed: ${error.message}`);
+      logger.warn(`[ConsumetProvider] Kitsu fallback failed`, { provider: PROVIDER_IDS.KITSU, searchSuccess: false, error: error.message });
       return [];
     }
   }
@@ -255,10 +256,10 @@ async searchAnime(query, limit = 10) {
       if (status) options.status = status.toUpperCase();
       if (sort && Array.isArray(sort) && sort.length > 0) options.sort = sort;
 
-      const response = await firstProvider.advancedSearch(options.query, options);
+const response = await firstProvider.advancedSearch(options.query, options);
       return response;
     } catch (err) {
-      console.error(`[ConsumetProvider] advancedSearch error: ${err.message}`);
+      logger.error(`[ConsumetProvider] advancedSearch error`, { error: err.message });
       throw err;
     }
   }
@@ -282,15 +283,35 @@ async searchAnime(query, limit = 10) {
     const className = normalizedId ? toConsumetClassName(normalizedId) : null;
     const resolvedProvider = className || providerName;
 
-    const logTag = `[ConsumetProvider:${resolvedProvider}]`;
+const logTag = `[ConsumetProvider:${resolvedProvider}]`;
 
-    console.log(`${logTag} ➡️ Resolving | "${title}" Ep ${episode}`);
+    logger.streamAttempt({
+      provider: resolvedProvider,
+      animeTitle: title,
+      episode,
+      startTime: new Date(startTime).toISOString(),
+      status: 'pending',
+    });
 
     // 1. Find the requested provider in registry
     const metaProvider = className ? this.registry.get(className) : undefined;
     if (!metaProvider) {
       const errorMsg = `Provider "${providerName}" not registered. Available: ${this.listProviders().join(', ')}`;
-      console.warn(`${logTag} ⚠️ ${errorMsg}`);
+      logger.streamAttempt({
+        provider: resolvedProvider,
+        animeTitle: title,
+        episode,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+        result: 'failure',
+        failureReason: errorMsg,
+        httpStatus: 0,
+        timeoutStatus: false,
+        cloudflareDetected: false,
+        searchSuccess: false,
+        streamSuccess: false,
+      });
       throw new Error(errorMsg);
     }
 
@@ -299,7 +320,21 @@ async searchAnime(query, limit = 10) {
     // known Consumet sub-providers to their 'consumet-<id>' key.
     const healthKey = toHealthKey(providerName);
     if (!isProviderHealthy(healthKey)) {
-      console.warn(`${logTag} ⏭ Provider is DEGRADED — skipping`);
+      logger.streamAttempt({
+        provider: resolvedProvider,
+        animeTitle: title,
+        episode,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+        result: 'failure',
+        failureReason: 'Provider degraded — skipped',
+        httpStatus: 0,
+        timeoutStatus: false,
+        cloudflareDetected: false,
+        searchSuccess: false,
+        streamSuccess: false,
+      });
       const err = new Error(`Provider ${providerName} is degraded — skipping`);
       err.code = 'PROVIDER_DEGRADED';
       throw err;
@@ -309,16 +344,22 @@ async searchAnime(query, limit = 10) {
       // 3. Search for the anime via AniList
       let searchResponse = await metaProvider.search(title);
       let searchResults = searchResponse.results ? searchResponse.results : searchResponse;
+      let searchSuccess = Array.isArray(searchResults) && searchResults.length > 0;
 
       // SMART RETRY: If 0 results, drop last word (handles "Jujutsu Kaisen 0" → "Jujutsu Kaisen")
-      if ((!Array.isArray(searchResults) || searchResults.length === 0) && title.includes(' ')) {
+      if (!searchSuccess && title.includes(' ')) {
         const simplifiedTitle = title.split(' ').slice(0, -1).join(' ');
-        console.log(`${logTag} 0 results — retrying with: "${simplifiedTitle}"`);
+        logger.debugStream(`[ConsumetProvider] 0 results — retrying with: "${simplifiedTitle}"`, {
+          provider: resolvedProvider,
+          animeTitle: title,
+          episode,
+        });
         searchResponse = await metaProvider.search(simplifiedTitle);
         searchResults = searchResponse.results ? searchResponse.results : searchResponse;
+        searchSuccess = Array.isArray(searchResults) && searchResults.length > 0;
       }
 
-      if (!Array.isArray(searchResults) || searchResults.length === 0) {
+      if (!searchSuccess) {
         throw new Error(`Search returned 0 results for: "${title}"`);
       }
 
@@ -335,7 +376,11 @@ async searchAnime(query, limit = 10) {
 
       // Ultimate fallback: use first result
       if (!targetAnime && searchResults.length > 0) {
-        console.log(`${logTag} Fuzzy match failed — using first result`);
+        logger.debugStream(`${logTag} Fuzzy match failed — using first result`, {
+          provider: resolvedProvider,
+          animeTitle: title,
+          episode,
+        });
         targetAnime = searchResults[0];
       }
 
@@ -351,7 +396,11 @@ async searchAnime(query, limit = 10) {
 
       // Movie-specific handling
       if (!episodes.length) {
-        console.log(`${logTag} "${title}" has no episode list — treating as movie`);
+        logger.debugStream(`${logTag} "${title}" has no episode list — treating as movie`, {
+          provider: resolvedProvider,
+          animeTitle: title,
+          episode,
+        });
         try {
           const sources = await metaProvider.fetchEpisodeSources(slug);
           const streamList = sources?.sources || [];
@@ -359,6 +408,21 @@ async searchAnime(query, limit = 10) {
             const bestSource = streamList.reduce((best, src) =>
               (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
             , streamList[0]);
+            logger.streamAttempt({
+              provider: resolvedProvider,
+              animeTitle: title,
+              episode,
+              startTime: new Date(startTime).toISOString(),
+              endTime: new Date().toISOString(),
+              latencyMs: Date.now() - startTime,
+              result: 'success',
+              httpStatus: 200,
+              timeoutStatus: false,
+              cloudflareDetected: false,
+              searchSuccess: true,
+              streamSuccess: true,
+              sourceCount: streamList.length,
+            });
             return {
               streamUrl: bestSource?.url || streamList[0]?.url,
               allSources: streamList,
@@ -369,7 +433,7 @@ async searchAnime(query, limit = 10) {
             };
           }
         } catch (err) {
-          console.warn(`${logTag} Movie direct fetch failed: ${err.message}`);
+          logger.warn(`${logTag} Movie direct fetch failed`, { provider: resolvedProvider, animeTitle: title, episode, error: err.message });
         }
         throw new Error(`No playable sources found for "${title}".`);
       }
@@ -379,7 +443,11 @@ async searchAnime(query, limit = 10) {
       if (!targetEp) {
         // For movies/episode-1 fallback
         if (Number(episode) === 1 && episodes.length >= 1) {
-          console.log(`${logTag} Episode 1 not found by number — using first episode entry`);
+          logger.debugStream(`${logTag} Episode 1 not found by number — using first episode entry`, {
+            provider: resolvedProvider,
+            animeTitle: title,
+            episode,
+          });
           const firstEp = episodes[0];
           const sources = await metaProvider.fetchEpisodeSources(firstEp.id);
           const streamList = sources?.sources || [];
@@ -389,6 +457,21 @@ async searchAnime(query, limit = 10) {
           const bestSource = streamList.reduce((best, src) =>
             (src.quality && src.quality !== 'default' && (!best.quality || src.quality > best.quality)) ? src : best
           , streamList[0]);
+          logger.streamAttempt({
+            provider: resolvedProvider,
+            animeTitle: title,
+            episode,
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date().toISOString(),
+            latencyMs: Date.now() - startTime,
+            result: 'success',
+            httpStatus: 200,
+            timeoutStatus: false,
+            cloudflareDetected: false,
+            searchSuccess: true,
+            streamSuccess: true,
+            sourceCount: streamList.length,
+          });
           return {
             streamUrl: bestSource?.url || streamList[0]?.url,
             allSources: streamList,
@@ -414,7 +497,22 @@ async searchAnime(query, limit = 10) {
       , streamList[0]);
 
       const elapsed = Date.now() - startTime;
-      console.log(`${logTag} ✅ Resolved | ${elapsed}ms | ${streamList.length} sources | best: ${bestSource?.quality || 'auto'}`);
+      logger.streamAttempt({
+        provider: resolvedProvider,
+        animeTitle: title,
+        episode,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: elapsed,
+        result: 'success',
+        httpStatus: 200,
+        timeoutStatus: false,
+        cloudflareDetected: false,
+        searchSuccess: true,
+        streamSuccess: true,
+        sourceCount: streamList.length,
+        bestQuality: bestSource?.quality || 'auto',
+      });
 
       return {
         streamUrl: bestSource?.url || streamList[0]?.url,
@@ -427,7 +525,25 @@ async searchAnime(query, limit = 10) {
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const { category, description } = classifyError(err);
-      console.warn(`${logTag} ❌ Failed | ${elapsed}ms | [${category}] ${description || err.message}`);
+      const httpStatus = err.response?.status || 0;
+      const isTimeout = /timeout/i.test(err.message || '') || err.code === 'ECONNABORTED';
+      const cloudflareDetected = httpStatus === 403 || /cloudflare/i.test(err.message || '');
+      logger.streamAttempt({
+        provider: resolvedProvider,
+        animeTitle: title,
+        episode,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: elapsed,
+        result: 'failure',
+        failureReason: description || err.message,
+        category,
+        httpStatus,
+        timeoutStatus: isTimeout,
+        cloudflareDetected,
+        searchSuccess: false,
+        streamSuccess: false,
+      });
       throw err;
     }
   }

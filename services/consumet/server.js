@@ -24,17 +24,18 @@ const {
   getConsumetPreferredOrder,
   toConsumetClassName,
 } = require('../providerRegistry');
+const logger = require('../../utils/logger');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
 
 if (!META || !META.Anilist || !ANIME) {
-  console.error('Available META providers:', Object.keys(META || {}));
-  console.error('Available ANIME providers:', Object.keys(ANIME || {}));
+  logger.error('Available META providers:', { providers: Object.keys(META || {}) });
+  logger.error('Available ANIME providers:', { providers: Object.keys(ANIME || {}) });
   throw new Error('[Consumet Microservice] Failed to extract providers from @consumet/extensions.');
 }
 
-console.log('[Consumet Microservice] ✅ Loaded META.Anilist');
+logger.info('[Consumet Microservice] Loaded META.Anilist');
 
 // ── Shared HTTP Layer via providerHttp.request() ──────────
 // Instead of creating its own axios instance with independent proxy rotation,
@@ -100,11 +101,11 @@ customAxios.defaults.adapter = async (config) => {
   }
 };
 
-console.log('[Consumet Microservice] ✅ Using shared providerHttp layer for all HTTP traffic');
+logger.info('[Consumet Microservice] Using shared providerHttp layer for all HTTP traffic');
 
 // ── Select best available provider ─────────────────────────
 const availableProviders = Object.keys(ANIME);
-console.log(`[Consumet Microservice] Available ANIME providers: ${availableProviders.join(', ')}`);
+logger.info(`[Consumet Microservice] Available ANIME providers: ${availableProviders.join(', ')}`);
 
 const preferredOrder = getConsumetPreferredOrder();
 
@@ -114,11 +115,11 @@ for (const name of preferredOrder) {
   const key = availableProviders.find(k => k.toLowerCase() === name.toLowerCase());
   if (key && typeof ANIME[key] === 'function') {
     try {
-      console.log(`[Consumet Microservice] ✅ Using provider: ${key}`);
+      logger.info(`[Consumet Microservice] Using provider: ${key}`);
       fallbackProvider = new ANIME[key](customAxios);
       break;
     } catch (e) {
-      console.warn(`[Consumet Microservice] Failed to instantiate ${key}: ${e.message}`);
+      logger.warn(`[Consumet Microservice] Failed to instantiate ${key}`, { error: e.message });
     }
   }
 }
@@ -136,7 +137,7 @@ if (!fallbackProvider) {
     !excludedClassNames.has(key)
   );
   if (safeKey) {
-    console.log(`[Consumet Microservice] ⚠️  Blind fallback: ${safeKey}`);
+    logger.warn(`[Consumet Microservice] Blind fallback: ${safeKey}`);
     fallbackProvider = new ANIME[safeKey](customAxios);
   } else {
     throw new Error('[Consumet Microservice] CRITICAL: No usable anime providers found.');
@@ -158,8 +159,8 @@ app.get('/anime/gogoanime/:id', async (req, res) => {
         const animeInfo = await provider.fetchAnimeInfo(req.params.id);
         res.json(animeInfo);
     } catch (err) {
-        console.error(`[Consumet Microservice] fetchAnimeInfo error: ${err.message}`);
-        res.status(500).json({ error: err.message });
+        logger.error('[Consumet Microservice] fetchAnimeInfo error', { error: err.message });
+        res.status(500).json({ error: 'Failed to fetch anime info.' });
     }
 });
 
@@ -172,8 +173,8 @@ app.get('/anime/gogoanime/watch/:episodeId', async (req, res) => {
         const links = await provider.fetchEpisodeSources(req.params.episodeId);
         res.json(links);
     } catch (err) {
-        console.error(`[Consumet Microservice] fetchEpisodeSources error: ${err.message}`);
-        res.status(500).json({ error: err.message });
+        logger.error('[Consumet Microservice] fetchEpisodeSources error', { error: err.message });
+        res.status(500).json({ error: 'Failed to fetch episode sources.' });
     }
 });
 
