@@ -1,0 +1,1694 @@
+{
+  "generatedAt": "2026-08-04T12:45:57.953Z",
+  "provider": "services/animeHeavenProvider.js",
+  "plan": {
+    "concurrencyLevels": [
+      10,
+      25,
+      50,
+      100
+    ],
+    "targetCount": 10,
+    "targets": [
+      {
+        "title": "A Certain Magical Index III",
+        "identifier": "rk3og",
+        "episode": 1,
+        "key": "rk3og|1"
+      },
+      {
+        "title": "A Certain Magical Index III",
+        "identifier": "rk3og",
+        "episode": 2,
+        "key": "rk3og|2"
+      },
+      {
+        "title": "A Certain Magical Index III",
+        "identifier": "rk3og",
+        "episode": 3,
+        "key": "rk3og|3"
+      },
+      {
+        "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+        "identifier": "hcte7",
+        "episode": 1,
+        "key": "hcte7|1"
+      },
+      {
+        "title": "A Condition Called Love",
+        "identifier": "u95rf",
+        "episode": 1,
+        "key": "u95rf|1"
+      },
+      {
+        "title": "A Condition Called Love",
+        "identifier": "u95rf",
+        "episode": 2,
+        "key": "u95rf|2"
+      },
+      {
+        "title": "A Condition Called Love",
+        "identifier": "u95rf",
+        "episode": 3,
+        "key": "u95rf|3"
+      },
+      {
+        "title": "A Couple of Cuckoos",
+        "identifier": "xqjzb",
+        "episode": 1,
+        "key": "xqjzb|1"
+      },
+      {
+        "title": "A Couple of Cuckoos",
+        "identifier": "xqjzb",
+        "episode": 2,
+        "key": "xqjzb|2"
+      },
+      {
+        "title": "A Couple of Cuckoos",
+        "identifier": "xqjzb",
+        "episode": 3,
+        "key": "xqjzb|3"
+      }
+    ],
+    "cpuCores": 20,
+    "nodeVersion": "v24.18.0"
+  },
+  "totals": {
+    "totalRequests": 185,
+    "totalTimeouts": 0,
+    "totalDuplicateRequests": 145,
+    "totalRaceConditionKeys": 0,
+    "totalCacheHits": 145,
+    "totalCacheMisses": 0,
+    "totalFailures": 0,
+    "totalSuccess": 185,
+    "cacheHitRate": 1
+  },
+  "levels": [
+    {
+      "concurrency": 10,
+      "requestsLaunched": 10,
+      "responseTime": {
+        "minMs": 1685.06,
+        "maxMs": 8676.26,
+        "avgMs": 3839.01,
+        "p50Ms": 1830.54,
+        "p95Ms": 8676.26,
+        "p99Ms": 8676.26
+      },
+      "successCount": 10,
+      "failureCount": 0,
+      "timeouts": 0,
+      "duplicateRequests": 0,
+      "duplicateRequestKeys": 0,
+      "raceConditions": {
+        "raceConditionKeys": 0,
+        "raceConditionEvents": 0,
+        "detected": false
+      },
+      "cache": {
+        "hits": 0,
+        "misses": 0,
+        "hitRate": null
+      },
+      "httpStatusEvents": {
+        "403": 0,
+        "429": 0,
+        "503": 0
+      },
+      "network": {
+        "requestCallsObserved": 27,
+        "requestTimeoutEvents": 0
+      },
+      "resources": {
+        "cpuMs": 578,
+        "cpuPercentSingleCoreEquivalent": 6.66,
+        "wallTimeMs": 8679.45,
+        "memory": {
+          "rssStart": 69152768,
+          "rssPeak": 98627584,
+          "rssEnd": 98627584,
+          "heapUsedStart": 17434440,
+          "heapUsedPeak": 33119000,
+          "heapUsedEnd": 33119000
+        }
+      },
+      "sample": [
+        {
+          "reqId": 0,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1715.51,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 1,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1830.74,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 2,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1831.5,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 3,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1764.12,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 4,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1748.79,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 5,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1685.06,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 6,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 8652.98,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 2,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 7,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 1830.54,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 3,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 8,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 8654.58,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 2,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 9,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 8676.26,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 2,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 25,
+      "requestsLaunched": 25,
+      "responseTime": {
+        "minMs": 148.35,
+        "maxMs": 148.46,
+        "avgMs": 148.39,
+        "p50Ms": 148.38,
+        "p95Ms": 148.43,
+        "p99Ms": 148.46
+      },
+      "successCount": 25,
+      "failureCount": 0,
+      "timeouts": 0,
+      "duplicateRequests": 15,
+      "duplicateRequestKeys": 10,
+      "raceConditions": {
+        "raceConditionKeys": 0,
+        "raceConditionEvents": 0,
+        "detected": false
+      },
+      "cache": {
+        "hits": 15,
+        "misses": 0,
+        "hitRate": 1
+      },
+      "httpStatusEvents": {
+        "403": 0,
+        "429": 0,
+        "503": 0
+      },
+      "network": {
+        "requestCallsObserved": 0,
+        "requestTimeoutEvents": 0
+      },
+      "resources": {
+        "cpuMs": 203,
+        "cpuPercentSingleCoreEquivalent": 136.62,
+        "wallTimeMs": 148.59,
+        "memory": {
+          "rssStart": 98668544,
+          "rssPeak": 122068992,
+          "rssEnd": 122068992,
+          "heapUsedStart": 32823728,
+          "heapUsedPeak": 44567032,
+          "heapUsedEnd": 44567032
+        }
+      },
+      "sample": [
+        {
+          "reqId": 0,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.46,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 1,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.43,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 2,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.42,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 3,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.42,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 4,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.41,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 5,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.41,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 6,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.4,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 7,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.4,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 8,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.4,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 9,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.39,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 10,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.39,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 11,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.39,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 12,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.38,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 13,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.38,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 14,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.38,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 15,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.38,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 16,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.37,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 17,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.37,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 18,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.37,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 19,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 148.37,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 50,
+      "requestsLaunched": 50,
+      "responseTime": {
+        "minMs": 276.03,
+        "maxMs": 276.06,
+        "avgMs": 276.04,
+        "p50Ms": 276.04,
+        "p95Ms": 276.05,
+        "p99Ms": 276.06
+      },
+      "successCount": 50,
+      "failureCount": 0,
+      "timeouts": 0,
+      "duplicateRequests": 40,
+      "duplicateRequestKeys": 10,
+      "raceConditions": {
+        "raceConditionKeys": 0,
+        "raceConditionEvents": 0,
+        "detected": false
+      },
+      "cache": {
+        "hits": 40,
+        "misses": 0,
+        "hitRate": 1
+      },
+      "httpStatusEvents": {
+        "403": 0,
+        "429": 0,
+        "503": 0
+      },
+      "network": {
+        "requestCallsObserved": 0,
+        "requestTimeoutEvents": 0
+      },
+      "resources": {
+        "cpuMs": 453,
+        "cpuPercentSingleCoreEquivalent": 163.98,
+        "wallTimeMs": 276.25,
+        "memory": {
+          "rssStart": 122068992,
+          "rssPeak": 181018624,
+          "rssEnd": 181018624,
+          "heapUsedStart": 44606680,
+          "heapUsedPeak": 75249304,
+          "heapUsedEnd": 75249304
+        }
+      },
+      "sample": [
+        {
+          "reqId": 0,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.06,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 1,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.06,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 2,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 3,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 4,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 5,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 6,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 7,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 8,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 9,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 10,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 11,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 12,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 13,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 14,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 15,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 16,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.05,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 17,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.04,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 18,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.04,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 19,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 276.04,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        }
+      ]
+    },
+    {
+      "concurrency": 100,
+      "requestsLaunched": 100,
+      "responseTime": {
+        "minMs": 530.49,
+        "maxMs": 530.64,
+        "avgMs": 530.57,
+        "p50Ms": 530.58,
+        "p95Ms": 530.63,
+        "p99Ms": 530.64
+      },
+      "successCount": 100,
+      "failureCount": 0,
+      "timeouts": 0,
+      "duplicateRequests": 90,
+      "duplicateRequestKeys": 10,
+      "raceConditions": {
+        "raceConditionKeys": 0,
+        "raceConditionEvents": 0,
+        "detected": false
+      },
+      "cache": {
+        "hits": 90,
+        "misses": 0,
+        "hitRate": 1
+      },
+      "httpStatusEvents": {
+        "403": 0,
+        "429": 0,
+        "503": 0
+      },
+      "network": {
+        "requestCallsObserved": 0,
+        "requestTimeoutEvents": 0
+      },
+      "resources": {
+        "cpuMs": 765,
+        "cpuPercentSingleCoreEquivalent": 144.11,
+        "wallTimeMs": 530.85,
+        "memory": {
+          "rssStart": 181018624,
+          "rssPeak": 290430976,
+          "rssEnd": 290430976,
+          "heapUsedStart": 75312616,
+          "heapUsedPeak": 75312616,
+          "heapUsedEnd": 36777696
+        }
+      },
+      "sample": [
+        {
+          "reqId": 0,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.64,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 1,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.64,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 2,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 3,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 4,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 5,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 6,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 7,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 8,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 9,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 10,
+          "requestKey": "rk3og|1",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18411,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 11,
+          "requestKey": "rk3og|2",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.63,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 12,
+          "requestKey": "rk3og|3",
+          "title": "A Certain Magical Index III",
+          "identifier": "rk3og",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18534,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 13,
+          "requestKey": "hcte7|1",
+          "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+          "identifier": "hcte7",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18316,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 14,
+          "requestKey": "u95rf|1",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18407,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 15,
+          "requestKey": "u95rf|2",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 16,
+          "requestKey": "u95rf|3",
+          "title": "A Condition Called Love",
+          "identifier": "u95rf",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18530,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 17,
+          "requestKey": "xqjzb|1",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 1,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18403,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 18,
+          "requestKey": "xqjzb|2",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 2,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        },
+        {
+          "reqId": 19,
+          "requestKey": "xqjzb|3",
+          "title": "A Couple of Cuckoos",
+          "identifier": "xqjzb",
+          "episode": 3,
+          "success": true,
+          "timeout": false,
+          "reason": null,
+          "responseTimeMs": 530.62,
+          "htmlLength": 18526,
+          "pageUrl": "https://animeheaven.me/gate.php",
+          "netCalls": 0,
+          "netTimeouts": 0,
+          "statuses": {
+            "403": 0,
+            "429": 0,
+            "503": 0
+          }
+        }
+      ]
+    }
+  ]
+}

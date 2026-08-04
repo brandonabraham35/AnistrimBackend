@@ -1,0 +1,1034 @@
+{
+  "generatedAt": "2026-08-04T12:39:42.974Z",
+  "startedAt": "2026-08-04T12:39:19.775Z",
+  "provider": "services/animeHeavenProvider.js",
+  "constraints": {
+    "minEpisodesRequired": 50,
+    "episodesTested": 50,
+    "maxRedirectHops": 12,
+    "maxIframeDepth": 4
+  },
+  "discovery": {
+    "seedTitleCount": 100,
+    "titleScan": [
+      {
+        "identifier": "b9s90",
+        "title": "A Certain Magical Index",
+        "episodeCount": 0
+      },
+      {
+        "identifier": "ea1z6",
+        "title": "A Certain Magical Index II",
+        "episodeCount": 0
+      },
+      {
+        "identifier": "rk3og",
+        "title": "A Certain Magical Index III",
+        "episodeCount": 26
+      },
+      {
+        "identifier": "hcte7",
+        "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+        "episodeCount": 1
+      },
+      {
+        "identifier": "u95rf",
+        "title": "A Condition Called Love",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "xqjzb",
+        "title": "A Couple of Cuckoos",
+        "episodeCount": 24
+      },
+      {
+        "identifier": "phnd3",
+        "title": "A Couple of Cuckoos Season 2",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "ryvby",
+        "title": "A Galaxy Next Door",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "08u9e",
+        "title": "A Gatherer's Adventure in Isekai",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "3qka6",
+        "title": "A Gentle Noble's Vacation Recommendation",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "4u7r9",
+        "title": "A Girl & Her Guard Dog",
+        "episodeCount": 13
+      },
+      {
+        "identifier": "ihc55",
+        "title": "A Herbivorous Dragon of 5,000 Years Gets Unfairly Villainized",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "rgc1p",
+        "title": "Babanbabanban Vampire",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "1ne58",
+        "title": "Babylon",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "hfrok",
+        "title": "Bad Girl",
+        "episodeCount": 12
+      },
+      {
+        "identifier": "ah4rl",
+        "title": "Baka and Test - Summon the Beasts",
+        "episodeCount": 13
+      },
+      {
+        "identifier": "o8tj1",
+        "title": "Baka and Test - Summon the Beasts 2",
+        "episodeCount": 13
+      },
+      {
+        "identifier": "1j1cc",
+        "title": "Bakemonogatari",
+        "episodeCount": 15
+      },
+      {
+        "identifier": "tgl3z",
+        "title": "Baki",
+        "episodeCount": 26
+      },
+      {
+        "identifier": "5ebj0",
+        "title": "BAKI-DOU: The Invincible Samurai",
+        "episodeCount": 25
+      }
+    ],
+    "discoveredMirrorUrls": [],
+    "discoveredMirrorHosts": [],
+    "discoveredNonMirrorHosts": [
+      "ck.animeheaven.me",
+      "ct.animeheaven.me",
+      "cu.animeheaven.me",
+      "animeheaven.me",
+      "discord.gg",
+      "twitter.com",
+      "rx.animeheaven.me",
+      "rk.animeheaven.me",
+      "cz.animeheaven.me",
+      "cy.animeheaven.me",
+      "po.animeheaven.me",
+      "ci.animeheaven.me",
+      "co.animeheaven.me"
+    ],
+    "mirrorNeverAppeared": true
+  },
+  "mirrorValidationSummary": {
+    "mirrorsValidated": 0,
+    "successCount": 0,
+    "failureCount": 0
+  },
+  "mirrorResults": [],
+  "episodes": [
+    {
+      "title": "A Certain Magical Index III",
+      "identifier": "rk3og",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cu.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Certain Magical Index III",
+      "identifier": "rk3og",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rx.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Certain Magical Index III",
+      "identifier": "rk3og",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+      "identifier": "hcte7",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rk.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Condition Called Love",
+      "identifier": "u95rf",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cz.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Condition Called Love",
+      "identifier": "u95rf",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Condition Called Love",
+      "identifier": "u95rf",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Couple of Cuckoos",
+      "identifier": "xqjzb",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rk.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Couple of Cuckoos",
+      "identifier": "xqjzb",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rx.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Couple of Cuckoos",
+      "identifier": "xqjzb",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Couple of Cuckoos Season 2",
+      "identifier": "phnd3",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Couple of Cuckoos Season 2",
+      "identifier": "phnd3",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rx.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Couple of Cuckoos Season 2",
+      "identifier": "phnd3",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Galaxy Next Door",
+      "identifier": "ryvby",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Galaxy Next Door",
+      "identifier": "ryvby",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Galaxy Next Door",
+      "identifier": "ryvby",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rx.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Gatherer's Adventure in Isekai",
+      "identifier": "08u9e",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cz.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Gatherer's Adventure in Isekai",
+      "identifier": "08u9e",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Gatherer's Adventure in Isekai",
+      "identifier": "08u9e",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ci.animeheaven.me",
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Gentle Noble's Vacation Recommendation",
+      "identifier": "3qka6",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rx.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Gentle Noble's Vacation Recommendation",
+      "identifier": "3qka6",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ci.animeheaven.me",
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Gentle Noble's Vacation Recommendation",
+      "identifier": "3qka6",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rk.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Girl & Her Guard Dog",
+      "identifier": "4u7r9",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Girl & Her Guard Dog",
+      "identifier": "4u7r9",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Girl & Her Guard Dog",
+      "identifier": "4u7r9",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cz.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Herbivorous Dragon of 5,000 Years Gets Unfairly Villainized",
+      "identifier": "ihc55",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ci.animeheaven.me",
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Herbivorous Dragon of 5,000 Years Gets Unfairly Villainized",
+      "identifier": "ihc55",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "A Herbivorous Dragon of 5,000 Years Gets Unfairly Villainized",
+      "identifier": "ihc55",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cz.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Babanbabanban Vampire",
+      "identifier": "rgc1p",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Babanbabanban Vampire",
+      "identifier": "rgc1p",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Babanbabanban Vampire",
+      "identifier": "rgc1p",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cu.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Babylon",
+      "identifier": "1ne58",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cz.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Babylon",
+      "identifier": "1ne58",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rk.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Babylon",
+      "identifier": "1ne58",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Bad Girl",
+      "identifier": "hfrok",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Bad Girl",
+      "identifier": "hfrok",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ci.animeheaven.me",
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Bad Girl",
+      "identifier": "hfrok",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts",
+      "identifier": "ah4rl",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rk.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts",
+      "identifier": "ah4rl",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts",
+      "identifier": "ah4rl",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cu.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts 2",
+      "identifier": "o8tj1",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts 2",
+      "identifier": "o8tj1",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rk.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts 2",
+      "identifier": "o8tj1",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ci.animeheaven.me",
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Bakemonogatari",
+      "identifier": "1j1cc",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "rx.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Bakemonogatari",
+      "identifier": "1j1cc",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cu.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Bakemonogatari",
+      "identifier": "1j1cc",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cz.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baki",
+      "identifier": "tgl3z",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "po.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baki",
+      "identifier": "tgl3z",
+      "episodeNumber": 2,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "Baki",
+      "identifier": "tgl3z",
+      "episodeNumber": 3,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "ct.animeheaven.me",
+        "cy.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    },
+    {
+      "title": "BAKI-DOU: The Invincible Samurai",
+      "identifier": "5ebj0",
+      "episodeNumber": 1,
+      "resolvePlayerStatus": "success",
+      "resolveReason": null,
+      "sourceCount": 12,
+      "discoveredMirrorUrls": [],
+      "discoveredSourceHosts": [
+        "ck.animeheaven.me",
+        "co.animeheaven.me",
+        "ct.animeheaven.me",
+        "animeheaven.me",
+        "discord.gg",
+        "twitter.com"
+      ],
+      "pageUrl": "https://animeheaven.me/gate.php"
+    }
+  ]
+}

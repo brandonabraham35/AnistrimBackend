@@ -12,9 +12,10 @@ const SEARCH_CACHE_TTL_MS = 90 * 1000;
 const BASE_URL_TTL_MS = 10 * 60 * 1000;
 const COOKIE_TTL_MS = 8 * 60 * 1000;
 const MAX_REDIRECT_DEPTH = 4;
-const MAX_NESTED_IFRAME_DEPTH = 2;
+const MAX_NESTED_IFRAME_DEPTH = Math.max(1, Number(process.env.ANIMEHEAVEN_MAX_NESTED_DEPTH || 3));
 const MAX_MIRROR_FETCHES = 4;
 const MAX_FETCH_RETRIES = 2;
+const MIRROR_CACHE_TTL_MS = Math.max(15 * 1000, Number(process.env.ANIMEHEAVEN_MIRROR_CACHE_TTL_MS || 10 * 60 * 1000));
 
 const DOMAIN_CANDIDATES = [
   process.env.ANIMEHEAVEN_BASE_URL,
@@ -47,6 +48,7 @@ const CLOUDFLARE_PATTERNS = [
   /captcha/i,
   /please wait while we verify/i,
   /cf-ray/i,
+  /turnstile/i,
 ];
 
 const REASON = Object.freeze({
@@ -63,11 +65,16 @@ const REASON = Object.freeze({
   EPISODE_MISSING: 'episode_missing',
   SEARCH_EMPTY: 'search_empty',
   RESOLVE_ERROR: 'resolve_error',
+  REDIRECT_LOOP: 'redirect_loop',
+  MIRROR_FAILED: 'mirror_failed',
+  HTTP_FAILURE: 'http_failure',
+  PLAYER_FAILED: 'player_failed',
 });
 
 const pageCache = new Map();
 const redirectCache = new Map();
 const cookieJar = new Map();
+const mirrorHealth = new Map();
 
 const providerStats = {
   attempts: 0,
@@ -76,6 +83,12 @@ const providerStats = {
   timeouts: 0,
   cloudflare: 0,
   totalLatencyMs: 0,
+  httpFailures: 0,
+  redirectLoops: 0,
+  mirrorFailures: 0,
+  playerFailures: 0,
+  subtitleSuccess: 0,
+  streamSuccess: 0,
 };
 
 function cacheGet(key) {
@@ -313,13 +326,18 @@ function scoreTitleCandidate(candidate, query, aliases = []) {
 
   const cTokens = new Set(c.split(' ').filter(Boolean));
   const qTokens = q.split(' ').filter(Boolean);
+  const qTokenSet = new Set(qTokens);
   let overlap = 0;
   for (const token of qTokens) {
     if (cTokens.has(token)) overlap++;
   }
 
+  const union = new Set([...cTokens, ...qTokenSet]);
+  const jaccard = union.size ? (overlap / union.size) : 0;
+
   let score = overlap * 9;
   if (overlap >= Math.max(2, Math.floor(qTokens.length * 0.65))) score += 24;
+  score += Math.round(jaccard * 35);
 
   const distance = levenshtein(c, q);
   const maxLen = Math.max(c.length, q.length) || 1;
@@ -343,6 +361,7 @@ function classifyFailure({ status, message, html }) {
   if (status === 404) return REASON.NOT_FOUND;
   if (status === 403) return REASON.FORBIDDEN;
   if (status === 429) return REASON.RATE_LIMITED;
+  if ([500, 502, 503, 504].includes(Number(status))) return REASON.HTTP_FAILURE;
   if (/timeout|timed out|etimedout/i.test(text)) return REASON.TIMEOUT;
   if (/enotfound|eai_again|network|socket|connreset|unable to connect/i.test(text)) return REASON.NETWORK;
   return REASON.RESOLVE_ERROR;
@@ -355,6 +374,67 @@ function recordProviderMetric(kind, latencyMs = 0) {
   if (kind === 'timeout') providerStats.timeouts += 1;
   if (kind === 'cloudflare') providerStats.cloudflare += 1;
   if (kind === 'failure') providerStats.failures += 1;
+  if (kind === 'http_failure') providerStats.httpFailures += 1;
+  if (kind === 'redirect_loop') providerStats.redirectLoops += 1;
+  if (kind === 'mirror_failure') providerStats.mirrorFailures += 1;
+  if (kind === 'player_failure') providerStats.playerFailures += 1;
+  if (kind === 'subtitle_success') providerStats.subtitleSuccess += 1;
+  if (kind === 'stream_success') providerStats.streamSuccess += 1;
+}
+
+function getMirrorHost(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function getMirrorHealth(host) {
+  if (!host) return null;
+  const hit = mirrorHealth.get(host);
+  if (!hit) return null;
+  if (Date.now() > hit.expiresAt) {
+    mirrorHealth.delete(host);
+    return null;
+  }
+  return hit;
+}
+
+function updateMirrorHealth(host, payload) {
+  if (!host) return;
+  const cur = getMirrorHealth(host) || {
+    successes: 0,
+    failures: 0,
+    timeouts: 0,
+    cloudflare: 0,
+    httpErrors: 0,
+    avgLatencyMs: 0,
+  };
+  const next = Object.assign({}, cur);
+  if (payload.success) next.successes += 1;
+  if (payload.failure) next.failures += 1;
+  if (payload.timeout) next.timeouts += 1;
+  if (payload.cloudflare) next.cloudflare += 1;
+  if (payload.httpError) next.httpErrors += 1;
+  if (Number.isFinite(payload.latencyMs) && payload.latencyMs > 0) {
+    const baseline = next.avgLatencyMs || payload.latencyMs;
+    next.avgLatencyMs = Math.round((baseline * 0.75) + (payload.latencyMs * 0.25));
+  }
+  mirrorHealth.set(host, Object.assign(next, { expiresAt: Date.now() + MIRROR_CACHE_TTL_MS }));
+}
+
+function scoreMirror(url) {
+  const host = getMirrorHost(url);
+  const state = getMirrorHealth(host);
+  if (!state) return 60;
+  const successPenalty = Math.max(0, 20 - (state.successes * 2));
+  const failurePenalty = state.failures * 5;
+  const timeoutPenalty = state.timeouts * 6;
+  const cloudflarePenalty = state.cloudflare * 7;
+  const httpPenalty = state.httpErrors * 4;
+  const latencyPenalty = Math.min(20, Math.floor((state.avgLatencyMs || 0) / 400));
+  return 100 - successPenalty - failurePenalty - timeoutPenalty - cloudflarePenalty - httpPenalty - latencyPenalty;
 }
 
 function normalizeSearchRow(baseUrl, title, href, image, query, aliases = []) {
@@ -428,7 +508,7 @@ function uniqueByIdentifier(items) {
 function parseEpisodeFromElement($el, fallbackIndex) {
   const text = ($el.find('.watch2,.episode,.ep').first().text().trim() || $el.text().trim());
   const n = normalizeEpisodeNumber(text || fallbackIndex);
-  const isSpecial = /ova|special|movie/i.test(text || '');
+  const isSpecial = /ova|special|movie|ona|extra|recap/i.test(text || '');
   return {
     number: n,
     title: text || `Episode ${n}`,
@@ -446,6 +526,7 @@ function parseEpisodes($, baseUrl) {
     'button[onclick*="gatea("]',
     '[data-key][onclick*="gate"]',
     'a[href*="gate.php"]',
+    'a[href*="watch"],a[href*="player"],button[data-episode]',
     '.watch2',
   ];
 
@@ -479,22 +560,25 @@ function parseEpisodes($, baseUrl) {
 function parseQualityHint(value) {
   const raw = String(value || '').toLowerCase();
   if (!raw) return 'Unknown';
+  if (raw.includes('2160') || raw.includes('4k')) return '2160p';
+  if (raw.includes('1440') || raw.includes('2k')) return '1440p';
   if (raw.includes('1080') || raw.includes('fullhd')) return '1080p';
   if (raw.includes('720') || raw.includes('hd')) return '720p';
   if (raw.includes('480')) return '480p';
   if (raw.includes('360')) return '360p';
-  if (raw.includes('2160') || raw.includes('4k')) return '2160p';
+  if (raw.includes('auto') || raw.includes('default')) return 'auto';
   return String(value || 'Unknown').trim() || 'Unknown';
 }
 
 function qualityRank(quality) {
   const q = String(quality || '').toLowerCase();
   if (q.includes('2160') || q.includes('4k')) return 6;
-  if (q.includes('1080')) return 5;
-  if (q.includes('720')) return 4;
-  if (q.includes('480')) return 3;
-  if (q.includes('360')) return 2;
-  if (q.includes('auto')) return 1;
+  if (q.includes('1440') || q.includes('2k')) return 5;
+  if (q.includes('1080')) return 4;
+  if (q.includes('720')) return 3;
+  if (q.includes('480')) return 2;
+  if (q.includes('360')) return 1;
+  if (q.includes('auto')) return 0;
   return 0;
 }
 
@@ -512,6 +596,21 @@ function isPlayableMediaUrl(url) {
   return /\.(m3u8|mp4|mpd)(\?|$)/i.test(value) || /video\.mp4\?/i.test(value);
 }
 
+function isStaticAssetUrl(url) {
+  const value = String(url || '').toLowerCase();
+  return /\.(png|jpe?g|gif|webp|svg|css|js|woff2?|ttf|ico)(\?|$)/i.test(value);
+}
+
+function isLikelyStreamLikeUrl(url) {
+  const value = String(url || '').toLowerCase();
+  if (!/^https?:\/\//i.test(value)) return false;
+  if (value === 'https://' || value === 'http://') return false;
+  if (isStaticAssetUrl(value)) return false;
+  if (isPlayableMediaUrl(value)) return true;
+  if (looksLikeMirror(value)) return true;
+  return /stream|play|video|source|manifest|master|playlist|getf\.open|embed|watch/.test(value);
+}
+
 function looksLikeMirror(url) {
   const host = String(url || '').toLowerCase();
   return MIRROR_HINTS.some(h => host.includes(h));
@@ -525,6 +624,7 @@ function parseSources(html, baseUrl) {
     const absolute = safeAbsoluteUrl(baseUrl, url);
     if (!absolute) return;
     if (!/^https?:\/\//i.test(absolute)) return;
+    if (!isLikelyStreamLikeUrl(absolute)) return;
     if (out.some(x => x.url === absolute)) return;
     out.push({
       url: absolute,
@@ -572,6 +672,17 @@ function parseSources(html, baseUrl) {
     }
   }
 
+  const escapedRegex = /(?:file|src|source|manifest)\\x3A\\x22([^\\]+?)\\x22/gi;
+  while ((jm = escapedRegex.exec(blob)) !== null) {
+    push(jm[1].replace(/\\\//g, '/'), 'auto', 'escaped-config');
+  }
+
+  const blobFallbackRegex = /blob:https?:\/\/[^'"\s<>]+/gi;
+  while ((jm = blobFallbackRegex.exec(blob)) !== null) {
+    // Blob URLs are browser-session scoped. Keep for diagnostics but never rank above real URLs.
+    push(jm[0], 'Unknown', 'blob');
+  }
+
   const allUrls = extractAllUrls(blob);
   for (const u of allUrls) {
     if (isPlayableMediaUrl(u) || looksLikeMirror(u)) push(u, 'auto', 'regex');
@@ -589,6 +700,9 @@ function normalizeSubtitleLang(value) {
   if (lower === 'es' || lower.includes('spanish')) return 'Spanish';
   if (lower === 'fr' || lower.includes('french')) return 'French';
   if (lower === 'de' || lower.includes('german')) return 'German';
+  if (lower === 'pt' || lower.includes('portuguese')) return 'Portuguese';
+  if (lower === 'it' || lower.includes('italian')) return 'Italian';
+  if (lower === 'ar' || lower.includes('arabic')) return 'Arabic';
   return raw;
 }
 
@@ -627,6 +741,11 @@ function parseSubtitles(html, baseUrl) {
     push(m[0], 'Unknown');
   }
 
+  const rx2 = /https?:\/\/[^'"\s<>]+\.(ssa|webvtt)(\?[^'"\s<>]*)?/gi;
+  while ((m = rx2.exec(blob)) !== null) {
+    push(m[0], 'Unknown');
+  }
+
   const subtitleJsonRegex = /(subtitles|tracks)\s*:\s*(\[[\s\S]{0,4000}?\])/gi;
   while ((m = subtitleJsonRegex.exec(blob)) !== null) {
     const urls = extractAllUrls(m[2]);
@@ -658,6 +777,7 @@ async function fetchHtml(url, options = {}) {
     cookieKey = null,
     referer = null,
     depth = 0,
+    visitedUrls = null,
     allowRedirectParse = true,
     skipCache = false,
     attempts = MAX_FETCH_RETRIES,
@@ -666,6 +786,22 @@ async function fetchHtml(url, options = {}) {
   if (!url) {
     return { ok: false, status: 0, url, html: '', cloudflare: false, redirectShell: false, reason: REASON.INVALID_URL };
   }
+
+  const visited = visitedUrls || new Set();
+  if (visited.has(url)) {
+    recordProviderMetric('redirect_loop');
+    return {
+      ok: false,
+      status: 0,
+      url,
+      html: '',
+      cloudflare: false,
+      redirectShell: false,
+      redirectedTo: null,
+      reason: REASON.REDIRECT_LOOP,
+    };
+  }
+  visited.add(url);
 
   const cacheKey = `page:${url}:${cookieKey || '-'}:${referer || '-'}`;
   if (!skipCache) {
@@ -679,6 +815,7 @@ async function fetchHtml(url, options = {}) {
       cookieKey,
       referer: referer || url,
       depth: depth + 1,
+      visitedUrls: visited,
       allowRedirectParse,
       skipCache,
       attempts,
@@ -738,6 +875,7 @@ async function fetchHtml(url, options = {}) {
             cookieKey,
             referer: url,
             depth: depth + 1,
+            visitedUrls: visited,
             allowRedirectParse,
           });
           const redirected = Object.assign({}, followed, { redirectedTo: next });
@@ -752,11 +890,14 @@ async function fetchHtml(url, options = {}) {
       const status = Number(error?.response?.status || 0);
       const reason = classifyFailure({ status, message: error.message, html: '' });
 
-      if (attempt < attempts && [REASON.NETWORK, REASON.TIMEOUT, REASON.RATE_LIMITED, REASON.CLOUDFLARE].includes(reason)) {
+      const retryable = [REASON.NETWORK, REASON.TIMEOUT, REASON.RATE_LIMITED, REASON.CLOUDFLARE, REASON.HTTP_FAILURE];
+      if (attempt < attempts && retryable.includes(reason)) {
         logger.warn('[AnimeHeaven] Retry attempt', { attempt: attempt + 1, url, reason });
         await wait((attempt + 1) * 400);
         continue;
       }
+
+      if (reason === REASON.HTTP_FAILURE) recordProviderMetric('http_failure', Date.now() - started);
 
       return {
         ok: false,
@@ -987,19 +1128,32 @@ function parseDetails(html, pageUrl) {
 async function resolveMirrorSources(primarySources, context) {
   const mirrors = primarySources
     .filter(src => src && src.url && looksLikeMirror(src.url) && !isPlayableMediaUrl(src.url))
+    .sort((a, b) => scoreMirror(b.url) - scoreMirror(a.url))
     .slice(0, MAX_MIRROR_FETCHES);
 
   if (!mirrors.length) return [];
 
   const extracted = [];
   for (const mirror of mirrors) {
+    const mirrorStart = Date.now();
+    const host = getMirrorHost(mirror.url);
     logger.info('[AnimeHeaven] Mirror selected', { mirror: mirror.url });
     const page = await fetchHtml(mirror.url, {
       referer: context.referer,
       allowRedirectParse: true,
       attempts: 1,
     });
-    if (!page.ok || !page.html) continue;
+    if (!page.ok || !page.html) {
+      updateMirrorHealth(host, {
+        failure: true,
+        timeout: page.reason === REASON.TIMEOUT,
+        cloudflare: page.reason === REASON.CLOUDFLARE,
+        httpError: page.reason === REASON.HTTP_FAILURE,
+        latencyMs: Date.now() - mirrorStart,
+      });
+      recordProviderMetric('mirror_failure', Date.now() - mirrorStart);
+      continue;
+    }
     const nested = parseSources(page.html, page.url || mirror.url)
       .filter(src => isPlayableMediaUrl(src.url));
 
@@ -1008,17 +1162,28 @@ async function resolveMirrorSources(primarySources, context) {
         extracted.push(Object.assign({}, src, { sourceType: 'mirror' }));
       }
     }
+
+    updateMirrorHealth(host, {
+      success: nested.length > 0,
+      failure: nested.length === 0,
+      latencyMs: Date.now() - mirrorStart,
+    });
   }
 
   return extracted;
 }
 
-async function extractNestedIframeSources(html, pageUrl, depth = 0) {
+async function extractNestedIframeSources(html, pageUrl, depth = 0, visited = new Set()) {
   if (depth > MAX_NESTED_IFRAME_DEPTH) return [];
+  if (visited.has(pageUrl)) return [];
+  visited.add(pageUrl);
 
   const $ = cheerio.load(String(html || ''));
-  const iframeUrls = $('iframe[src], embed[src]')
-    .map((_, el) => safeAbsoluteUrl(pageUrl, $(el).attr('src')))
+  const iframeUrls = $('iframe[src], embed[src], object[data], param[name="movie"]')
+    .map((_, el) => {
+      const src = $(el).attr('src') || $(el).attr('data') || $(el).attr('value');
+      return safeAbsoluteUrl(pageUrl, src);
+    })
     .get()
     .filter(Boolean);
 
@@ -1033,7 +1198,7 @@ async function extractNestedIframeSources(html, pageUrl, depth = 0) {
       if (!out.some(x => x.url === src.url)) out.push(Object.assign({}, src, { sourceType: 'nested-iframe' }));
     }
 
-    const deeper = await extractNestedIframeSources(page.html, page.url || iframeUrl, depth + 1);
+    const deeper = await extractNestedIframeSources(page.html, page.url || iframeUrl, depth + 1, visited);
     for (const src of deeper) {
       if (!out.some(x => x.url === src.url)) out.push(src);
     }
@@ -1085,6 +1250,12 @@ class AnimeHeavenProvider {
       cloudflareHits: providerStats.cloudflare,
       streamExtractionSuccess: providerStats.success,
       failures: providerStats.failures,
+      httpFailures: providerStats.httpFailures,
+      redirectLoops: providerStats.redirectLoops,
+      mirrorFailures: providerStats.mirrorFailures,
+      playerFailures: providerStats.playerFailures,
+      subtitleSuccess: providerStats.subtitleSuccess,
+      streamSuccess: providerStats.streamSuccess,
     };
   }
 
@@ -1318,6 +1489,7 @@ class AnimeHeavenProvider {
       };
     } catch (error) {
       logger.warn('[AnimeHeavenProvider] resolvePlayer failed', { error: error.message });
+      recordProviderMetric('player_failure');
       return {
         anime: { title: title || '', provider: PROVIDER_NAME },
         episode: null,
@@ -1350,7 +1522,7 @@ class AnimeHeavenProvider {
       }
 
       sources = sortSourcesByQuality(sources)
-        .filter(src => isPlayableMediaUrl(src.url) || looksLikeMirror(src.url));
+        .filter(src => isPlayableMediaUrl(src.url));
 
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });
@@ -1361,6 +1533,7 @@ class AnimeHeavenProvider {
       const subtitles = parseSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
       if (subtitles.length) {
         logger.info('[AnimeHeaven] Subtitle found', { count: subtitles.length });
+        recordProviderMetric('subtitle_success');
       }
 
       const streamUrl = sources[0]?.url || player.playerUrl || null;
@@ -1372,6 +1545,7 @@ class AnimeHeavenProvider {
       });
 
       recordProviderMetric('success', Date.now() - started);
+      recordProviderMetric('stream_success');
       return {
         provider: PROVIDER_NAME,
         streamUrl,

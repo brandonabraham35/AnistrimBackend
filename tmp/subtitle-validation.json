@@ -1,0 +1,1601 @@
+{
+  "generatedAt": "2026-08-04T12:36:53.112Z",
+  "startedAt": "2026-08-04T12:34:38.286Z",
+  "provider": "services/animeHeavenProvider.js",
+  "constraints": {
+    "maxTitles": 100,
+    "targetPositiveTitles": 10
+  },
+  "discovery": {
+    "queriesTried": 61,
+    "totalUniqueFound": 200,
+    "selectedForAudit": 100,
+    "queryLog": [
+      {
+        "query": "a",
+        "count": 12
+      },
+      {
+        "query": "b",
+        "count": 12
+      },
+      {
+        "query": "c",
+        "count": 12
+      },
+      {
+        "query": "d",
+        "count": 12
+      },
+      {
+        "query": "e",
+        "count": 12
+      },
+      {
+        "query": "f",
+        "count": 12
+      },
+      {
+        "query": "g",
+        "count": 12
+      },
+      {
+        "query": "h",
+        "count": 12
+      },
+      {
+        "query": "i",
+        "count": 12
+      },
+      {
+        "query": "j",
+        "count": 12
+      },
+      {
+        "query": "k",
+        "count": 12
+      },
+      {
+        "query": "l",
+        "count": 12
+      },
+      {
+        "query": "m",
+        "count": 12
+      },
+      {
+        "query": "n",
+        "count": 12
+      },
+      {
+        "query": "o",
+        "count": 12
+      },
+      {
+        "query": "p",
+        "count": 12
+      },
+      {
+        "query": "q",
+        "count": 12
+      }
+    ]
+  },
+  "execution": {
+    "testedTitles": 100,
+    "subtitlePositiveTitles": 0,
+    "stoppedOnPositiveTarget": false,
+    "exhaustedSelection": true
+  },
+  "determination": {
+    "passFail": "PASS",
+    "rationale": "No direct subtitle hints were found where subtitleCount was zero; subtitles appear genuinely unavailable or loaded dynamically/external to static parser scope in tested titles.",
+    "parserMissCount": 0,
+    "reasonCounts": {
+      "episode_1_not_resolved": 12,
+      "subtitles_likely_dynamic_or_api": 88
+    }
+  },
+  "rows": [
+    {
+      "title": "A Certain Magical Index",
+      "identifier": "b9s90",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Certain Magical Index II",
+      "identifier": "ea1z6",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Certain Magical Index III",
+      "identifier": "rk3og",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Certain Magical Index Movie: The Miracle of Endymion",
+      "identifier": "hcte7",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Condition Called Love",
+      "identifier": "u95rf",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Couple of Cuckoos",
+      "identifier": "xqjzb",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Couple of Cuckoos Season 2",
+      "identifier": "phnd3",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Galaxy Next Door",
+      "identifier": "ryvby",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Gatherer's Adventure in Isekai",
+      "identifier": "08u9e",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Gentle Noble's Vacation Recommendation",
+      "identifier": "3qka6",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Girl & Her Guard Dog",
+      "identifier": "4u7r9",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "A Herbivorous Dragon of 5,000 Years Gets Unfairly Villainized",
+      "identifier": "ihc55",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Babanbabanban Vampire",
+      "identifier": "rgc1p",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Babylon",
+      "identifier": "1ne58",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Bad Girl",
+      "identifier": "hfrok",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts",
+      "identifier": "ah4rl",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Baka and Test - Summon the Beasts 2",
+      "identifier": "o8tj1",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Bakemonogatari",
+      "identifier": "1j1cc",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Baki",
+      "identifier": "tgl3z",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "BAKI-DOU: The Invincible Samurai",
+      "identifier": "5ebj0",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Baki: Son of Ogre",
+      "identifier": "xrirx",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Baki: Son of Ogre 2",
+      "identifier": "uo1vi",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Baki: The Great Raitai Tournament Saga",
+      "identifier": "ouw8u",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Banana Fish",
+      "identifier": "hwppd",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "#Compass2.0: Combat Providence Analysis System",
+      "identifier": "s9fy8",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Call of the Night",
+      "identifier": "vjm84",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Call of the Night Season 2",
+      "identifier": "bfwel",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Campfire Cooking in Another World with My Absurd Skill",
+      "identifier": "xbuk9",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Campfire Cooking in Another World with My Absurd Skill 2nd Season",
+      "identifier": "esa5e",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Can a Boy-Girl Friendship Survive?",
+      "identifier": "pqlwq",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Cardfight!! Vanguard: overDress",
+      "identifier": "1q5cs",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Cardfight!! Vanguard: overDress 2nd Season",
+      "identifier": "9quu4",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Cardfight!! Vanguard: overDress 3rd Season",
+      "identifier": "jh5x4",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Cat Planet Cuties",
+      "identifier": "6p1bo",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Cat's Eye (2025)",
+      "identifier": "js0ur",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Cautious Hero: The Hero Is Overpowered but Overly Cautious",
+      "identifier": "up8au",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "D4DJ All Mix",
+      "identifier": "u57xa",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "D4DJ First Mix",
+      "identifier": "o470l",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Daemons of The Shadow Realm",
+      "identifier": "pm96z",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Dahlia in Bloom: Crafting a Fresh Start with Magical Tools",
+      "identifier": "7s4rc",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Daily Lives of High School Boys",
+      "identifier": "gkt1j",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Dandadan",
+      "identifier": "j2np5",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Dandadan 2nd Season",
+      "identifier": "ugyek",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Danganronpa: The Animation",
+      "identifier": "q1y3b",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Dara-san of Reiwa",
+      "identifier": "59rhi",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Dark Gathering",
+      "identifier": "mekup",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Dark Moon: The Blood Altar",
+      "identifier": "yux1f",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Darker than Black",
+      "identifier": "qviiw",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Easygoing Territory Defense by the Optimistic Lord: Production Magic Turns a Nameless Village into the Strongest Fortified City",
+      "identifier": "k3es0",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Eden of the East",
+      "identifier": "pjeo0",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Edens Zero",
+      "identifier": "hertd",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Edens Zero 2nd Season",
+      "identifier": "6jtrs",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Elfen Lied",
+      "identifier": "s43yb",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Encouragement of Climb: Next Summit",
+      "identifier": "0hsef",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Endo and Kobayashi Live! The Latest on Tsundere Villainess Lieselotte",
+      "identifier": "wpvfy",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Engage Kiss",
+      "identifier": "ddcfz",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "ERASED",
+      "identifier": "zs72q",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Eren the Southpaw",
+      "identifier": "j26hl",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Ergo Proxy",
+      "identifier": "3rn6v",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Even a Replica Can Fall in Love",
+      "identifier": "k662x",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Failure Frame: I Became the Strongest and Annihilated Everything With Low-Level Spells",
+      "identifier": "fk6og",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fairy Tail",
+      "identifier": "og14w",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fairy Tail 2",
+      "identifier": "zliy2",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fairy Tail: 100 Years Quest",
+      "identifier": "8ntkm",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fairy Tail: Final Season",
+      "identifier": "2omic",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "FARMAGIA",
+      "identifier": "injf6",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Farming Life in Another World",
+      "identifier": "dt6x8",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Farming Life in Another World 2",
+      "identifier": "fae6d",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fate/stay night",
+      "identifier": "z7ivc",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fate/stay night: Heaven's Feel Movies",
+      "identifier": "wbzq7",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fate/stay night: Unlimited Blade Works",
+      "identifier": "a76rj",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Fate/stay night: Unlimited Blade Works 2",
+      "identifier": "y92xm",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Ga-Rei-Zero",
+      "identifier": "667ii",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "episode_1_not_resolved",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "not_run"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "GA: Geijutsuka Art Design Class",
+      "identifier": "m3xyo",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Gabriel Dropout",
+      "identifier": "x947n",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "GACHIAKUTA",
+      "identifier": "cz894",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Gals Can’t Be Kind to Otaku!?",
+      "identifier": "kq3pz",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Ganglion",
+      "identifier": "y9g6c",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Gangsta.",
+      "identifier": "r3l8n",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "GANTZ",
+      "identifier": "f6nf8",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Gargantia on the Verdurous Planet",
+      "identifier": "5mqub",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "GATE",
+      "identifier": "o7se8",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "GATE (2016)",
+      "identifier": "k1r85",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Ghost Concert: Missing Songs",
+      "identifier": "8p2tr",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haibara’s Teenage New Game+",
+      "identifier": "7s4ze",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haigakura",
+      "identifier": "8cwkv",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haikyuu!!",
+      "identifier": "et2it",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haikyuu!! Karasuno High School vs Shiratorizawa Academy",
+      "identifier": "xn1du",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haikyuu!! Movie 5: The Dumpster Battle",
+      "identifier": "nio5z",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haikyuu!! Second Season",
+      "identifier": "jpkfx",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haikyuu!! To the Top",
+      "identifier": "qx2t2",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Haikyuu!! To the Top: Part II",
+      "identifier": "uviel",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Hamidashi Creative",
+      "identifier": "izups",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Hana-Kimi",
+      "identifier": "bs07m",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Hana-Kimi Season 2",
+      "identifier": "s3cd7",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "Hanamonogatari",
+      "identifier": "jy90a",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "\"Ippon\" again!",
+      "identifier": "rq0vh",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "I Became a Legend after My 10 Year-Long Last Stand",
+      "identifier": "4cpxl",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "I Can't Understand What My Husband is Saying",
+      "identifier": "ckrsn",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    },
+    {
+      "title": "I Can’t Understand What My Husband Is Saying: 2nd Thread",
+      "identifier": "p2y7k",
+      "subtitleCount": 0,
+      "subtitleLanguages": [],
+      "subtitleUrls": [],
+      "subtitleFormats": [],
+      "why": "subtitles_likely_dynamic_or_api",
+      "methodStatus": {
+        "resolveEpisode": "pass",
+        "extractStreams": "pass"
+      },
+      "error": null,
+      "offendingLine": null
+    }
+  ]
+}
