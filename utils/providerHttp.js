@@ -15,6 +15,13 @@ const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const logger = require('./logger');
 const { getReferer } = require('../services/providerRegistry');
+const { streamingHttp, STREAMING_TIMEOUT } = require('./streamingHttp');
+
+// Streaming requests default to the dedicated 10-second streaming client
+// timeout. Non-streaming requests keep the historical 15s default. This is
+// how the streaming pipeline is capped at 8–10s WITHOUT ever touching
+// axios.defaults (no global mutation that could affect auth/payments/AniList/
+// admin/uploads/image-downloads).
 
 // ───────────────────────────────────────────────────────────────
 //  SHARED PROXY MANAGER
@@ -330,18 +337,26 @@ function isRetryableError(err) {
  * @param {object}  options.extraHeaders — Additional headers
  * @param {boolean} options.dontTrackHealth — Skip health tracking
  * @param {object}  options.params — URL query params to merge into config (for get/post convenience functions)
+ * @param {boolean} options.streaming — Use the dedicated 10s streaming client (retry disabled).
  * @returns {Promise<object>} Axios response object
  */
 async function request(config, options = {}) {
   const {
     providerName = 'unknown',
     maxRetries = MAX_RETRIES,
-    timeout = 15000,
     skipProxy = false,
     extraHeaders = {},
     dontTrackHealth = false,
     params = null,
+    // `streaming: true` marks this as a streaming-provider request. These are
+    // capped at the dedicated 10-second streaming timeout (STREAMING_TIMEOUT).
+    // Non-streaming requests keep the historical 15s default. Explicit
+    // `options.timeout` still overrides either default per request.
+    streaming = false,
   } = options;
+
+  // Resolve effective timeout: explicit option wins, then streaming vs default.
+  const timeout = options.timeout ?? (streaming ? STREAMING_TIMEOUT : 15000);
 
   // Build merged headers
   const mergedHeaders = buildHeaders(providerName, extraHeaders);
@@ -354,12 +369,15 @@ async function request(config, options = {}) {
 
   // Start with the configured timeout
   const effectiveTimeout = config.timeout || timeout;
+  // Streaming retries are DISABLED at the HTTP layer; the streaming pipeline
+  // (streamingService.executeWithRetry) already coordinates per-provider retries.
+  const effectiveMaxRetries = streaming ? 0 : maxRetries;
   const startTime = Date.now();
 
   let lastError;
   let proxiedUrl = null;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
     // Check provider health before attempting
     if (attempt === 0 && !isProviderHealthy(providerName)) {
       logger.debug('Skipping unhealthy provider', { provider: providerName });
@@ -395,7 +413,7 @@ async function request(config, options = {}) {
     };
 
     // Log the attempt
-    const attemptLabel = maxRetries > 0 ? `attempt ${attempt + 1}/${maxRetries + 1}` : 'attempt 1/1';
+    const attemptLabel = effectiveMaxRetries > 0 ? `attempt ${attempt + 1}/${effectiveMaxRetries + 1}` : 'attempt 1/1';
     logger.stream({
       provider: providerName,
       attempt: attempt + 1,
@@ -407,7 +425,12 @@ async function request(config, options = {}) {
     const attemptStart = Date.now();
 
     try {
-      const response = await axios(requestConfig);
+      // Streaming-provider requests route through the DEDICATED streaming axios
+      // client (utils/streamingHttp.js) which enforces the 10s timeout,
+      // retry-disabled behaviour, and descriptive timeout/error logging.
+      const response = streaming
+        ? await streamingHttp.request(requestConfig)
+        : await axios(requestConfig);
       const responseTime = Date.now() - attemptStart;
 
       // Track health
@@ -441,14 +464,14 @@ async function request(config, options = {}) {
       });
 
       // Track health on final failure only (to not count retries as separate failures)
-      if (attempt === maxRetries && !dontTrackHealth) {
+      if (attempt === effectiveMaxRetries && !dontTrackHealth) {
         recordFailure(providerName, responseTime);
       }
 
       // Determine if we should retry
       const retryable = isRetryableStatus(status) || isRetryableError(err);
 
-      if (!retryable || attempt === maxRetries) {
+      if (!retryable || attempt === effectiveMaxRetries) {
         // Non-retryable or out of attempts
         break;
       }
@@ -464,7 +487,7 @@ async function request(config, options = {}) {
         attempt: attempt + 1,
         duration: responseTime,
         retryDelay: Math.round(delay),
-        retriesLeft: maxRetries - attempt,
+        retriesLeft: effectiveMaxRetries - attempt,
         result: 'retry',
         status: status || 0,
       });
@@ -482,15 +505,15 @@ async function request(config, options = {}) {
     provider: providerName,
     url: config.url,
     status,
-    retries: maxRetries,
+    retries: effectiveMaxRetries,
     timeMs: Date.now() - startTime,
     proxied: !!proxiedUrl,
   };
 
-  logger.error(`Provider failed after ${maxRetries + 1} attempts`, {
+  logger.error(`Provider failed after ${effectiveMaxRetries + 1} attempts`, {
     provider: providerName,
     status,
-    attempts: maxRetries + 1,
+    attempts: effectiveMaxRetries + 1,
     duration: Date.now() - startTime,
     error: lastError.message,
     stack: lastError.stack,

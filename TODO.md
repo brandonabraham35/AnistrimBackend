@@ -1,32 +1,38 @@
-# TODO — Consumet Provider Registry Audit & Fix
+# Task: Dedicated Streaming Axios Client (No Global Timeout)
 
-## Context
+## Goal
 
-- Installed `@consumet/extensions@1.8.8`
-- Verified exported ANIME providers: Hianime, AnimePahe, AnimeKai, KickAssAnime, AnimeSaturn, AnimeUnity, AnimeSama
-- Invalid assumptions: `Gogoanime` and `Zoro` classes do NOT exist in v1.8.8
+Audit every axios instance in the backend. Do NOT set `axios.defaults.timeout` globally.
+Create a dedicated axios instance used ONLY for streaming providers with:
+
+- timeout: 8–10s → **10s**
+- retry disabled
+- proper timeout error handling
+- descriptive logging
+- preserve existing interceptors where appropriate
+
+Replace ONLY streaming-related requests with the dedicated client.
+
+## Approved Approach
+
+- Keep `providerHttp` in the request path for streaming resolvers (it provides
+  proxy rotation, header/referer injection, health tracking, retry coordination,
+  error classification — infrastructure must NOT be bypassed).
+- Make `providerHttp` configurable so streaming requests use the 10s timeout
+  (via a `streaming: true` option / `STREAMING_TIMEOUT` constant).
+- Reuse a single shared streaming client (`utils/streamingHttp.js`) across the
+  streaming stack; provider-specific interceptors wrap/extend it.
+- Preserve proxy rotation, adapter routing, health tracking, failover logic.
+- Do NOT modify payments, auth, uploads, downloads, Kitsu, MALSync, AniSkip,
+  admin imports, metadata providers.
 
 ## Steps
 
-- [x] Update `services/providerRegistry.js`:
-  - [x] Add `ANIME_UNITY: 'animeunity'` to `PROVIDER_IDS`
-  - [x] Add `AnimeUnity` to `CONSUMET_SUB_PROVIDER_IDS`
-  - [x] Add `[PROVIDER_IDS.ANIME_UNITY]: 'AnimeUnity'` to `CONSUMET_PROVIDER_CLASS_NAMES`
-  - [x] Remove invalid `Gogoanime` and `Zoro` from `CONSUMET_PROVIDER_CLASS_NAMES`
-  - [x] Add `[PROVIDER_IDS.ANIME_UNITY]: 'https://animeunity.it/'` to `PROVIDER_REFERERS`
-  - [x] Update `getDefaultProviderOrder()` to include AnimeUnity
-  - [x] Update `getConsumetPreferredOrder()` to include AnimeUnity
-- [x] Update `services/consumetProvider.js` header comment
-- [x] Verify load (registry + synthetic check)
-- [x] Cleanup temp audit file `_audit_provider_usage.js`
-
-## Verification Results
-
-- `consumetProvider` registry now registers **7 providers**:
-  KickAssAnime, AnimeKai, AnimePahe, Hianime, AnimeSaturn, AnimeSama, **AnimeUnity**
-- `hasProvider('Gogoanime')` → `false`
-- `hasProvider('Zoro')` → `false`
-- `hasProvider('AnimeUnity')` → `true`
-- All mapped class names verified to exist in installed `@consumet/extensions@1.8.8`
-- Consumet microservice loads OK, picks KickAssAnime as preferred fallback
-- eslint: only pre-existing quote warnings/errors remain (none introduced by this change)
+- [x] 1. Audit all axios usage in the backend (no global `axios.defaults.timeout` exists).
+- [ ] 2. Create `utils/streamingHttp.js` — dedicated streaming client (10s, retry disabled, logging, timeout handling).
+- [ ] 3. Add `STREAMING_TIMEOUT` + `streaming` option to `utils/providerHttp.js`.
+- [ ] 4. `services/consumetProvider.js` — use `createStreamingInstance` (preserve proxy/403-retry interceptors).
+- [ ] 5. `services/consumet/server.js` — use `createStreamingInstance` (preserve adapter routing).
+- [ ] 6. `services/streamingService.js` — use `streaming: true` (10s) for consumet-http & miruro resolvers.
+- [ ] 7. Verify: syntax checks, no global axios.defaults, confirm other services untouched.
+- [ ] 8. Run regression suite (weather permitting) and document results.

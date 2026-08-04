@@ -256,12 +256,12 @@ function buildConsumetHttpResolver() {
         return null;
       }
 
-      const searchRes = await request({
+const searchRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${encodeURIComponent(animeTitle)}`,
       }, {
         providerName: healthKey,
-        timeout: 15000,
+        streaming: true, // caps at 10s via the dedicated streaming client timeout
       });
 
       const results = searchRes.data?.results || [];
@@ -273,12 +273,12 @@ function buildConsumetHttpResolver() {
       const target = results[0];
       const animeId = target.id;
 
-      const epRes = await request({
+const epRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${animeId}`,
       }, {
         providerName: healthKey,
-        timeout: 15000,
+        streaming: true, // caps at 10s via the dedicated streaming client timeout
       });
 
       const episodes = epRes.data?.episodes || [];
@@ -288,12 +288,12 @@ function buildConsumetHttpResolver() {
         return null;
       }
 
-      const srcRes = await request({
+const srcRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`,
       }, {
         providerName: healthKey,
-        timeout: 15000,
+        streaming: true, // caps at 10s via the dedicated streaming client timeout
       });
 
       const rawSources = srcRes.data?.sources || [];
@@ -351,13 +351,13 @@ function buildMiruroResolver() {
         return null;
       }
 
-      const searchRes = await request({
+const searchRes = await request({
         method: 'get',
         url: `${baseUrl}/search`,
         params: { query: animeTitle },
       }, {
         providerName: healthKey,
-        timeout: 15000,
+        streaming: true, // caps at 10s via the dedicated streaming client timeout
       });
 
       const results = searchRes.data?.results || [];
@@ -369,12 +369,12 @@ function buildMiruroResolver() {
       const animeData = results[0];
       const animeId = animeData.id || animeData.slug;
 
-      const epRes = await request({
+const epRes = await request({
         method: 'get',
         url: `${baseUrl}/anime/${animeId}/episode/${episodeNumber}`,
       }, {
         providerName: healthKey,
-        timeout: 15000,
+        streaming: true, // caps at 10s via the dedicated streaming client timeout
       });
 
       const rawSources = epRes.data?.sources || [];

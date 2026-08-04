@@ -16,9 +16,9 @@
 // ============================================================
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
 const consumet = require('@consumet/extensions');
 const { request: providerRequest, buildHeaders } = require('../../utils/providerHttp');
+const { createStreamingInstance } = require('../../utils/streamingHttp');
 const {
   PROVIDER_IDS,
   getConsumetPreferredOrder,
@@ -53,9 +53,13 @@ console.log('[Consumet Microservice] ✅ Loaded META.Anilist');
 //   • All managed in one place: utils/providerHttp.js
 const sharedHeaders = buildHeaders(PROVIDER_IDS.CONSUMET);
 
-const customAxios = axios.create({
-  timeout: 15000,
+// Dedicated streaming client: 10s timeout, retries disabled, streaming
+// logging. This keeps the streaming pipeline's timeout scoped to streaming
+// only — never applied globally via axios.defaults.
+const customAxios = createStreamingInstance({
+  timeout: 10000,
   headers: sharedHeaders,
+  tag: 'consumet-microservice',
 });
 
 // Replace the default adapter to route through the shared HTTP layer.
@@ -66,7 +70,8 @@ customAxios.defaults.adapter = async (config) => {
   try {
     const response = await providerRequest(config, {
       providerName: PROVIDER_IDS.CONSUMET_HTTP,
-      timeout: config.timeout || 15000,
+      timeout: config.timeout || 10000,
+      streaming: true, // 10s cap + retries disabled (dedicated streaming client)
     });
 
     // Transform to axios-compatible response shape

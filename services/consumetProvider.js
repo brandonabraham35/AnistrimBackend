@@ -32,6 +32,7 @@ const {
   toHealthKey,
   listKnownConsumetProviders,
 } = require('./providerRegistry');
+const { createStreamingInstance } = require('../utils/streamingHttp');
 
 const META = consumet.META || consumet.default?.META || consumet.PROVIDERS?.META;
 const ANIME = consumet.ANIME || consumet.default?.ANIME || consumet.PROVIDERS?.ANIME;
@@ -40,7 +41,6 @@ const availableProviders = Object.keys(ANIME);
 console.log(`[ConsumetProvider] Available ANIME providers: ${availableProviders.join(', ')}`);
 
 // ── Shared dependencies ────────────────────────────────────
-const axios = require('axios');
 const PROXY_LIST = getProxyList();
 
 // ── Provider Instance Factory ──────────────────────────────
@@ -48,15 +48,18 @@ const PROXY_LIST = getProxyList();
 
 /**
  * Build an axios instance configured for a specific Consumet sub-provider.
- * Each instance has its own proxy rotation index so providers don't share
- * proxy state. This prevents one provider's failures from cascading.
+ * Uses the DEDICATED streaming client (10s timeout, retries disabled) so
+ * streaming timeouts are never applied globally. Each instance has its own
+ * proxy rotation index so providers don't share proxy state. This prevents
+ * one provider's failures from cascading.
  */
 function createProviderAxios(providerName) {
   const headers = buildHeaders(providerName);
 
-  const instance = axios.create({
-    timeout: 15000,
+  const instance = createStreamingInstance({
+    timeout: 10000,
     headers,
+    tag: `consumet:${providerName}`,
   });
 
   // Independent proxy rotation index per provider
