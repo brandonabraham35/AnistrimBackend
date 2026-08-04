@@ -1,14 +1,17 @@
 # 🎬 AniStrim2 — Full-Stack Anime Streaming Platform
 
 ## 🏢 Recommended Business Name: **StreamVault Uganda Ltd.**
-*Other options: WakaAnime, NileFlix, PearlStream, SavannaCinema*
+
+_Other options: WakaAnime, NileFlix, PearlStream, SavannaCinema_
 
 ---
 
 ## 📋 Complete Setup Guide
 
 ### STEP 1 — Install Prerequisites
+
 Download and install:
+
 - **Node.js** (v18+): https://nodejs.org
 - **MySQL Workbench**: https://dev.mysql.com/downloads/workbench/
 
@@ -48,6 +51,7 @@ cp .env.example .env          # Mac/Linux
 ```
 
 Open `.env` and fill in:
+
 ```env
 DB_PASSWORD=your_mysql_password
 JWT_SECRET=any_long_random_string_here
@@ -60,6 +64,47 @@ FLW_WEBHOOK_SECRET=any_secret_you_choose
 # Payment amounts in UGX
 PREMIUM_MONTHLY_AMOUNT=35000
 PREMIUM_YEARLY_AMOUNT=350000
+```
+
+---
+
+### Hosted Consumet Fallback (Tier 2)
+
+The streaming pipeline uses a **3-tier fallback architecture**:
+
+```
+Tier 1: Local Consumet providers (consumet-kickassanime, consumet-animekai, ...)
+   ↓  (all fail / no sources)
+Tier 2: Hosted Consumet instance (via CONSUMET_API_URL)
+   ↓  (also fails / not configured)
+Tier 3: Graceful error → "No stream provider could resolve..." (logs + 502)
+```
+
+The hosted fallback:
+
+- **Activates only** when Tier 1 local providers fail.
+- Uses a **dedicated axios client** with an **independent timeout** (`CONSUMET_HOSTED_TIMEOUT_MS`).
+- Has **no hardcoded endpoint URLs** — all paths are configurable via env vars.
+- Preserves the existing API response format.
+
+Environment variables (all optional; defaults applied):
+
+```env
+# Base URL of the hosted Consumet API instance. Leave empty to disable the
+# hosted fallback entirely (it gracefully skips to Tier 3).
+CONSUMET_API_URL=https://your-hosted-consumet.example
+
+# Independent timeout (ms) for the hosted fallback's dedicated axios client.
+CONSUMET_HOSTED_TIMEOUT_MS=10000
+
+# Configurable endpoint path templates (no hardcoded URLs).
+# Placeholders are URL-encoded before substitution:
+#   {query}     — anime title
+#   {id}        — anime id from the search result
+#   {episodeId} — episode id from the anime info
+CONSUMET_HOSTED_SEARCH_PATH=/anime/{query}
+CONSUMET_HOSTED_INFO_PATH=/anime/{id}
+CONSUMET_HOSTED_SOURCES_PATH=/anime/{id}/episodes/{episodeId}
 ```
 
 ---
@@ -133,47 +178,52 @@ AniStrim2/
 ## 🔑 API Reference
 
 ### Auth
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/signup` | Register new user |
-| POST | `/api/auth/login` | Login → returns JWT |
-| GET  | `/api/auth/me` | Get current user (JWT required) |
+
+| Method | Endpoint           | Description                     |
+| ------ | ------------------ | ------------------------------- |
+| POST   | `/api/auth/signup` | Register new user               |
+| POST   | `/api/auth/login`  | Login → returns JWT             |
+| GET    | `/api/auth/me`     | Get current user (JWT required) |
 
 ### Anime
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/anime/trending` | All anime by rating |
-| GET | `/api/anime/featured` | Hero slider anime |
-| GET | `/api/anime/search?q=&genre=&status=` | Search |
-| GET | `/api/anime/:id` | Details + episodes |
+
+| Method | Endpoint                              | Description         |
+| ------ | ------------------------------------- | ------------------- |
+| GET    | `/api/anime/trending`                 | All anime by rating |
+| GET    | `/api/anime/featured`                 | Hero slider anime   |
+| GET    | `/api/anime/search?q=&genre=&status=` | Search              |
+| GET    | `/api/anime/:id`                      | Details + episodes  |
 
 ### Watchlist (JWT required)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET    | `/api/watchlist` | My list |
-| POST   | `/api/watchlist/add` | Add anime |
+
+| Method | Endpoint                  | Description            |
+| ------ | ------------------------- | ---------------------- |
+| GET    | `/api/watchlist`          | My list                |
+| POST   | `/api/watchlist/add`      | Add anime              |
 | PUT    | `/api/watchlist/:animeId` | Update status/progress |
-| DELETE | `/api/watchlist/:animeId` | Remove |
-| POST   | `/api/watchlist/progress` | Save video position |
+| DELETE | `/api/watchlist/:animeId` | Remove                 |
+| POST   | `/api/watchlist/progress` | Save video position    |
 
 ### Payments
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/payments/initiate` | Start Flutterwave checkout (JWT) |
-| POST | `/api/payments/webhook` | Flutterwave webhook (no auth) |
-| GET  | `/api/payments/verify?tx_ref=` | Check payment status |
-| GET  | `/api/payments/revenue` | Revenue stats (admin only) |
+
+| Method | Endpoint                       | Description                      |
+| ------ | ------------------------------ | -------------------------------- |
+| POST   | `/api/payments/initiate`       | Start Flutterwave checkout (JWT) |
+| POST   | `/api/payments/webhook`        | Flutterwave webhook (no auth)    |
+| GET    | `/api/payments/verify?tx_ref=` | Check payment status             |
+| GET    | `/api/payments/revenue`        | Revenue stats (admin only)       |
 
 ### Admin (JWT + isAdmin required)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET    | `/api/admin/stats` | Dashboard stats |
-| GET    | `/api/admin/users` | All users |
-| PUT    | `/api/admin/users/:id/premium` | Grant/revoke premium |
-| GET/POST | `/api/admin/anime` | List / Create anime |
-| PUT/DELETE | `/api/admin/anime/:id` | Update / Delete |
-| POST   | `/api/admin/anime/:id/episodes` | Add episode |
-| PUT    | `/api/admin/episodes/:id` | Update episode video URL |
+
+| Method     | Endpoint                        | Description              |
+| ---------- | ------------------------------- | ------------------------ |
+| GET        | `/api/admin/stats`              | Dashboard stats          |
+| GET        | `/api/admin/users`              | All users                |
+| PUT        | `/api/admin/users/:id/premium`  | Grant/revoke premium     |
+| GET/POST   | `/api/admin/anime`              | List / Create anime      |
+| PUT/DELETE | `/api/admin/anime/:id`          | Update / Delete          |
+| POST       | `/api/admin/anime/:id/episodes` | Add episode              |
+| PUT        | `/api/admin/episodes/:id`       | Update episode video URL |
 
 ---
 
@@ -205,8 +255,10 @@ Frontend polls /api/payments/verify → shows success
 ---
 
 ## 🔐 Default Admin Login
+
 Email: `admin@anistrim.com`
 Password: `admin123`
+
 > **Change this immediately after first login!**
 
 ---
@@ -214,6 +266,7 @@ Password: `admin123`
 ## 🎥 Adding Video Content
 
 In the Admin Dashboard → Episodes tab, paste your video URL:
+
 - **Cloudinary**: upload and deliver videos through the Cloudinary media library.
 - **Cloudinary**: `https://res.cloudinary.com/your-cloud/video/upload/v1/ep1.mp4`
 - **AWS S3**: `https://your-bucket.s3.amazonaws.com/ep1.mp4`

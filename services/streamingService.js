@@ -48,6 +48,7 @@
 //    controller/route/frontend changes are required.
 // ============================================================
 const { provider: consumetProvider } = require('./consumetProvider');
+const hostedConsumet = require('./hostedConsumetProvider');
 const {
   request,
   isProviderHealthy,
@@ -265,14 +266,28 @@ function buildConsumetSubProviderResolver(providerTag) {
 }
 
 /**
- * Build a resolver for the consumet-http provider (external API).
+ * Build a resolver for the consumet-http provider (HOSTED Consumet fallback).
+ *
+ * TIER 2 FALLBACK — activates ONLY when the Tier 1 local Consumet sub-providers
+ * (consumet-kickassanime, consumet-animekai, ...) fail to resolve a stream.
+ *
+ * Delegates the actual HTTP work to services/hostedConsumetProvider.js, which:
+ *   • Uses a DEDICATED axios client (createStreamingInstance) with an
+ *     INDEPENDENT timeout (CONSUMET_HOSTED_TIMEOUT_MS).
+ *   • Reads all endpoint paths from configurable env vars (no hardcoded URLs).
+ *   • Preserves the existing output shape { provider, streamUrl, sources, subtitles }.
+ *
+ * Health tracking for the shared 'consumet-http' health key is performed here
+ * (in executeProvider) exactly as for the other HTTP/Miruro resolvers, so the
+ * hosted fallback stays consistent with the rest of the pipeline.
  */
 function buildConsumetHttpResolver() {
   const healthKey = PROVIDER_IDS.CONSUMET_HTTP;
 
   return async (animeTitle, episodeNumber) => {
-    const baseUrl = process.env.CONSUMET_API_URL;
-    if (!baseUrl) {
+    // Fallback only activates when the hosted instance is configured AND the
+    // provider is healthy (not degraded). Health is tracked by executeProvider.
+    if (!hostedConsumet.isConfigured()) {
       logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'skipped_config', reason: 'CONSUMET_API_URL not set' });
       return null;
     }
@@ -286,70 +301,20 @@ function buildConsumetHttpResolver() {
         return null;
       }
 
-      const searchRes = await request({
-        method: 'get',
-        url: `${baseUrl}/anime/${encodeURIComponent(animeTitle)}`,
-      }, {
-        providerName: healthKey,
-        streaming: true, // caps at 10s via the dedicated streaming client timeout
+      const result = await hostedConsumet.resolveStream({
+        title: animeTitle,
+        episode: episodeNumber,
       });
 
-      const results = searchRes.data?.results || [];
-      if (!results.length) {
-        logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'no_search_results', duration: Date.now() - startTime });
+      if (!result || !result.sources || result.sources.length === 0) {
+        logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'no_sources', duration: Date.now() - startTime });
         return null;
       }
-
-      const target = results[0];
-      const animeId = target.id;
-
-      const epRes = await request({
-        method: 'get',
-        url: `${baseUrl}/anime/${animeId}`,
-      }, {
-        providerName: healthKey,
-        streaming: true, // caps at 10s via the dedicated streaming client timeout
-      });
-
-      const episodes = epRes.data?.episodes || [];
-      const targetEp = episodes.find(e => e.number === Number(episodeNumber));
-      if (!targetEp?.id) {
-        logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'episode_not_found', episode: episodeNumber, duration: Date.now() - startTime });
-        return null;
-      }
-
-      const srcRes = await request({
-        method: 'get',
-        url: `${baseUrl}/anime/${animeId}/episodes/${encodeURIComponent(targetEp.id)}`,
-      }, {
-        providerName: healthKey,
-        streaming: true, // caps at 10s via the dedicated streaming client timeout
-      });
-
-      const rawSources = srcRes.data?.sources || [];
-      const subtitles = srcRes.data?.subtitles || [];
-
-      const sources = rawSources.map(s => ({
-        url: s.url,
-        quality: s.quality || 'auto',
-      }));
-
-      const best = sources.reduce((a, b) =>
-        parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-      , sources[0]);
 
       const elapsed = Date.now() - startTime;
-      logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'success', duration: elapsed, sources: sources.length });
+      logger.stream({ provider: PROVIDER_IDS.CONSUMET_HTTP, result: 'success', duration: elapsed, sources: result.sources.length });
 
-      return {
-        provider: PROVIDER_IDS.CONSUMET_HTTP,
-        streamUrl: best?.url || null,
-        sources,
-        subtitles: subtitles.map(sub => ({
-          lang: sub.lang || sub.language || 'Unknown',
-          url: sub.url,
-        })),
-      };
+      return result;
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const { category } = classifyError(err);
