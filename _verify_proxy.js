@@ -112,7 +112,11 @@ async function runVerification() {
   const providersToTest = [
     { name: 'kitsu', url: 'https://kitsu.io/api/edge/anime?page[limit]=1', opts: { providerName: 'kitsu', timeout: 10000 } },
     { name: 'kitsu-no-proxy', url: 'https://kitsu.io/api/edge/anime?page[limit]=1', opts: { providerName: 'kitsu', timeout: 10000, skipProxy: true } },
-    { name: 'miruro', url: null, opts: { providerName: 'miruro', timeout: 5000 } },  // will skip if no URL
+// Miruro is intentionally DISABLED (see MIRURO_COMPATIBILITY_REPORT.md) — its
+    // resolver is a no-op stub and never makes HTTP requests. Kept here only to
+    // document that it is excluded from active proxy verification; it will always
+    // be skipped because no URL is configured.
+    { name: 'miruro', url: null, opts: { providerName: 'miruro', timeout: 5000 } },  // will skip if no URL (provider disabled)
     { name: 'consumet-http', url: null, opts: { providerName: 'consumet-http', timeout: 5000 } },
   ];
 

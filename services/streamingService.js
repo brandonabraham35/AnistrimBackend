@@ -33,7 +33,9 @@
 //  Provider Types:
 //    consumet-<name> — Consumet-backed sub-provider (KickAssAnime, AnimeKai, etc.)
 //    consumet-http   — External Consumet API server
-//    miruro          — Miruro API
+//    miruro          — Miruro API (INTENTIONALLY DISABLED — see buildMiruroResolver()
+//                       and MIRURO_COMPATIBILITY_REPORT.md. The resolver is a no-op
+//                       stub; it is NOT part of the active provider order.)
 //
 //  Quality Tiers:
 //    Free users:  ≤ 720p (480p, 720p)
@@ -326,80 +328,42 @@ function buildConsumetHttpResolver() {
 
 /**
  * Build a resolver for the Miruro API provider.
+ *
+ * ⚠️ INTENTIONALLY DISABLED — DO NOT ENABLE.
+ *
+ * The Miruro compatibility audit (see MIRURO_COMPATIBILITY_REPORT.md) proved the
+ * previous implementation assumed non-existent endpoints (`/search`, `/anime/{id}/episode/{n}`).
+ * Live probing of the real Miruro service (miruro.tv v1.13.0) returned **410 Gone / 404 Not Found**
+ * for those paths. The real service is a React/Vite SPA exposing a same-origin, undocumented
+ * `/api/*` REST API protected by Cloudflare, with an optional JWE (ECDH-ES) transport that Node.js
+ * Web Crypto cannot transparently implement.
+ *
+ * This stub is intentionally replaceable: it logs that Miruro is disabled, immediately returns
+ * null, NEVER performs an HTTP request, NEVER throws, and NEVER affects provider selection.
+ * It exists so that:
+ *   - A future developer can implement a verified adapter (services/miruroProvider.js) and
+ *     swap it in here after Phase 1 browser-traffic capture of `/api/search`, `/api/episodes`,
+ *     `/api/sources`.
+ *   - Even if a client forces `preferredProvider=miruro`, the pipeline safely falls through
+ *     to the next provider without any network activity.
+ *
+ * @returns {Promise<null>} Always resolves to null (provider disabled).
  */
 function buildMiruroResolver() {
   const healthKey = PROVIDER_IDS.MIRURO;
 
   return async (animeTitle, episodeNumber) => {
-    const baseUrl = process.env.MIRURO_API_URL;
-    if (!baseUrl) {
-      logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'skipped_config', reason: 'MIRURO_API_URL not set' });
-      return null;
-    }
-
-    const startTime = Date.now();
-    logger.stream({ provider: PROVIDER_IDS.MIRURO, anime: animeTitle, episode: episodeNumber, status: 'pending' });
-
-    try {
-      if (!isProviderHealthy(healthKey)) {
-        logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'skipped_degraded' });
-        return null;
-      }
-
-      const searchRes = await request({
-        method: 'get',
-        url: `${baseUrl}/search`,
-        params: { query: animeTitle },
-      }, {
-        providerName: healthKey,
-        streaming: true, // caps at 10s via the dedicated streaming client timeout
-      });
-
-      const results = searchRes.data?.results || [];
-      if (!results.length) {
-        logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'no_results' });
-        return null;
-      }
-
-      const animeData = results[0];
-      const animeId = animeData.id || animeData.slug;
-
-      const epRes = await request({
-        method: 'get',
-        url: `${baseUrl}/anime/${animeId}/episode/${episodeNumber}`,
-      }, {
-        providerName: healthKey,
-        streaming: true, // caps at 10s via the dedicated streaming client timeout
-      });
-
-      const rawSources = epRes.data?.sources || [];
-      const sources = rawSources.map(s => ({
-        url: s.url,
-        quality: s.quality || 'auto',
-      }));
-
-      const best = sources.reduce((a, b) =>
-        parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-      , sources[0]);
-
-      const elapsed = Date.now() - startTime;
-      logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'success', duration: elapsed, sources: sources.length });
-
-      return {
-        provider: PROVIDER_IDS.MIRURO,
-        streamUrl: best?.url || null,
-        sources,
-        subtitles: (epRes.data?.subtitles || []).map(sub => ({
-          lang: sub.lang || sub.language || 'Unknown',
-          url: sub.url,
-        })),
-      };
-    } catch (err) {
-      const elapsed = Date.now() - startTime;
-      const { category } = classifyError(err);
-      logger.stream({ provider: PROVIDER_IDS.MIRURO, result: 'error', duration: elapsed, category, error: err.message });
-      return null;
-    }
+    // Miruro is intentionally disabled. Log clearly and return null immediately.
+    logger.stream({
+      provider: PROVIDER_IDS.MIRURO,
+      result: 'disabled',
+      reason: 'MIRURO_INTENTIONALLY_DISABLED',
+      detail: 'Invalid endpoint assumptions (see MIRURO_COMPATIBILITY_REPORT.md). Awaiting verified adapter after Phase 1 browser-traffic capture.',
+      anime: animeTitle,
+      episode: episodeNumber,
+    });
+    // No HTTP request, no health mutation, no throw — always a clean no-op.
+    return null;
   };
 }
 

@@ -107,6 +107,23 @@ CONSUMET_HOSTED_INFO_PATH=/anime/{id}
 CONSUMET_HOSTED_SOURCES_PATH=/anime/{id}/episodes/{episodeId}
 ```
 
+### Miruro Provider — Intentionally Disabled
+
+Miruro is **registered but intentionally disabled** in the streaming pipeline. The
+compatibility audit (see `MIRURO_COMPATIBILITY_REPORT.md`) proved the previous resolver
+assumed non-existent endpoints (`/search`, `/anime/{id}/episode/{n}`). The real Miruro
+service is a same-origin `/api/*` SPA API protected by Cloudflare with undocumented
+schemas, so it is **not** part of the active provider order.
+
+- `buildMiruroResolver()` is a **no-op stub** — it logs `result: disabled`, returns
+  `null`, and never makes HTTP requests. It never throws and never affects provider
+  selection.
+- `MIRURO_API_URL` is an optional env var; **setting it does NOT activate Miruro**.
+  The provider remains disabled until a verified adapter (`services/miruroProvider.js`)
+  is implemented after Phase 1 browser-traffic capture (see `TODO.md` roadmap).
+- If a client forces `preferredProvider=miruro`, the pipeline safely falls through to
+  the next provider.
+
 ---
 
 ### STEP 4 — Install & Run Backend

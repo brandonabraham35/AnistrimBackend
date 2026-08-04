@@ -9,7 +9,11 @@ const { protect } = require('../middleware/auth');
 
 // ── Public: Auto-fallback best stream ──────────────────────
 // GET /api/stream/:animeTitle/:episodeNumber
-// Optional query param: preferredProvider=consumet|miruro|...
+// Optional query param: preferredProvider=consumet|...
+//   (NOTE: 'miruro' is intentionally DISABLED — see MIRURO_COMPATIBILITY_REPORT.md.
+//    If a client requests preferredProvider=miruro, the resolver safely returns
+//    null and the pipeline falls through to the next provider. No Miruro HTTP
+//    requests are ever made.)
 // Optional auth (if token provided, will unlock premium quality)
 router.get('/:animeTitle/:episodeNumber', (req, res, next) => {
   // Optional auth — if token present, attach user for tier enforcement

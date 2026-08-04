@@ -288,6 +288,15 @@ function listKnownConsumetProviders() {
 /**
  * Get the default provider order (as tags) for the streaming pipeline.
  * Mirrors the historical DEFAULT_PROVIDERS ordering exactly.
+ *
+ * NOTE: Miruro is intentionally EXCLUDED from the active provider order.
+ * The Miruro compatibility audit (MIRURO_COMPATIBILITY_REPORT.md) proved the
+ * previous resolver targeted non-existent endpoints (`/search`, `/anime/{id}/episode/{n}`).
+ * The real Miruro service is a same-origin `/api/*` SPA API protected by Cloudflare,
+ * with an undocumented schema. The provider is therefore DISABLED until a verified
+ * adapter (services/miruroProvider.js) is implemented after Phase 1 browser-traffic
+ * capture. The `PROVIDER_IDS.MIRURO` constant, referer, health key, and tag are KEPT
+ * so the registration remains available for that future adapter.
  * @returns {string[]}
  */
 function getDefaultProviderOrder() {
@@ -299,7 +308,7 @@ function getDefaultProviderOrder() {
     PROVIDER_IDS.ANIME_SATURN,
     PROVIDER_IDS.ANIME_UNITY,
     PROVIDER_IDS.CONSUMET_HTTP,
-    PROVIDER_IDS.MIRURO,
+    // PROVIDER_IDS.MIRURO intentionally omitted — disabled pending verified adapter.
   ].map(toProviderTag);
 }
 
