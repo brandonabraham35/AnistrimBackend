@@ -51,6 +51,7 @@
 // ============================================================
 const { provider: consumetProvider } = require('./consumetProvider');
 const hostedConsumet = require('./hostedConsumetProvider');
+const { provider: animeHeavenProvider } = require('./animeHeavenProvider');
 const {
   request,
   isProviderHealthy,
@@ -327,6 +328,33 @@ function buildConsumetHttpResolver() {
 }
 
 /**
+ * Build a resolver for the AnimeHeaven provider.
+ * Reuses the existing shared providerHttp request layer and the
+ * normalized streaming response shape used by the pipeline.
+ */
+function buildAnimeHeavenResolver() {
+  const healthKey = PROVIDER_IDS.ANIME_HEAVEN;
+
+  return async (animeTitle, episodeNumber) => {
+    if (!isProviderHealthy(healthKey)) {
+      logger.stream({ provider: PROVIDER_IDS.ANIME_HEAVEN, result: 'skipped_degraded' });
+      return null;
+    }
+
+    const result = await animeHeavenProvider.resolveStream({
+      title: animeTitle,
+      episode: episodeNumber,
+    });
+
+    if (!result || !Array.isArray(result.sources) || result.sources.length === 0) {
+      return null;
+    }
+
+    return result;
+  };
+}
+
+/**
  * Build a resolver for the Miruro API provider.
  *
  * ⚠️ INTENTIONALLY DISABLED — DO NOT ENABLE.
@@ -377,6 +405,7 @@ function buildMiruroResolver() {
 const RESOLVER_FACTORIES = {
   [CONSUMET_TAG_PREFIX]: buildConsumetSubProviderResolver,  // prefix match for consumet-*
   [PROVIDER_IDS.CONSUMET_HTTP]: buildConsumetHttpResolver,
+  [PROVIDER_IDS.ANIME_HEAVEN]: buildAnimeHeavenResolver,
   [PROVIDER_IDS.MIRURO]: buildMiruroResolver,
 };
 
@@ -387,6 +416,7 @@ function buildResolverForProvider(providerTag) {
   const tag = providerTag.toLowerCase();
 
   if (tag === PROVIDER_IDS.CONSUMET_HTTP) return buildConsumetHttpResolver();
+  if (tag === PROVIDER_IDS.ANIME_HEAVEN) return buildAnimeHeavenResolver();
   if (tag === PROVIDER_IDS.MIRURO) return buildMiruroResolver();
 
   if (tag.startsWith(CONSUMET_TAG_PREFIX)) {

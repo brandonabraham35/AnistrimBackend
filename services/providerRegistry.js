@@ -36,6 +36,7 @@ const PROVIDER_IDS = Object.freeze({
   ANIME_SATURN: 'animesaturn',
   ANIME_SAMA: 'animesama',
   ANIME_UNITY: 'animeunity',
+  ANIME_HEAVEN: 'animeheaven',
 
   // Legacy / metadata-only identifiers (NOT instantiable via Consumet).
   // GOGOANIME is used as a DB label in anime_mappings (catalogueService) and
@@ -104,6 +105,7 @@ const PROVIDER_REFERERS = Object.freeze({
   [PROVIDER_IDS.HIANIME]: 'https://hianime.to/',
   [PROVIDER_IDS.ANIME_SATURN]: 'https://animesaturn.mx/',
   [PROVIDER_IDS.ANIME_UNITY]: 'https://animeunity.it/',
+  [PROVIDER_IDS.ANIME_HEAVEN]: 'https://animeheaven.ru/',
   [PROVIDER_IDS.MIRURO]: 'https://www.miruro.tv/',
   // 'consumet-http' referer is dynamic (based on CONSUMET_API_URL) and is
   // resolved inside getReferer() below.
@@ -307,6 +309,7 @@ function getDefaultProviderOrder() {
     PROVIDER_IDS.HIANIME,
     PROVIDER_IDS.ANIME_SATURN,
     PROVIDER_IDS.ANIME_UNITY,
+    PROVIDER_IDS.ANIME_HEAVEN,
     PROVIDER_IDS.CONSUMET_HTTP,
     // PROVIDER_IDS.MIRURO intentionally omitted — disabled pending verified adapter.
   ].map(toProviderTag);

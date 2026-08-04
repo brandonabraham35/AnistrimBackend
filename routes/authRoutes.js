@@ -15,6 +15,21 @@ router.post('/login', authController.login);
 // @access  Public
 router.post('/signup', authController.signup);
 
+// @route   GET /api/auth/me
+// @desc    Fetch the current authenticated user profile
+// @access  Private
+router.get('/me', authMiddleware.protect, authController.getMe);
+
+// @route   POST /api/auth/forgot-password
+// @desc    Request a password reset token for a user email
+// @access  Public
+router.post('/forgot-password', authController.forgotPassword);
+
+// @route   POST /api/auth/reset-password
+// @desc    Reset a user password using the reset token
+// @access  Public
+router.post('/reset-password', authController.resetPassword);
+
 // @route   POST /api/auth/google/verify
 // @desc    Verify Google ID Token from GIS popup (no redirect)
 // @access  Public

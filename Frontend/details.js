@@ -2,24 +2,13 @@
 let currentAnime = null;
 
 // ── Robust image helper ──────────────────────────────────
-// Uses the same SVG-based fallback as scrpt.js to avoid random picsum images
-function makeFallbackImg(title) {
-  const letter = (title || '?').charAt(0).toUpperCase();
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'>
-    <rect width='300' height='450' fill='%231a1a2e'/>
-    <rect x='30' y='170' width='240' height='110' rx='8' fill='%23252540'/>
-    <text x='150' y='240' font-family='sans-serif' font-size='64' fill='%238b5cf6'
-          text-anchor='middle' dominant-baseline='middle'>${letter}</text>
-  </svg>`;
-  return `data:image/svg+xml,${svg}`;
-}
+// Uses the shared fallback implementation from the consolidated frontend runtime
 function safeImg(url, seed, title) {
-  if (!url || url.trim() === '' || url === 'undefined') return makeFallbackImg(title || seed);
+  if (!url || url.trim() === '' || url === 'undefined') return window.AniStrimShared.makeFallbackImg(title || seed);
   return url;
 }
 function imgError(el, title) {
-  el.onerror = null;
-  el.src = makeFallbackImg(title || '?');
+  return window.AniStrimShared.cardImgError(el, title || '?');
 }
 window.imgError = imgError;
 
@@ -253,11 +242,6 @@ function showErrorState(id) {
       <button class="btn-primary" onclick="location.reload()">↺ Retry</button>
       <button class="btn-secondary" onclick="location.href='index.html'">← Home</button>`;
   }
-}
-
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
 }
 
 document.addEventListener('DOMContentLoaded', loadDetails);

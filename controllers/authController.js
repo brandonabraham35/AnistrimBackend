@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
@@ -139,5 +140,122 @@ exports.signup = async (req, res) => {
         log(`CRITICAL ERROR during signup: ${error.message}`);
         console.error(error);
         res.status(500).json({ message: 'Server error during registration.' });
+    }
+};
+
+// ─── Compatibility: fetch current user for profile state ────────
+exports.getMe = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({ message: 'Not authenticated. Please log in.' });
+        }
+
+        const [rows] = await pool.query(
+            'SELECT id, name, email, avatar_url, is_admin, is_premium, premium_expires_at FROM users WHERE id = ?',
+            [userId]
+        );
+
+        if (!rows.length) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const user = rows[0];
+        res.json({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatar_url: user.avatar_url || null,
+            avatar: user.avatar_url || null,
+            is_admin: !!user.is_admin,
+            isAdmin: !!user.is_admin,
+            is_premium: !!user.is_premium,
+            isPremium: !!user.is_premium,
+            premium_expires_at: user.premium_expires_at || null,
+        });
+    } catch (error) {
+        log(`CRITICAL ERROR during getMe: ${error.message}`);
+        console.error(error);
+        res.status(500).json({ message: 'Server error while fetching profile.' });
+    }
+};
+
+// ─── Compatibility: request password reset link ─────────────────
+exports.forgotPassword = async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    try {
+        const [rows] = await pool.query('SELECT id, email FROM users WHERE email = ?', [email]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                message: 'If an account exists for that email, a reset link has been sent.'
+            });
+        }
+
+        const token = jwt.sign(
+            { email: rows[0].email, purpose: 'password-reset', sub: rows[0].id },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        const frontendBase = process.env.FRONTEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
+        const devLink = `${frontendBase.replace(/\/$/, '')}/reset-password.html?token=${token}`;
+
+        return res.status(200).json({
+            message: 'If an account exists for that email, a reset link has been sent.',
+            dev_link: devLink,
+        });
+    } catch (error) {
+        log(`CRITICAL ERROR during forgotPassword: ${error.message}`);
+        console.error(error);
+        res.status(500).json({ message: 'Server error while processing reset request.' });
+    }
+};
+
+// ─── Compatibility: reset password using token ─────────────────
+exports.resetPassword = async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+        return res.status(400).json({ message: 'Reset token and new password are required.' });
+    }
+
+    if (String(newPassword).length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (!decoded?.email || decoded?.purpose !== 'password-reset') {
+            return res.status(400).json({ message: 'Invalid or expired reset link.' });
+        }
+
+        const [rows] = await pool.query('SELECT id FROM users WHERE email = ?', [decoded.email]);
+        if (!rows.length) {
+            return res.status(400).json({ message: 'Invalid or expired reset link.' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(newPassword, salt);
+
+        await pool.query(
+            'UPDATE users SET password_hash = ? WHERE id = ?',
+            [passwordHash, rows[0].id]
+        );
+
+        return res.json({ message: 'Password reset successfully.' });
+    } catch (error) {
+        if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError') {
+            return res.status(400).json({ message: 'Invalid or expired reset link.' });
+        }
+        log(`CRITICAL ERROR during resetPassword: ${error.message}`);
+        console.error(error);
+        res.status(500).json({ message: 'Server error while resetting password.' });
     }
 };

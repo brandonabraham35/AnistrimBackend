@@ -1,0 +1,28 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^node -e \"const \\{ request \\} = require\\('\\./utils/providerHttp'\\); const urls=\\['https://animeheaven\\.ru/','https://animeheaven\\.me/','https://animeheaven\\.com/','https://www\\.animeheaven\\.me/','https://animeheaven\\.to/'\\]; \\(async\\(\\)=>\\{ for \\(const u of urls\\)\\{ try \\{ const r=await request\\(\\{method:'get',url:u\\},\\{providerName:'animeheaven',streaming:true,timeout:12000,skipProxy:true\\}\\); const t=String\\(r\\.data\\|\\|''\\); console\\.log\\('URL',u,'STATUS',r\\.status,'LEN',t\\.length,'HEAD',t\\.slice\\(0,160\\)\\.replace\\(/\\\\s\\+/g,' '\\)\\.trim\\(\\)\\); \\} catch\\(e\\)\\{ console\\.log\\('URL',u,'ERR',e\\.message\\); \\} \\} \\}\\)\\(\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node -e \"const cheerio=require\\('cheerio'\\); const \\{ request \\}=require\\('\\./utils/providerHttp'\\); \\(async\\(\\)=>\\{ const r=await request\\(\\{method:'get',url:'https://animeheaven\\.me/\\?s=attack\\+on\\+titan'\\},\\{providerName:'animeheaven',streaming:true,timeout:15000,skipProxy:true\\}\\); const html=String\\(r\\.data\\|\\|''\\); const \\$=cheerio\\.load\\(html\\); const links=\\[\\]; \\$\\('a\\[href\\]'\\)\\.each\\(\\(_,el\\)=>\\{ const href=\\$\\(el\\)\\.attr\\('href'\\)\\|\\|''; const text=\\$\\(el\\)\\.text\\(\\)\\.trim\\(\\); if\\(/attack\\|titan\\|anime\\|episode\\|shingeki/i\\.test\\(href\\+' '\\+text\\)\\)\\{ links\\.push\\(\\{href,text\\}\\); \\} \\}\\); console\\.log\\('MATCH_LINKS',links\\.slice\\(0,120\\)\\); console\\.log\\('TOTAL_LINKS', \\$\\('a\\[href\\]'\\)\\.length\\); console\\.log\\('TITLE', \\$\\('title'\\)\\.text\\(\\)\\); console\\.log\\('HAS_SEARCH_INPUT', \\$\\('input\\[name=q\\],input\\[name=s\\],input\\[type=search\\]'\\)\\.length\\); \\}\\)\\(\\)\\.catch\\(e=>console\\.error\\(e\\.message\\)\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node -e \"const \\{ request \\}=require\\('\\./utils/providerHttp'\\); \\(async\\(\\)=>\\{ const r=await request\\(\\{method:'get',url:'https://animeheaven\\.me/'\\},\\{providerName:'animeheaven',streaming:true,timeout:15000,skipProxy:true\\}\\); const html=String\\(r\\.data\\|\\|''\\); const regexes=\\[/\\\\/anime\\\\/\\[a-z0-9\\\\-\\]\\+/gi,/\\\\/watch\\\\/\\[a-z0-9\\\\-\\]\\+/gi,/\\\\/episode\\\\/\\[a-z0-9\\\\-\\]\\+/gi,/\\\\/series\\\\/\\[a-z0-9\\\\-\\]\\+/gi,/\\\\/videos\\\\/\\[a-z0-9\\\\-\\]\\+/gi,/data\\\\-id=\\\\\"\\(\\[\\^\\\\\"\\]\\+\\)\\\\\"/gi,/window\\\\\\.__INITIAL_STATE__\\\\s\\*=\\\\s\\*\\(\\\\\\{\\[\\\\s\\\\S\\]\\*\\?\\\\\\}\\);/i,/application\\\\/ld\\\\\\+json/gi\\]; for \\(const rx of regexes\\)\\{ const m=html\\.match\\(rx\\); console\\.log\\(String\\(rx\\), m\\?m\\.slice\\(0,12\\):'NO'\\); \\} console\\.log\\('LEN',html\\.length\\); \\}\\)\\(\\)\\.catch\\(e=>console\\.error\\(e\\.message\\)\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node -e \"const \\{ request \\}=require\\('\\./utils/providerHttp'\\); const cheerio=require\\('cheerio'\\); \\(async\\(\\)=>\\{ const r=await request\\(\\{method:'get',url:'https://animeheaven\\.me/'\\},\\{providerName:'animeheaven',streaming:true,timeout:15000,skipProxy:true\\}\\); const \\$=cheerio\\.load\\(String\\(r\\.data\\|\\|''\\)\\); const cards=\\[\\]; \\$\\('\\.schedule, \\.item, \\.post, \\.video-block, \\.video-item, \\.thumb, \\.anime-card, article, li'\\)\\.each\\(\\(_,el\\)=>\\{ const a=\\$\\(el\\)\\.find\\('a\\[href\\]'\\)\\.first\\(\\); const href=a\\.attr\\('href'\\)\\|\\|''; const title=\\(a\\.attr\\('title'\\)\\|\\|a\\.text\\(\\)\\|\\|\\$\\(el\\)\\.text\\(\\)\\)\\.trim\\(\\)\\.replace\\(/\\\\s\\+/g,' '\\)\\.slice\\(0,120\\); if\\(href && title && !/\\^\\\\//\\.test\\(href\\) \\|\\| href\\.includes\\('animeheaven\\.me'\\)\\) cards\\.push\\(\\{href,title\\}\\); \\}\\); console\\.log\\(cards\\.slice\\(0,80\\)\\); \\}\\)\\(\\)\\.catch\\(e=>console\\.error\\(e\\.message\\)\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node tmp\\\\ah_probe_form\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node tmp\\\\ah_probe_detail\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
