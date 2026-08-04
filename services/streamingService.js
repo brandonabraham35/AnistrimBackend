@@ -45,9 +45,12 @@ const {
   request,
   isProviderHealthy,
   getProviderHealth,
+  getHealthStats,
   classifyError,
   recordSuccess,
   recordFailure,
+  markTimeout,
+  isTimeoutError,
 } = require('../utils/providerHttp');
 const {
   PROVIDER_IDS,
@@ -557,9 +560,16 @@ async function executeProvider(providerTag, resolver, animeTitle, episodeNumber)
         result: 'error',
       });
 
-      // Record failure only on last attempt.
+// Record failure only on last attempt. Genuine timeouts are tracked via
+      // markTimeout (a failure + separate timeout counter); everything else
+      // uses recordFailure (markFailure). 403/404/429/5xx/DNS/connection
+      // resets are NOT timeouts and go through the normal failure path.
       if (attempt === maxRetries) {
-        recordFailure(healthKey, Date.now() - attemptStart);
+        if (isTimeoutError(err)) {
+          markTimeout(healthKey, Date.now() - attemptStart);
+        } else {
+          recordFailure(healthKey, Date.now() - attemptStart);
+        }
       }
 
       // Non-retryable errors: abandon provider immediately.
@@ -856,7 +866,10 @@ function getProviderHealthStatus() {
   for (const name of consumetProviders) {
     const key = `consumet-${name.toLowerCase()}`;
     if (!health[key]) {
+      // Use the enriched single-provider stats so the default (untracked)
+      // entries expose the same extended shape as tracked providers.
       health[key] = {
+        ...(getHealthStats(key) || {}),
         successRate: 'N/A',
         totalRequests: 0,
         consecutiveFailures: 0,

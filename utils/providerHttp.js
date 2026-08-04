@@ -88,7 +88,7 @@ function createProxyAgent(proxyUrl) {
 //  PROVIDER HEALTH TRACKING
 // ───────────────────────────────────────────────────────────────
 
-const healthStore = new Map(); // providerName -> { successes, failures, consecutiveFailures, avgResponseTime, lastChecked, degradedUntil }
+const healthStore = new Map(); // providerName -> { successCount, failureCount, timeoutCount, consecutiveFailures, responseTimes, lastSuccessAt, lastFailureAt, firstSeenAt, degradedUntil }
 
 const HEALTH_CONFIG = {
   CONSECUTIVE_FAILURE_LIMIT: 3,   // Mark degraded after N consecutive failures
@@ -97,37 +97,82 @@ const HEALTH_CONFIG = {
 };
 
 /**
- * Record a successful response for a provider.
+ * Ensure a provider record exists in the store, initialising all counters
+ * and timestamps. All health-mutation helpers call this first so the record
+ * shape is always consistent.
+ *
+ * @private
+ * @param {string} providerName - Canonical provider name / health key
+ * @returns {object} The mutable in-memory record
  */
-function recordSuccess(providerName, responseTimeMs) {
-  if (!providerName) return;
+function ensureProviderRecord(providerName) {
   if (!healthStore.has(providerName)) {
-    healthStore.set(providerName, { successes: 0, failures: 0, consecutiveFailures: 0, responseTimes: [], degradedUntil: 0 });
+    const now = Date.now();
+    healthStore.set(providerName, {
+      successCount: 0,
+      failureCount: 0,
+      timeoutCount: 0,
+      consecutiveFailures: 0,
+      responseTimes: [],
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      firstSeenAt: now,
+      degradedUntil: 0,
+    });
   }
-  const h = healthStore.get(providerName);
-  h.successes++;
+  return healthStore.get(providerName);
+}
+
+/**
+ * Determine whether an error is a genuine TIMEOUT.
+ *
+ * Only ECONNABORTED / ETIMEDOUT codes, axios timeout errors, and messages
+ * containing "timeout" are classified as timeouts. Everything else (403, 404,
+ * 429, 5xx, Cloudflare pages, DNS failures, connection resets, etc.) is NOT a
+ * timeout and must go through the normal failure path.
+ *
+ * @param {Error} err - The error to inspect
+ * @returns {boolean} True if the error is genuinely a timeout
+ */
+function isTimeoutError(err) {
+  if (!err) return false;
+  const code = err.code || '';
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return true;
+  return /timeout/i.test(err.message || '');
+}
+
+/**
+ * Record a successful response for a provider.
+ *
+ * @param {string} providerName - Canonical provider name / health key
+ * @param {number} responseTimeMs - Response time in milliseconds
+ */
+function markSuccess(providerName, responseTimeMs) {
+  if (!providerName) return;
+  const h = ensureProviderRecord(providerName);
+  h.successCount++;
   h.consecutiveFailures = 0;
   h.responseTimes.push(responseTimeMs);
   if (h.responseTimes.length > HEALTH_CONFIG.SAMPLE_SIZE) h.responseTimes.shift();
-  h.lastChecked = Date.now();
+  h.lastSuccessAt = Date.now();
   // Clear degraded status on success
   h.degradedUntil = 0;
 }
 
 /**
- * Record a failure for a provider.
+ * Record a failure for a provider (non-timeout).
+ *
+ * @param {string} providerName - Canonical provider name / health key
+ * @param {number} responseTimeMs - Response time in milliseconds
  */
-function recordFailure(providerName, responseTimeMs) {
+function markFailure(providerName, responseTimeMs) {
   if (!providerName) return;
-  if (!healthStore.has(providerName)) {
-    healthStore.set(providerName, { successes: 0, failures: 0, consecutiveFailures: 0, responseTimes: [], degradedUntil: 0 });
-  }
-  const h = healthStore.get(providerName);
-  h.failures++;
+  const h = ensureProviderRecord(providerName);
+  h.failureCount++;
   h.consecutiveFailures++;
   h.responseTimes.push(responseTimeMs);
   if (h.responseTimes.length > HEALTH_CONFIG.SAMPLE_SIZE) h.responseTimes.shift();
-  h.lastChecked = Date.now();
+  h.lastFailureAt = Date.now();
 
   // Mark degraded if consecutive failures exceed limit
   if (h.consecutiveFailures >= HEALTH_CONFIG.CONSECUTIVE_FAILURE_LIMIT) {
@@ -141,10 +186,42 @@ function recordFailure(providerName, responseTimeMs) {
 }
 
 /**
+ * Record a timeout for a provider. A timeout is ALSO a failure (it increments
+ * failureCount and consecutiveFailures) so that repeated timeouts degrade the
+ * provider, but it is additionally tracked separately in timeoutCount.
+ *
+ * @param {string} providerName - Canonical provider name / health key
+ * @param {number} responseTimeMs - Response time in milliseconds
+ */
+function markTimeout(providerName, responseTimeMs) {
+  if (!providerName) return;
+  const h = ensureProviderRecord(providerName);
+  h.timeoutCount++;
+  h.failureCount++;
+  h.consecutiveFailures++;
+  h.responseTimes.push(responseTimeMs);
+  if (h.responseTimes.length > HEALTH_CONFIG.SAMPLE_SIZE) h.responseTimes.shift();
+  h.lastFailureAt = Date.now();
+
+  // Mark degraded if consecutive failures exceed limit
+  if (h.consecutiveFailures >= HEALTH_CONFIG.CONSECUTIVE_FAILURE_LIMIT) {
+    h.degradedUntil = Date.now() + HEALTH_CONFIG.DEGRADE_COOLDOWN_MS;
+    logger.warn(`Provider marked degraded (timeout)`, {
+      provider: providerName,
+      consecutiveFailures: h.consecutiveFailures,
+      cooldownSec: HEALTH_CONFIG.DEGRADE_COOLDOWN_MS / 1000,
+    });
+  }
+}
+
+/**
  * Check if a provider is healthy enough to use.
  * Returns true if provider is not degraded or if cooldown has expired.
+ *
+ * @param {string} providerName - Canonical provider name / health key
+ * @returns {boolean} True if the provider may be used
  */
-function isProviderHealthy(providerName) {
+function isHealthy(providerName) {
   if (!providerName || !healthStore.has(providerName)) return true;
   const h = healthStore.get(providerName);
   if (h.degradedUntil > Date.now()) {
@@ -156,14 +233,61 @@ function isProviderHealthy(providerName) {
 }
 
 /**
+ * Compute the uptime percentage for a provider record.
+ *   uptimePercentage = successCount / (successCount + failureCount)
+ * Returns 100% when there have been zero requests.
+ *
+ * @private
+ * @param {object} h - Provider health record
+ * @returns {number} Uptime percentage (0–100), or 100 when no requests
+ */
+function computeUptimePercentage(h) {
+  const total = h.successCount + h.failureCount;
+  if (total === 0) return 100;
+  return Math.round((h.successCount / total) * 1000) / 10;
+}
+
+/**
+ * Get the full health statistics for a single provider.
+ * Returns null if the provider has never been tracked.
+ *
+ * @param {string} providerName - Canonical provider name / health key
+ * @returns {object|null} Full health stats, or null if untracked
+ */
+function getHealthStats(providerName) {
+  if (!providerName || !healthStore.has(providerName)) return null;
+  const h = healthStore.get(providerName);
+  const total = h.successCount + h.failureCount;
+  return {
+    successCount: h.successCount,
+    failureCount: h.failureCount,
+    timeoutCount: h.timeoutCount,
+    totalRequests: total,
+    consecutiveFailures: h.consecutiveFailures,
+    successRate: total > 0 ? ((h.successCount / total) * 100).toFixed(1) + '%' : 'N/A',
+    uptimePercentage: computeUptimePercentage(h),
+    avgResponseTime: h.responseTimes.length > 0
+      ? (h.responseTimes.reduce((a, b) => a + b, 0) / h.responseTimes.length).toFixed(0) + 'ms'
+      : 'N/A',
+    lastSuccessfulRequest: h.lastSuccessAt ? new Date(h.lastSuccessAt).toISOString() : null,
+    lastFailure: h.lastFailureAt ? new Date(h.lastFailureAt).toISOString() : null,
+    firstSeenAt: h.firstSeenAt ? new Date(h.firstSeenAt).toISOString() : null,
+    degraded: h.degradedUntil > Date.now(),
+    degradedRemainingSec: h.degradedUntil > Date.now()
+      ? Math.ceil((h.degradedUntil - Date.now()) / 1000)
+      : 0,
+  };
+}
+
+/**
  * Get health status for all tracked providers.
  */
 function getProviderHealth() {
   const result = {};
   for (const [name, h] of healthStore) {
-    const total = h.successes + h.failures;
+    const total = h.successCount + h.failureCount;
     result[name] = {
-      successRate: total > 0 ? ((h.successes / total) * 100).toFixed(1) + '%' : 'N/A',
+      successRate: total > 0 ? ((h.successCount / total) * 100).toFixed(1) + '%' : 'N/A',
       totalRequests: total,
       consecutiveFailures: h.consecutiveFailures,
       avgResponseTime: h.responseTimes.length > 0
@@ -173,9 +297,43 @@ function getProviderHealth() {
       degradedRemainingSec: h.degradedUntil > Date.now()
         ? Math.ceil((h.degradedUntil - Date.now()) / 1000)
         : 0,
+      // Enriched runtime stats (observability only)
+      successCount: h.successCount,
+      failureCount: h.failureCount,
+      timeoutCount: h.timeoutCount,
+      uptimePercentage: computeUptimePercentage(h),
+      lastSuccessfulRequest: h.lastSuccessAt ? new Date(h.lastSuccessAt).toISOString() : null,
+      lastFailure: h.lastFailureAt ? new Date(h.lastFailureAt).toISOString() : null,
+      firstSeenAt: h.firstSeenAt ? new Date(h.firstSeenAt).toISOString() : null,
     };
   }
   return result;
+}
+
+// ── Backward-compatible wrappers (delegate to the canonical API) ──
+// The old API is preserved intact so existing modules keep working.
+// New callers should prefer markSuccess / markFailure / markTimeout /
+// isHealthy / getHealthStats.
+
+/**
+ * Record a successful response for a provider (legacy alias of markSuccess).
+ */
+function recordSuccess(providerName, responseTimeMs) {
+  markSuccess(providerName, responseTimeMs);
+}
+
+/**
+ * Record a failure for a provider (legacy alias of markFailure).
+ */
+function recordFailure(providerName, responseTimeMs) {
+  markFailure(providerName, responseTimeMs);
+}
+
+/**
+ * Check if a provider is healthy enough to use (legacy alias of isHealthy).
+ */
+function isProviderHealthy(providerName) {
+  return isHealthy(providerName);
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -463,9 +621,16 @@ async function request(config, options = {}) {
         result: 'failure',
       });
 
-      // Track health on final failure only (to not count retries as separate failures)
+// Track health on final failure only (to not count retries as separate failures).
+      // Genuine timeouts are recorded via markTimeout (a failure + separate timeout
+      // counter); everything else uses markFailure. 403/404/429/5xx/DNS/connection
+      // resets are NOT timeouts and go through the normal failure path.
       if (attempt === effectiveMaxRetries && !dontTrackHealth) {
-        recordFailure(providerName, responseTime);
+        if (isTimeoutError(err)) {
+          markTimeout(providerName, responseTime);
+        } else {
+          markFailure(providerName, responseTime);
+        }
       }
 
       // Determine if we should retry
@@ -568,7 +733,15 @@ module.exports = {
   buildProxyUrl,
   createProxyAgent,
 
-  // Health tracking
+// Health tracking
+  // Canonical API (preferred)
+  markSuccess,
+  markFailure,
+  markTimeout,
+  isHealthy,
+  getHealthStats,
+  isTimeoutError,
+  // Legacy API (backward-compatible wrappers)
   recordSuccess,
   recordFailure,
   isProviderHealthy,

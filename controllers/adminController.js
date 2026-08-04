@@ -649,8 +649,9 @@ async updateGenre(req, res) {
         dbStatus = 'error';
       }
 
-      // Provider health — check consumet or kitsu availability
+// Provider health — check consumet or kitsu availability
       let providerStatus = 'unknown';
+      let providerHealthStats = {};
       try {
         const { default: kitsuProvider } = require('../services/kitsuProvider');
         if (kitsuProvider && typeof kitsuProvider.checkHealth === 'function') {
@@ -661,6 +662,19 @@ async updateGenre(req, res) {
         }
       } catch (e) {
         providerStatus = 'degraded';
+      }
+
+      // Append the enriched provider health stats (runtime metrics) from the
+      // streaming pipeline. Observability only — no new endpoint, no behavioural
+      // change. The frontend continues to work unchanged; these fields are purely
+      // additive to the existing dashboard health response.
+      try {
+        const streamingService = require('../services/streamingService');
+        if (typeof streamingService.getProviderHealthStatus === 'function') {
+          providerHealthStats = streamingService.getProviderHealthStatus();
+        }
+      } catch (e) {
+        // Non-fatal — omit provider health stats if the streaming service is unavailable.
       }
 
       // API status (self-check)
@@ -681,7 +695,7 @@ async updateGenre(req, res) {
         storageUsage = Math.round((Number(storageRows[0]?.total_bytes || 0) / (1024 * 1024 * 1024)) * 100) / 100;
       } catch (e) { /* non-critical */ }
 
-      res.json({
+res.json({
         status: dbStatus === 'healthy' ? 'healthy' : 'degraded',
         timestamp: new Date().toISOString(),
         checks: {
@@ -690,7 +704,10 @@ async updateGenre(req, res) {
           api: { status: 'healthy', latency: `${apiLatency}ms` },
           server_uptime: { status: 'healthy', uptime: uptimeFormatted, seconds: uptimeSeconds },
           storage: { status: storageUsage !== null ? 'healthy' : 'unknown', usage_gb: storageUsage },
-        }
+        },
+        // Provider runtime health metrics (additive — observability only).
+        // Appended to the existing response so the frontend is unaffected.
+        provider_health: providerHealthStats,
       });
     } catch (error) {
       res.status(500).json({ status: 'error', message: error.message });
