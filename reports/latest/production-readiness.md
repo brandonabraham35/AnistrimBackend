@@ -1,9 +1,9 @@
 # AnimeHeaven Nightly Validation Report
 
-- **Generated:** 2026-08-04T18:33:01.768Z
-- **Run ID:** test-quick
+- **Generated:** 2026-08-04T18:55:03.588Z
+- **Run ID:** 2026-08-04
 - **Overall Status:** `FAIL`
-- **Production Score:** 42/100
+- **Production Score:** 52/100
 
 ## Subsystems
 
@@ -16,14 +16,14 @@
 | Mirrors | PARTIAL | 0 mirror hosts detected | 3 |
 | Cache | FAIL | Hit ratio 0% | 0 |
 | Failure Recovery | PASS | Recovery rate 100% | 10 |
-| Concurrency | FAIL | No concurrency report | 0 |
+| Concurrency | PASS | Real success rate 100% | 10 |
 | Cloudflare | PASS | Cloudflare rate 0% | 5 |
 | Health | PASS | No degraded providers | 5 |
 
 ## Counts
-- **PASS:** 4
+- **PASS:** 5
 - **PARTIAL:** 2
-- **FAIL:** 4
+- **FAIL:** 3
 
 ## Recommendations
 
@@ -32,7 +32,6 @@
 - [Subtitles] Coverage 0%
 - [Mirrors] 0 mirror hosts detected
 - [Cache] Hit ratio 0%
-- [Concurrency] No concurrency report
 
 ## Errors Encountered During Harvest
 

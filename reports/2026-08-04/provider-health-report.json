@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-08-04T18:47:21.196Z",
+  "providerHttp": [
+    {
+      "provider": "animeheaven",
+      "totalRequests": 159,
+      "successCount": 159,
+      "failureCount": 0,
+      "consecutiveFailures": 0,
+      "avgResponseMs": 318,
+      "successRate": 100,
+      "uptimePercentage": 100,
+      "degraded": false,
+      "lastSuccessfulRequest": "2026-08-04T18:46:31.731Z",
+      "lastFailure": null
+    },
+    {
+      "provider": "kitsu",
+      "totalRequests": 17,
+      "successCount": 17,
+      "failureCount": 0,
+      "consecutiveFailures": 0,
+      "avgResponseMs": 2079,
+      "successRate": 100,
+      "uptimePercentage": 100,
+      "degraded": false,
+      "lastSuccessfulRequest": "2026-08-04T18:47:21.182Z",
+      "lastFailure": null
+    }
+  ],
+  "animeHeavenSnapshot": {
+    "provider": "animeheaven",
+    "successRate": 66.67,
+    "avgResponseMs": 5611.87,
+    "timeouts": 0,
+    "cloudflareHits": 0,
+    "streamExtractionSuccess": 10,
+    "failures": 0,
+    "httpFailures": 0,
+    "redirectLoops": 0,
+    "mirrorFailures": 0,
+    "playerFailures": 0,
+    "subtitleSuccess": 0,
+    "streamSuccess": 5
+  },
+  "summary": {
+    "trackedProviders": 2,
+    "degradedProviders": [],
+    "zeroRequestProviders": []
+  }
+}
