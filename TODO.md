@@ -1,14 +1,18 @@
-# Nightly Validation Suite — Subtitle Delivery Fix
+# AnimeHeaven Subtitle Runtime Proof — Fix & Re-run
 
-Goal: Stop assuming `subtitle tracks == subtitles exist`. Distinguish EXTERNAL vs EMBEDDED subtitles using the normalized `subtitleMode` field throughout the pipeline.
+Goal: The prior runtime proof was INCONCLUSIVE because every video failed to play
+(HTTP 403/404 — the harness sent no Referer/Origin header, which the AnimeHeaven CDN
+requires). Fix the harness so videos actually render, classify broken playback as
+`inconclusive` (never mislabel as "no subtitles"), re-run >=20 episodes, and
+regenerate an accurate proof report.
 
 ## Steps
 
-- [x] 1. Analyze suite (context, subtitles, readiness, metadata, providerProfile, animeHeaven provider)
-- [x] 2. Plan approved
-- [ ] 3. `validation/context.js` — extract reusable `deriveSubtitleMode()` helper (external/embedded/missing/unknown) and use it in harvest; export it
-- [ ] 4. `validation/subtitles.js` — consume `subtitleMode` as the single source of truth; add delivery distribution + external-only coverage; only flag `missing` for external-expected providers
-- [ ] 5. `validation/readiness.js` — Subtitles subsystem respects embedded rule; report overall + external coverage separately
-- [ ] 6. `validation/metadata.js` — fix fallback to reuse `deriveSubtitleMode()`
-- [ ] 7. Verify no remaining `subtitles.length > 0` re-derivations in the validation pipeline
-- [ ] 8. Syntax-check the edited files
+- [x] 1. Analyze codebase (provider, providerHttp referer, frontend player, prior proof)
+- [x] 2. Get user approval on approach
+- [ ] 3. `_subtitle_runtime_proof.js` — send Referer/Origin headers in the browser
+- [ ] 4. `_subtitle_runtime_proof.js` — classify non-playing episodes as `inconclusive`
+- [ ] 5. Re-run harness against >=20 AnimeHeaven episodes
+- [ ] 6. Inspect subtitle-proof-data.json + screenshots (did video actually play?)
+- [ ] 7. Regenerate embedded-subtitle-proof.md with accurate conclusion
+- [ ] 8. Present conclusion based on runtime evidence
