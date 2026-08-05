@@ -1,21 +1,31 @@
-# Subtitle Runtime Investigation — Task List
+# Task: AnimeHeaven embedded subtitle validation
 
-## Objective
+## Goal
 
-Definitive runtime forensic evidence of how AnimeHeaven delivers subtitles, so we can decide whether subtitle extraction should remain in the validation suite or be removed.
+Improve the AnimeHeaven provider so subtitle validation understands embedded
+subtitles. When no external VTT/SRT/ASS/SSA tracks are found but the stream is
+healthy, the provider is AnimeHeaven, and the player is known to use embedded
+subtitles, validation should return `subtitleMode: "embedded"` (instead of
+`"missing"`) and count embedded subtitles as PASS instead of FAIL.
 
-## Scope Guardrails
-
-- **Do NOT** modify any provider, controller, frontend, validation, or streaming code.
-- **Only** file modified: `_subtitle_runtime_investigation.js`
-- **Only** generated output: `subtitle-delivery-report.json`
+Do NOT fabricate subtitle tracks. Do NOT create fake VTT files.
 
 ## Steps
 
-- [x] 1. Restructure `_subtitle_runtime_investigation.js` to avoid double-fetching the gate page (capture gate HTML once, then crawl nested iframes/manifests/scripts from it).
-- [x] 2. Make MP4 range-header scanning robust (decode Buffer regardless of responseType, guard so it only runs when a playable MP4 source exists).
-- [x] 3. Add a direct raw-HTTP probing path (Node http/https) for subtitle/manifest/MP4 probes that records true network status (the 404 evidence) independent of the provider's HTTP client.
-- [x] 4. Strengthen evidence capture: cap/dedupe request log, record per-probe HTTP status, sample mirror/iframe hostnames.
-- [x] 5. Compute a single definitive delivery-method verdict with confidence + clear recommendation on whether subtitle extraction should remain in validation.
-- [ ] 6. Run `_subtitle_runtime_investigation.js` to generate a fresh `subtitle-delivery-report.json`.
-- [ ] 7. Verify the report contents (delivery method, confidence, samples, conclusion).
+- [x] 1. Explore repo + read relevant files
+- [x] 2. Create plan and get approval
+- [ ] 3. `services/animeHeavenProvider.js`
+     - `normalizeEmptyStream`: add `subtitleMode: 'missing'`, `externalTracks: false`
+     - `extractStreams` success return: expose `subtitleMode` (`external` /
+       `embedded` / `missing`) and `externalTracks`
+- [ ] 4. `validation/context.js`
+     - Import `subtitleDeliveryFor` / `SUBTITLE_DELIVERY` from `./providerProfile`
+     - Derive `externalTracks` + `subtitleMode` and set `ok` = PASS when
+       external tracks exist OR subtitleMode === `embedded`
+     - Push `subtitleMode` / `externalTracks` into subtitle rows
+- [ ] 5. `validation/subtitles.js`
+     - Treat embedded rows as "with subtitles" (PASS)
+     - Add `episodesWithEmbeddedSubtitles` to summary
+     - Include `subtitleMode` in per-row output
+- [ ] 6. Syntax-check the edited files (`node --check`)
+- [ ] 7. Verify the Subtitles subsystem reflects embedded as PASS

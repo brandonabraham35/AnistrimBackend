@@ -1240,6 +1240,8 @@ function normalizeEmptyStream(reason) {
     streamUrl: null,
     sources: [],
     subtitles: [],
+    subtitleMode: 'missing',
+    externalTracks: false,
   };
   if (reason) payload.reason = reason;
   return payload;
@@ -2285,7 +2287,7 @@ class AnimeHeavenProvider {
         recordProviderMetric('subtitle_success');
       }
 
-      const streamUrl = sources[0]?.url || player.playerUrl || null;
+const streamUrl = sources[0]?.url || player.playerUrl || null;
 
       logger.info('[AnimeHeaven] Stream extracted', {
         title,
@@ -2295,11 +2297,23 @@ class AnimeHeavenProvider {
 
       recordProviderMetric('success', Date.now() - started);
       recordProviderMetric('stream_success');
+
+      // At this point a playable stream was resolved (sources is non-empty),
+      // so the stream is healthy. The provider is AnimeHeaven and its player is
+      // known to deliver subtitles embedded/burned into the video frames. When
+      // no external VTT/SRT/ASS/SSA tracks were found, we therefore report an
+      // "embedded" subtitle mode — NOT "missing". No tracks are fabricated and
+      // no fake VTT files are created.
+      const externalTracks = subtitles.length > 0;
+      const subtitleMode = externalTracks ? 'external' : 'embedded';
+
       return {
         provider: PROVIDER_NAME,
         streamUrl,
         sources,
         subtitles,
+        subtitleMode,
+        externalTracks,
       };
     } catch (error) {
       const msg = String(error?.message || '');

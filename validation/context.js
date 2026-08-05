@@ -23,6 +23,10 @@ const {
   getDefaultProviderOrder,
   listKnownConsumetProviders,
 } = require('../services/providerRegistry');
+const {
+  subtitleDeliveryFor,
+  SUBTITLE_DELIVERY,
+} = require('./providerProfile');
 
 // Default harvest targets — keep small so nightly runs stay fast.
 const DEFAULTS = {
@@ -210,6 +214,21 @@ class ValidationContext {
         const sources = Array.isArray(result.sources) ? result.sources : Array.isArray(result.allSources) ? result.allSources : [];
         const subtitles = Array.isArray(result.subtitles) ? result.subtitles : [];
 
+        // Subtitle "ok" semantics:
+        //   - External tracks present  -> PASS (subtitleMode "external")
+        //   - No VTT/SRT/ASS/SSA found, but the stream is healthy and the
+        //     provider is profiled to deliver EMBEDDED subtitles -> PASS with
+        //     subtitleMode "embedded" (do NOT fabricate tracks, do NOT mark missing).
+        //   - Otherwise -> FAIL (a genuinely broken/incomplete stream).
+        const delivery = subtitleDeliveryFor(provider);
+        const embeddedExpected = delivery === SUBTITLE_DELIVERY.EMBEDDED;
+        const runnerMode = result.subtitleMode || null;
+        const consideredEmbedded = ok && !subtitles.length && embeddedExpected && runnerMode !== 'missing';
+        const subtitleOk = subtitles.length > 0 || consideredEmbedded;
+        const subtitleMode = subtitles.length > 0
+          ? 'external'
+          : (consideredEmbedded ? 'embedded' : 'missing');
+
         this.providers.push({
           provider,
           title: target.title,
@@ -219,6 +238,8 @@ class ValidationContext {
           streamUrl: result.streamUrl || (sources[0] && sources[0].url) || null,
           sourceCount: sources.length,
           subtitleCount: subtitles.length,
+          subtitleMode,
+          externalTracks: subtitles.length > 0,
           reason: result.reason || null,
         });
 
@@ -237,8 +258,10 @@ class ValidationContext {
           provider,
           title: target.title,
           episode: target.episode,
-          ok: subtitles.length > 0,
+          ok: subtitleOk,
           subtitles,
+          subtitleMode,
+          externalTracks: subtitles.length > 0,
         });
 
         // Metadata: derive completeness from the stream result where possible.
@@ -248,7 +271,7 @@ class ValidationContext {
           episode: target.episode,
           ok,
           hasStream: Boolean(result.streamUrl || sources.length),
-          hasSubtitles: subtitles.length > 0,
+          hasSubtitles: subtitleOk,
           sourceCount: sources.length,
           subtitleCount: subtitles.length,
         });
