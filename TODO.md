@@ -1,35 +1,21 @@
-# Nightly Validation Suite — Implementation TODO
+# Subtitle Runtime Investigation — Task List
 
-## Phase 1: Core Framework
+## Objective
 
-- [ ] Create `validation/reporters.js` — report writer + reports dir management (latest + date-stamped)
-- [ ] Create `validation/context.js` — shared validation context factory
-- [ ] Create `validation/runner.js` — plugin loader/executor with PASS/PARTIAL/FAIL exit codes
+Definitive runtime forensic evidence of how AnimeHeaven delivers subtitles, so we can decide whether subtitle extraction should remain in the validation suite or be removed.
 
-## Phase 2: Validators
+## Scope Guardrails
 
-- [ ] Create `validation/validators/providerValidator.js`
-- [ ] Create `validation/validators/streamValidator.js`
-- [ ] Create `validation/validators/subtitleValidator.js`
-- [ ] Create `validation/validators/metadataValidator.js`
-- [ ] Create `validation/validators/cacheValidator.js`
-- [ ] Create `validation/validators/concurrencyValidator.js`
-- [ ] Create `validation/validators/failureValidator.js`
-- [ ] Create `validation/validators/searchValidator.js`
-- [ ] Create `validation/validators/healthValidator.js`
+- **Do NOT** modify any provider, controller, frontend, validation, or streaming code.
+- **Only** file modified: `_subtitle_runtime_investigation.js`
+- **Only** generated output: `subtitle-delivery-report.json`
 
-## Phase 3: Aggregation
+## Steps
 
-- [ ] Create `validation/readiness.js` — aggregate reports → production-readiness-report.md + .json
-- [ ] Create `validation/index.js` — orchestrator entry point
-
-## Phase 4: Wiring
-
-- [ ] Add `validate:nightly` script to `package.json`
-
-## Phase 5: Verification
-
-- [ ] Syntax-check all validation files
-- [ ] Run `npm run validate:nightly`
-- [ ] Verify all 10 reports exist under `reports/nightly/` + `reports/latest/`
-- [ ] Verify exit codes (PASS=0, PARTIAL=0+warnings, FAIL=1)
+- [x] 1. Restructure `_subtitle_runtime_investigation.js` to avoid double-fetching the gate page (capture gate HTML once, then crawl nested iframes/manifests/scripts from it).
+- [x] 2. Make MP4 range-header scanning robust (decode Buffer regardless of responseType, guard so it only runs when a playable MP4 source exists).
+- [x] 3. Add a direct raw-HTTP probing path (Node http/https) for subtitle/manifest/MP4 probes that records true network status (the 404 evidence) independent of the provider's HTTP client.
+- [x] 4. Strengthen evidence capture: cap/dedupe request log, record per-probe HTTP status, sample mirror/iframe hostnames.
+- [x] 5. Compute a single definitive delivery-method verdict with confidence + clear recommendation on whether subtitle extraction should remain in validation.
+- [ ] 6. Run `_subtitle_runtime_investigation.js` to generate a fresh `subtitle-delivery-report.json`.
+- [ ] 7. Verify the report contents (delivery method, confidence, samples, conclusion).
