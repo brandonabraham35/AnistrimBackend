@@ -7,9 +7,19 @@
  *
  * Reads harvested subtitle data from the shared context and analyzes:
  *   - coverage: how many resolved episodes had subtitles
+ *   - delivery distribution: external vs embedded vs missing vs unknown
+ *   - external-only coverage (strict, for providers expected to expose
+ *     external tracks)
  *   - language diversity (English/Japanese/other)
  *   - formats (vtt/srt/ass/ssa)
  *   - URL validity (https, no obvious malformed URLs)
+ *
+ * IMPORTANT: Subtitle availability is derived ONCE upstream (validation/context.js
+ * -> deriveSubtitleMode()) and stored as context.subtitles[].subtitleMode. This
+ * validator consumes that normalized field and does NOT re-infer availability
+ * from `subtitles.length > 0`. Providers profiled to deliver EMBEDDED subtitles
+ * (e.g. AnimeHeaven) are counted as satisfied when the stream is healthy, even
+ * though they expose no external track — their absence is EXPECTED, not a failure.
  *
  * Emits:
  *   reports/<run>/subtitle-validation.json
@@ -51,9 +61,33 @@ function formatOf(url) {
  */
 async function runSubtitleValidation(context) {
   const rows = context.subtitles || [];
-  const withSubtitles = rows.filter(r => r.ok && Array.isArray(r.subtitles) && r.subtitles.length > 0);
-  const withoutSubtitles = rows.filter(r => !(r.ok && Array.isArray(r.subtitles) && r.subtitles.length > 0));
-  const coverageRate = rows.length ? Number(((withSubtitles.length / rows.length) * 100).toFixed(2)) : 0;
+
+  // Normalize each row's subtitle mode. Prefer the canonical field computed by
+  // context.js; fall back to a safe derivation for callers that pass raw rows.
+  const normalized = rows.map((r) => {
+    const mode = r.subtitleMode
+      || (r.externalTracks ? 'external' : (r.ok && r.subtitles && !r.subtitles.length ? 'embedded' : (r.ok ? 'missing' : 'unknown')));
+    return Object.assign({}, r, { subtitleMode: mode });
+  });
+
+  // Delivery distribution.
+  const externalSatisfied = normalized.filter(r => r.subtitleMode === 'external');
+  const embeddedSatisfied = normalized.filter(r => r.subtitleMode === 'embedded');
+  const missing = normalized.filter(r => r.subtitleMode === 'missing');
+  const unknown = normalized.filter(r => r.subtitleMode === 'unknown');
+
+  // Overall coverage = satisfied (external OR embedded) / total. Embedded is
+  // satisfied because a healthy stream from an embedded-delivery provider IS
+  // subtitle-capable (burned-in) — absence of external tracks is expected.
+  const satisfied = [...externalSatisfied, ...embeddedSatisfied];
+  const coverageRate = rows.length ? Number(((satisfied.length / rows.length) * 100).toFixed(2)) : 0;
+
+  // External-only coverage (strict): how many episodes actually expose external
+  // tracks. This keeps validation strict for providers expected to deliver
+  // external subtitles, without penalizing embedded-delivery providers.
+  const externalCoverageRate = rows.length
+    ? Number(((externalSatisfied.length / rows.length) * 100).toFixed(2))
+    : 0;
 
   const byLang = {};
   const byFormat = {};
@@ -91,7 +125,7 @@ async function runSubtitleValidation(context) {
 
   const resolvedEpisodesWithStream = context.streams.filter(s => s.ok).length;
   const subtitleCoverageOfResolved = resolvedEpisodesWithStream
-    ? Number(((withSubtitles.length / resolvedEpisodesWithStream) * 100).toFixed(2))
+    ? Number(((satisfied.length / resolvedEpisodesWithStream) * 100).toFixed(2))
     : 0;
 
   const report = {
@@ -99,17 +133,25 @@ async function runSubtitleValidation(context) {
     summary: {
       totalResolvedEpisodes,
       resolvedEpisodesWithStreams: resolvedEpisodesWithStream,
-      episodesWithSubtitles: withSubtitles.length,
-      episodesWithoutSubtitles: withoutSubtitles.length,
+      episodesWithSubtitles: satisfied.length,
+      episodesWithoutSubtitles: missing.length,
+      unknown: unknown.length,
       coverageRate,
+      externalCoverageRate,
       subtitleCoverageOfResolved,
       totalSubtitleTracks,
       uniqueSubtitleUrls: seenUrls.size,
       malformedCount: malformed.length,
     },
+    deliveryDistribution: {
+      external: externalSatisfied.length,
+      embedded: embeddedSatisfied.length,
+      missing: missing.length,
+      unknown: unknown.length,
+    },
     byLanguage: byLang,
     byFormat: byFormat,
-    missing: withoutSubtitles.slice(0, 20).map(r => ({
+    missing: missing.slice(0, 20).map(r => ({
       provider: r.provider,
       title: r.title,
       episode: r.episode,
@@ -121,6 +163,7 @@ async function runSubtitleValidation(context) {
       title: r.title,
       episode: r.episode,
       ok: r.ok,
+      subtitleMode: r.subtitleMode || 'unknown',
       subtitleCount: Array.isArray(r.subtitles) ? r.subtitles.length : 0,
     })),
   };
@@ -131,6 +174,8 @@ async function runSubtitleValidation(context) {
     report.trend = {
       previousCoverageRate: prev.summary.coverageRate ?? null,
       deltaCoverage: Number((coverageRate - (prev.summary.coverageRate || 0)).toFixed(2)),
+      previousExternalCoverageRate: prev.summary.externalCoverageRate ?? null,
+      deltaExternalCoverage: Number((externalCoverageRate - (prev.summary.externalCoverageRate || 0)).toFixed(2)),
       previousTrackCount: prev.summary.totalSubtitleTracks ?? null,
       deltaTracks: totalSubtitleTracks - (prev.summary.totalSubtitleTracks || 0),
     };

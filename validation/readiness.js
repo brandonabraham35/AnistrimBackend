@@ -60,13 +60,32 @@ const SUBSYSTEMS = [
       return { status: 'FAIL', message: `Completeness ${comp}%` };
     },
   },
-  {
+{
     name: 'Subtitles',
     weight: 0.10,
     filename: 'subtitle-validation',
     evaluate: (r) => {
       if (!r || !r.summary) return { status: 'FAIL', message: 'No subtitle report' };
+      // coverageRate = overall (external + embedded) coverage. Embedded
+      // providers (e.g. AnimeHeaven) are counted as satisfied when the stream
+      // is healthy, since their subtitles are burned into the frames — absence
+      // of external tracks is expected, not a failure.
       const rate = r.summary.coverageRate || 0;
+      // externalCoverageRate = strict coverage of providers expected to expose
+      // external tracks. Keeps validation strict for external providers without
+      // penalizing embedded-delivery providers.
+      const extRate = r.summary.externalCoverageRate;
+      const hasExternal = extRate !== undefined && extRate !== null;
+
+      // If the report distinguishes delivery modes, require BOTH the overall
+      // coverage AND a strong external coverage for providers that expose tracks.
+      if (hasExternal) {
+        if (rate >= 80 && extRate >= 80) return { status: 'PASS', message: `Coverage ${rate}% (external ${extRate}%)` };
+        if (rate >= 50 && extRate >= 50) return { status: 'PARTIAL', message: `Coverage ${rate}% (external ${extRate}%)` };
+        return { status: 'FAIL', message: `Coverage ${rate}% (external ${extRate}%)` };
+      }
+
+      // Legacy fallback: no delivery-mode breakdown (pre-change reports).
       if (rate >= 80) return { status: 'PASS', message: `Coverage ${rate}%` };
       if (rate >= 50) return { status: 'PARTIAL', message: `Coverage ${rate}%` };
       return { status: 'FAIL', message: `Coverage ${rate}%` };

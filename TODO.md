@@ -1,31 +1,14 @@
-# Task: AnimeHeaven embedded subtitle validation
+# Nightly Validation Suite — Subtitle Delivery Fix
 
-## Goal
-
-Improve the AnimeHeaven provider so subtitle validation understands embedded
-subtitles. When no external VTT/SRT/ASS/SSA tracks are found but the stream is
-healthy, the provider is AnimeHeaven, and the player is known to use embedded
-subtitles, validation should return `subtitleMode: "embedded"` (instead of
-`"missing"`) and count embedded subtitles as PASS instead of FAIL.
-
-Do NOT fabricate subtitle tracks. Do NOT create fake VTT files.
+Goal: Stop assuming `subtitle tracks == subtitles exist`. Distinguish EXTERNAL vs EMBEDDED subtitles using the normalized `subtitleMode` field throughout the pipeline.
 
 ## Steps
 
-- [x] 1. Explore repo + read relevant files
-- [x] 2. Create plan and get approval
-- [ ] 3. `services/animeHeavenProvider.js`
-     - `normalizeEmptyStream`: add `subtitleMode: 'missing'`, `externalTracks: false`
-     - `extractStreams` success return: expose `subtitleMode` (`external` /
-       `embedded` / `missing`) and `externalTracks`
-- [ ] 4. `validation/context.js`
-     - Import `subtitleDeliveryFor` / `SUBTITLE_DELIVERY` from `./providerProfile`
-     - Derive `externalTracks` + `subtitleMode` and set `ok` = PASS when
-       external tracks exist OR subtitleMode === `embedded`
-     - Push `subtitleMode` / `externalTracks` into subtitle rows
-- [ ] 5. `validation/subtitles.js`
-     - Treat embedded rows as "with subtitles" (PASS)
-     - Add `episodesWithEmbeddedSubtitles` to summary
-     - Include `subtitleMode` in per-row output
-- [ ] 6. Syntax-check the edited files (`node --check`)
-- [ ] 7. Verify the Subtitles subsystem reflects embedded as PASS
+- [x] 1. Analyze suite (context, subtitles, readiness, metadata, providerProfile, animeHeaven provider)
+- [x] 2. Plan approved
+- [ ] 3. `validation/context.js` — extract reusable `deriveSubtitleMode()` helper (external/embedded/missing/unknown) and use it in harvest; export it
+- [ ] 4. `validation/subtitles.js` — consume `subtitleMode` as the single source of truth; add delivery distribution + external-only coverage; only flag `missing` for external-expected providers
+- [ ] 5. `validation/readiness.js` — Subtitles subsystem respects embedded rule; report overall + external coverage separately
+- [ ] 6. `validation/metadata.js` — fix fallback to reuse `deriveSubtitleMode()`
+- [ ] 7. Verify no remaining `subtitles.length > 0` re-derivations in the validation pipeline
+- [ ] 8. Syntax-check the edited files

@@ -60,6 +60,49 @@ function timed(fn) {
     }));
 }
 
+/**
+ * Derive the canonical subtitle mode for a resolved provider row.
+ *
+ * This is the SINGLE SOURCE OF TRUTH for subtitle availability across the
+ * validation pipeline. It deliberately does NOT infer availability from
+ * `subtitles.length > 0` alone, because providers profiled to deliver EMBEDDED
+ * subtitles (burned into the video frames) intentionally expose no separate
+ * external track — their absence is EXPECTED behaviour, not a failure.
+ *
+ * Modes:
+ *   'external'  -> separate .vtt/.srt/.ass/.ssa tracks present. PASS.
+ *   'embedded'  -> no external tracks, stream healthy, provider profiled to
+ *                  deliver embedded subtitles. PASS (not missing).
+ *   'missing'   -> stream healthy, provider EXPECTED to expose external tracks
+ *                  but none were found. Genuine FAIL.
+ *   'unknown'   -> cannot determine: stream never resolved / scraper crashed /
+ *                  provider delivery policy not profiled. NOT auto-"missing".
+ *
+ * @param {object} args
+ * @param {boolean} args.ok        - whether a playable stream was resolved
+ * @param {Array}  args.subtitles  - external subtitle track array
+ * @param {string} args.delivery   - provider delivery profile (SUBTITLE_DELIVERY.*)
+ * @param {string|null} [args.runnerMode] - provider-reported subtitleMode hint
+ * @returns {string} one of 'external' | 'embedded' | 'missing' | 'unknown'
+ */
+function deriveSubtitleMode({ ok, subtitles, delivery, runnerMode }) {
+  const tracks = Array.isArray(subtitles) ? subtitles : [];
+  if (tracks.length > 0) return 'external';
+  // No external tracks found. Now decide why.
+  if (!ok) return 'unknown'; // stream never resolved / scraper crashed / aborted
+  if (delivery === SUBTITLE_DELIVERY.EMBEDDED) {
+    // Provider intentionally delivers burned-in subtitles. A healthy stream +
+    // embedded policy is a PASS unless the runner explicitly reported 'missing'.
+    return runnerMode === 'missing' ? 'missing' : 'embedded';
+  }
+  if (delivery === SUBTITLE_DELIVERY.EXTERNAL) {
+    // Provider is expected to expose external tracks but none were found.
+    return 'missing';
+  }
+  // Delivery policy UNKNOWN or NONE -> cannot confidently call it missing.
+  return 'unknown';
+}
+
 class ValidationContext {
   constructor(options = {}) {
     this.options = typeof options === 'object' && options ? options : {};
@@ -212,22 +255,28 @@ class ValidationContext {
         const result = outcome.result || {};
         const ok = Boolean(result.streamUrl || (Array.isArray(result.sources) && result.sources.length));
         const sources = Array.isArray(result.sources) ? result.sources : Array.isArray(result.allSources) ? result.allSources : [];
-        const subtitles = Array.isArray(result.subtitles) ? result.subtitles : [];
+        const rawSubtitles = Array.isArray(result.subtitles) ? result.subtitles : [];
 
-        // Subtitle "ok" semantics:
-        //   - External tracks present  -> PASS (subtitleMode "external")
-        //   - No VTT/SRT/ASS/SSA found, but the stream is healthy and the
-        //     provider is profiled to deliver EMBEDDED subtitles -> PASS with
-        //     subtitleMode "embedded" (do NOT fabricate tracks, do NOT mark missing).
-        //   - Otherwise -> FAIL (a genuinely broken/incomplete stream).
+        // Subtitle availability is derived ONCE here via deriveSubtitleMode() —
+        // the canonical single source of truth for the whole pipeline. Validators
+        // (subtitles, readiness, metadata) must consume this normalized mode
+        // rather than re-inferring availability from `subtitles.length > 0`.
+        //
+        //   external -> PASS (separate tracks present)
+        //   embedded -> PASS (stream healthy + provider profiled to burn-in
+        //               subtitles; absence of external tracks is EXPECTED)
+        //   missing  -> FAIL (provider expected to expose external tracks but none)
+        //   unknown  -> stream not resolved / policy unprofiled (not auto-missing)
         const delivery = subtitleDeliveryFor(provider);
-        const embeddedExpected = delivery === SUBTITLE_DELIVERY.EMBEDDED;
         const runnerMode = result.subtitleMode || null;
-        const consideredEmbedded = ok && !subtitles.length && embeddedExpected && runnerMode !== 'missing';
-        const subtitleOk = subtitles.length > 0 || consideredEmbedded;
-        const subtitleMode = subtitles.length > 0
-          ? 'external'
-          : (consideredEmbedded ? 'embedded' : 'missing');
+        const subtitleMode = deriveSubtitleMode({
+          ok,
+          subtitles: rawSubtitles,
+          delivery,
+          runnerMode,
+        });
+        const subtitleOk = subtitleMode === 'external' || subtitleMode === 'embedded';
+        const externalTracks = rawSubtitles.length > 0;
 
         this.providers.push({
           provider,
@@ -237,9 +286,9 @@ class ValidationContext {
           latencyMs: outcome.latencyMs,
           streamUrl: result.streamUrl || (sources[0] && sources[0].url) || null,
           sourceCount: sources.length,
-          subtitleCount: subtitles.length,
+          subtitleCount: rawSubtitles.length,
           subtitleMode,
-          externalTracks: subtitles.length > 0,
+          externalTracks,
           reason: result.reason || null,
         });
 
@@ -259,9 +308,9 @@ class ValidationContext {
           title: target.title,
           episode: target.episode,
           ok: subtitleOk,
-          subtitles,
+          subtitles: rawSubtitles,
           subtitleMode,
-          externalTracks: subtitles.length > 0,
+          externalTracks,
         });
 
         // Metadata: derive completeness from the stream result where possible.
@@ -272,8 +321,9 @@ class ValidationContext {
           ok,
           hasStream: Boolean(result.streamUrl || sources.length),
           hasSubtitles: subtitleOk,
+          subtitleMode,
           sourceCount: sources.length,
-          subtitleCount: subtitles.length,
+          subtitleCount: rawSubtitles.length,
         });
       }
     }
@@ -309,4 +359,4 @@ class ValidationContext {
   }
 }
 
-module.exports = { ValidationContext, DEFAULTS, nowIso };
+module.exports = { ValidationContext, DEFAULTS, nowIso, deriveSubtitleMode };
