@@ -15,6 +15,7 @@
 const db = require('../config/db');
 const streamingService = require('../services/streamingService');
 const logger = require('../utils/logger');
+const streamProxy = require('../utils/streamProxy');
 
 /**
  * GET /api/stream/:animeTitle/:episodeIdentifier
@@ -34,7 +35,7 @@ const logger = require('../utils/logger');
  *   { success, provider, streamUrl, sources, subtitles, bestQuality, tier, episodeNumber }
  */
 exports.getStream = async (req, res) => {
-  const { animeTitle, episodeIdentifier } = req.params;
+  const { animeTitle, episodeNumber: episodeIdentifier } = req.params;
   const { preferredProvider, ep: queryEp } = req.query;
 
   if (!animeTitle || !episodeIdentifier) {
@@ -138,14 +139,20 @@ exports.getStream = async (req, res) => {
 
     logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episodeNumber}`, { animeTitle, episode: episodeNumber, resolvedFrom, mediaType, mediaId });
 
-    const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
+const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
       preferredProvider: preferredProvider || undefined,
     });
 
+    // Rewrite AnimeHeaven sources to anonymized /api/stream-proxy/:streamId
+    // URLs. Context (cookies/referer/origin) is stored server-side in the
+    // streamProxyStore and NEVER returned to the browser. Anonymous
+    // providers (Consumet, etc.) are returned unchanged.
+    const publicResult = streamProxy.rewriteResultToProxy(result) || result;
+
     const elapsed = Date.now() - startTime;
     logger.streamAttempt({
-      provider: result.provider,
+      provider: publicResult.provider,
       animeTitle,
       episode: episodeNumber,
       startTime: new Date(startTime).toISOString(),
@@ -157,14 +164,14 @@ exports.getStream = async (req, res) => {
       cloudflareDetected: false,
       searchSuccess: true,
       streamSuccess: true,
-      sourceCount: result.sources?.length || 0,
-      bestQuality: result.bestQuality,
+      sourceCount: publicResult.sources?.length || 0,
+      bestQuality: publicResult.bestQuality,
       resolvedFrom,
     });
 
     res.json({
       success: true,
-      ...result,
+      ...publicResult,
       episodeNumber,
       resolvedFrom,
     });
@@ -210,14 +217,21 @@ exports.listProviders = async (req, res) => {
 
   const isPremium = req.user?.isPremium === true || req.user?.isAdmin === true;
 
-  try {
+try {
     const providers = await streamingService.resolveAllProviders(animeTitle, episodeNumber, {
       isPremium,
     });
 
+    // Rewrite each provider's AnimeHeaven sources to anonymized proxy URLs and
+    // strip any server-side context before returning to the browser.
+    const publicProviders = providers.map((p) => {
+      const safe = streamProxy.rewriteResultToProxy(p);
+      return safe || p;
+    });
+
     res.json({
       success: true,
-      providers,
+      providers: publicProviders,
     });
 } catch (err) {
     logger.error('[StreamController] listProviders error', { animeTitle, episodeNumber, error: err.message });
@@ -257,7 +271,7 @@ exports.authorizeDownload = async (req, res) => {
   }
 
   try {
-    const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
+const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium: true,
       preferredProvider: preferredProvider || undefined,
     });
@@ -266,12 +280,16 @@ exports.authorizeDownload = async (req, res) => {
       return res.status(502).json({ error: 'Could not resolve a stream source for download.' });
     }
 
+    // Rewrite through the proxy so downloads also carry the cookie/referer
+    // context the scraper established (and never expose it to the client).
+    const publicResult = streamProxy.rewriteResultToProxy(result) || result;
+
     res.json({
       success: true,
       authorized: true,
-      streamUrl: result.streamUrl,
-      quality: result.bestQuality,
-      provider: result.provider,
+      streamUrl: publicResult.streamUrl,
+      quality: publicResult.bestQuality,
+      provider: publicResult.provider,
       animeTitle,
       episodeNumber,
     });

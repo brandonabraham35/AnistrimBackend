@@ -161,12 +161,24 @@ function normalizeProviderResult(result) {
   if (!Array.isArray(sources)) sources = result.allSources;
   if (!Array.isArray(sources)) sources = [];
 
-  // Normalize each source entry to { url, quality } if needed.
+// Normalize each source entry to { url, quality } while PRESERVING the
+  // playback/unlock context (referer, origin, cookies, sourceType) that
+  // providers like AnimeHeaven attach. These fields are REQUIRED by the
+  // server-side reverse proxy to authorize hotlink-protected CDN requests.
+  // They are kept server-side only — the controller strips them before
+  // returning data to the browser (see getPublicStreamPayload in
+  // controllers/streamController.js). Anonymous providers leave them null.
   const normalizedSources = sources
     .filter(s => s && (s.url || s.file))
     .map(s => ({
       url: s.url || s.file,
       quality: s.quality || s.qualityLabel || 'auto',
+      sourceType: s.sourceType || null,
+      // Playback context (server-side only — never exposed to the client).
+      referer: s.referer || null,
+      origin: s.origin || null,
+      cookies: s.cookies || null,
+      headers: s.headers || null,
     }));
 
   if (normalizedSources.length === 0) return null;

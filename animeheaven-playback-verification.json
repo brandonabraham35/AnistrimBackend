@@ -1,0 +1,361 @@
+{
+  "generatedAt": "2026-08-05T22:17:58.026Z",
+  "rootCause": "streamingService.normalizeProviderResult() stripped the referer/origin/cookies/headers context that AnimeHeaven attaches to each source, so streamProxy.isAnimeHeavenSource() returned false and the raw hotlink-protected CDN URL was returned to the browser, which cannot play it.",
+  "fix": [
+    "normalizeProviderResult() now preserves playback context (referer/origin/cookies/headers/sourceType) server-side.",
+    "rewriteResultToProxy() now preserves the full response contract (bestQuality/tier/subtitleMode/externalTracks) via spread."
+  ],
+  "summary": {
+    "totalEpisodes": 24,
+    "playable": 0,
+    "failed": 0,
+    "passedChecks": 1
+  },
+  "proxyUrlsVerified": 0,
+  "results": {
+    "passed": [
+      "No upstream CDN URL / secret leaked in any API response"
+    ],
+    "failed": [],
+    "warnings": [
+      {
+        "name": "resolve One Piece",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Naruto",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Jujutsu Kaisen",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Demon Slayer",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Steins Gate",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Attack on Titan",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Fullmetal Alchemist Brotherhood",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve My Hero Academia",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Sword Art Online",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Re:Zero",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Bleach",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Death Note",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Tokyo Ghoul",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Hunter x Hunter",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Fairy Tail",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Black Clover",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Dragon Ball Z",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve One Punch Man",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Mob Psycho 100",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Vinland Saga",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Code Geass",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Cowboy Bebop",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Neon Genesis Evangelion",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Naruto Shippuden",
+        "error": "{\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      }
+    ]
+  },
+  "episodes": [
+    {
+      "title": "One Piece",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Naruto",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Jujutsu Kaisen",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Demon Slayer",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Steins Gate",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Attack on Titan",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Fullmetal Alchemist Brotherhood",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "My Hero Academia",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Sword Art Online",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Re:Zero",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Bleach",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Death Note",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Tokyo Ghoul",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Hunter x Hunter",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Fairy Tail",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Black Clover",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Dragon Ball Z",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "One Punch Man",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Mob Psycho 100",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Vinland Saga",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Code Geass",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Cowboy Bebop",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Neon Genesis Evangelion",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    },
+    {
+      "title": "Naruto Shippuden",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "playable": false,
+      "error": "HTTP 502"
+    }
+  ]
+}

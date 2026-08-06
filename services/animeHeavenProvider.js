@@ -37,6 +37,14 @@ const MIRROR_HINTS = [
   'filelions',
 ];
 
+// A realistic browser User-Agent used for hotlink-protected CDN playback.
+// This is the SAME class of UA the scraper presents when fetching pages, so
+// the CDN authorises the proxy's media requests. Kept as a single constant so
+// the provider and the proxy derive it from ONE source of truth.
+const PLAYBACK_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 const COMMON_ANIME_SYNONYMS = Object.freeze({
   aot: ['attack on titan', 'shingeki no kyojin', '進撃の巨人'],
   snk: ['shingeki no kyojin', 'attack on titan', '進撃の巨人'],
@@ -163,6 +171,45 @@ function getCookiesForUrl(url) {
     parts.push(`${name}=${value}`);
   }
   return parts.length ? parts.join('; ') : null;
+}
+
+/**
+ * Build the complete playback context (headers/cookies) needed to fetch a
+ * given stream/mirror URL directly from the upstream CDN. This is the SINGLE
+ * source of truth used by the reverse proxy (controllers/streamProxyController.js)
+ * so the browser playback path reuses EXACTLY the cookie jar + origin/referer
+ * logic the scraper uses — no duplicate cookie logic.
+ *
+ * If `url` is the CDN/media URL, cookies are sourced from that URL's domain.
+ * `referer` (the AnimeHeaven gate/embed/mirror page that served the media) is
+ * used to derive the Origin and to send a Referer to the CDN, which hotlink
+ * protection typically requires.
+ *
+* @param {string} url - The upstream media/mirror URL to fetch.
+ * @param {string} [referer] - The page that referred the media (gate/iframe/mirror).
+ * @returns {{ referer: string|null, origin: string|null, cookies: string|null, userAgent: string|null }}
+ */
+function getPlaybackContext(url, referer = null) {
+  let origin = null;
+  let effectiveReferer = referer || null;
+  try {
+    if (effectiveReferer) {
+      origin = new URL(effectiveReferer).origin;
+    } else if (url) {
+      origin = new URL(url).origin;
+    }
+  } catch {
+    origin = null;
+  }
+
+  const cookies = getCookiesForUrl(effectiveReferer || url);
+
+  return {
+    referer: effectiveReferer,
+    origin,
+    cookies,
+    userAgent: PLAYBACK_USER_AGENT,
+  };
 }
 
 function mergeCookies(url, rawSetCookie) {
@@ -1894,9 +1941,15 @@ async function resolveMirrorSources(primarySources, context) {
     const nested = parseSources(page.html, page.url || mirror.url)
       .filter(src => isPlayableMediaUrl(src.url));
 
-    for (const src of nested) {
+for (const src of nested) {
       if (!extracted.some(x => x.url === src.url)) {
-        extracted.push(Object.assign({}, src, { sourceType: 'mirror' }));
+        const ctx = getPlaybackContext(src.url, page.url || mirror.url);
+        extracted.push(Object.assign({}, src, {
+          sourceType: 'mirror',
+          referer: ctx.referer,
+          origin: ctx.origin,
+          cookies: ctx.cookies,
+        }));
       }
     }
 
@@ -1932,7 +1985,17 @@ async function extractNestedIframeSources(html, pageUrl, depth = 0, visited = ne
     const direct = parseSources(page.html, page.url || iframeUrl)
       .filter(src => isPlayableMediaUrl(src.url));
     for (const src of direct) {
-      if (!out.some(x => x.url === src.url)) out.push(Object.assign({}, src, { sourceType: 'nested-iframe' }));
+      if (!out.some(x => x.url === src.url)) {
+        out.push(Object.assign({}, src, {
+          sourceType: 'nested-iframe',
+          // Context needed to authorize CDN playback: the referer is the
+          // iframe page that embedded the media, cookies/origin are taken
+          // from the session captured during the iframe fetch.
+          referer: page.url || iframeUrl,
+          origin: (() => { try { return new URL(page.url || iframeUrl).origin; } catch { return null; } })(),
+          cookies: getCookiesForUrl(page.url || iframeUrl),
+        }));
+      }
     }
 
     const deeper = await extractNestedIframeSources(page.html, page.url || iframeUrl, depth + 1, visited);
@@ -2258,7 +2321,7 @@ class AnimeHeavenProvider {
         if (!sources.some(x => x.url === src.url)) sources.push(src);
       }
 
-      sources = sortSourcesByQuality(sources)
+sources = sortSourcesByQuality(sources)
         .filter(src => isPlayableMediaUrl(src.url));
 
       if (!sources.length) {
@@ -2266,6 +2329,21 @@ class AnimeHeavenProvider {
         recordProviderMetric('failure', Date.now() - started);
         return normalizeEmptyStream(player.reason || REASON.STREAM_MISSING);
       }
+
+// Attach the full playback context (referer + origin + cookies) to each
+      // source so the reverse proxy (controllers/streamProxyController.js) can
+      // authorize the CDN request. Hotlink-protected AnimeHeaven CDNs require
+      // the matching Referer/Origin and session cookies before serving media.
+      const sourceReferer = player.pageUrl || (await pickBaseUrl());
+      sources = sources.map(src => {
+        if (src.referer && src.origin) return src; // already enriched (nested/mirror)
+        const ctx = getPlaybackContext(src.url, sourceReferer);
+        return Object.assign({}, src, {
+          referer: src.referer || ctx.referer,
+          origin: src.origin || ctx.origin,
+          cookies: src.cookies || ctx.cookies,
+        });
+      });
 
       const subtitles = parseSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
       const nestedSubtitleRows = await extractNestedIframeSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
@@ -2334,4 +2412,9 @@ const streamUrl = sources[0]?.url || player.playerUrl || null;
 module.exports = {
   AnimeHeavenProvider,
   provider: new AnimeHeavenProvider(),
+  // Exported so the reverse proxy (controllers/streamProxyController.js) derives
+  // the EXACT same playback headers (referer/origin/cookies/userAgent) from ONE
+  // source of truth — never stepping outside the provider's cookie jar.
+  getPlaybackContext,
+  PLAYBACK_USER_AGENT,
 };

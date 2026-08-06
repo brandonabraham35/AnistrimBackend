@@ -54,6 +54,10 @@ app.use('/api/admin/upload', require('./routes/uploadRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
 app.use('/api/watch', require('./routes/watchRoutes'));
 app.use('/api/stream', require('./routes/streamRoutes'));
+// Secure AnimeHeaven playback proxy — serves anonymized /api/stream-proxy/:streamId
+// URLs that inject the cookie/referer/origin context server-side. Cookies and
+// target URLs never reach the browser.
+app.use('/api/stream-proxy', require('./routes/streamProxyRoutes'));
 app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 
