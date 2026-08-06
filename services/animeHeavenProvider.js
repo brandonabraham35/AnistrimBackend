@@ -88,6 +88,22 @@ const CLOUDFLARE_PATTERNS = [
   /turnstile/i,
 ];
 
+// Weighted components of the composite relevance score used to break score
+// ties. Higher-weight components dominate: an exact title match always beats a
+// prefix match, which beats a substring match, etc. This REPLACES the old
+// alphabetical (localeCompare) tie-break so ranking reflects search relevance.
+const RELEVANCE_WEIGHTS = Object.freeze({
+  EXACT_RAW: 1000,        // case-insensitive exact title match
+  EXACT_NORMALIZED: 900,  // normalized exact match (punctuation/spaces removed)
+  ALIAS_MATCH: 850,       // alias/variant match (english/romaji/japanese/synonym)
+  PREFIX_MATCH: 700,      // candidate starts with query
+  WHOLE_WORD: 600,        // query is a whole word within candidate
+  SUBSTRING: 500,         // candidate contains query substring
+  TOKEN_OVERLAP: 400,     // token overlap / jaccard
+  LEVENSHTEIN: 300,       // edit-distance similarity
+  EPISODE_AVAIL: 200,     // title string contains the requested episode
+});
+
 const REASON = Object.freeze({
   INVALID_URL: 'invalid_url',
   CLOUDFLARE: 'cloudflare',
@@ -588,6 +604,181 @@ function scoreTitleCandidate(candidate, query, aliases = []) {
   return best;
 }
 
+// Highest-priority tier matched by a candidate, per the mandated ordering:
+//   0 exact-true, 1 exact-normalized, 2 alias, 3 prefix, 4 whole-word,
+//   5 substring, 6 levenshtein, 7 token-overlap, 8 episode-available,
+//   9 no match.
+const TIER = Object.freeze({
+  EXACT_RAW: 0,
+  EXACT_NORMALIZED: 1,
+  ALIAS: 2,
+  PREFIX: 3,
+  WHOLE_WORD: 4,
+  SUBSTRING: 5,
+  LEVENSHTEIN: 6,
+  TOKEN_OVERLAP: 7,
+  EPISODE: 8,
+  NONE: 9,
+});
+
+/**
+ * Compute the composite relevance score + highest-priority tier for a search
+ * candidate against a query. This is used ONLY as the tie-breaker when two
+ * candidates have the same original (scoreTitleCandidate) score.
+ *
+ * The STRICT priority ordering is enforced via `tier` (lower = better): an
+ * exact-match candidate always beats a prefix candidate, which always beats a
+ * whole-word candidate, etc. — regardless of how many lower tiers a candidate
+ * happens to also satisfy. `total` is the weighted composite used to break
+ * ties WITHIN the same tier.
+ *
+ * @param {string} candidate - candidate title (raw, as displayed)
+ * @param {string} query - the user's search query
+ * @param {string[]} [aliases] - known aliases for the candidate
+ * @param {number|string} [requestedEpisode] - optional requested episode number
+ * @returns {{ total: number, tier: number, flags: object }}
+ */
+function computeRelevanceScore(candidate, query, aliases = [], requestedEpisode) {
+  const rawC = String(candidate || '').trim();
+  const rawQ = String(query || '').trim().toLowerCase();
+
+  const normC = normalizeTitle(rawC);
+  const normQ = normalizeTitle(rawQ);
+
+  const flags = {
+    exactRaw: false,
+    exactNormalized: false,
+    aliasMatch: false,
+    prefix: false,
+    wholeWord: false,
+    substring: false,
+    tokenOverlap: 0,
+    editDistance: 0,
+    episodeAvailable: false,
+  };
+
+  let tier = TIER.NONE;
+  let total = 0;
+
+  // 1. Exact raw title match (case-insensitive)
+  if (rawC && rawQ && rawC.toLowerCase() === rawQ) {
+    flags.exactRaw = true;
+    tier = Math.min(tier, TIER.EXACT_RAW);
+    total += RELEVANCE_WEIGHTS.EXACT_RAW;
+  }
+
+  // 2. Exact normalized title match
+  if (normC && normQ && normC === normQ) {
+    flags.exactNormalized = true;
+    tier = Math.min(tier, TIER.EXACT_NORMALIZED);
+    total += RELEVANCE_WEIGHTS.EXACT_NORMALIZED;
+  }
+
+  if (normC && normQ) {
+    // 3. Alias / variant match (english, romaji, japanese, synonyms, provided aliases)
+    const candidateVariants = buildMatchVariants(rawC);
+    const queryVariants = buildMatchVariants(rawQ);
+    let aliasHit = false;
+    for (const qv of queryVariants) {
+      if (!qv) continue;
+      for (const cv of candidateVariants) {
+        if (cv === qv) { aliasHit = true; break; }
+      }
+      if (aliasHit) break;
+    }
+    if (!aliasHit) {
+      for (const alias of (aliases || [])) {
+        const av = normalizeTitle(alias);
+        if (!av) continue;
+        if (av === normQ || queryVariants.includes(av) || normQ === av) {
+          aliasHit = true;
+          break;
+        }
+      }
+    }
+    if (aliasHit) {
+      flags.aliasMatch = true;
+      tier = Math.min(tier, TIER.ALIAS);
+      total += RELEVANCE_WEIGHTS.ALIAS_MATCH;
+    }
+
+    // 4. Prefix match (candidate normalized string starts with query)
+    if (normC.startsWith(normQ)) {
+      flags.prefix = true;
+      tier = Math.min(tier, TIER.PREFIX);
+      total += RELEVANCE_WEIGHTS.PREFIX_MATCH;
+    }
+
+    // 5. Whole-word match (query is a complete word token within candidate)
+    const cTokens = normC.split(' ').filter(Boolean);
+    if (cTokens.includes(normQ)) {
+      flags.wholeWord = true;
+      tier = Math.min(tier, TIER.WHOLE_WORD);
+      total += RELEVANCE_WEIGHTS.WHOLE_WORD;
+    }
+
+    // 6. Substring match
+    if (normC.includes(normQ)) {
+      flags.substring = true;
+      tier = Math.min(tier, TIER.SUBSTRING);
+      total += RELEVANCE_WEIGHTS.SUBSTRING;
+    }
+
+    // 7. Levenshtein similarity (only meaningful when otherwise unmatched)
+    const distance = levenshtein(normC, normQ);
+    flags.editDistance = distance;
+    const maxLen = Math.max(normC.length, normQ.length) || 1;
+    const similarity = 1 - (distance / maxLen);
+    if (similarity > 0.5) {
+      tier = Math.min(tier, TIER.LEVENSHTEIN);
+    }
+    total += Math.round(Math.max(0, similarity) * RELEVANCE_WEIGHTS.LEVENSHTEIN);
+
+    // 8. Token overlap
+    const qTokens = normQ.split(' ').filter(Boolean);
+    const cTokenSet = new Set(cTokens);
+    let overlap = 0;
+    for (const token of qTokens) {
+      if (cTokenSet.has(token)) overlap += 1;
+    }
+    flags.tokenOverlap = overlap;
+    const union = new Set([...cTokenSet, ...qTokens]);
+    const jaccard = union.size ? (overlap / union.size) : 0;
+    if (overlap > 0) {
+      tier = Math.min(tier, TIER.TOKEN_OVERLAP);
+    }
+    total += Math.round((overlap + jaccard) * RELEVANCE_WEIGHTS.TOKEN_OVERLAP);
+  }
+
+  // 9. Episode availability — prefer the title containing the requested episode
+  if (requestedEpisode !== undefined && requestedEpisode !== null && requestedEpisode !== '') {
+    const ep = String(requestedEpisode);
+    const titleHasEpisode = new RegExp(`(^|[^0-9])${ep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^0-9]|$)`).test(rawC)
+      || new RegExp(`(?:episode|ep|ep\.|第)\\s*${ep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(rawC);
+    if (titleHasEpisode) {
+      flags.episodeAvailable = true;
+      tier = Math.min(tier, TIER.EPISODE);
+      total += RELEVANCE_WEIGHTS.EPISODE_AVAIL;
+    }
+  }
+
+  return { total, tier, flags };
+}
+
+/**
+ * Estimate how confidently the #1 result is the correct one, based on the gap
+ * between the top two candidates' (score + relevance) totals. Returns 0..1.
+ */
+function computeSearchConfidence(top, second) {
+  if (!top) return 0;
+  const topTotal = Number(top.finalRankingScore);
+  const secondTotal = second ? Number(second.finalRankingScore) : 0;
+  if (!Number.isFinite(topTotal) || topTotal <= 0) return 0;
+  const gapRatio = (topTotal - secondTotal) / topTotal;
+  // Clamp into [0, 1]; a 30%+ margin saturates near-certain.
+  return Math.min(1, Math.max(0, gapRatio / 0.3));
+}
+
 function classifyFailure({ status, message, html }) {
   const text = String(message || '');
   const body = String(html || '');
@@ -682,7 +873,7 @@ function normalizeSearchRow(baseUrl, title, href, image, query, aliases = []) {
 
   const cover = safeAbsoluteUrl(baseUrl, image);
 
-  return {
+return {
     id: identifier,
     identifier,
     slug: identifier,
@@ -692,6 +883,7 @@ function normalizeSearchRow(baseUrl, title, href, image, query, aliases = []) {
     cover,
     provider: PROVIDER_NAME,
     score: scoreTitleCandidate(clean, query, aliases),
+    aliases: Array.isArray(aliases) ? aliases.filter(Boolean) : [],
   };
 }
 
@@ -1481,11 +1673,11 @@ function buildAnimeUrl(baseUrl, identifier) {
   return safeAbsoluteUrl(baseUrl, value);
 }
 
-async function runSearch(baseUrl, query) {
+async function runSearch(baseUrl, query, episode) {
   const q = String(query || '').trim();
   if (!q) return [];
 
-  const cacheKey = `search:${normalizeTitle(q)}`;
+  const cacheKey = `search:${normalizeTitle(q)}:${episode || '-'}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
@@ -1518,8 +1710,55 @@ async function runSearch(baseUrl, query) {
     }
   }
 
-  const finalRows = uniqueByIdentifier(rows)
-    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.title.localeCompare(b.title));
+  const uniq = uniqueByIdentifier(rows);
+
+// Compute composite relevance for every candidate (used ONLY as the
+  // score tie-breaker). This deliberately REPLACES the old alphabetical
+  // (localeCompare) tie-break so ranking reflects search relevance instead
+  // of lexicographic order. The STRICT priority ordering is enforced via the
+  // relevance `tier` (lower = better); the weighted `relevance` total only
+  // breaks ties WITHIN the same tier.
+  const debug = !!(process.env.ANIMEHEAVEN_SEARCH_DEBUG === '1' || process.env.ANIMEHEAVEN_SEARCH_DEBUG === 'true');
+  for (const row of uniq) {
+    const rel = computeRelevanceScore(row.title, q, row.aliases, episode);
+    row.relevance = rel.total;
+    row.relevanceTier = rel.tier;
+    row.relevanceFlags = rel.flags;
+    row.finalRankingScore = Number(row.score || 0) + rel.total;
+  }
+
+  const finalRows = uniq
+    .sort((a, b) => {
+      const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+      if (scoreDiff) return scoreDiff;
+      // Primary relevance tie-break: strict priority tier (lower = better).
+      const tierDiff = Number(a.relevanceTier ?? 9) - Number(b.relevanceTier ?? 9);
+      if (tierDiff) return tierDiff;
+      // Within the same tier, prefer the higher weighted composite.
+      const relDiff = Number(b.relevance || 0) - Number(a.relevance || 0);
+      if (relDiff) return relDiff;
+      return String(a.title).localeCompare(String(b.title));
+    });
+
+  if (debug && finalRows.length) {
+    const top = finalRows.slice(0, 5);
+    logger.info('[AnimeHeaven] Search ranking debug', {
+      query: q,
+      top: top.map(r => ({
+        title: r.title,
+        identifier: r.identifier,
+        providerScore: r.score,
+        relevance: r.relevance,
+        finalRankingScore: r.finalRankingScore,
+        flags: r.relevanceFlags,
+      })),
+    });
+  }
+
+  // Attach a confidence estimate for the #1 result.
+  if (finalRows.length) {
+    finalRows[0].searchConfidence = computeSearchConfidence(finalRows[0], finalRows[1]);
+  }
 
   cacheSet(cacheKey, finalRows, SEARCH_CACHE_TTL_MS);
   return finalRows;
@@ -2059,7 +2298,7 @@ class AnimeHeavenProvider {
     };
   }
 
-  async searchAnime(query, limit = 10) {
+async searchAnime(query, limit = 10, episode) {
     const q = String(query || '').trim();
     if (!q) return [];
 
@@ -2067,7 +2306,7 @@ class AnimeHeavenProvider {
     const started = Date.now();
     try {
       const baseUrl = await pickBaseUrl();
-      const rows = await runSearch(baseUrl, q);
+      const rows = await runSearch(baseUrl, q, episode);
       const sliced = rows.slice(0, Math.max(1, Number(limit) || 10));
       logger.info('[AnimeHeaven] Search success', {
         query: q,
@@ -2175,9 +2414,9 @@ class AnimeHeavenProvider {
       const baseUrl = await pickBaseUrl();
       const episodeNumber = normalizeEpisodeNumber(episode);
 
-      let targetIdentifier = identifier || slug || null;
+let targetIdentifier = identifier || slug || null;
       if (!targetIdentifier && title) {
-        const rows = await this.searchAnime(title, 8);
+        const rows = await this.searchAnime(title, 8, episodeNumber);
         targetIdentifier = rows[0]?.identifier || null;
       }
 
@@ -2415,6 +2654,11 @@ module.exports = {
   // Exported so the reverse proxy (controllers/streamProxyController.js) derives
   // the EXACT same playback headers (referer/origin/cookies/userAgent) from ONE
   // source of truth — never stepping outside the provider's cookie jar.
-  getPlaybackContext,
+getPlaybackContext,
   PLAYBACK_USER_AGENT,
+  // Exported for the search-ranking regression tests (test-animeheaven-ranking.js)
+  // so the composite relevance + confidence logic can be exercised deterministically.
+  computeRelevanceScore,
+  computeSearchConfidence,
+  normalizeTitle,
 };

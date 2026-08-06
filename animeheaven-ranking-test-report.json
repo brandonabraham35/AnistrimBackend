@@ -1,0 +1,299 @@
+{
+  "generatedAt": "2026-08-06T09:27:52.361Z",
+  "summary": {
+    "total": 25,
+    "passed": 20,
+    "failed": 5
+  },
+  "unit": [
+    {
+      "name": "Exact match ranks above prefix/substring",
+      "ok": false,
+      "detail": "unrelated substring score should be 0, got 892"
+    },
+    {
+      "name": "\"OP\" sorts One Piece above \"My Unique Skill...\"",
+      "ok": false,
+      "detail": "One Piece relevance(917) should exceed My Unique Skill(1304)"
+    },
+    {
+      "name": "Alias match boosts relevance",
+      "ok": false,
+      "detail": "withAlias(910) > withoutAlias(910)"
+    },
+    {
+      "name": "Episode-availability bonus applied",
+      "ok": false,
+      "detail": "episode-aware(1542) > no-episode(3850)"
+    },
+    {
+      "name": "Japanese query maps to correct romaji title",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Tie-set ranking: \"One Piece\" wins the 307 tie",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "computeSearchConfidence reflects gap between top two",
+      "ok": true,
+      "detail": null
+    }
+  ],
+  "live": [
+    {
+      "name": "standard: \"One Piece\" → top result matches \"One Piece\"",
+      "ok": true,
+      "detail": {
+        "returned": "One Piece",
+        "identifier": "1ht8d",
+        "score": 307,
+        "relevance": 4250,
+        "finalRankingScore": 4557,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Naruto\" → top result matches \"Naruto\"",
+      "ok": true,
+      "detail": {
+        "returned": "Naruto",
+        "identifier": "ukr6y",
+        "score": 246,
+        "relevance": 3850,
+        "finalRankingScore": 4096,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Jujutsu Kaisen\" → top result matches \"Jujutsu Kaisen\"",
+      "ok": true,
+      "detail": {
+        "returned": "Jujutsu Kaisen, jjk",
+        "identifier": "62reo",
+        "score": 279,
+        "relevance": 2150,
+        "finalRankingScore": 2429,
+        "confidence": 0.12350761630300536,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Demon Slayer\" → top result matches \"Demon Slayer\"",
+      "ok": true,
+      "detail": {
+        "returned": "Demon Slayer: Kimetsu no Yaiba",
+        "identifier": "1smbn",
+        "score": 205,
+        "relevance": 1784,
+        "finalRankingScore": 1989,
+        "confidence": 0.1592089827383945,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Steins;Gate\" → top result matches \"Steins;Gate\"",
+      "ok": true,
+      "detail": {
+        "returned": "Steins;Gate",
+        "identifier": "tkrtf",
+        "score": 279,
+        "relevance": 4250,
+        "finalRankingScore": 4529,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Attack on Titan\" → top result matches \"Attack on Titan\"",
+      "ok": true,
+      "detail": {
+        "returned": "Attack on Titan",
+        "identifier": "odsey",
+        "score": 288,
+        "relevance": 4650,
+        "finalRankingScore": 4938,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"FMAB\" → top result matches \"Fullmetal Alchemist Brotherhood\"",
+      "ok": true,
+      "detail": {
+        "returned": "Fullmetal Alchemist: Brotherhood",
+        "identifier": "0oqgh",
+        "score": 288,
+        "relevance": 889,
+        "finalRankingScore": 1177,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"My Hero Academia\" → top result matches \"My Hero Academia\"",
+      "ok": true,
+      "detail": {
+        "returned": "My Hero Academia",
+        "identifier": "qqhbk",
+        "score": 307,
+        "relevance": 4650,
+        "finalRankingScore": 4957,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Sword Art Online\" → top result matches \"Sword Art Online\"",
+      "ok": true,
+      "detail": {
+        "returned": "Sword Art Online",
+        "identifier": "lcgp5",
+        "score": 307,
+        "relevance": 4650,
+        "finalRankingScore": 4957,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "standard: \"Re:Zero\" → top result matches \"Re:Zero\"",
+      "ok": true,
+      "detail": {
+        "returned": "Re:ZERO: Starting Life in Another World",
+        "identifier": "yhxeg",
+        "score": 184,
+        "relevance": 1669,
+        "finalRankingScore": 1853,
+        "confidence": 0.07015650296815974,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"OP\" → top result matches \"One Piece\"",
+      "ok": false,
+      "detail": {
+        "returned": "takt op.Destiny",
+        "identifier": "a9q9c",
+        "score": 307,
+        "relevance": 1423,
+        "finalRankingScore": 1730,
+        "confidence": 0.22928709055876684,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"AOT\" → top result matches \"Attack on Titan\"",
+      "ok": true,
+      "detail": {
+        "returned": "Attack on Titan",
+        "identifier": "odsey",
+        "score": 288,
+        "relevance": 910,
+        "finalRankingScore": 1198,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"MHA\" → top result matches \"My Hero Academia\"",
+      "ok": true,
+      "detail": {
+        "returned": "My Hero Academia",
+        "identifier": "qqhbk",
+        "score": 307,
+        "relevance": 906,
+        "finalRankingScore": 1213,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"SAO\" → top result matches \"Sword Art Online\"",
+      "ok": true,
+      "detail": {
+        "returned": "Sword Art Online",
+        "identifier": "lcgp5",
+        "score": 307,
+        "relevance": 906,
+        "finalRankingScore": 1213,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"FMAB\" → top result matches \"Fullmetal Alchemist Brotherhood\"",
+      "ok": true,
+      "detail": {
+        "returned": "Fullmetal Alchemist: Brotherhood",
+        "identifier": "0oqgh",
+        "score": 288,
+        "relevance": 889,
+        "finalRankingScore": 1177,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"Fate\" → top result matches [Fate/stay night, Fate/stay night: Unlimited Blade Works, Fate/Zero]",
+      "ok": true,
+      "detail": {
+        "returned": "Fate/Zero",
+        "identifier": "1xbu0",
+        "score": 170,
+        "relevance": 1433,
+        "finalRankingScore": 1603,
+        "confidence": 0.2786442087752132,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"Dragon Ball\" → top result matches [Dragon Ball, Dragon Ball Z, Dragon Ball Super]",
+      "ok": true,
+      "detail": {
+        "returned": "Dragon Ball",
+        "identifier": "3wh0a",
+        "score": 279,
+        "relevance": 4250,
+        "finalRankingScore": 4529,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    },
+    {
+      "name": "difficult: \"Steins Gate\" → top result matches \"Steins;Gate\"",
+      "ok": true,
+      "detail": {
+        "returned": "Steins;Gate",
+        "identifier": "tkrtf",
+        "score": 279,
+        "relevance": 4250,
+        "finalRankingScore": 4529,
+        "confidence": 1,
+        "aliases": [],
+        "totalResults": 10
+      }
+    }
+  ]
+}
