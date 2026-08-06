@@ -1,37 +1,46 @@
 # AnimeHeaven Nightly Validation Report
 
-- **Generated:** 2026-08-04T18:55:03.588Z
-- **Run ID:** 2026-08-04
+- **Generated:** 2026-08-06T16:38:02.452Z
+- **Run ID:** 2026-08-06
 - **Overall Status:** `FAIL`
-- **Production Score:** 52/100
+- **Production Score:** 42/100
+
+## Trend vs Previous Run
+
+- Previous score: **52** / 100 (delta **-10**)
+- Previous overall status: **FAIL**
+
+- **Regressions:** Concurrency
+- **New failures:** Concurrency
 
 ## Subsystems
 
 | Subsystem | Status | Detail | Weighted |
 |-----------|--------|--------|----------|
-| Streams | FAIL | Healthy rate 60% | 0 |
+| Streams | FAIL | Healthy rate 0% | 0 |
 | Search | PARTIAL | Top-10 recall 88.24% | 9 |
 | Metadata | PASS | Completeness 100% | 10 |
-| Subtitles | FAIL | Coverage 0% | 0 |
+| Subtitles | FAIL | Coverage 11.11% (external 0%) | 0 |
 | Mirrors | PARTIAL | 0 mirror hosts detected | 3 |
 | Cache | FAIL | Hit ratio 0% | 0 |
 | Failure Recovery | PASS | Recovery rate 100% | 10 |
-| Concurrency | PASS | Real success rate 100% | 10 |
+| Concurrency | FAIL | Real success rate 0% | 0 |
 | Cloudflare | PASS | Cloudflare rate 0% | 5 |
 | Health | PASS | No degraded providers | 5 |
 
 ## Counts
-- **PASS:** 5
+- **PASS:** 4
 - **PARTIAL:** 2
-- **FAIL:** 3
+- **FAIL:** 4
 
 ## Recommendations
 
-- [Streams] Healthy rate 60%
+- [Streams] Healthy rate 0%
 - [Search] Top-10 recall 88.24%
-- [Subtitles] Coverage 0%
+- [Subtitles] Coverage 11.11% (external 0%)
 - [Mirrors] 0 mirror hosts detected
 - [Cache] Hit ratio 0%
+- [Concurrency] Real success rate 0%
 
 ## Errors Encountered During Harvest
 

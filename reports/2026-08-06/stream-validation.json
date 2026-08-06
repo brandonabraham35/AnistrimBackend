@@ -1,0 +1,231 @@
+{
+  "generatedAt": "2026-08-06T16:34:19.550Z",
+  "summary": {
+    "totalUrls": 10,
+    "probedUrls": 10,
+    "healthy": 0,
+    "broken": 10,
+    "healthyRate": 0
+  },
+  "byFormat": {
+    "invalid": {
+      "total": 10,
+      "healthy": 0,
+      "broken": 10
+    }
+  },
+  "perProvider": {
+    "kickassanime": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 11037,
+      "avgLatencyMs": 2207.4,
+      "successRate": 0
+    },
+    "animekai": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 5268,
+      "avgLatencyMs": 1053.6,
+      "successRate": 0
+    },
+    "animepahe": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 7227,
+      "avgLatencyMs": 1445.4,
+      "successRate": 0
+    },
+    "hianime": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 1301,
+      "avgLatencyMs": 260.2,
+      "successRate": 0
+    },
+    "animesaturn": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 857,
+      "avgLatencyMs": 171.4,
+      "successRate": 0
+    },
+    "animeunity": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 93,
+      "avgLatencyMs": 18.6,
+      "successRate": 0
+    },
+    "animeheaven": {
+      "total": 5,
+      "ok": 5,
+      "failed": 0,
+      "latencyMs": 67886,
+      "avgLatencyMs": 13577.2,
+      "successRate": 100
+    },
+    "consumet-http": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 2,
+      "avgLatencyMs": 0.4,
+      "successRate": 0
+    },
+    "animesama": {
+      "total": 5,
+      "ok": 0,
+      "failed": 5,
+      "latencyMs": 4791,
+      "avgLatencyMs": 958.2,
+      "successRate": 0
+    }
+  },
+  "newestBroken": [
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fck.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%2635b2d9c8bc1a8bbeaac4e77d21f660ce%26error2&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fct.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%2635b2d9c8bc1a8bbeaac4e77d21f660ce%26error&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcx.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%2635b2d9c8bc1a8bbeaac4e77d21f660ce&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcx.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%26d&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fck.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%2635b2d9c8bc1a8bbe5c450f80693999e8%26error2&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fct.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%2635b2d9c8bc1a8bbe5c450f80693999e8%26error&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcu.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%2635b2d9c8bc1a8bbe5c450f80693999e8&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcu.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%26d&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fck.animeheaven.me%2Fvideo.mp4%3F730376c20de881ed8023d011bf8a86f1%2635b2d9c8bc1a8bbebe122866a9820ed6%26error2&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fct.animeheaven.me%2Fvideo.mp4%3F730376c20de881ed8023d011bf8a86f1%2635b2d9c8bc1a8bbebe122866a9820ed6%26error&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "status": 0,
+      "error": "Invalid URL"
+    }
+  ],
+  "probes": [
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fck.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%2635b2d9c8bc1a8bbeaac4e77d21f660ce%26error2&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 3,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fct.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%2635b2d9c8bc1a8bbeaac4e77d21f660ce%26error&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcx.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%2635b2d9c8bc1a8bbeaac4e77d21f660ce&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcx.animeheaven.me%2Fvideo.mp4%3F1455db037f49cc515027fa5a1f6a9aab%26d&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 2,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fck.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%2635b2d9c8bc1a8bbe5c450f80693999e8%26error2&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fct.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%2635b2d9c8bc1a8bbe5c450f80693999e8%26error&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcu.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%2635b2d9c8bc1a8bbe5c450f80693999e8&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fcu.animeheaven.me%2Fvideo.mp4%3Fc5fe97dc4862635ffd63a5dc495a26f3%26d&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fck.animeheaven.me%2Fvideo.mp4%3F730376c20de881ed8023d011bf8a86f1%2635b2d9c8bc1a8bbebe122866a9820ed6%26error2&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 0,
+      "error": "Invalid URL"
+    },
+    {
+      "url": "/api/stream/proxy?provider=animeheaven&url=https%3A%2F%2Fct.animeheaven.me%2Fvideo.mp4%3F730376c20de881ed8023d011bf8a86f1%2635b2d9c8bc1a8bbebe122866a9820ed6%26error&referer=https%3A%2F%2Fanimeheaven.me%2Fgate.php",
+      "ok": false,
+      "status": 0,
+      "format": "invalid",
+      "latencyMs": 1,
+      "error": "Invalid URL"
+    }
+  ],
+  "trend": {
+    "previousHealthyRate": 60,
+    "deltaHealthyRate": -60,
+    "previousBrokenCount": 8,
+    "deltaBroken": 2
+  }
+}
