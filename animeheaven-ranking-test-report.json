@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-08-06T09:27:52.361Z",
+  "generatedAt": "2026-08-06T10:10:26.633Z",
   "summary": {
-    "total": 25,
-    "passed": 20,
+    "total": 26,
+    "passed": 21,
     "failed": 5
   },
   "unit": [
@@ -14,7 +14,7 @@
     {
       "name": "\"OP\" sorts One Piece above \"My Unique Skill...\"",
       "ok": false,
-      "detail": "One Piece relevance(917) should exceed My Unique Skill(1304)"
+      "detail": "One Piece relevance(917) should exceed My Unique Skill(2404)"
     },
     {
       "name": "Alias match boosts relevance",
@@ -24,7 +24,7 @@
     {
       "name": "Episode-availability bonus applied",
       "ok": false,
-      "detail": "episode-aware(1542) > no-episode(3850)"
+      "detail": "episode-aware(2642) > no-episode(5650)"
     },
     {
       "name": "Japanese query maps to correct romaji title",
@@ -33,6 +33,11 @@
     },
     {
       "name": "Tie-set ranking: \"One Piece\" wins the 307 tie",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "Equal-score candidates ordered by composite relevance (not alphabetical)",
       "ok": true,
       "detail": null
     },
@@ -50,8 +55,8 @@
         "returned": "One Piece",
         "identifier": "1ht8d",
         "score": 307,
-        "relevance": 4250,
-        "finalRankingScore": 4557,
+        "relevance": 5450,
+        "finalRankingScore": 5757,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -64,8 +69,8 @@
         "returned": "Naruto",
         "identifier": "ukr6y",
         "score": 246,
-        "relevance": 3850,
-        "finalRankingScore": 4096,
+        "relevance": 5650,
+        "finalRankingScore": 5896,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -78,9 +83,9 @@
         "returned": "Jujutsu Kaisen, jjk",
         "identifier": "62reo",
         "score": 279,
-        "relevance": 2150,
-        "finalRankingScore": 2429,
-        "confidence": 0.12350761630300536,
+        "relevance": 3350,
+        "finalRankingScore": 3629,
+        "confidence": 0.08266740148801323,
         "aliases": [],
         "totalResults": 10
       }
@@ -92,9 +97,9 @@
         "returned": "Demon Slayer: Kimetsu no Yaiba",
         "identifier": "1smbn",
         "score": 205,
-        "relevance": 1784,
-        "finalRankingScore": 1989,
-        "confidence": 0.1592089827383945,
+        "relevance": 2284,
+        "finalRankingScore": 2489,
+        "confidence": 0.1272264631043257,
         "aliases": [],
         "totalResults": 10
       }
@@ -106,8 +111,8 @@
         "returned": "Steins;Gate",
         "identifier": "tkrtf",
         "score": 279,
-        "relevance": 4250,
-        "finalRankingScore": 4529,
+        "relevance": 5450,
+        "finalRankingScore": 5729,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -120,8 +125,8 @@
         "returned": "Attack on Titan",
         "identifier": "odsey",
         "score": 288,
-        "relevance": 4650,
-        "finalRankingScore": 4938,
+        "relevance": 5850,
+        "finalRankingScore": 6138,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -148,8 +153,8 @@
         "returned": "My Hero Academia",
         "identifier": "qqhbk",
         "score": 307,
-        "relevance": 4650,
-        "finalRankingScore": 4957,
+        "relevance": 5850,
+        "finalRankingScore": 6157,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -162,8 +167,8 @@
         "returned": "Sword Art Online",
         "identifier": "lcgp5",
         "score": 307,
-        "relevance": 4650,
-        "finalRankingScore": 4957,
+        "relevance": 5850,
+        "finalRankingScore": 6157,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -176,9 +181,9 @@
         "returned": "Re:ZERO: Starting Life in Another World",
         "identifier": "yhxeg",
         "score": 184,
-        "relevance": 1669,
-        "finalRankingScore": 1853,
-        "confidence": 0.07015650296815974,
+        "relevance": 2169,
+        "finalRankingScore": 2353,
+        "confidence": 0.055248618784530384,
         "aliases": [],
         "totalResults": 10
       }
@@ -190,9 +195,9 @@
         "returned": "takt op.Destiny",
         "identifier": "a9q9c",
         "score": 307,
-        "relevance": 1423,
-        "finalRankingScore": 1730,
-        "confidence": 0.22928709055876684,
+        "relevance": 2523,
+        "finalRankingScore": 2830,
+        "confidence": 0.1401648998822144,
         "aliases": [],
         "totalResults": 10
       }
@@ -260,9 +265,9 @@
         "returned": "Fate/Zero",
         "identifier": "1xbu0",
         "score": 170,
-        "relevance": 1433,
-        "finalRankingScore": 1603,
-        "confidence": 0.2786442087752132,
+        "relevance": 2533,
+        "finalRankingScore": 2703,
+        "confidence": 0.16524848933284006,
         "aliases": [],
         "totalResults": 10
       }
@@ -274,8 +279,8 @@
         "returned": "Dragon Ball",
         "identifier": "3wh0a",
         "score": 279,
-        "relevance": 4250,
-        "finalRankingScore": 4529,
+        "relevance": 5450,
+        "finalRankingScore": 5729,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10
@@ -288,8 +293,8 @@
         "returned": "Steins;Gate",
         "identifier": "tkrtf",
         "score": 279,
-        "relevance": 4250,
-        "finalRankingScore": 4529,
+        "relevance": 5450,
+        "finalRankingScore": 5729,
         "confidence": 1,
         "aliases": [],
         "totalResults": 10

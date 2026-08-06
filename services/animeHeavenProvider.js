@@ -623,14 +623,10 @@ const TIER = Object.freeze({
 
 /**
  * Compute the composite relevance score + highest-priority tier for a search
- * candidate against a query. This is used ONLY as the tie-breaker when two
- * candidates have the same original (scoreTitleCandidate) score.
- *
- * The STRICT priority ordering is enforced via `tier` (lower = better): an
- * exact-match candidate always beats a prefix candidate, which always beats a
- * whole-word candidate, etc. — regardless of how many lower tiers a candidate
- * happens to also satisfy. `total` is the weighted composite used to break
- * ties WITHIN the same tier.
+ * candidate against a query. The weighted composite `total` is the SOLE
+ * semantic tie-breaker used by runSearch()'s final sort (after the provider
+ * score). `tier` and `flags` are retained ONLY for diagnostics, explainability
+ * and the debug output — they never influence ranking.
  *
  * @param {string} candidate - candidate title (raw, as displayed)
  * @param {string} query - the user's search query
@@ -1712,12 +1708,13 @@ async function runSearch(baseUrl, query, episode) {
 
   const uniq = uniqueByIdentifier(rows);
 
-// Compute composite relevance for every candidate (used ONLY as the
-  // score tie-breaker). This deliberately REPLACES the old alphabetical
-  // (localeCompare) tie-break so ranking reflects search relevance instead
-  // of lexicographic order. The STRICT priority ordering is enforced via the
-  // relevance `tier` (lower = better); the weighted `relevance` total only
-  // breaks ties WITHIN the same tier.
+// Compute the composite relevance score for every candidate. This is used as
+// the SOLE semantic tie-breaker, deliberately REPLACING the old alphabetical
+// (localeCompare) tie-break so ranking reflects search relevance instead of
+// lexicographic order. The weighted composite `relevance` total is the single
+// ranking signal on top of the provider score; `relevanceTier` and
+// `relevanceFlags` are retained ONLY for diagnostics/explainability and never
+// influence the final order.
   const debug = !!(process.env.ANIMEHEAVEN_SEARCH_DEBUG === '1' || process.env.ANIMEHEAVEN_SEARCH_DEBUG === 'true');
   for (const row of uniq) {
     const rel = computeRelevanceScore(row.title, q, row.aliases, episode);
@@ -1727,14 +1724,15 @@ async function runSearch(baseUrl, query, episode) {
     row.finalRankingScore = Number(row.score || 0) + rel.total;
   }
 
+  // Final ranking order:
+  //   1. Provider score (descending)
+  //   2. Composite relevance score (descending) — SOLE semantic tie-breaker
+  //   3. localeCompare() — deterministic final fallback
+  // `relevanceTier` is intentionally NOT compared here; it is diagnostic only.
   const finalRows = uniq
     .sort((a, b) => {
       const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
       if (scoreDiff) return scoreDiff;
-      // Primary relevance tie-break: strict priority tier (lower = better).
-      const tierDiff = Number(a.relevanceTier ?? 9) - Number(b.relevanceTier ?? 9);
-      if (tierDiff) return tierDiff;
-      // Within the same tier, prefer the higher weighted composite.
       const relDiff = Number(b.relevance || 0) - Number(a.relevance || 0);
       if (relDiff) return relDiff;
       return String(a.title).localeCompare(String(b.title));

@@ -150,6 +150,26 @@ function runUnitTests() {
     record('unit', 'Tie-set ranking: "One Piece" wins the 307 tie', false, e.message);
   }
 
+// GUARD (regression): equal provider scores must be ordered by COMPOSITE
+  // relevance, NOT alphabetical order. This directly protects against the bug
+  // where a stricter-tier (or lexicographic) tie-break hid the "One Piece"
+  // case. Candidate A and B share score=307; A must win purely on relevance.
+  try {
+    const candidates = [
+      { title: 'One Piece', score: 307, aliases: ['ワンピース'] },
+      { title: 'My Unique Skill Makes Me OP even at Level 1', score: 307, aliases: [] },
+    ];
+    const ranked = rankCandidates(candidates, 'One Piece');
+    assert(ranked[0].title === 'One Piece', `composite relevance should rank One Piece first; got ${ranked[0].title}`);
+    assert(
+      relTotal(ranked[0].title, 'One Piece', ranked[0].aliases || []) > relTotal(ranked[1].title, 'One Piece', ranked[1].aliases || []),
+      `One Piece relevance(${relTotal(ranked[0].title, 'One Piece', ranked[0].aliases || [])}) must exceed My Unique Skill(${relTotal(ranked[1].title, 'One Piece', ranked[1].aliases || [])})`
+    );
+    record('unit', 'Equal-score candidates ordered by composite relevance (not alphabetical)', true);
+  } catch (e) {
+    record('unit', 'Equal-score candidates ordered by composite relevance (not alphabetical)', false, e.message);
+  }
+
   // Confidence: a wide gap yields high confidence; a narrow gap yields low.
   try {
     const high = computeSearchConfidence({ finalRankingScore: 1305 }, { finalRankingScore: 840 });
