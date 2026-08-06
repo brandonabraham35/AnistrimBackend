@@ -5,8 +5,9 @@
     "lint:fix": "eslint . --fix",
     "seed:catalogue": "node scripts/seed-catalogue.js",
     "validate:nightly": "node validation/index.js",
-    "validate:quick": "node validation/index.js --quick",
-    "validate:concurrency": "node validation/index.js --skipConcurrency"
+"validate:quick": "node validation/index.js --quick",
+    "validate:concurrency": "node validation/index.js --skipConcurrency",
+    "test:hls": "node --test test/hlsRewriter.test.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

@@ -5,7 +5,15 @@
 const express = require('express');
 const router = express.Router();
 const streamController = require('../controllers/streamController');
+const streamProxyQueryController = require('../controllers/streamProxyQueryController');
 const { protect } = require('../middleware/auth');
+
+// ── Stateless Query-Based Playback Proxy (AnimeHeaven only) ─
+// GET /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
+// MUST be registered BEFORE the /:animeTitle/:episodeNumber catch-all so the
+// literal "proxy" path is not mistaken for an anime title.
+router.options('/proxy', streamProxyQueryController.preflight);
+router.get('/proxy', streamProxyQueryController.streamMedia);
 
 // ── Public: Auto-fallback best stream ──────────────────────
 // GET /api/stream/:animeTitle/:episodeNumber

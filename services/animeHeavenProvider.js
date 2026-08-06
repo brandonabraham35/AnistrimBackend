@@ -45,6 +45,35 @@ const PLAYBACK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+// The backend reverse-proxy endpoint that the provider emits for every stream
+// URL. The browser never talks to the AnimeHeaven CDNs directly — it only ever
+// sees this same-origin proxy URL, which injects the server-side playback
+// context (cookies/referer/origin/UA) that hotlink-protected CDNs require.
+// MUST match the route registered in routes/streamRoutes.js.
+const STREAM_PROXY_PATH = '/api/stream/proxy';
+const STREAM_PROXY_PROVIDER = 'animeheaven';
+
+/**
+ * Build a stateless, same-origin proxy URL for a target AnimeHeaven CDN URL.
+ *
+ * The proxy receives the encoded target URL and the referer (the AnimeHeaven
+ * gate/embed/mirror page that served the media). Hotlink protection is
+ * satisfied server-side when the proxy makes the upstream request, so the
+ * browser never needs (or sees) cookies/referers/origins.
+ *
+ * @param {string} targetUrl - The upstream CDN/media URL to proxy.
+ * @param {string} [referer] - The page that referred the media (gate/iframe/mirror).
+ * @returns {string} `/api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>`
+ */
+function buildProxyUrl(targetUrl, referer = null) {
+  const params = new URLSearchParams({
+    provider: STREAM_PROXY_PROVIDER,
+    url: String(targetUrl || ''),
+  });
+  if (referer) params.set('referer', String(referer));
+  return `${STREAM_PROXY_PATH}?${params.toString()}`;
+}
+
 const COMMON_ANIME_SYNONYMS = Object.freeze({
   aot: ['attack on titan', 'shingeki no kyojin', '進撃の巨人'],
   snk: ['shingeki no kyojin', 'attack on titan', '進撃の巨人'],
@@ -2602,7 +2631,35 @@ sources = sortSourcesByQuality(sources)
         recordProviderMetric('subtitle_success');
       }
 
-const streamUrl = sources[0]?.url || player.playerUrl || null;
+// ── Proxy-mode rewrite (AnimeHeaven → backend proxy) ─────────
+      // EVERY returned URL (streamUrl, sources[].url, mirror.url, subtitles[].url)
+      // is rewritten to the stateless query-based proxy endpoint:
+      //   /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
+      // The browser only ever sees same-origin proxy URLs; the actual CDN target,
+      // cookies, referer and origin remain server-side. The proxy injects the
+      // captured playback context when it makes the upstream request.
+      //
+      // Sources that already carry a referer/origin (nested/mirror) use their own
+      // referer; otherwise the gate page referer is used.
+      const proxyReferer = sourceReferer;
+      sources = sources.map(src => {
+        const ref = src.referer || proxyReferer;
+        return {
+          url: buildProxyUrl(src.url, ref),
+          quality: src.quality,
+          sourceType: src.sourceType || null,
+          // Strip server-side context (referer/origin/cookies/headers) — never
+          // exposed to the browser. The proxy re-derives it via getPlaybackContext.
+        };
+      });
+
+      // Rewrite subtitle track URLs to the proxy as well (zero frontend changes),
+      // preserving the track metadata (lang/format/default/forced).
+      const proxiedSubtitles = (subtitles || []).map(track => Object.assign({}, track, {
+        url: buildProxyUrl(track.url, proxyReferer),
+      }));
+
+const streamUrl = sources[0]?.url || buildProxyUrl(player.playerUrl, proxyReferer) || null;
 
       logger.info('[AnimeHeaven] Stream extracted', {
         title,
@@ -2619,14 +2676,14 @@ const streamUrl = sources[0]?.url || player.playerUrl || null;
       // no external VTT/SRT/ASS/SSA tracks were found, we therefore report an
       // "embedded" subtitle mode — NOT "missing". No tracks are fabricated and
       // no fake VTT files are created.
-      const externalTracks = subtitles.length > 0;
+const externalTracks = proxiedSubtitles.length > 0;
       const subtitleMode = externalTracks ? 'external' : 'embedded';
 
       return {
         provider: PROVIDER_NAME,
         streamUrl,
         sources,
-        subtitles,
+        subtitles: proxiedSubtitles,
         subtitleMode,
         externalTracks,
       };
@@ -2649,11 +2706,17 @@ const streamUrl = sources[0]?.url || player.playerUrl || null;
 module.exports = {
   AnimeHeavenProvider,
   provider: new AnimeHeavenProvider(),
-  // Exported so the reverse proxy (controllers/streamProxyController.js) derives
-  // the EXACT same playback headers (referer/origin/cookies/userAgent) from ONE
-  // source of truth — never stepping outside the provider's cookie jar.
-getPlaybackContext,
+  // Exported so the reverse proxy (controllers/streamProxyController.js and
+  // controllers/streamProxyQueryController.js) derives the EXACT same playback
+  // headers (referer/origin/cookies/userAgent) from ONE source of truth — never
+  // stepping outside the provider's cookie jar.
+  getPlaybackContext,
   PLAYBACK_USER_AGENT,
+  // Exported so the query-based proxy (controllers/streamProxyQueryController.js)
+  // rewrites HLS child URIs into the SAME /api/stream/proxy format the provider
+  // emits — single source of truth for the proxy URL shape.
+  buildProxyUrl,
+  STREAM_PROXY_PATH,
   // Exported for the search-ranking regression tests (test-animeheaven-ranking.js)
   // so the composite relevance + confidence logic can be exercised deterministically.
   computeRelevanceScore,

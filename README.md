@@ -126,6 +126,56 @@ STREAM_DEBUG=1
 > The API returns generic messages (e.g. `"Could not resolve a stream."`) while
 > full diagnostic details are logged server-side only.
 
+### Production-Grade HLS Manifest Rewriting
+
+The playback proxies (`controllers/streamProxyController.js` and
+`controllers/streamProxyQueryController.js`) intercept HLS streams and rewrite the
+downloaded manifest so **every child request flows back through the proxy**. The
+rewrite logic lives in a single shared module, `utils/hlsRewriter.js`, so both proxy
+paths can never diverge.
+
+**When a manifest is rewritten:**
+
+A response is treated as an HLS manifest when either:
+
+- The upstream `Content-Type` is an HLS MIME type —
+  `application/vnd.apple.mpegurl`, `application/x-mpegURL` (case-insensitive),
+  `audio/mpegurl`, etc., **or**
+- The URL ends in `.m3u8`.
+
+Checking the `Content-Type` (not just the URL) means extension-less playlists served
+by some CDNs are also correctly rewritten.
+
+**What gets rewritten (URI → proxy URL):**
+
+- **Variant playlists** — `#EXT-X-STREAM-INF` URI lines
+- **Media playlists / segments** — `#EXTINF` URI lines (TS / fMP4 segments)
+- **Subtitle & audio playlists** — `#EXT-X-MEDIA` `URI="..."`
+- **Encryption keys** — `#EXT-X-KEY` and `#EXT-X-SESSION-KEY` `URI="..."`
+- **Init segments** — `#EXT-X-MAP` `URI="..."`
+- **LL-HLS** — `#EXT-X-PART`, `#EXT-X-PRELOAD-HINT`, and `#EXT-X-RENDITION-REPORT`
+  `URI="..."`
+- **I-frame playlists** — `#EXT-X-I-FRAME-STREAM-INF` `URI="..."`
+- **Byte-range segments** — `#EXT-X-BYTERANGE` URI lines
+- **Unquoted `URI=`** attribute forms are also handled.
+
+**Supported URL forms:** relative paths (`seg1.ts`, `../seg.ts`, `/root.ts`), absolute
+URLs, query strings, fragments, and signed/tokenized URLs are all resolved against the
+manifest URL (RFC 3986) and preserved. `data:` and `blob:` URIs pass through untouched
+so they never break playback.
+
+**Does not break HLS syntax:** All directives, attributes, and comments are preserved
+verbatim — only the URI references are rewritten. The output is idempotent (re-rewriting
+yields an identical manifest).
+
+**Security:** Because child requests also go through the proxy, the per-request
+host-matching (for streamId-scoped proxies) or the provider allow-list (for query-based
+proxies) is enforced on every segment/key/playlist fetch — no direct CDN URLs are ever
+left inside the manifest.
+
+**Tests:** `npm run test:hls` runs the deterministic unit suite for the rewriter
+(`test/hlsRewriter.test.js`) using Node's built-in test runner — no network required.
+
 ### Miruro Provider — Intentionally Disabled
 
 Miruro is **registered but intentionally disabled** in the streaming pipeline. The
