@@ -2712,6 +2712,11 @@ module.exports = {
   // stepping outside the provider's cookie jar.
   getPlaybackContext,
   PLAYBACK_USER_AGENT,
+  // Exported so the persistent stream cache (config/streamCache.js +
+  // services/streamCacheService.js) can clamp its TTL to this provider's
+  // known CDN playback-context lifetime. This is the SHORTEST relevant
+  // validity period (cookie expiry) that must bound the persistent cache.
+  COOKIE_TTL_MS,
   // Exported so the query-based proxy (controllers/streamProxyQueryController.js)
   // rewrites HLS child URIs into the SAME /api/stream/proxy format the provider
   // emits — single source of truth for the proxy URL shape.

@@ -24,6 +24,46 @@ const logger = require('../utils/logger');
 const streamProxy = require('../utils/streamProxy');
 
 /**
+ * Resolve the DB episode id + authoritative premium status for an
+ * (animeTitle, episodeNumber) pair. Playback-infrastructure only — it never
+ * alters the CMS or episode data. Returns nulls when the episode cannot be
+ * resolved from the database (never throws).
+ *
+ * Used for server-side premium authorization so a direct call cannot obtain a
+ * premium stream for an unauthorized user.
+ *
+ * @param {string} animeTitle
+ * @param {number|string} episodeNumber
+ * @returns {Promise<{episodeId: number|null, isPremiumEpisode: boolean, mediaId: number|null}>}
+ */
+async function resolveEpisodeAuth(animeTitle, episodeNumber) {
+  const out = { episodeId: null, isPremiumEpisode: false, mediaId: null };
+  if (!animeTitle || !animeTitle.trim() || episodeNumber === undefined || episodeNumber === null || episodeNumber === '') {
+    return out;
+  }
+  try {
+    const [mediaRows] = await db.query(
+      'SELECT id FROM anime WHERE title = ? OR title_japanese = ? LIMIT 1',
+      [animeTitle, animeTitle]
+    );
+    if (!mediaRows || !mediaRows[0]) return out;
+    out.mediaId = mediaRows[0].id;
+    const [epRows] = await db.query(
+      'SELECT id, is_premium FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+      [mediaRows[0].id, episodeNumber]
+    );
+    if (epRows && epRows[0]) {
+      out.episodeId = epRows[0].id;
+      // is_premium is TINYINT(1) — normalize to boolean.
+      out.isPremiumEpisode = epRows[0].is_premium === 1 || epRows[0].is_premium === true;
+    }
+  } catch (err) {
+    logger.warn('[StreamController] premium-check lookup failed', { animeTitle, episode: episodeNumber, error: err.message });
+  }
+  return out;
+}
+
+/**
  * GET /api/stream/:animeTitle/:episodeIdentifier
  * Resolves the best stream using priority-ordered providers.
  * Enforces quality tier: free ≤720p, premium up to 4K.
@@ -145,6 +185,28 @@ exports.getStream = async (req, res) => {
 
 logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episodeNumber}`, { animeTitle, episode: episodeNumber, resolvedFrom, mediaType, mediaId });
 
+    // ── Server-Side Premium Episode Enforcement ──────────────
+    // Before any cache lookup, AnimeHeaven resolution, or source generation,
+    // determine whether the episode is premium AND the requester is authorized.
+    // If the episode is premium and the requester is NOT an authenticated
+    // premium user or admin, return a 403 response immediately — no cache
+    // read, no AnimeHeaven resolution, no source URL exposed.
+    //
+    // This is done AFTER episode number resolution so we have the correct
+    // episodeNumber (even if overridden by ?ep= or movie detection).
+    const { isPremiumEpisode } = await resolveEpisodeAuth(animeTitle, episodeNumber);
+    if (isPremiumEpisode && !isPremium) {
+      const msg = `Episode ${episodeNumber} of "${animeTitle}" is premium. A premium subscription is required to stream this episode.`;
+      logger.warn('[StreamController] Premium episode blocked for free user', {
+        animeTitle,
+        episode: episodeNumber,
+      });
+      return res.status(403).json({
+        success: false,
+        error: msg,
+      });
+    }
+
     // ── Resolve the DB episode id (for persistent stream cache) ──
     // Best-effort: resolves episodeId from anime_id + episode_number so the
     // persistent stream cache can key on the canonical episodes.id. This is
@@ -153,7 +215,7 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     try {
       if (mediaId && episodeNumber) {
         const [epRows] = await db.query(
-          'SELECT id FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+          'SELECT id, is_premium FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
           [mediaId, episodeNumber]
         );
         episodeId = epRows && epRows[0] ? epRows[0].id : null;
@@ -242,7 +304,22 @@ exports.listProviders = async (req, res) => {
 
   const isPremium = req.user?.isPremium === true || req.user?.isAdmin === true;
 
-try {
+  try {
+    // ── Server-Side Premium Episode Enforcement ──────────────
+    // Apply the same authorization rule as the main stream endpoint so the
+    // "Switch Server" endpoint cannot bypass the premium episode restriction.
+    const { isPremiumEpisode } = await resolveEpisodeAuth(animeTitle, episodeNumber);
+    if (isPremiumEpisode && !isPremium) {
+      logger.warn('[StreamController] Premium episode blocked for free user (providers)', {
+        animeTitle,
+        episode: episodeNumber,
+      });
+      return res.status(403).json({
+        success: false,
+        error: `Episode ${episodeNumber} of "${animeTitle}" is premium. A premium subscription is required to stream this episode.`,
+      });
+    }
+
     const providers = await streamingService.resolveAllProviders(animeTitle, episodeNumber, {
       isPremium,
     });

@@ -53,28 +53,38 @@ function lockKey(provider, episodeId) {
 
 /**
  * Acquire the single-flight lock for a (provider, episodeId) pair.
- * Returns a release function. If another request holds the lock, this waits
- * for it to settle (resolve or reject) before returning.
+ *
+ * This is a clean promise-based owner/waiter chain (NO polling): each lock
+ * entry is a promise that resolves when its owner releases. A new acquirer
+ * registers its own done-promise as the next entry and awaits the PREVIOUS
+ * owner's promise settling first — chaining instead of spinning. This
+ * preserves exactly-once resolution semantics within the process.
+ *
+ * The awaited previous promise is always awaited via `catch(...).then(...)`,
+ * so a rejected upstream resolution cannot leave a stale lock (the next
+ * acquirer still proceeds and becomes the new owner).
  *
  * @param {string} provider
  * @param {number|string} episodeId
- * @returns {Promise<() => void>} release function
+ * @returns {Promise<() => void>} release function (resolves once this caller
+ *   is the lock owner)
  */
 async function acquireLock(provider, episodeId) {
   const key = lockKey(provider, episodeId);
-  for (;;) {
-    const existing = locks.get(key);
-    if (!existing) break;
-    try {
-      await existing;
-    } catch (_) {
-      // The previous holder failed; fall through and try to acquire.
-    }
-  }
-  // Register a promise that resolves when the current holder finishes.
+  const previous = locks.get(key) || Promise.resolve();
+
+  // Register this caller as the current entry so subsequent acquirers await us.
   let release;
   const done = new Promise((resolve) => { release = resolve; });
   locks.set(key, done);
+
+  // Wait for the previous owner to settle (resolve OR reject) before we become
+  // the active owner. No polling — a single promise chain.
+  await previous.catch(() => {}).then(() => {});
+
+  // We are now the owner. Return a release function that is ALWAYS safe to
+  // call (idempotent-ish) and resolves the done promise so the next waiter
+  // proceeds.
   return () => {
     if (locks.get(key) === done) locks.delete(key);
     release();
@@ -176,7 +186,10 @@ async function findCachedStream(episodeId, provider) {
  */
 async function saveStream(episodeId, provider, providerResult, ttlMin) {
   if (!episodeId || !providerResult) return false;
-  const ttl = ttlMin || config.ttlMinutes;
+  // Effective TTL: an explicit override wins, otherwise the clamped safe TTL
+  // (config.safeTtlMinutes) is used so the cache never outlives the AnimeHeaven
+  // CDN playback-context lifetime.
+  const ttl = ttlMin || config.safeTtlMinutes;
   const now = new Date();
   const expires = new Date(now.getTime() + ttl * 60 * 1000);
 
@@ -263,11 +276,11 @@ async function markUsed(id) {
  */
 async function getOrResolve(episodeId, provider, resolver) {
   if (!episodeId) return resolver();
-  const release = await acquireLock(provider, episodeId);
+const release = await acquireLock(provider, episodeId);
   try {
     // Mandatory second cache check — a concurrent request may have just
     // populated the cache while we were waiting for the lock.
-    const second = await this.findCachedStream(episodeId, provider);
+    const second = await findCachedStream(episodeId, provider);
     if (second.result) {
       logger.info('[STREAM_CACHE] LOCK_HIT', { episodeId, provider });
       return second.result;
@@ -275,12 +288,61 @@ async function getOrResolve(episodeId, provider, resolver) {
 
     const fresh = await resolver();
     if (fresh && Array.isArray(fresh.sources) && fresh.sources.length > 0) {
-      await this.saveStream(episodeId, provider, fresh);
+      await saveStream(episodeId, provider, fresh);
     }
     return fresh;
   } finally {
     release();
   }
+}
+
+// ── Optional background expiry sweeper ────────────────────
+// Lightweight, best-effort cleanup of expired cache rows using the existing
+// `expires_at` index. It is deliberately NON-blocking for playback:
+//   • Runs on a low-frequency interval (default 30 min), NOT per-request.
+//   • Any failure is swallowed — it can never affect playback.
+//   • The interval is unref'd so it does not prevent a clean process shutdown.
+//   • Only rows whose expires_at has passed are deleted (never valid rows).
+const SWEEP_INTERVAL_MS = Number(process.env.STREAM_CACHE_SWEEP_INTERVAL_MS || 30 * 60 * 1000);
+
+/**
+ * Delete expired cache rows (best-effort). Never throws.
+ * @returns {Promise<number>} number of rows deleted
+ */
+async function sweepExpired() {
+  try {
+    const [result] = await db.query(
+      'DELETE FROM episode_stream_cache WHERE expires_at <= ?',
+      [new Date()]
+    );
+    const deleted = result?.affectedRows || 0;
+    if (deleted > 0) {
+      logger.info('[STREAM_CACHE] SWEEP', { deleted });
+    }
+    return deleted;
+  } catch (err) {
+    logger.warn('[STREAM_CACHE] FAILURE (sweep)', { error: err.message });
+    return 0;
+  }
+}
+
+/**
+ * Start the background expiry sweeper (idempotent). The interval is unref'd
+ * so it never blocks a clean shutdown. Only started when enabled.
+ */
+function startSweeper() {
+  if (startSweeper._started) return;
+  startSweeper._started = true;
+  const timer = setInterval(() => {
+    sweepExpired().catch(() => {});
+  }, SWEEP_INTERVAL_MS);
+  if (timer.unref) timer.unref();
+  timer._anistrimStreamCache = true;
+  process.on('exit', () => {
+    if (timer && timer._anistrimStreamCache && typeof timer.unref === 'function') {
+      clearInterval(timer);
+    }
+  });
 }
 
 module.exports = {
@@ -289,6 +351,8 @@ module.exports = {
   deleteInvalidCache,
   isExpired,
   getOrResolve,
+  sweepExpired,
+  startSweeper,
   // Exposed for tests/diagnostics.
   lockKey,
 };

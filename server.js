@@ -133,3 +133,14 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Start background jobs
 require('./utils/premiumAutomation');
+
+// Start the lightweight persistent-stream-cache expiry sweeper (best-effort).
+// The sweeper interval is unref'd and failure-safe, so it never blocks playback
+// or a clean shutdown. Idempotent — safe to call even if the stream cache
+// table isn't migrated yet.
+try {
+  const streamCacheService = require('./services/streamCacheService');
+  streamCacheService.startSweeper();
+} catch (err) {
+  console.error('⚠️ [STREAM_CACHE] Sweeper init failed (non-fatal):', err && err.message);
+}
