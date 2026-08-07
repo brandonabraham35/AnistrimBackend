@@ -1,5 +1,5 @@
 // ============================================================
-//  routes/streamRoutes.js — Multi-API Stream Routes
+//  routes/streamRoutes.js — AnimeHeaven Stream Routes
 //  Mounted at /api/stream
 // ============================================================
 const express = require('express');
@@ -15,13 +15,11 @@ const { protect } = require('../middleware/auth');
 router.options('/proxy', streamProxyQueryController.preflight);
 router.get('/proxy', streamProxyQueryController.streamMedia);
 
-// ── Public: Auto-fallback best stream ──────────────────────
+// ── Public: Best stream (AnimeHeaven single provider) ──────
 // GET /api/stream/:animeTitle/:episodeNumber
-// Optional query param: preferredProvider=consumet|...
-//   (NOTE: 'miruro' is intentionally DISABLED — see MIRURO_COMPATIBILITY_REPORT.md.
-//    If a client requests preferredProvider=miruro, the resolver safely returns
-//    null and the pipeline falls through to the next provider. No Miruro HTTP
-//    requests are ever made.)
+// Optional query param: preferredProvider=animeheaven
+//   (accepted for backward compatibility but IGNORED — AnimeHeaven is the
+//    only streaming provider. The response contract is unchanged.)
 // Optional auth (if token provided, will unlock premium quality)
 router.get('/:animeTitle/:episodeNumber', (req, res, next) => {
   // Optional auth — if token present, attach user for tier enforcement

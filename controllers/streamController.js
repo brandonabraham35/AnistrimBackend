@@ -1,16 +1,22 @@
 // ============================================================
-//  controllers/streamController.js — Multi-API Stream Endpoints
+//  controllers/streamController.js — AnimeHeaven Stream Endpoints
 //
 //  Provides:
 //    1. GET /api/stream/:animeTitle/:episodeIdentifier
-//       → Auto-fallback best stream for user's tier
+//       → Best stream for user's tier (AnimeHeaven single provider)
 //       IMPORTANT: episodeIdentifier should be the EPISODE NUMBER,
 //       NOT the database record ID. The frontend MUST distinguish
 //       between episodeId (DB record ID) and episodeNumber.
 //    2. GET /api/stream/providers/:animeTitle/:episodeNumber
-//       → List all providers for the "Switch Server" dropdown
+//       → List providers for the "Switch Server" dropdown
+//       (single AnimeHeaven entry; response contract unchanged)
 //    3. POST /api/stream/offline-download
 //       → Premium-only download authorization
+//
+//  Response contracts are IDENTICAL to the previous multi-provider
+//  version. The `preferredProvider` query/body param is still accepted
+//  for backward compatibility but is IGNORED by the single-provider
+//  streaming engine (AnimeHeaven is the only provider).
 // ============================================================
 const db = require('../config/db');
 const streamingService = require('../services/streamingService');
@@ -137,11 +143,30 @@ exports.getStream = async (req, res) => {
       logger.warn(`[StreamController] Unreasonable episode number — using as-is anyway`, { animeTitle, episodeNumber });
     }
 
-    logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episodeNumber}`, { animeTitle, episode: episodeNumber, resolvedFrom, mediaType, mediaId });
+logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episodeNumber}`, { animeTitle, episode: episodeNumber, resolvedFrom, mediaType, mediaId });
 
-const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
+    // ── Resolve the DB episode id (for persistent stream cache) ──
+    // Best-effort: resolves episodeId from anime_id + episode_number so the
+    // persistent stream cache can key on the canonical episodes.id. This is
+    // playback infrastructure only — it never alters the CMS or episode data.
+    let episodeId = null;
+    try {
+      if (mediaId && episodeNumber) {
+        const [epRows] = await db.query(
+          'SELECT id FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+          [mediaId, episodeNumber]
+        );
+        episodeId = epRows && epRows[0] ? epRows[0].id : null;
+      }
+    } catch (epErr) {
+      logger.debugStream('[StreamController] episodeId lookup failed (cache will be bypassed)', { animeTitle, episode: episodeNumber, error: epErr.message });
+      episodeId = null;
+    }
+
+    const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
       preferredProvider: preferredProvider || undefined,
+      episodeId: episodeId || undefined,
     });
 
     // Rewrite AnimeHeaven sources to anonymized /api/stream-proxy/:streamId

@@ -289,30 +289,23 @@ function listKnownConsumetProviders() {
 
 /**
  * Get the default provider order (as tags) for the streaming pipeline.
- * Mirrors the historical DEFAULT_PROVIDERS ordering exactly.
  *
- * NOTE: Miruro is intentionally EXCLUDED from the active provider order.
- * The Miruro compatibility audit (MIRURO_COMPATIBILITY_REPORT.md) proved the
- * previous resolver targeted non-existent endpoints (`/search`, `/anime/{id}/episode/{n}`).
- * The real Miruro service is a same-origin `/api/*` SPA API protected by Cloudflare,
- * with an undocumented schema. The provider is therefore DISABLED until a verified
- * adapter (services/miruroProvider.js) is implemented after Phase 1 browser-traffic
- * capture. The `PROVIDER_IDS.MIRURO` constant, referer, health key, and tag are KEPT
- * so the registration remains available for that future adapter.
+ * AnimeHeaven is now the SINGLE streaming provider. All multi-provider logic
+ * (Consumet sub-providers, hosted Consumet, provider race/rotation/retries/
+ * queues) has been removed from the streaming ENGINE. This function returns
+ * only the AnimeHeaven tag so any consumer that derives the streaming provider
+ * order from the registry sees a single entry.
+ *
+ * NOTE: The other provider IDs (kickassanime, animekai, etc.) and their
+ * associated constants/helpers remain in this registry because NON-streaming
+ * subsystems (catalogue, admin import, consumet microservice, providerHttp
+ * referer map) still reference them. They are legacy and are NOT used by the
+ * streaming engine anymore.
+ *
  * @returns {string[]}
  */
 function getDefaultProviderOrder() {
-  return [
-    PROVIDER_IDS.KICK_ASS_ANIME,
-    PROVIDER_IDS.ANIME_KAI,
-    PROVIDER_IDS.ANIME_PAHE,
-    PROVIDER_IDS.HIANIME,
-    PROVIDER_IDS.ANIME_SATURN,
-    PROVIDER_IDS.ANIME_UNITY,
-    PROVIDER_IDS.ANIME_HEAVEN,
-    PROVIDER_IDS.CONSUMET_HTTP,
-    // PROVIDER_IDS.MIRURO intentionally omitted — disabled pending verified adapter.
-  ].map(toProviderTag);
+  return [PROVIDER_IDS.ANIME_HEAVEN].map(toProviderTag);
 }
 
 /**
