@@ -7,7 +7,8 @@
     "validate:nightly": "node validation/index.js",
 "validate:quick": "node validation/index.js --quick",
     "validate:concurrency": "node validation/index.js --skipConcurrency",
-    "test:hls": "node --test test/hlsRewriter.test.js"
+"test:hls": "node --test test/hlsRewriter.test.js",
+    "test:ssrf": "node --test test/ssrfGuard.test.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

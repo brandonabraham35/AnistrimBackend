@@ -1033,8 +1033,74 @@ function qualityRank(quality) {
   return 0;
 }
 
+/**
+ * Detect a confirmed AnimeHeaven onerror placeholder by inspecting the packed
+ * query-string structure of the URL. Based on the live forensic evidence, the
+ * gate page's `<video>` markup carries `&error` / `&error2` onerror-fallback
+ * suffixes that resolve to HTTP 404 and are NOT playable. This operates on the
+ * URL's query markers (the actual source structure), NOT a blind substring
+ * match on the word "error" — so a legitimate token/query parameter that merely
+ * contains letters is never misclassified.
+ */
+function isConfirmedDeadOnErrorSource(url) {
+  const value = String(url || '');
+  if (!/^https?:\/\//i.test(value)) return false;
+  try {
+    const q = new URL(value).searchParams;
+    // Exactly the confirmed 404 onerror-fallback markers: `error` / `error2`
+    // present as a bare query key (i.e. `&error` / `&error2`).
+    return q.has('error') || q.has('error2');
+  } catch {
+    // If the URL cannot be parsed, be conservative and do not classify it as
+    // a dead placeholder — only exact structural markers are rejected.
+    return false;
+  }
+}
+
+/**
+ * Classify a parsed source for ranking. Returns a number where LOWER is
+ * preferred (used as the primary sort key before quality):
+ *
+ *   1 — GENUINE VIDEO: playable media URL from a real video/stream source
+ *       (video, mirror, nested-iframe, config, json-config, escaped-config,
+ *       track-media). These are the preferred playback sources.
+ *   2 — VALID FALLBACK: playable link/download source (e.g. the confirmed
+ *       `&d` download variant that returns HTTP 200 video/mp4) or any other
+ *       valid but non-preferred source.
+ *   3 — KNOWN DEAD: confirmed AnimeHeaven `&error` / `&error2` onerror
+ *       placeholders (HTTP 404). Always ranked last and filtered out before
+ *       streamUrl selection.
+ */
+function sourceClass(src) {
+  const url = String((src && src.url) || '');
+  if (isConfirmedDeadOnErrorSource(url)) return 3;
+
+  const isMedia = isPlayableMediaUrl(url);
+  const type = String((src && src.sourceType) || '').toLowerCase();
+
+  // Genuine video/stream sources (not link/download-only).
+  const genuineVideo = ['video', 'mirror', 'nested-iframe', 'config', 'json-config', 'escaped-config', 'track-media'];
+  if (isMedia && genuineVideo.includes(type)) return 1;
+
+  // Valid fallback: playable link/download source or other valid source.
+  if (isMedia) return 2;
+
+  // Non-playable source (e.g. iframe/embed page) — valid but least preferred
+  // among live (non-dead) sources.
+  return 2;
+}
+
+/**
+ * Sort sources by source-class priority (genuine video first), then by quality
+ * (descending), then by a deterministic URL lexicographic tie-break. Genuine
+ * video sources always win over link/download fallbacks, and confirmed dead
+ * onerror placeholders are always pushed last.
+ */
 function sortSourcesByQuality(sources) {
   return [...sources].sort((a, b) => {
+    const ca = sourceClass(a);
+    const cb = sourceClass(b);
+    if (ca !== cb) return ca - cb;
     const qa = qualityRank(a.quality);
     const qb = qualityRank(b.quality);
     if (qa !== qb) return qb - qa;
@@ -2544,7 +2610,12 @@ let targetIdentifier = identifier || slug || null;
       }
 
 sources = sortSourcesByQuality(sources)
-        .filter(src => isPlayableMediaUrl(src.url));
+        .filter(src => isPlayableMediaUrl(src.url))
+        // Never select a confirmed AnimeHeaven onerror placeholder
+        // (`&error` / `&error2`) as the primary playback source. These gate
+        // markup placeholders resolve to HTTP 404 even though they sort
+        // lexicographically first when all sources are quality "auto".
+        .filter(src => !isConfirmedDeadOnErrorSource(src.url));
 
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });

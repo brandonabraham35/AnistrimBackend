@@ -50,7 +50,22 @@ function ipv4ToInt(ip) {
   if (parts.length !== 4) return null;
   let acc = 0;
   for (const part of parts) {
-    const n = Number(part);
+    if (!part) return null;
+    let n;
+    if (/^0[0-7]+$/.test(part)) {
+      // Leading-zero octal literal (e.g. "0177" → 127). A dotted-quad parser
+      // MUST honor this classic IPv4 obfuscation. Using plain decimal parsing
+      // here would mis-classify "0177.0.0.1" as 177.0.0.1 (public) instead of
+      // 127.0.0.1 (loopback), allowing an SSRF bypass.
+      n = parseInt(part, 8);
+    } else if (/^0\d+$/.test(part)) {
+      // Leading zero followed by 8/9 → malformed octal (e.g. "08"). Reject.
+      return null;
+    } else if (/^\d+$/.test(part)) {
+      n = parseInt(part, 10);
+    } else {
+      return null;
+    }
     if (!Number.isInteger(n) || n < 0 || n > 255) return null;
     acc = (acc * 256) + n;
   }
@@ -130,18 +145,28 @@ function normalizeObfuscatedIpv4(host) {
     if (!Number.isInteger(n) || n < 0 || n > 4294967295) return null;
     ints.push(n);
   }
-  // Allow 1-4 part forms (single integer, class-A/B/C forms).
+// Allow 1-4 part forms (single integer, class-A/B/C forms).
+  // 1 part: the whole 32-bit value.
   if (ints.length === 1) {
-    // Single 32-bit number → dotted quad.
     const v = ints[0];
     return `${(v >>> 24) & 0xff}.${(v >>> 16) & 0xff}.${(v >>> 8) & 0xff}.${v & 0xff}`;
   }
+  // 2 parts: first octet (8 bits) + a 24-bit remainder.
+  // e.g. "0177.1" (octal 127 . 1) → 127.0.0.1.
   if (ints.length === 2) {
-    const v = ints[0] * 256 + ints[1];
+    const a = ints[0];
+    const rest = ints[1];
+    if (a > 255) return null;
+    const v = (a << 24) | rest;
     return `${(v >>> 24) & 0xff}.${(v >>> 16) & 0xff}.${(v >>> 8) & 0xff}.${v & 0xff}`;
   }
+  // 3 parts: first octet (8 bits) + a 16-bit remainder.
+  // e.g. "127.0.1" → 127.0.0.1.
   if (ints.length === 3) {
-    const v = ints[0] * 65536 + ints[1] * 256 + ints[2];
+    const a = ints[0];
+    const rest = (ints[1] << 8) | ints[2];
+    if (a > 255) return null;
+    const v = (a << 24) | rest;
     return `${(v >>> 24) & 0xff}.${(v >>> 16) & 0xff}.${(v >>> 8) & 0xff}.${v & 0xff}`;
   }
   // 4-part form — validate each octet is within 0..255.

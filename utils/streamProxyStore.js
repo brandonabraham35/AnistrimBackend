@@ -43,7 +43,7 @@ function generateStreamId() {
 function sweep() {
   const now = Date.now();
   for (const [id, ctx] of contexts) {
-    if (!ctx || now - ctx.lastAccessAt > TTL_MS || now - ctx.createdAt > TTL_MS) {
+    if (!ctx || now - ctx.lastAccessAt > DEFAULT_TTL_MS || now - ctx.createdAt > DEFAULT_TTL_MS) {
       contexts.delete(id);
     }
   }
@@ -107,8 +107,8 @@ function get(streamId) {
   if (!streamId) return null;
   const ctx = contexts.get(streamId);
   if (!ctx) return null;
-  const now = Date.now();
-  if (now - ctx.lastAccessAt > TTL_MS || now - ctx.createdAt > TTL_MS) {
+const now = Date.now();
+  if (now - ctx.lastAccessAt > DEFAULT_TTL_MS || now - ctx.createdAt > DEFAULT_TTL_MS) {
     contexts.delete(streamId);
     return null;
   }
