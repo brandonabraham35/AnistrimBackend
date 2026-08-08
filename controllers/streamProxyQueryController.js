@@ -40,6 +40,9 @@
 
 const { request } = require('../utils/providerHttp');
 const logger = require('../utils/logger');
+// SSRF protection: rejects targets that resolve to private/loopback/link-local
+// addresses before the upstream request is made.
+const { assertSafeTargetHost } = require('../utils/ssrfGuard');
 // Single source of truth for playback headers + the proxy URL shape.
 const {
   getPlaybackContext,
@@ -138,6 +141,22 @@ exports.streamMedia = async (req, res) => {
   }
   if (!/^https?:$/.test(parsed.protocol)) {
     return res.status(400).json({ error: 'Only http(s) targets are allowed.' });
+  }
+
+  // ── SSRF protection ────────────────────────────────────
+  // Reject any target whose resolved destination is loopback, link-local,
+  // private, or otherwise internal (preventing the proxy from being used to
+  // reach cloud metadata endpoints, localhost, internal networks, etc.).
+  // This runs BEFORE the upstream request is made. The AnimeHeaven media/CDN,
+  // HLS playlist, segment, subtitle, and mirror hosts all resolve to public
+  // IPs, so legitimate playback is unaffected.
+  const ssrfError = await assertSafeTargetHost(parsed);
+  if (ssrfError) {
+    logger.warn('[streamProxyQuery] SSRF target rejected', {
+      target: target.substring(0, 160),
+      reason: ssrfError,
+    });
+    return res.status(400).json({ error: 'Target host is not a permitted public address.' });
   }
 
   // Derive the authoritative playback context (UA + fresh cookies from the

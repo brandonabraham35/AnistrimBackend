@@ -1394,36 +1394,16 @@ async function extractNestedIframeSubtitles(html, pageUrl, depth = 0, visited = 
   return out;
 }
 
-function buildMp4SubtitleProbeUrls(sourceUrl) {
-  const out = [];
-  try {
-    const parsed = new URL(sourceUrl);
-    const query = String(parsed.search || '').replace(/^\?/, '');
-    const token = query.split('&').filter(Boolean)[0] || '';
-    const origin = parsed.origin;
-
-    if (query) {
-      out.push(`${origin}/subtitles.vtt?${query}`);
-      out.push(`${origin}/caption.vtt?${query}`);
-      out.push(`${origin}/subtitle.vtt?${query}`);
-      out.push(`${origin}/video.vtt?${query}`);
-      out.push(`${origin}/subtitles.srt?${query}`);
-      out.push(`${origin}/subtitle.srt?${query}`);
-    }
-
-    if (token) {
-      out.push(`${origin}/subtitles/${token}.vtt`);
-      out.push(`${origin}/subtitle/${token}.vtt`);
-      out.push(`${origin}/captions/${token}.vtt`);
-      out.push(`${origin}/subtitles/${token}.srt`);
-      out.push(`${origin}/subtitle/${token}.srt`);
-      out.push(`${origin}/captions/${token}.srt`);
-    }
-  } catch {
-    return [];
-  }
-  return [...new Set(out)].slice(0, MAX_SUBTITLE_URL_PROBES);
-}
+// NOTE: Speculative MP4 subtitle probing (guessing `subtitles.vtt` /
+// `subtitle.srt` etc. paths on the CDN) has been REMOVED. It caused a burst of
+// repeated 404s against the AnimeHeaven CDN for every direct MP4 stream, and
+// those guessed URLs are fabricated — not real subtitle tracks. Subtitle
+// discovery is now limited to what is genuinely present:
+//   1. `<track>` elements / explicit subtitle URLs in gate or iframe HTML
+//      (handled by parseSubtitles / extractNestedIframeSubtitles), and
+//   2. genuine HLS `#EXT-X-MEDIA` subtitle playlists (handled below).
+// No subtitle URL is ever fabricated; a direct MP4 simply reports 'missing'
+// external tracks.
 
 async function discoverSubtitlesFromSources(sources, context = {}) {
   const referer = context.referer || null;
@@ -1455,6 +1435,8 @@ async function discoverSubtitlesFromSources(sources, context = {}) {
 
     const discovered = [];
 
+    // Only real, manifest-declared HLS subtitle tracks are discovered. No
+    // fabricated/guessed subtitle URLs — this does NOT probe arbitrary paths.
     if (/\.m3u8(\?|$)/i.test(sourceUrl)) {
       try {
         const manifest = await fetchTextAsset(sourceUrl, referer);
@@ -1462,32 +1444,6 @@ async function discoverSubtitlesFromSources(sources, context = {}) {
         for (const row of parsed) discovered.push(row);
       } catch {
         // ignore m3u8 probe errors
-      }
-    }
-
-    if (/\.mp4(\?|$)|video\.mp4\?/i.test(sourceUrl)) {
-      const candidates = buildMp4SubtitleProbeUrls(sourceUrl);
-      for (const candidate of candidates) {
-        try {
-          const res = await fetchTextAsset(candidate, referer);
-          if (res.status < 200 || res.status >= 300) continue;
-          if (!isLikelySubtitleResponse(res.body, res.contentType)) {
-            const payload = parseSubtitles(res.body, candidate);
-            if (!payload.length) continue;
-            for (const row of payload) discovered.push(row);
-            continue;
-          }
-
-          discovered.push({
-            lang: 'Unknown',
-            url: candidate,
-            format: detectSubtitleFormat(candidate, res.contentType),
-            default: false,
-            forced: false,
-          });
-        } catch {
-          // ignore candidate probe errors
-        }
       }
     }
 
@@ -2631,35 +2587,21 @@ sources = sortSourcesByQuality(sources)
         recordProviderMetric('subtitle_success');
       }
 
-// ── Proxy-mode rewrite (AnimeHeaven → backend proxy) ─────────
-      // EVERY returned URL (streamUrl, sources[].url, mirror.url, subtitles[].url)
-      // is rewritten to the stateless query-based proxy endpoint:
-      //   /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
-      // The browser only ever sees same-origin proxy URLs; the actual CDN target,
-      // cookies, referer and origin remain server-side. The proxy injects the
-      // captured playback context when it makes the upstream request.
+      // ── PRE-PROXY RESULT (no proxy rewrite here) ─────────────
+      // The provider returns the RAW AnimeHeaven CDN source URLs WITH their
+      // server-side playback context (referer/origin/cookies), NOT the
+      // ephemeral /api/stream/proxy URL. The persistent stream cache
+      // (streamCacheService) stores this pre-proxy data so a later cache HIT
+      // can reconstruct the provider result and generate a FRESH proxy URL.
       //
-      // Sources that already carry a referer/origin (nested/mirror) use their own
-      // referer; otherwise the gate page referer is used.
-      const proxyReferer = sourceReferer;
-      sources = sources.map(src => {
-        const ref = src.referer || proxyReferer;
-        return {
-          url: buildProxyUrl(src.url, ref),
-          quality: src.quality,
-          sourceType: src.sourceType || null,
-          // Strip server-side context (referer/origin/cookies/headers) — never
-          // exposed to the browser. The proxy re-derives it via getPlaybackContext.
-        };
-      });
-
-      // Rewrite subtitle track URLs to the proxy as well (zero frontend changes),
-      // preserving the track metadata (lang/format/default/forced).
-      const proxiedSubtitles = (subtitles || []).map(track => Object.assign({}, track, {
-        url: buildProxyUrl(track.url, proxyReferer),
-      }));
-
-const streamUrl = sources[0]?.url || buildProxyUrl(player.playerUrl, proxyReferer) || null;
+      // The actual proxy URL generation happens ONLY at the boundary where
+      // data is returned to the browser (streamController →
+      // streamProxy.rewriteResultToProxy()). Never persisting the proxy URL is
+      // what fixes the stale-token playback failure: a cached proxy URL
+      // embeds an expiring CDN token; caching the raw target + context lets us
+      // re-register the source and mint a NEW proxy URL on every playback.
+      const rawSubtitles = (subtitles || []).map(track => Object.assign({}, track));
+      const streamUrl = sources[0]?.url || null;
 
       logger.info('[AnimeHeaven] Stream extracted', {
         title,
@@ -2670,20 +2612,19 @@ const streamUrl = sources[0]?.url || buildProxyUrl(player.playerUrl, proxyRefere
       recordProviderMetric('success', Date.now() - started);
       recordProviderMetric('stream_success');
 
-      // At this point a playable stream was resolved (sources is non-empty),
-      // so the stream is healthy. The provider is AnimeHeaven and its player is
-      // known to deliver subtitles embedded/burned into the video frames. When
-      // no external VTT/SRT/ASS/SSA tracks were found, we therefore report an
-      // "embedded" subtitle mode — NOT "missing". No tracks are fabricated and
-      // no fake VTT files are created.
-const externalTracks = proxiedSubtitles.length > 0;
-      const subtitleMode = externalTracks ? 'external' : 'embedded';
+      // Subtitle mode reflects only what we can VERIFY. AnimeHeaven's direct
+      // MP4 path exposes no separate subtitle tracks, and whether subtitle
+      // text is burned into the video frames remains UNVERIFIED — so we report
+      // 'missing' (no external tracks found) rather than asserting 'embedded'.
+      const externalTracks = rawSubtitles.length > 0;
+      const subtitleMode = externalTracks ? 'external' : 'missing';
 
       return {
         provider: PROVIDER_NAME,
         streamUrl,
+        // Raw CDN source (video.mp4?...token) WITH context — never proxied.
         sources,
-        subtitles: proxiedSubtitles,
+        subtitles: rawSubtitles,
         subtitleMode,
         externalTracks,
       };

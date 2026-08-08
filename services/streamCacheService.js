@@ -41,6 +41,58 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const config = require('../config/streamCache');
+const { request } = require('../utils/providerHttp');
+
+// ── Cache-source liveness probe ────────────────────────────
+// A lightweight, FAIL-OPEN HEAD probe used to make cache-token freshness
+// decisions robust WITHOUT coupling the proxy layer to the DB. It only ever
+// returns `false` (dead) on an EXPLICIT, authoritative rejection: HTTP 403/404
+// from the AnimeHeaven CDN. On any other outcome (network error, timeout,
+// 2xx/5xx, redirect, or any unexpected result) it returns `true` so playback
+// is NEVER broken by the probe itself. This lets the resolver detect an
+// expired/revoked CDN token on a persistent-cache hit and fall back to a fresh
+// AnimeHeaven resolution (gate.php → new token).
+const SOURCE_PROBE_TIMEOUT_MS = Number(process.env.STREAM_CACHE_SOURCE_PROBE_TIMEOUT_MS || 4000);
+
+/**
+ * Probe a single cached source URL for aliveness. FAIL-OPEN.
+ *
+ * @param {string} url - the raw (pre-proxy) AnimeHeaven CDN source URL
+ * @param {object} [context] - { referer, origin } used when probing
+ * @returns {Promise<boolean>} `true` = likely alive / unknown (serve the cache);
+ *   `false` = explicitly dead (403/404) — caller should invalidate & re-resolve.
+ */
+async function isCachedSourceAlive(url, context = {}) {
+  if (!url) return true; // fail-open: nothing to probe
+  const extraHeaders = {};
+  if (context.referer) extraHeaders.Referer = String(context.referer);
+  if (context.origin) extraHeaders.Origin = String(context.origin);
+
+  try {
+    // axios (via providerHttp.request) rejects on non-2xx. A HEAD that
+    // resolves means 2xx/3xx → alive. Catch handles explicit 403/404 below.
+    await request(
+      { method: 'head', url, maxRedirects: 3 },
+      {
+        providerName: config.provider,
+        streaming: true,
+        skipProxy: true,
+        dontTrackHealth: true,
+        extraHeaders,
+        timeout: SOURCE_PROBE_TIMEOUT_MS,
+      }
+    );
+    return true; // 2xx/3xx (or a resolved HEAD) → source is alive
+  } catch (err) {
+    const status = Number(err?.response?.status || 0);
+    // Only explicit 403/404 mean the token/context is rejected/dead.
+    if (status === 403 || status === 404) return false;
+    // Network error / timeout / 5xx / 429 / redirect-loop etc. — cannot
+    // conclude it is dead. Fail-open: keep the cached source (playback must
+    // not break).
+    return true;
+  }
+}
 
 // ── In-process single-flight lock ──────────────────────────
 // Map<`provider:episodeId`, Promise>. The actual cache remains MySQL-backed;
@@ -287,10 +339,25 @@ const release = await acquireLock(provider, episodeId);
     }
 
     const fresh = await resolver();
-    if (fresh && Array.isArray(fresh.sources) && fresh.sources.length > 0) {
-      await saveStream(episodeId, provider, fresh);
+    // Normalize the resolver output to a PROVIDER RESULT before saving/returning.
+    // The AnimeHeaven execution wrapper (executeAnimeHeaven) returns an execution
+    // ENVELOPE { resolved, result, error, category, durationMs } with the playable
+    // provider result at `fresh.result`. Direct resolvers may return the provider
+    // result ({ provider, streamUrl, sources, subtitles }) directly. Both are
+    // normalized here so this function ALWAYS returns the provider-result shape,
+    // matching the cache-hit path (reconstructProviderResult). Callers read
+    // `.sources` on the returned value, so returning an envelope here would hide
+    // the successfully-resolved sources and cause a false "no playable stream found".
+    const providerResult =
+      fresh &&
+      !Array.isArray(fresh.sources) &&
+      Array.isArray(fresh.result && fresh.result.sources)
+        ? fresh.result
+        : fresh;
+    if (providerResult && Array.isArray(providerResult.sources) && providerResult.sources.length > 0) {
+      await saveStream(episodeId, provider, providerResult);
     }
-    return fresh;
+    return providerResult;
   } finally {
     release();
   }
@@ -353,6 +420,7 @@ module.exports = {
   getOrResolve,
   sweepExpired,
   startSweeper,
+  isCachedSourceAlive,
   // Exposed for tests/diagnostics.
   lockKey,
 };

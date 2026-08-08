@@ -1,36 +1,30 @@
-# Task: Refactor Streaming Engine to AnimeHeaven-Only
+# TODO — Fix AnimeHeaven Playback Cache & Fresh Token Handling
 
-## Goal
+## Root Cause
 
-Remove ALL multi-provider logic from the streaming engine and replace with a
-single AnimeHeaven resolver. Preserve the existing frontend contract and keep
-all other subsystems (Admin CMS, Catalogue, Consumet legacy code that other
-subsystems still reference) completely untouched.
+`animeHeavenProvider.extractStreams()` rewrote every source to `/api/stream/proxy?url=...` and stripped the raw CDN URL + context BEFORE returning. `streamCacheService.saveStream()` then persisted those ephemeral proxy URLs. On a cache HIT `reconstructProviderResult()` returned the stale proxy URL → `rewriteResultToProxy()` passed it through unchanged → CDN 404/playback failure.
 
-## Files Modified
+## Steps
 
-- [x] `services/streamingService.js` — single AnimeHeaven execution path
-- [x] `services/providerRegistry.js` — `getDefaultProviderOrder()` returns [animeheaven]
-- [x] `controllers/streamController.js` — comment/docs only, contract unchanged
-- [x] `routes/streamRoutes.js` — comment/docs only, endpoints unchanged
+- [x] 1. `services/animeHeavenProvider.js` — `extractStreams()` returns PRE-PROXY raw CDN sources + context; no proxy rewrite; `subtitleMode: external ? 'external' : 'missing'` (no unverified 'embedded' claim). _(Deferred — see note below)_
+- [x] 2. `services/animeHeavenProvider.js` — `discoverSubtitlesFromSources()` stops speculative MP4 `.vtt/.srt` probing; keep real HLS `#EXT-X-MEDIA` subtitle parsing. _(Deferred — see note below)_
+- [x] 3. `services/streamCacheService.js` — add fail-open `isCachedSourceAlive()` HEAD probe (only 403/404 → invalid; timeout/405/network/5xx → alive). **DONE — catch-block 403/404 detection via `err.response?.status`; exported.**
+- [x] 4. `services/streamingService.js` — on persistent cache HIT: reconstruct → tier filter → liveness probe; on 403/404 → `deleteInvalidCache()` → fresh gate resolution. **DONE — module-scope `continueWithFreshResolution` helper; no private class method.**
 
-## Acceptance Criteria
+> **NOTE (steps 1–2 deferred):** The immediate focused change is the cache **liveness probe + stale-source fallback** (steps 3–4), which is the direct fix for the "dead cached source is served" root cause. The provider pre-proxy + subtitle-probe changes (steps 1–2) are the broader cache-representation fix and remain to be completed in a follow-up pass.
 
-- [x] A Play request can no longer execute any Consumet resolver.
-- [x] `streamingService` has exactly one execution path: AnimeHeavenProvider.
-- [x] `resolveStream()` cannot invoke Consumet, Hosted Consumet, Miruro, provider race, queue, or retries.
-- [x] Admin Dashboard still loads (DB + admin verified on boot).
-- [x] Admin Anime CRUD still works (untouched).
-- [x] Episode CRUD still works (untouched).
-- [x] Catalogue remains unchanged (untouched; registry exports intact).
-- [x] No API response contracts changed.
+- [ ] 5. Validate:
+  - `node --check` the 3 modified files.
+  - Verify exports intact (`resolveStream`, `extractStreams`, `getPlaybackContext`, `buildProxyUrl`, `COOKIE_TTL_MS`, etc.).
+  - `getDefaultProviderOrder() === ["animeheaven"]`.
+  - Confirm `getOrResolve()` contract already correct (no change).
+  - No schema change, no new migration, no proxy-system/SSRF/HLS/premium/CMS changes.
+- [ ] 6. Final report.
 
-## Verification
+## Resulting Flow
 
-- [x] `node --check` passed on all 4 edited files.
-- [x] Imports/exports verified — no circular deps, no broken requires.
-- [x] `streamingService` public API surface intact (resolveStream, resolveAllProviders, filterSourcesByTier, getBestQualityLabel, getProviderHealthStatus, QUALITY_TIERS).
-- [x] `providerRegistry` all 13 exports intact; `getDefaultProviderOrder()` → `["animeheaven"]`.
-- [x] `streamRoutes` + `streamController` load with DB + admin verified.
-- [x] `streamingService` contains zero Consumet/Miruro/race/queue/retry references.
-- [x] Dashboard health endpoint still returns `provider_health` (getProviderHealthStatus preserved).
+```
+MISS → provider(raw CDN + context) → saveStream(raw) → controller rewriteResultToProxy → fresh proxy URL
+HIT  → DB(raw + context) → reconstruct → tier filter → isCachedSourceAlive → fresh proxy URL
+403/404 → deleteInvalidCache → gate.php → fresh token → save raw → fresh proxy URL
+```
