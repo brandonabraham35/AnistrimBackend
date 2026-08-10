@@ -2617,6 +2617,33 @@ sources = sortSourcesByQuality(sources)
         // lexicographically first when all sources are quality "auto".
         .filter(src => !isConfirmedDeadOnErrorSource(src.url));
 
+      // Liveness check: Sequentially verify sources until a playable one is found.
+      if (sources.length > 0) {
+        logger.info(`[AnimeHeaven] Verifying liveness for ${sources.length} sorted source(s)...`, { title, episode });
+        let verifiedSourceIndex = -1;
+        for (let i = 0; i < sources.length; i++) {
+          const sourceToTest = sources[i];
+          logger.info(`[AnimeHeaven] Liveness check [${i + 1}/${sources.length}]`, { quality: sourceToTest.quality, type: sourceToTest.sourceType });
+          const liveness = await verifySourceLiveness(sourceToTest);
+
+          if (liveness.live) {
+            logger.info(`[AnimeHeaven] Source liveness VERIFIED`, { quality: sourceToTest.quality, status: liveness.status, latencyMs: liveness.durationMs });
+            verifiedSourceIndex = i;
+            break; // Stop on the first live source
+          } else {
+            logger.warn(`[AnimeHeaven] Source liveness FAILED`, { quality: sourceToTest.quality, status: liveness.status, reason: liveness.reason });
+          }
+        }
+
+        if (verifiedSourceIndex > 0) {
+          const verifiedSource = sources.splice(verifiedSourceIndex, 1)[0];
+          sources.unshift(verifiedSource);
+          logger.info(`[AnimeHeaven] Selected verified source at index ${verifiedSourceIndex} as primary.`, { title, episode });
+        } else if (verifiedSourceIndex === -1) {
+          logger.warn('[AnimeHeaven] All sources failed liveness check. Falling back to original best-guess.', { title, episode });
+        }
+      }
+
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });
         recordProviderMetric('failure', Date.now() - started);

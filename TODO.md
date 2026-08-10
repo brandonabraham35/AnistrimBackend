@@ -1,26 +1,34 @@
-# TODO — AnimeHeaven Source-Selection Defect Fix
+# Final Cache-Hit Verification — Task TODO
 
-## Approved Surgical Fix (services/animeHeavenProvider.js ONLY)
+## Phase 0 (MUST BE FIRST) — Precondition audit (READ-ONLY)
 
-### Steps
+- [x] Load `.env` via dotenv
+- [x] Connect to MySQL (active DB = `anistrim_requirebut`)
+- [x] Verify episode 33 exists
+- [x] Count episode_stream_cache rows (episode_id=33, provider=animeheaven) → 1
+- [x] Read expires_at
+- [x] Compare expires_at vs DB NOW()
+- [x] Calculate remaining TTL → **-26,122,000 ms (EXPIRED)**
+- [x] Verify TTL > 0 → **FAIL**
+- [x] Verify TTL <= COOKIE_TTL_MS (480000) → **FAIL**
+- [x] Verify stream_data contains raw CDN source → PASS
+- [x] Verify no /api/stream-proxy persisted → PASS
+- [x] Verify no &error/&error2 placeholder → PASS
 
-1. [x] Audit existing source parsing/sorting logic + forensic evidence
-2. [x] Approve plan (adjustment: `&d` is a valid Class-2 fallback, NOT dead)
-3. [ ] Add `isConfirmedDeadOnErrorSource(url)` — flags only confirmed AnimeHeaven `&error`/`&error2` onerror placeholders
-4. [ ] Add `sourceClass(src)` — Class 1 (genuine video), Class 2 (valid link/download fallback), Class 3 (dead onerror)
-5. [ ] Update `sortSourcesByQuality()` — source-class priority before quality rank
-6. [ ] Update `extractStreams()` — filter out Class-3 dead placeholders before selecting `sources[0]`/`streamUrl`
-7. [ ] Add deterministic unit tests `test/animeHeavenProvider.test.js` (forensic scenario + edge cases)
-8. [ ] Run `node --check services/animeHeavenProvider.js`
-9. [ ] Run `node --test test/animeHeavenProvider.test.js`
-10. [ ] Run existing `node --test test/hlsRewriter.test.js` + `node --test test/ssrfGuard.test.js`
-11. [ ] Verify exports intact + report
+## HARD STOP (row EXPIRED)
 
-## Explicitly OUT of scope (do NOT touch)
+- [x] Set VERDICT = NOT VERIFIED
+- [x] Do NOT call resolveStream() / AnimeHeaven / saveStream / update / extend / delete
+- [x] Do NOT modify DB, source, .env, frontend, routes, auth, CMS, payments, git
 
-- Proxy layer, streamProxyStore, SSRF guard, cache architecture, playback context, browser security
-- Proxy-side alternate-source fallback
-- Database migrations
-- Auth, premium logic, tier filtering, cache TTL
-- Other providers/subsystems
-- Frontend / controllers / routes
+## Regression / Syntax (run after hard stop)
+
+- [x] node --check on 5 in-scope files → 5/5 clean
+- [x] node --test test/animeHeavenProvider.test.js test/hlsRewriter.test.js test/ssrfGuard.test.js → 46/46 pass, 0 fail
+
+## Report & cleanup
+
+- [x] Generate CACHE_HIT_FINAL_VERIFICATION_REPORT.md (NOT VERIFIED)
+- [x] Delete \_final_cache_hit_verify.js (confirmed gone)
+- [x] Final DB comparison — row unchanged (no mutation)
+- [x] Leave only the Markdown report as the permanent audit artifact
