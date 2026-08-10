@@ -171,19 +171,27 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     url += '?preferredProvider=' + preferredProvider;
   }
 
+  console.log("[PLAYER] Requesting stream from:", url);
   var { data } = await apiFetch(url);
+  console.log("[PLAYER] Stream API response", data);
 
   if (data && data.streamUrl) {
-    currentStreamUrl = data.streamUrl;
+    // CRITICAL FIX: The API returns a relative path like /api/stream-proxy/...
+    // We must construct the full, absolute URL to the backend.
+    const API_BASE_URL = window.getApiBaseUrl();
+    const absoluteStreamUrl = data.streamUrl.startsWith('http') ? data.streamUrl : API_BASE_URL + data.streamUrl;
+
+    currentStreamUrl = absoluteStreamUrl;
     currentProvider = data.provider || 'unknown';
+    console.log("[PLAYER] Selected stream URL (absolute):", currentStreamUrl);
 
     var badge = document.getElementById('qualityBadge');
     if (badge && data.bestQuality) {
       badge.textContent = data.bestQuality;
       badge.style.display = 'inline-block';
     }
-
-    await attachStreamSource(video, data.streamUrl);
+    
+    await attachStreamSource(video, currentStreamUrl);
   } else {
     throw new Error((data && data.error) || 'No stream URL returned');
   }
@@ -281,6 +289,13 @@ function setupPlayer(video) {
   var skipBtn = document.getElementById('skipIntroBtn');
   var nextBanner = document.getElementById('nextEpisodeBtn');
   var isPremium = State.isPremium || State.isAdmin;
+
+  // Diagnostic Listeners
+  video.addEventListener("loadstart", () => console.log("[PLAYER] Event: loadstart"));
+  video.addEventListener("loadedmetadata", () => console.log("[PLAYER] Event: loadedmetadata - duration:", video.duration));
+  video.addEventListener("canplay", () => console.log("[PLAYER] Event: canplay"));
+  video.addEventListener("playing", () => console.log("[PLAYER] Event: playing"));
+  video.addEventListener("error", () => console.error("[PLAYER] Event: error", { code: video.error.code, message: video.error.message, networkState: video.networkState, readyState: video.readyState, currentSrc: video.currentSrc }));
 
   if (currentEpId) loadProgress(video, currentEpId);
 

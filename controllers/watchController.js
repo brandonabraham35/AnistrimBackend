@@ -242,11 +242,16 @@ exports.getEpisodeSkipTimes = async (req, res) => {
       });
     }
 
-    const result = await fetchSkipTimes(malId, episodeNumber);
-
-    return res.json(result);
+    // Make AniSkip non-fatal. If it fails, log a warning and return empty.
+    try {
+      const result = await fetchSkipTimes(malId, episodeNumber);
+      return res.json(result);
+    } catch (skipErr) {
+      console.warn(`[WatchController] AniSkip fetch failed (non-fatal): ${skipErr.message}`);
+      return res.json({ found: false });
+    }
   } catch (err) {
-    console.error('[WatchController] getEpisodeSkipTimes error:', err.message);
+    console.error('[WatchController] getEpisodeSkipTimes error (wrapper):', err.message);
 
     return res.status(502).json({
       success: false,
@@ -254,4 +259,3 @@ exports.getEpisodeSkipTimes = async (req, res) => {
     });
   }
 };
-

@@ -2625,7 +2625,6 @@ sources = sortSourcesByQuality(sources)
         // lexicographically first when all sources are quality "auto".
         .filter(src => !isConfirmedDeadOnErrorSource(src.url));
 
-    logger.info(`[AnimeHeaven] Liveness check starting for ${sources.length} candidates.`);
       // Liveness check: Sequentially verify sources until a playable one is found.
       if (sources.length > 0) {
         logger.info(`[AnimeHeaven] Verifying liveness for ${sources.length} sorted source(s)...`, { title, episode });
