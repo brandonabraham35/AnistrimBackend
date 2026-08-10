@@ -122,15 +122,17 @@ const CLOUDFLARE_PATTERNS = [
 // prefix match, which beats a substring match, etc. This REPLACES the old
 // alphabetical (localeCompare) tie-break so ranking reflects search relevance.
 const RELEVANCE_WEIGHTS = Object.freeze({
-  EXACT_RAW: 1000,        // case-insensitive exact title match
-  EXACT_NORMALIZED: 900,  // normalized exact match (punctuation/spaces removed)
-  ALIAS_MATCH: 850,       // alias/variant match (english/romaji/japanese/synonym)
-  PREFIX_MATCH: 700,      // candidate starts with query
-  WHOLE_WORD: 600,        // query is a whole word within candidate
-  SUBSTRING: 500,         // candidate contains query substring
-  TOKEN_OVERLAP: 400,     // token overlap / jaccard
-  LEVENSHTEIN: 300,       // edit-distance similarity
-  EPISODE_AVAIL: 200,     // title string contains the requested episode
+  EXACT_MATCH: 10000,
+  ALIAS_MATCH: 8000,
+  SUFFIX_MATCH: 2000,
+  SPECIFICITY_BONUS: 1500,
+  PREFIX_MATCH: 700,
+  TOKEN_OVERLAP: 400,
+  LEVENSHTEIN: 300,
+  EPISODE_AVAIL: 200,
+  // Penalties
+  SUFFIX_MISMATCH_PENALTY: -5000,
+  LENGTH_MISMATCH_PENALTY: -1000,
 });
 
 const REASON = Object.freeze({
@@ -670,115 +672,75 @@ function computeRelevanceScore(candidate, query, aliases = [], requestedEpisode)
   const normC = normalizeTitle(rawC);
   const normQ = normalizeTitle(rawQ);
 
+  if (!normC || !normQ) return { total: 0, tier: TIER.NONE, flags: {} };
+
   const flags = {
-    exactRaw: false,
-    exactNormalized: false,
+    exactMatch: false,
     aliasMatch: false,
+    suffixMatch: false,
+    suffixMismatch: false,
+    specificity: 0,
     prefix: false,
-    wholeWord: false,
-    substring: false,
-    tokenOverlap: 0,
-    editDistance: 0,
-    episodeAvailable: false,
+    lengthMismatch: false,
   };
 
   let tier = TIER.NONE;
   let total = 0;
 
-  // 1. Exact raw title match (case-insensitive)
-  // PRIORITY 1: Give a massive boost for an exact match to prevent incorrect selections.
-  // This ensures "Dragon Ball Super: Broly" doesn't match "The Cat and the Dragon"
-  // just because of the word "Dragon".
-  if ((rawC && rawQ && rawC.toLowerCase() === rawQ) || (normC && normQ && normC === normQ)) {
-    flags.exactRaw = true;
-    tier = Math.min(tier, TIER.EXACT_RAW);
-    total += RELEVANCE_WEIGHTS.EXACT_RAW;
+  // Priority 1: Exact normalized title match
+  if (normC === normQ) {
+    total += RELEVANCE_WEIGHTS.EXACT_MATCH;
+    flags.exactMatch = true;
   }
 
-  // 2. Exact normalized title match
-  if (normC && normQ && normC === normQ) {
-    flags.exactNormalized = true;
-    tier = Math.min(tier, TIER.EXACT_NORMALIZED);
-    total += RELEVANCE_WEIGHTS.EXACT_NORMALIZED;
+  // Priority 2-4: Alias match
+  const candidateVariants = buildMatchVariants(rawC);
+  const queryVariants = buildMatchVariants(rawQ);
+  if (queryVariants.some(qv => candidateVariants.includes(qv))) {
+    total += RELEVANCE_WEIGHTS.ALIAS_MATCH;
+    flags.aliasMatch = true;
   }
 
-  if (normC && normQ) {
-    // 3. Alias / variant match (english, romaji, japanese, synonyms, provided aliases)
-    const candidateVariants = buildMatchVariants(rawC);
-    const queryVariants = buildMatchVariants(rawQ);
-    let aliasHit = false;
-    for (const qv of queryVariants) {
-      if (!qv) continue;
-      for (const cv of candidateVariants) {
-        if (cv === qv) { aliasHit = true; break; }
-      }
-      if (aliasHit) break;
-    }
-    if (!aliasHit) {
-      for (const alias of (aliases || [])) {
-        const av = normalizeTitle(alias);
-        if (!av) continue;
-        if (av === normQ || queryVariants.includes(av) || normQ === av) {
-          aliasHit = true;
-          break;
-        }
-      }
-    }
-    if (aliasHit) {
-      flags.aliasMatch = true;
-      tier = Math.min(tier, TIER.ALIAS);
-      total += RELEVANCE_WEIGHTS.ALIAS_MATCH;
-    }
+  // Priority 5: Suffix normalization and matching
+  const suffixRegex = /(?:\s|:|-)(\d+|0|i{1,3}|iv|v|vi{1,3}|ix|x)$/i;
+  const querySuffix = rawQ.match(suffixRegex)?.[1]?.toLowerCase();
+  const candidateSuffix = rawC.match(suffixRegex)?.[1]?.toLowerCase();
 
-    // 4. Prefix match (candidate normalized string starts with query)
-    if (normC.startsWith(normQ)) {
-      flags.prefix = true;
-      tier = Math.min(tier, TIER.PREFIX);
-      total += RELEVANCE_WEIGHTS.PREFIX_MATCH;
+  if (querySuffix) {
+    if (candidateSuffix && querySuffix === candidateSuffix) {
+      total += RELEVANCE_WEIGHTS.SUFFIX_MATCH;
+      flags.suffixMatch = true;
+    } else if (candidateSuffix) {
+      total += RELEVANCE_WEIGHTS.SUFFIX_MISMATCH_PENALTY;
+      flags.suffixMismatch = true;
     }
-
-    // 5. Whole-word match (query is a complete word token within candidate)
-    const cTokens = normC.split(' ').filter(Boolean);
-    if (cTokens.includes(normQ)) {
-      flags.wholeWord = true;
-      tier = Math.min(tier, TIER.WHOLE_WORD);
-      total += RELEVANCE_WEIGHTS.WHOLE_WORD;
-    }
-
-    // 6. Substring match
-    if (normC.includes(normQ)) {
-      flags.substring = true;
-      tier = Math.min(tier, TIER.SUBSTRING);
-      total += RELEVANCE_WEIGHTS.SUBSTRING;
-    }
-
-    // 7. Levenshtein similarity (only meaningful when otherwise unmatched)
-    const distance = levenshtein(normC, normQ);
-    flags.editDistance = distance;
-    const maxLen = Math.max(normC.length, normQ.length) || 1;
-    const similarity = 1 - (distance / maxLen);
-    if (similarity > 0.5) {
-      tier = Math.min(tier, TIER.LEVENSHTEIN);
-    }
-    total += Math.round(Math.max(0, similarity) * RELEVANCE_WEIGHTS.LEVENSHTEIN);
-
-    // 8. Token overlap
-    const qTokens = normQ.split(' ').filter(Boolean);
-    const cTokenSet = new Set(cTokens);
-    let overlap = 0;
-    for (const token of qTokens) {
-      if (cTokenSet.has(token)) overlap += 1;
-    }
-    flags.tokenOverlap = overlap;
-    const union = new Set([...cTokenSet, ...qTokens]);
-    const jaccard = union.size ? (overlap / union.size) : 0;
-    if (overlap > 0) {
-      tier = Math.min(tier, TIER.TOKEN_OVERLAP);
-    }
-    total += Math.round((overlap + jaccard) * RELEVANCE_WEIGHTS.TOKEN_OVERLAP);
   }
 
-  // 9. Episode availability — prefer the title containing the requested episode
+  // Specificity Bonus (Jaccard-like)
+  const queryTokens = new Set(normQ.split(' '));
+  const candidateTokens = new Set(normC.split(' '));
+  const intersection = new Set([...queryTokens].filter(x => candidateTokens.has(x)));
+  const union = new Set([...queryTokens, ...candidateTokens]);
+  if (union.size > 0) {
+    const specificity = intersection.size / union.size;
+    total += specificity * RELEVANCE_WEIGHTS.SPECIFICITY_BONUS;
+    flags.specificity = specificity;
+  }
+
+  // Other scores (prefix, token overlap, etc.)
+  if (normC.startsWith(normQ)) {
+    total += RELEVANCE_WEIGHTS.PREFIX_MATCH;
+    flags.prefix = true;
+  }
+  total += intersection.size * RELEVANCE_WEIGHTS.TOKEN_OVERLAP;
+
+  // Length mismatch penalty
+  const lengthDiff = Math.abs(normC.length - normQ.length);
+  if (lengthDiff > normQ.length * 0.5) { // If candidate is >50% longer/shorter
+    total += RELEVANCE_WEIGHTS.LENGTH_MISMATCH_PENALTY;
+    flags.lengthMismatch = true;
+  }
+
   if (requestedEpisode !== undefined && requestedEpisode !== null && requestedEpisode !== '') {
     const ep = String(requestedEpisode);
     const titleHasEpisode = new RegExp(`(^|[^0-9])${ep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^0-9]|$)`).test(rawC)
@@ -1810,6 +1772,21 @@ async function runSearch(baseUrl, query, episode) {
   // Attach a confidence estimate for the #1 result.
   if (finalRows.length) {
     finalRows[0].searchConfidence = computeSearchConfidence(finalRows[0], finalRows[1]);
+  }
+
+  // --- NEW: Confidence Gate ---
+  // If the top result's score is below a certain threshold, discard it.
+  // This prevents low-quality, partial matches from being selected.
+  const CONFIDENCE_THRESHOLD = RELEVANCE_WEIGHTS.ALIAS_MATCH;
+  if (finalRows.length > 0 && finalRows[0].finalRankingScore < CONFIDENCE_THRESHOLD) {
+    logger.warn('[AnimeHeaven] Top search result discarded due to low confidence.', {
+      query: q,
+      topResultTitle: finalRows[0].title,
+      topResultScore: finalRows[0].finalRankingScore,
+      threshold: CONFIDENCE_THRESHOLD,
+    });
+    cacheSet(cacheKey, [], SEARCH_CACHE_TTL_MS);
+    return []; // Return no results if the best one isn't good enough
   }
 
   cacheSet(cacheKey, finalRows, SEARCH_CACHE_TTL_MS);
