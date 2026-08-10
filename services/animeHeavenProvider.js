@@ -687,12 +687,9 @@ function computeRelevanceScore(candidate, query, aliases = [], requestedEpisode)
 
   // 1. Exact raw title match (case-insensitive)
   // PRIORITY 1: Give a massive boost for an exact match to prevent incorrect selections.
-  if (rawC && rawQ && normC === normQ) {
-    flags.exactRaw = true;
-    tier = Math.min(tier, TIER.EXACT_RAW);
-    total += RELEVANCE_WEIGHTS.EXACT_RAW;
-  }
-  if (rawC && rawQ && rawC.toLowerCase() === rawQ) {
+  // This ensures "Dragon Ball Super: Broly" doesn't match "The Cat and the Dragon"
+  // just because of the word "Dragon".
+  if ((rawC && rawQ && rawC.toLowerCase() === rawQ) || (normC && normQ && normC === normQ)) {
     flags.exactRaw = true;
     tier = Math.min(tier, TIER.EXACT_RAW);
     total += RELEVANCE_WEIGHTS.EXACT_RAW;
@@ -2474,7 +2471,6 @@ let targetIdentifier = identifier || slug || null;
         const rows = await this.searchAnime(title, 8, episodeNumber);
         targetIdentifier = rows[0]?.identifier || null;
       }
-    logger.info('[AnimeHeaven] Episode mapping', { inputTitle: title, inputIdentifier: identifier, resolvedIdentifier: targetIdentifier });
 
       if (!targetIdentifier) {
         recordProviderMetric('failure', Date.now() - started);
@@ -2564,7 +2560,6 @@ let targetIdentifier = identifier || slug || null;
       const nested = await extractNestedIframeSources(resolved.html, baseUrl);
 
       const merged = [];
-      logger.info(`[AnimeHeaven] Player source discovered: ${direct.length} direct, ${nested.length} nested`);
       for (const src of [...direct, ...nested]) {
         if (!merged.some(x => x.url === src.url)) merged.push(src);
       }
@@ -2624,35 +2619,6 @@ sources = sortSourcesByQuality(sources)
         // markup placeholders resolve to HTTP 404 even though they sort
         // lexicographically first when all sources are quality "auto".
         .filter(src => !isConfirmedDeadOnErrorSource(src.url));
-
-      // Liveness check: Sequentially verify sources until a playable one is found.
-      if (sources.length > 0) {
-        logger.info(`[AnimeHeaven] Verifying liveness for ${sources.length} sorted source(s)...`, { title, episode });
-        let verifiedSourceIndex = -1;
-        for (let i = 0; i < sources.length; i++) {
-          const sourceToTest = sources[i];
-          logger.info(`[AnimeHeaven] Liveness check [${i + 1}/${sources.length}]`, { quality: sourceToTest.quality, type: sourceToTest.sourceType });
-          logger.info('[AnimeHeaven] Source candidate', { url: sourceToTest.url.substring(0, 100) + '...' });
-          const liveness = await verifySourceLiveness(sourceToTest);
-
-          if (liveness.live) {
-            logger.info(`[AnimeHeaven] Source liveness VERIFIED`, { quality: sourceToTest.quality, status: liveness.status, latencyMs: liveness.durationMs });
-            logger.info('[AnimeHeaven] Liveness result: PASS');
-            verifiedSourceIndex = i;
-            break; // Stop on the first live source
-          } else {
-            logger.warn(`[AnimeHeaven] Source liveness FAILED`, { quality: sourceToTest.quality, status: liveness.status, reason: liveness.reason });
-          }
-        }
-
-        if (verifiedSourceIndex > 0) {
-          const verifiedSource = sources.splice(verifiedSourceIndex, 1)[0];
-          sources.unshift(verifiedSource);
-          logger.info(`[AnimeHeaven] Selected verified source at index ${verifiedSourceIndex} as primary.`, { title, episode, url: verifiedSource.url.substring(0, 100) + '...' });
-        } else if (verifiedSourceIndex === -1) {
-          logger.warn('[AnimeHeaven] All sources failed liveness check. Falling back to original best-guess.', { title, episode });
-        }
-      }
 
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });
