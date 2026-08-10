@@ -49,6 +49,9 @@ const PROVIDER_IDS = Object.freeze({
   // External API / meta providers
   MIRURO: 'miruro',
   KITSU: 'kitsu',
+  // Skip-time providers (for health tracking consistency)
+  ANISKIP: 'aniskip',
+  ANIME_SKIP: 'animeskip',
 
   // Consumet HTTP microservice + generic consumet tag
   CONSUMET_HTTP: 'consumet-http',

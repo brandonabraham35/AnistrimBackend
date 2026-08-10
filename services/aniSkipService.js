@@ -21,7 +21,9 @@ const ANIMESKIP_BASE = 'https://api.anime-skip.com/v1';
  */
 async function fetchFromAniSkip(malId, episodeNumber) {
   try {
-    const url = `${ANISKIP_BASE}/skip-times/${malId}/episodes/${episodeNumber}?types=op&types=ed`;
+    // FIX: The correct endpoint does not include the `/episodes/` segment.
+    // Correct: /skip-times/{malId}/{episodeNumber}
+    const url = `${ANISKIP_BASE}/skip-times/${malId}/${episodeNumber}?types=op&types=ed`;
 
     const response = await get(url, {
       providerName: 'aniskip',
@@ -188,4 +190,3 @@ async function fetchSkipTimes(malId, episodeNumber) {
 }
 
 module.exports = { fetchSkipTimes };
-
