@@ -140,6 +140,12 @@ exports.streamMedia = async (req, res) => {
   const { streamId } = req.params;
   const requestedUrl = req.query.url || null;
 
+  logger.info('[StreamProxy] Incoming request', {
+    streamId: streamId.slice(0, 8) + '...',
+    requestedUrl: requestedUrl ? requestedUrl.substring(0, 100) + '...' : null,
+    range: req.headers.range || 'none',
+  });
+
   // ── Security: validate the stream context ────────────────
   const ctx = streamProxyStore.get(streamId);
   if (!ctx) {
@@ -186,6 +192,11 @@ exports.streamMedia = async (req, res) => {
         break;
       } catch (err) {
         pipeError = err;
+        logger.warn('[StreamProxy] Upstream fetch attempt failed', {
+          attempt: attempt + 1,
+          target: target.substring(0, 100) + '...',
+          error: err.message,
+        });
         attempt += 1;
         // Retry once for transient network errors / 5xx / empty responses.
         const transient = !err.response || err.response.status >= 500 || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT';
@@ -205,6 +216,11 @@ exports.streamMedia = async (req, res) => {
     if (!upstream) {
       if (!res.headersSent) {
         const status = pipeError?.response?.status;
+        logger.error('[StreamProxy] Upstream final failure', {
+          target: target.substring(0, 100) + '...',
+          status: status || 'N/A',
+          error: pipeError?.message,
+        });
         if (status) {
           res.status(status).json({ error: `Upstream error ${status}.` });
         } else {
@@ -232,6 +248,13 @@ exports.streamMedia = async (req, res) => {
     const contentType = String(upstream.headers?.['content-type'] || '');
     const contentLength = Number(upstream.headers?.['content-length'] || 0);
     const isHls = isHlsContentType(contentType) || (isHlsUri(target) && !/^audio\//i.test(contentType));
+
+    logger.info('[StreamProxy] Upstream response received', {
+      status: upstream.status,
+      contentType,
+      contentLength,
+      isHls,
+    });
 
     if (isHls) {
       // Enforce the size cap (pre-check via header, then hard-stop while
@@ -280,6 +303,12 @@ exports.streamMedia = async (req, res) => {
     res.status(upstream.status);
     setCorsHeaders(res);
 
+    logger.info('[StreamProxy] Streaming started', {
+      responseStatus: res.statusCode,
+      responseContentType: res.getHeader('Content-Type'),
+      responseContentRange: res.getHeader('Content-Range') || 'N/A',
+    });
+
     // Pipe the upstream stream to the client (low-memory).
     upstream.data.pipe(res);
 
@@ -315,6 +344,7 @@ exports.streamMedia = async (req, res) => {
       res.end();
     }
     logger.streamAttempt({
+      level: 'error',
       provider: PROXY_PROVIDER_TAG,
       result: 'failure',
       httpStatus: err.response?.status || 0,
