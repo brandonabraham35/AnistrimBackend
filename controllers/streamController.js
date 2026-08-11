@@ -317,22 +317,31 @@ exports.listProviders = async (req, res) => {
       });
     }
 
-    const providers = await streamingService.resolveAllProviders(animeTitle, episodeNumber, {
-      isPremium,
-    });
-
-    // Rewrite each provider's AnimeHeaven sources to anonymized proxy URLs and
-    // strip any server-side context before returning to the browser.
-    const publicProviders = providers.map((p) => {
-      const safe = streamProxy.rewriteResultToProxy(p);
-      return safe || p;
-    });
+    // ── LIGHTWEIGHT PROVIDER LIST (Finding 3 fix) ────────────
+    // Previously this called streamingService.resolveAllProviders(), which
+    // performed a FULL expensive AnimeHeaven resolution (search → details →
+    // gate → mirrors → nested iframes → subtitles) just to populate the
+    // "Switch Server" dropdown. The frontend then called /api/stream/...
+    // which performed ANOTHER full resolution — AnimeHeaven was scraped
+    // TWICE before playback began.
+    //
+    // The provider list is now METADATA/CAPABILITY information only.
+    // AnimeHeaven is the single streaming provider, so we return its
+    // capability entry WITHOUT contacting AnimeHeaven. The actual stream
+    // is resolved only when the player requests /api/stream/:title/:ep.
+    const providers = [{
+      provider: 'animeheaven',
+      streamUrl: null,
+      sources: [],
+      bestQuality: isPremium ? '4K' : '720p',
+      metadataOnly: true,
+    }];
 
     res.json({
       success: true,
-      providers: publicProviders,
+      providers,
     });
-} catch (err) {
+  } catch (err) {
     logger.error('[StreamController] listProviders error', { animeTitle, episodeNumber, error: err.message });
     res.status(502).json({
       success: false,

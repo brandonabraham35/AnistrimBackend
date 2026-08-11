@@ -99,6 +99,13 @@ async function isCachedSourceAlive(url, context = {}) {
 // this lock only deduplicates concurrent resolutions within this process.
 const locks = new Map();
 
+// ── Hard upper bound for a single provider resolution ──────
+// If AnimeHeaven resolution hangs, the lock must NEVER be held forever.
+// This timeout guarantees the lock is released and a structured timeout
+// result is returned so subsequent requests for the same episode can
+// proceed (they will attempt a fresh resolution).
+const RESOLVER_TIMEOUT_MS = Number(process.env.STREAM_CACHE_RESOLVER_TIMEOUT_MS || 20000);
+
 function lockKey(provider, episodeId) {
   return `${String(provider).toLowerCase()}:${episodeId}`;
 }
@@ -328,7 +335,7 @@ async function markUsed(id) {
  */
 async function getOrResolve(episodeId, provider, resolver) {
   if (!episodeId) return resolver();
-const release = await acquireLock(provider, episodeId);
+  const release = await acquireLock(provider, episodeId);
   try {
     // Mandatory second cache check — a concurrent request may have just
     // populated the cache while we were waiting for the lock.
@@ -338,7 +345,35 @@ const release = await acquireLock(provider, episodeId);
       return second.result;
     }
 
-    const fresh = await resolver();
+    // ── HARD TIMEOUT ON THE RESOLVER (Finding 5 fix) ────────
+    // The resolver (AnimeHeaven extraction) can hang on a slow upstream.
+    // Without a hard upper bound, the lock would remain held forever and
+    // every subsequent request for the same episode would wait indefinitely.
+    // We race the resolver against a timeout. On timeout:
+    //   • the lock is released (finally block)
+    //   • a structured timeout result is returned
+    //   • the timeout is logged
+    //   • the next request can attempt a fresh resolution
+    let timedOut = false;
+    const fresh = await Promise.race([
+      resolver(),
+      new Promise((resolve) => {
+        setTimeout(() => {
+          timedOut = true;
+          resolve(null);
+        }, RESOLVER_TIMEOUT_MS);
+      }),
+    ]);
+
+    if (timedOut) {
+      logger.warn('[STREAM_CACHE] RESOLVER TIMEOUT — lock released', {
+        episodeId,
+        provider,
+        timeoutMs: RESOLVER_TIMEOUT_MS,
+      });
+      return null;
+    }
+
     // Normalize the resolver output to a PROVIDER RESULT before saving/returning.
     // The AnimeHeaven execution wrapper (executeAnimeHeaven) returns an execution
     // ENVELOPE { resolved, result, error, category, durationMs } with the playable

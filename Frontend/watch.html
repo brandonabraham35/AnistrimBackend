@@ -16,7 +16,7 @@
             <div class="loading-info">
                 <h2 id="loading-anime-title"></h2>
                 <p id="loading-episode-info"></p>
-                <span>Loading stream...</span>
+                <span id="loading-status">Preparing player...</span>
             </div>
         </div>
 
@@ -27,7 +27,8 @@
             <p id="error-message"></p>
             <div class="error-actions">
                 <button id="retry-btn" class="player-btn">Retry</button>
-                <button id="change-source-btn" class="player-btn">Change Source</button>
+                <button id="change-source-btn" class="player-btn">Change Server</button>
+                <button id="reload-btn" class="player-btn">Reload</button>
                 <button id="prev-ep-btn-error" class="player-btn">Previous Episode</button>
                 <button id="next-ep-btn-error" class="player-btn">Next Episode</button>
             </div>
@@ -105,8 +106,6 @@
                 </div>
                 <div class="settings-panel" data-panel="speed" id="speed-panel">
                     <!-- Playback speed options will be populated by JS -->
-                        </button>
-                    </div>
                 </div>
             </div>
 
@@ -134,7 +133,8 @@
         </div>
     </div>
 
-    <script src="js/scrpt.js"></script>
-    <script src="js/watch.js"></script>
+    <script src="config.js"></script>
+    <script src="scrpt.js"></script>
+    <script src="watch.js"></script>
 </body>
 </html>

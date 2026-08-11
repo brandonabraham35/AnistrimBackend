@@ -2554,6 +2554,7 @@ let targetIdentifier = identifier || slug || null;
       const gateStart = Date.now();
       const gatePage = await resolveGatePage(baseUrl, details, selected);
       timings.gate = Date.now() - gateStart;
+      timings.resolveGatePage = timings.gate;
       if (gatePage.cloudflare || gatePage.redirectShell) {
         logger.warn('[AnimeHeaven] Cloudflare detected', { stage: 'gate', episode: selected.number });
       }
@@ -2617,6 +2618,8 @@ let targetIdentifier = identifier || slug || null;
         extractNestedIframeSources(resolved.html, baseUrl)
       ]);
       timings.sourceExtraction = Date.now() - extractionStart;
+      timings.parseSources = timings.sourceExtraction;
+      timings.nestedIframeSources = timings.sourceExtraction;
 
       const merged = [];
       for (const src of [...direct, ...nested]) {
@@ -2681,6 +2684,7 @@ let targetIdentifier = identifier || slug || null;
         referer: player.pageUrl || (await pickBaseUrl()),
       });
       timings.resolveMirrors = Date.now() - mirrorStart;
+      timings.resolveMirrorSources = timings.resolveMirrors;
       for (const src of mirrorSources) {
         if (!sources.some(x => x.url === src.url)) sources.push(src);
       }
@@ -2740,6 +2744,7 @@ sources = sortSourcesByQuality(sources)
         }
       }
       timings.subtitles = Date.now() - subtitleStart;
+      timings.subtitleExtraction = timings.subtitles;
 
       if (subtitles.length) {
         logger.info('[AnimeHeaven] Subtitle found', { count: subtitles.length });
@@ -2773,6 +2778,24 @@ sources = sortSourcesByQuality(sources)
       logger.info('[STREAM TIMING]', {
         title, episode: episode || 'N/A',
         ...timings,
+      });
+
+      // ── Consolidated [AnimeHeaven Timing] breakdown ────────
+      // Structured per-stage timing so the playback startup delay can be
+      // attributed to the exact stage (Finding 6). Every stage is measured:
+      //   resolveEpisode / resolveGatePage / parseSources /
+      //   resolveMirrorSources / nestedIframeSources / subtitles
+      logger.info('[AnimeHeaven Timing]', {
+        title,
+        episode: episode || 'N/A',
+        requestId: timings.requestId || null,
+        resolveEpisode: timings.episode || 0,
+        resolveGatePage: timings.resolveGatePage || timings.gate || 0,
+        parseSources: timings.parseSources || 0,
+        resolveMirrorSources: timings.resolveMirrorSources || timings.resolveMirrors || 0,
+        nestedIframeSources: timings.nestedIframeSources || 0,
+        subtitles: timings.subtitles || 0,
+        total: timings.total,
       });
 
       recordProviderMetric('success', Date.now() - started);

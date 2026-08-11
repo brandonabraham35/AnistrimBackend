@@ -45,8 +45,25 @@
   shared.apiFetch = shared.apiFetch || async function apiFetch(endpoint, options = {}) {
     const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
     if (State?.token) headers['Authorization'] = `Bearer ${State.token}`;
+
+    // ── Bounded request timeout ─────────────────────────────
+    // Standard fetch() has NO automatic timeout. Without this, a hung
+    // network request can leave the player stuck on "Loading stream..."
+    // forever. Every request gets a hard upper bound (default 30s) and
+    // an AbortController so the fetch is actually cancelled.
+    const timeoutMs = options.timeout || 30000;
+    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    let timeoutId = null;
+    if (controller) {
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    }
+
     try {
-      const res = await fetch(`${API}${endpoint}`, { ...options, headers });
+      const res = await fetch(`${API}${endpoint}`, {
+        ...options,
+        headers,
+        ...(controller ? { signal: controller.signal } : {}),
+      });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
         State?.clear?.();
@@ -54,9 +71,11 @@
       }
       return { ok: res.ok, status: res.status, data };
     } catch (e) {
-      console.error('API error:', endpoint, e.message);
+      const timedOut = e && (e.name === 'AbortError' || /abort|timeout/i.test(e.message || ''));
+      console.error('API error:', endpoint, e.message, timedOut ? '(timeout)' : '');
+      return { ok: false, timedOut, data: {} };
+    } finally {
       if (timeoutId) clearTimeout(timeoutId);
-      return { ok: false, data: {} };
     }
   };
 
