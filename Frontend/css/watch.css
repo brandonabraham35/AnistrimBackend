@@ -205,12 +205,58 @@ body {
 .setting-value { color: var(--player-text-muted); }
 .settings-item.active .setting-value { color: var(--player-accent); }
 
-.settings-panel[data-panel="quality"] .settings-item::before {
+.settings-panel[data-panel="quality"] .settings-item::before,
+#quality-options .settings-item::before,
+#speed-options .settings-item::before {
     content: '•';
     margin-right: 8px;
     color: transparent;
 }
-.settings-panel[data-panel="quality"] .settings-item.active::before { color: var(--player-accent); }
+.settings-panel[data-panel="quality"] .settings-item.active::before,
+#quality-options .settings-item.active::before,
+#speed-options .settings-item.active::before { color: var(--player-accent); }
+
+.settings-panel[hidden] { display: none; }
+.settings-back {
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    justify-content: flex-start;
+}
+
+/* --- Center Play/Pause/Seek Indicator --- */
+.center-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 40;
+}
+.center-indicator-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--player-text);
+    border-radius: 50%;
+    width: 84px;
+    height: 84px;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.7);
+}
+.center-indicator-icon svg { width: 34px; height: 34px; fill: currentColor; }
+.center-indicator-icon span { font-size: 0.7rem; font-weight: 600; }
+.center-indicator.flash .center-indicator-icon {
+    animation: indicator-pop 0.6s ease-out;
+}
+@keyframes indicator-pop {
+    0%   { opacity: 0; transform: scale(0.6); }
+    25%  { opacity: 1; transform: scale(1); }
+    70%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.05); }
+}
 
 /* Episode Sidebar */
 .player-sidebar {

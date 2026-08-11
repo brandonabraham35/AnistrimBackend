@@ -37,8 +37,8 @@
         <div id="player-wrap" class="paused">
             <video id="animePlayer" playsinline></video>
 
-            <!-- Center Play/Pause Indicator -->
-            <div class="center-indicator" id="center-indicator"></div>
+            <!-- Center Play/Pause/Seek Indicator (flashes briefly on action) -->
+            <div class="center-indicator" id="center-indicator"><div class="center-indicator-icon"></div></div>
 
             <!-- Top Controls Overlay -->
             <div class="controls-overlay top">
@@ -87,6 +87,9 @@
                         <button id="settings-btn" class="player-btn icon-btn" title="Settings">
                             <svg viewBox="0 0 24 24"><path d="M19.4 12.3c.2-.4.2-.9 0-1.3l-1.9-3.3c-.2-.4-.6-.6-1-.6h-3.8c-.4 0-.8.2-1 .6L10 11c-.2.4-.2.9 0 1.3l1.8 3.2c.2.4.6.6 1 .6h3.8c.4 0 .8-.2 1-.6l1.8-3.2zM12 15c-1.7 0-3-1.3-3-3s1.3-3 3-3 3 1.3 3 3-1.3 3-3 3z"/></svg>
                         </button>
+                        <button id="pip-btn" class="player-btn icon-btn" title="Picture-in-Picture">
+                            <svg viewBox="0 0 24 24"><path d="M19 7H9c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm0 8H9V9h10v6zM3 5h8v2H5v10h6v2H3c-1.1 0-2-.9-2-2V7c0-1.1.9-2 2-2z"/></svg>
+                        </button>
                         <button id="fullscreen-btn" class="player-btn icon-btn" title="Fullscreen">
                             <svg id="fullscreen-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
                         </button>
@@ -99,14 +102,15 @@
                 <div class="settings-panel" data-panel="main">
                     <button class="settings-item" data-opens="quality"><span>Quality</span><span class="setting-value" id="quality-value">Auto</span></button>
                     <button class="settings-item" data-opens="speed"><span>Playback Speed</span><span class="setting-value" id="speed-value">Normal</span></button>
+                    <button class="settings-item" id="autoplay-toggle-btn"><span>Autoplay Next Episode</span><span class="setting-value" id="autoplay-value">On</span></button>
                 </div>
-                <div class="settings-panel" data-panel="quality" id="quality-panel">
-                    <!-- Quality options will be populated by JS -->
+                <div class="settings-panel" data-panel="quality" id="quality-panel" hidden>
+                    <button class="settings-item settings-back" data-back>&larr; Quality</button>
+                    <div id="quality-options"><!-- Quality options populated by JS --></div>
                 </div>
-                <div class="settings-panel" data-panel="speed" id="speed-panel">
-                    <!-- Playback speed options will be populated by JS -->
-                        </button>
-                    </div>
+                <div class="settings-panel" data-panel="speed" id="speed-panel" hidden>
+                    <button class="settings-item settings-back" data-back>&larr; Playback Speed</button>
+                    <div id="speed-options"><!-- Speed options populated by JS --></div>
                 </div>
             </div>
 
