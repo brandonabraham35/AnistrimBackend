@@ -1,8 +1,191 @@
-/* Fullscreen-capable custom player additions. Existing page styles remain intact. */
-#player-wrap { position: relative; width: 100%; min-height: min(100vh, 56.25vw); background: #000; }
-#animePlayer { width: 100%; height: 100%; display: block; object-fit: contain; }
-#videoControls { opacity: 1; transition: opacity .3s ease; }
-#videoControls.hidden { opacity: 0; pointer-events: none; }
-#skipIntroBtn { position: absolute; right: 16px; bottom: 76px; z-index: 4; }
-#skipIntroBtn.hidden, #nextEpisodeBtn.hidden { display: none; }
-@media (max-width: 767px) { #player-wrap { min-height: 56.25vw; } }
+/* c:\Users\benar\Desktop\AnistrimBackend2\Frontend\css\watch.css */
+:root {
+    --player-accent: #6c2bd9;
+    --player-text: #ffffff;
+    --player-text-muted: #a0a0a0;
+    --player-bg-overlay: rgba(10, 10, 15, 0.7);
+    --player-bg-solid: #0a0a0f;
+}
+
+body {
+    background-color: var(--player-bg-solid);
+    color: var(--player-text);
+    overflow: hidden; /* Prevent scrollbars when player is active */
+}
+
+#player-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#player-wrap {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+#animePlayer {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+/* --- Overlays (Loading, Error, Controls) --- */
+.player-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--player-bg-overlay);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+#loading-overlay, #error-overlay {
+    opacity: 1;
+    visibility: visible;
+}
+
+.controls-overlay {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    padding: 1rem 2rem;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    transition: opacity 0.3s, transform 0.3s;
+    opacity: 0;
+}
+#player-wrap:not(.paused) .controls-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+#player-wrap.paused .controls-overlay,
+#player-wrap:hover .controls-overlay {
+    opacity: 1;
+}
+
+.controls-overlay.top {
+    top: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+}
+#player-wrap:not(.paused) .controls-overlay.top.hidden { transform: translateY(-100%); }
+
+.controls-overlay.bottom {
+    bottom: 0;
+    flex-direction: column;
+    align-items: stretch;
+}
+#player-wrap:not(.paused) .controls-overlay.bottom.hidden { transform: translateY(100%); }
+
+
+/* --- Loading & Error States --- */
+.spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--player-accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-info, .error-actions { text-align: center; margin-top: 1.5rem; }
+.loading-info h2, .error-actions h2 { margin-bottom: 0.5rem; }
+.loading-info p { color: var(--player-text-muted); }
+
+.error-icon { font-size: 3rem; }
+.error-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+
+/* --- Controls --- */
+.player-btn {
+    background: transparent;
+    border: none;
+    color: var(--player-text);
+    cursor: pointer;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.player-btn:hover { color: var(--player-accent); }
+.icon-btn svg { width: 24px; height: 24px; fill: currentColor; }
+
+.bottom-controls-main { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.controls-left, .controls-right { display: flex; align-items: center; gap: 0.5rem; }
+
+/* Progress Bar */
+.progress-bar-container { width: 100%; padding: 0.5rem 0; }
+.progress-bar {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+}
+.progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    background: var(--player-accent);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* Volume */
+.volume-container { display: flex; align-items: center; }
+.volume-slider { display: none; width: 80px; }
+.volume-container:hover .volume-slider { display: block; }
+
+/* Skip & Next Episode */
+.skip-btn { background: rgba(0,0,0,0.6); padding: 0.5rem 1rem; border-radius: 20px; }
+.next-ep { backdrop-filter: blur(20px); background: rgba(10, 10, 15, 0.85); }
+.next-ep-actions { display: flex; gap: 1rem; }
+
+/* Episode Sidebar */
+.player-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 360px;
+    max-width: 90vw;
+    height: 100%;
+    background: var(--player-bg-solid);
+    z-index: 200;
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+    display: flex;
+    flex-direction: column;
+}
+.player-sidebar.visible { transform: translateX(0); }
+.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #333; }
+#sidebar-episode-list { overflow-y: auto; flex-grow: 1; }
+.episode-item { /* Styles for sidebar items */ }
+.episode-item.current { background-color: var(--player-accent); }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .controls-overlay { padding: 0.5rem 1rem; }
+    .time-display, #seek-backward-btn, #seek-forward-btn { display: none; }
+}
