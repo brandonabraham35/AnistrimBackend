@@ -232,6 +232,7 @@ async function executeAnimeHeaven(animeTitle, episodeNumber) {
   }
 
   const attemptStart = Date.now();
+  logger.info('[PLAYBACK]', { event: 'providerStarted', provider: ANIME_HEAVEN_TAG, animeTitle, episode: episodeNumber });
   logger.debugStream('Stream attempt pending', { provider: ANIME_HEAVEN_TAG, anime: animeTitle, episode: episodeNumber });
 
   try {

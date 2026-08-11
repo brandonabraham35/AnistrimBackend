@@ -175,23 +175,30 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
   var { data } = await apiFetch(url);
   console.log("[PLAYER] Stream API response", data);
 
-  if (data && data.streamUrl) {
-    // CRITICAL FIX: The API returns a relative path like /api/stream-proxy/...
-    // We must construct the full, absolute URL to the backend.
+  if (data && data.sources && data.sources.length > 0) {
     const API_BASE_URL = window.getApiBaseUrl();
-    const absoluteStreamUrl = data.streamUrl.startsWith('http') ? data.streamUrl : API_BASE_URL + data.streamUrl;
+    const sourcesToTry = data.sources.map(source => ({
+        ...source,
+        url: source.url.startsWith('http') ? source.url : API_BASE_URL + source.url
+    }));
 
-    currentStreamUrl = absoluteStreamUrl;
-    currentProvider = data.provider || 'unknown';
-    console.log("[PLAYER] Selected stream URL (absolute):", currentStreamUrl);
+    for (const source of sourcesToTry) {
+        try {
+            console.log(`[PLAYER] Attempting to attach source: ${source.url} (Quality: ${source.quality})`);
+            await attachStreamSource(video, source.url);
 
-    var badge = document.getElementById('qualityBadge');
-    if (badge && data.bestQuality) {
-      badge.textContent = data.bestQuality;
-      badge.style.display = 'inline-block';
+            currentStreamUrl = source.url;
+            currentProvider = data.provider || 'unknown';
+            console.log("[PLAYER] Successfully attached stream:", currentStreamUrl);
+
+            var badge = document.getElementById('qualityBadge');
+            if (badge && source.quality) { badge.textContent = source.quality; badge.style.display = 'inline-block'; }
+            return;
+        } catch (err) {
+            console.warn(`[PLAYER] Source failed to load: ${source.url}. Trying next source...`, err.message);
+        }
     }
-    
-    await attachStreamSource(video, currentStreamUrl);
+    throw new Error('All available stream sources failed to load.');
   } else {
     throw new Error((data && data.error) || 'No stream URL returned');
   }
@@ -342,6 +349,19 @@ function setupPlayer(video) {
   video.addEventListener('play', function() {
     playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
     wrap.classList.remove('paused');
+
+    // Log video started event for performance monitoring, but only once.
+    if (!window._videoStartedLogged) {
+        window._videoStartedLogged = true;
+        const payload = {
+            event: 'videoStarted',
+            animeTitle: currentAnimeTitle,
+            episode: currentEp,
+            provider: currentProvider,
+            sourceUrl: currentStreamUrl,
+        };
+        apiFetch('/api/reports/client-event', { method: 'POST', body: JSON.stringify(payload) }).catch(err => console.warn('Failed to log videoStarted event:', err));
+    }
     showControls(controls);
   });
   video.addEventListener('pause', function() {

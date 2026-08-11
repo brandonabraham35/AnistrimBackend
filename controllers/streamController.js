@@ -92,6 +92,7 @@ exports.getStream = async (req, res) => {
   const isPremium = req.user?.isPremium === true || req.user?.isAdmin === true;
 
   const startTime = Date.now();
+  logger.info('[PLAYBACK]', { event: 'requestStarted', animeTitle, episode: episodeIdentifier, isPremium, ts: startTime });
 
   try {
     // ── Episode Number Resolution ─────────────────────────
@@ -230,6 +231,8 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
       bestQuality: publicResult.bestQuality,
       resolvedFrom,
     });
+
+    logger.info('[PLAYBACK]', { event: 'sourceReturned', animeTitle, episode: episodeNumber, provider: publicResult.provider, latencyMs: elapsed });
 
     res.json({
       success: true,

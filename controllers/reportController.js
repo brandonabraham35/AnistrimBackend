@@ -2,6 +2,7 @@
 // Broken Stream Reporting — users can report issues with video streams,
 // and administrators can review, resolve, or dismiss them.
 const db = require('../config/db');
+const logger = require('../utils/logger');
 
 /**
  * POST /api/reports/stream
@@ -31,6 +32,23 @@ exports.submitReport = async (req, res) => {
     console.error('[ReportController] submitReport error:', err.message);
     res.status(500).json({ message: 'Failed to submit report.' });
   }
+};
+
+/**
+ * POST /api/reports/client-event
+ * Body: { event, payload }
+ * Generic endpoint for logging client-side events for performance monitoring.
+ */
+exports.logClientEvent = async (req, res) => {
+  const { event, ...payload } = req.body;
+  if (!event) {
+    return res.status(400).json({ message: 'Event name is required.' });
+  }
+
+  // Use the structured logger for consistency.
+  logger.info(`[PLAYBACK]`, { event, from: 'client', ...payload });
+
+  res.status(202).json({ message: 'Event logged.' });
 };
 
 /**
@@ -93,4 +111,3 @@ exports.updateReportStatus = async (req, res) => {
     res.status(500).json({ message: 'Failed to update report status.' });
   }
 };
-

@@ -2392,14 +2392,19 @@ async searchAnime(query, limit = 10, episode) {
         count: sliced.length,
         latencyMs: Date.now() - started,
       });
+      timings.total = Date.now() - started;
+      logger.info('[AnimeHeaven Performance] searchAnime', { query: q, ...timings, total: timings.total });
       return sliced;
     } catch (error) {
       logger.warn('[AnimeHeavenProvider] searchAnime failed', { query: q, error: error.message });
+      timings.total = Date.now() - started;
+      logger.info('[AnimeHeaven Performance] searchAnime', { query: q, ...timings, total: timings.total, error: error.message });
       return [];
     }
   }
 
   async getAnimeDetails(identifier) {
+    logger.debugStream('[AnimeHeaven] getAnimeDetails started', { identifier });
     const value = String(identifier || '').trim();
     if (!value) {
       return {
@@ -2422,9 +2427,14 @@ async searchAnime(query, limit = 10, episode) {
       };
     }
 
+    const started = Date.now();
+    const timings = {};
     try {
+      const pickBaseUrlStart = Date.now();
       const baseUrl = await pickBaseUrl();
+      timings.pickBaseUrl = Date.now() - pickBaseUrlStart;
       const animeUrl = buildAnimeUrl(baseUrl, value);
+      const fetchHtmlStart = Date.now();
       const page = await fetchHtml(animeUrl, { referer: baseUrl, attempts: 2 });
 
       if (!page.ok || !page.html) {
@@ -2457,7 +2467,11 @@ async searchAnime(query, limit = 10, episode) {
         logger.warn('[AnimeHeaven] Cloudflare detected', { stage: 'details', url: page.url });
       }
 
+      timings.fetchHtml = Date.now() - fetchHtmlStart;
+      const parseDetailsStart = Date.now();
       const parsed = parseDetails(page.html, page.url || animeUrl);
+      timings.parseDetails = Date.now() - parseDetailsStart;
+      logger.info('[AnimeHeaven Performance] getAnimeDetails', { identifier: value, ...timings, total: Date.now() - started });
       return parsed;
     } catch (error) {
       logger.warn('[AnimeHeavenProvider] getAnimeDetails failed', { identifier: value, error: error.message });
@@ -2488,18 +2502,20 @@ async searchAnime(query, limit = 10, episode) {
   }
 
   async resolveEpisode({ title, episode, identifier, slug }) {
+    logger.debugStream('[AnimeHeaven] resolveEpisode started', { title, episode });
     const started = Date.now();
+    const timings = {};
     try {
       const baseUrl = await pickBaseUrl();
       const episodeNumber = normalizeEpisodeNumber(episode);
 
 let targetIdentifier = identifier || slug || null;
       if (!targetIdentifier && title) {
+        const searchStart = Date.now();
         const rows = await this.searchAnime(title, 8, episodeNumber);
         targetIdentifier = rows[0]?.identifier || null;
-        timings.searchAnime = Date.now() - started; // Approximate, as searchAnime has its own timings
+        timings.search = Date.now() - searchStart;
       }
-      timings.pickBaseUrl = Date.now() - started - (timings.searchAnime || 0); // Adjust pickBaseUrl timing
 
       if (!targetIdentifier) {
         recordProviderMetric('failure', Date.now() - started);
@@ -2512,9 +2528,9 @@ let targetIdentifier = identifier || slug || null;
         };
       }
 
-      const getAnimeDetailsStart = Date.now();
+      const detailsStart = Date.now();
       const details = await this.getAnimeDetails(targetIdentifier);
-      timings.getAnimeDetails = Date.now() - getAnimeDetailsStart;
+      timings.details = Date.now() - detailsStart;
       const episodes = Array.isArray(details.episodes) ? details.episodes : [];
       const selected = episodes.find(ep => Number(ep.number) === Number(episodeNumber))
         || episodes.find(ep => String(ep.number) === String(episodeNumber))
@@ -2535,9 +2551,9 @@ let targetIdentifier = identifier || slug || null;
         };
       }
 
-      const resolveGatePageStart = Date.now();
+      const gateStart = Date.now();
       const gatePage = await resolveGatePage(baseUrl, details, selected);
-      timings.resolveGatePage = Date.now() - resolveGatePageStart;
+      timings.gate = Date.now() - gateStart;
       if (gatePage.cloudflare || gatePage.redirectShell) {
         logger.warn('[AnimeHeaven] Cloudflare detected', { stage: 'gate', episode: selected.number });
       }
@@ -2551,7 +2567,7 @@ let targetIdentifier = identifier || slug || null;
       if (gatePage.reason === REASON.CLOUDFLARE) recordProviderMetric('cloudflare', Date.now() - started);
       else if (gatePage.reason === REASON.TIMEOUT) recordProviderMetric('timeout', Date.now() - started);
       else if (gatePage.ok && gatePage.html) recordProviderMetric('success', Date.now() - started);
-      logger.info('[AnimeHeaven Timing] resolveEpisode', { title, episode: episodeNumber, ...timings, total: Date.now() - started });
+      logger.info('[AnimeHeaven Performance] resolveEpisode', { title, episode: episodeNumber, ...timings, total: Date.now() - started });
       else recordProviderMetric('failure', Date.now() - started);
 
       return {
@@ -2579,15 +2595,14 @@ let targetIdentifier = identifier || slug || null;
     const started = Date.now();
     const timings = {};
     try {
-      const resolveEpisodeStart = Date.now();
+      const episodeStart = Date.now();
       const resolved = await this.resolveEpisode({ title, episode, identifier, slug });
-      timings.resolveEpisode = Date.now() - resolveEpisodeStart;
+      timings.episode = Date.now() - episodeStart;
       if (!resolved || !resolved.html) {
         return {
           anime: resolved?.anime || { title: title || '', provider: PROVIDER_NAME },
           episode: resolved?.episode || null,
           pageUrl: resolved?.pageUrl || null,
-          // NOTE: playerUrl is deprecated, sources is the canonical list.
           playerUrl: null,
           sources: [],
           html: '',
@@ -2596,15 +2611,12 @@ let targetIdentifier = identifier || slug || null;
       }
 
       const baseUrl = resolved.pageUrl || (await pickBaseUrl());
-      timings.pickBaseUrl = Date.now() - started - timings.resolveEpisode;
-
-      // Concurrently parse direct sources and extract nested iframe sources
-      const direct = parseSources(resolved.html, baseUrl);
-      const nested = await extractNestedIframeSources(resolved.html, baseUrl);
+      const extractionStart = Date.now();
       const [direct, nested] = await Promise.all([
         parseSources(resolved.html, baseUrl),
-        extractNestedIframeSources(resolved.html, baseUrl),
+        extractNestedIframeSources(resolved.html, baseUrl)
       ]);
+      timings.sourceExtraction = Date.now() - extractionStart;
 
       const merged = [];
       for (const src of [...direct, ...nested]) {
@@ -2615,7 +2627,7 @@ let targetIdentifier = identifier || slug || null;
         episode: resolved.episode?.number || null,
         sources: merged.length,
       });
-      logger.info('[AnimeHeaven Timing] resolvePlayer', { title, episode: episode || 'N/A', ...timings, total: Date.now() - started });
+      logger.info('[AnimeHeaven Performance] resolvePlayer', { title, episode: episode || 'N/A', ...timings, total: Date.now() - started });
 
       return {
         anime: resolved.anime,
@@ -2642,20 +2654,27 @@ let targetIdentifier = identifier || slug || null;
   }
 
   async extractStreams({ title, episode, identifier, slug }) {
+    logger.debugStream('[AnimeHeaven] extractStreams started', { title, episode });
     const started = Date.now();
     const timings = {};
 
     try {
       const playerStart = Date.now();
       const player = await this.resolvePlayer({ title, episode, identifier, slug });
-      timings.resolvePlayer = Date.now() - playerStart;
+      timings.player = Date.now() - playerStart;
 
       if (!player || player.reason === REASON.CLOUDFLARE) {
         logger.warn('[AnimeHeaven] Cloudflare detected');
+        timings.total = Date.now() - started;
+        logger.info('[STREAM TIMING]', {
+          title, episode: episode || 'N/A', ...timings, total: timings.total, reason: REASON.CLOUDFLARE,
+        });
         recordProviderMetric('cloudflare', Date.now() - started);
         return normalizeEmptyStream(REASON.CLOUDFLARE);
       }
 
+      const extractionStart = Date.now();
+      logger.debugStream('[AnimeHeaven] Player resolved, starting source and subtitle extraction...', { title, episode, playerSources: player.sources?.length });
       let sources = Array.isArray(player.sources) ? player.sources : [];
       const mirrorStart = Date.now();
       const mirrorSources = await resolveMirrorSources(sources, {
@@ -2665,48 +2684,34 @@ let targetIdentifier = identifier || slug || null;
       for (const src of mirrorSources) {
         if (!sources.some(x => x.url === src.url)) sources.push(src);
       }
+      timings.sourceExtraction = Date.now() - extractionStart;
+
+      // Concurrently resolve mirror sources and extract nested iframe subtitles
+      const [mirrorSources, directSubtitles, nestedIframeSubtitles] = await Promise.all([
+        resolveMirrorSources(sources, { referer: player.pageUrl || (await pickBaseUrl()) }),
+        parseSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl())),
+        extractNestedIframeSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl())),
+      ]);
 
 sources = sortSourcesByQuality(sources)
         .filter(src => isPlayableMediaUrl(src.url))
         // Never select a confirmed AnimeHeaven onerror placeholder
         // (`&error` / `&error2`) as the primary playback source. These gate
-        // markup placeholders resolve to HTTP 404 even though they sort
-        // lexicographically first when all sources are quality "auto".
+        // markup placeholders resolve to HTTP 404.
         .filter(src => !isConfirmedDeadOnErrorSource(src.url));
 
-      // Liveness check: Sequentially verify sources until a playable one is found.
-      const livenessVerificationStart = Date.now();
-      if (sources.length > 0) {
-        logger.info(`[AnimeHeaven] Verifying liveness for ${sources.length} sorted source(s)...`, { title, episode });
-        let verifiedSourceIndex = -1;
-        for (let i = 0; i < sources.length; i++) {
-          const sourceToTest = sources[i];
-          logger.info(`[AnimeHeaven] Liveness check [${i + 1}/${sources.length}]`, { quality: sourceToTest.quality, type: sourceToTest.sourceType });
-          const liveness = await verifySourceLiveness(sourceToTest); // This was the undefined function
-
-          if (liveness.live) {
-            logger.info(`[AnimeHeaven] Source liveness VERIFIED`, { quality: sourceToTest.quality, status: liveness.status, latencyMs: liveness.durationMs });
-            verifiedSourceIndex = i;
-            break; // Stop on the first live source
-          } else {
-            logger.warn(`[AnimeHeaven] Source liveness FAILED`, { quality: sourceToTest.quality, status: liveness.status, reason: liveness.reason, latencyMs: liveness.durationMs });
-          }
-        }
-
-        if (verifiedSourceIndex > 0) {
-          const verifiedSource = sources.splice(verifiedSourceIndex, 1)[0];
-          sources.unshift(verifiedSource);
-          logger.info(`[AnimeHeaven] Selected verified source at index ${verifiedSourceIndex} as primary.`, { title, episode });
-        } else if (verifiedSourceIndex === -1) {
-          logger.warn('[AnimeHeaven] All sources failed liveness check. Falling back to original best-guess.', { title, episode });
-        }
-      }
-      timings.sourceLiveness = Date.now() - livenessVerificationStart;
+      logger.info('[PLAYBACK]', { event: 'sourceValidated', title, episode, sourceCount: sources.length });
 
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });
         recordProviderMetric('failure', Date.now() - started);
         return normalizeEmptyStream(player.reason || REASON.STREAM_MISSING);
+      }
+
+      // Combine subtitles
+      let subtitles = [...directSubtitles];
+      for (const row of nestedIframeSubtitles) {
+        if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
       }
 
 // Attach the full playback context (referer + origin + cookies) to each
@@ -2725,13 +2730,8 @@ sources = sortSourcesByQuality(sources)
       });
 
       const subtitleStart = Date.now();
-      timings.parseSubtitles = 0;
-      const subtitles = parseSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
-      const nestedSubtitleRows = await extractNestedIframeSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl()));
-      for (const row of nestedSubtitleRows) {
-        if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
-      }
-
+      // Subtitle discovery from sources runs only if no subtitles were found in HTML
+      logger.debugStream('[AnimeHeaven] Discovering subtitles from sources if needed...', { title, episode, htmlSubtitles: subtitles.length });
       if (!subtitles.length) {
         const sourceDerived = await discoverSubtitlesFromSources(sources, {
           referer: player.pageUrl || (await pickBaseUrl()),
@@ -2740,7 +2740,7 @@ sources = sortSourcesByQuality(sources)
           if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
         }
       }
-      timings.parseSubtitles += Date.now() - subtitleStart; // Add to existing parseSubtitles time
+      timings.subtitles = Date.now() - subtitleStart;
 
       if (subtitles.length) {
         logger.info('[AnimeHeaven] Subtitle found', { count: subtitles.length });
@@ -2771,7 +2771,7 @@ sources = sortSourcesByQuality(sources)
 
       // Final timing log for extractStreams
       timings.total = Date.now() - started;
-      logger.info('[AnimeHeaven Timing]', {
+      logger.info('[STREAM TIMING]', {
         title, episode: episode || 'N/A',
         ...timings,
       });
