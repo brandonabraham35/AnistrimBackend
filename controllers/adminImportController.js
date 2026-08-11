@@ -5,6 +5,7 @@ const { ConsumetProvider } = require('../services/consumetProvider');
 const { uploadBufferToCloudinary, hasCloudinaryConfig } = require('../utils/bunnyUpload');
 const { PROVIDER_IDS } = require('../services/providerRegistry');
 const animeHeavenImportService = require('../services/animeHeavenImportService');
+const animeHeavenCatalogService = require('../services/animeHeavenCatalogService');
 
 const consumet = new ConsumetProvider();
 let cloudinaryColumnsPromise = null;
@@ -378,13 +379,13 @@ exports.getAnimeHeavenStatus = async (req, res) => {
   if (!Number.isInteger(animeId)) return res.status(400).json({ message: 'Invalid anime id.' });
   try {
     const [animeRows] = await db.query(
-      'SELECT id, title, animeheaven_slug, source_provider, source_id, updated_at FROM anime WHERE id = ? LIMIT 1',
+      'SELECT id, title, animeheaven_slug, source_provider, source_id, animeheaven_last_synced_at, updated_at FROM anime WHERE id = ? LIMIT 1',
       [animeId]
     );
     if (!animeRows.length) return res.status(404).json({ message: 'Anime not found.' });
     const anime = animeRows[0];
     const [epRows] = await db.query(
-      'SELECT COUNT(*) AS total, SUM(CASE WHEN animeheaven_episode_key IS NOT NULL THEN 1 ELSE 0 END) AS with_keys FROM episodes WHERE anime_id = ?',
+      'SELECT COUNT(*) AS total, SUM(CASE WHEN animeheaven_episode_key IS NOT NULL THEN 1 ELSE 0 END) AS with_keys, SUM(CASE WHEN animeheaven_episode_url IS NOT NULL THEN 1 ELSE 0 END) AS with_urls FROM episodes WHERE anime_id = ?',
       [animeId]
     );
     res.json({
@@ -395,11 +396,92 @@ exports.getAnimeHeavenStatus = async (req, res) => {
       sourceId: anime.source_id || null,
       episodeCount: Number(epRows[0]?.total || 0),
       episodesWithKeys: Number(epRows[0]?.with_keys || 0),
-      lastSync: anime.updated_at || null,
+      episodesWithUrls: Number(epRows[0]?.with_urls || 0),
+      lastSync: anime.animeheaven_last_synced_at || anime.updated_at || null,
       importStatus: anime.animeheaven_slug ? 'imported' : 'not_imported',
     });
   } catch (error) {
     console.error('AnimeHeaven status failed:', error.message);
     res.status(500).json({ message: 'Failed to fetch AnimeHeaven status.' });
+  }
+};
+
+// ════════════════════════════════════════════════════════════
+//  ANIMEHEAVEN CATALOG SERVICE (Phase: primary catalog provider)
+// ════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/admin/animeheaven/catalog/status
+ * Return the AnimeHeaven catalog status summary (counts, provider health).
+ */
+exports.getAnimeHeavenCatalogStatus = async (req, res) => {
+  try {
+    const status = await animeHeavenCatalogService.getCatalogStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('AnimeHeaven catalog status failed:', error.message);
+    res.status(500).json({ message: 'Failed to fetch AnimeHeaven catalog status.' });
+  }
+};
+
+/**
+ * POST /api/admin/animeheaven/bulk-import
+ * Body: { identifiers: string[] }
+ * Bulk-import multiple AnimeHeaven anime.
+ */
+exports.bulkImportAnimeHeaven = async (req, res) => {
+  const identifiers = Array.isArray(req.body?.identifiers) ? req.body.identifiers : [];
+  if (!identifiers.length) return res.status(400).json({ message: 'identifiers[] is required.' });
+  try {
+    const result = await animeHeavenCatalogService.bulkImport(identifiers, { adminId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('AnimeHeaven bulk import failed:', error.message);
+    res.status(502).json({ success: false, message: 'AnimeHeaven bulk import failed.', error: error.message });
+  }
+};
+
+/**
+ * POST /api/admin/animeheaven/bulk-sync
+ * Body: { animeIds: number[] }
+ * Bulk-sync multiple AnimeHeaven anime.
+ */
+exports.bulkSyncAnimeHeaven = async (req, res) => {
+  const animeIds = Array.isArray(req.body?.animeIds) ? req.body.animeIds : [];
+  if (!animeIds.length) return res.status(400).json({ message: 'animeIds[] is required.' });
+  try {
+    const result = await animeHeavenCatalogService.bulkSync(animeIds, { adminId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('AnimeHeaven bulk sync failed:', error.message);
+    res.status(502).json({ success: false, message: 'AnimeHeaven bulk sync failed.', error: error.message });
+  }
+};
+
+/**
+ * GET /api/admin/animeheaven/missing
+ * Detect episodes missing AnimeHeaven keys/URLs.
+ */
+exports.getAnimeHeavenMissing = async (req, res) => {
+  try {
+    const missing = await animeHeavenCatalogService.detectMissingEpisodes();
+    res.json(missing);
+  } catch (error) {
+    console.error('AnimeHeaven missing detection failed:', error.message);
+    res.status(500).json({ message: 'Missing episode detection failed.' });
+  }
+};
+
+/**
+ * POST /api/admin/animeheaven/daily-refresh
+ * Run the daily refresh now (sync stale anime).
+ */
+exports.runAnimeHeavenDailyRefresh = async (req, res) => {
+  try {
+    const result = await animeHeavenCatalogService.dailyRefresh({ adminId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('AnimeHeaven daily refresh failed:', error.message);
+    res.status(502).json({ success: false, message: 'AnimeHeaven daily refresh failed.', error: error.message });
   }
 };

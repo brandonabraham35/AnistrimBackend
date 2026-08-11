@@ -144,3 +144,13 @@ try {
 } catch (err) {
   console.error('⚠️ [STREAM_CACHE] Sweeper init failed (non-fatal):', err && err.message);
 }
+
+// Start the AnimeHeaven catalog daily-refresh job (best-effort).
+// Automatically syncs stale AnimeHeaven anime every 24h so the catalog stays
+// up-to-date (new episodes detected). Idempotent + unref'd + failure-safe.
+try {
+  const animeHeavenCatalogService = require('./services/animeHeavenCatalogService');
+  animeHeavenCatalogService.startDailyRefresh();
+} catch (err) {
+  console.error('⚠️ [ANIMEHEAVEN_CATALOG] Daily refresh init failed (non-fatal):', err && err.message);
+}

@@ -44,6 +44,13 @@ router.post('/animeheaven/import',          imports.importAnimeHeaven);
 router.post('/animeheaven/sync/:animeId',   imports.syncAnimeHeaven);
 router.get('/animeheaven/status/:animeId',  imports.getAnimeHeavenStatus);
 
+// ── AnimeHeaven Catalog Service (primary catalog provider) ─
+router.get('/animeheaven/catalog/status',   imports.getAnimeHeavenCatalogStatus);
+router.post('/animeheaven/bulk-import',     imports.bulkImportAnimeHeaven);
+router.post('/animeheaven/bulk-sync',       imports.bulkSyncAnimeHeaven);
+router.get('/animeheaven/missing',          imports.getAnimeHeavenMissing);
+router.post('/animeheaven/daily-refresh',   imports.runAnimeHeavenDailyRefresh);
+
 // Genres
 router.get('/genres',                       admin.getAllGenres);
 router.post('/genres',                      admin.createGenre);

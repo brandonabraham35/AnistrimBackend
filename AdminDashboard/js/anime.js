@@ -110,6 +110,8 @@ function _setupEventListeners() {
                      actionBtn.classList.contains('delete') ? 'delete' :
                      actionBtn.classList.contains('edit') ? 'edit' :
                      actionBtn.classList.contains('sync') ? 'sync' :
+                     actionBtn.classList.contains('ah-sync') ? 'ah-sync' :
+                     actionBtn.classList.contains('ah-import-now') ? 'ah-import-now' :
                      actionBtn.classList.contains('details') ? 'details' : null;
       if (action) { window.animeAction?.(action, id, actionBtn) || _handleRowAction(action, id, actionBtn); }
       return;
@@ -318,6 +320,16 @@ function _renderTableRows(items) {
     const isSelected = _selectedIds.has(String(anime.id));
     const genres = Array.isArray(anime.genres) ? anime.genres.slice(0, 3).join(', ') : '';
     const hasMoreGenres = Array.isArray(anime.genres) && anime.genres.length > 3;
+    // AnimeHeaven status: show slug, episode count, last sync.
+    const ahSlug = anime.animeheaven_slug || null;
+    const ahImported = !!ahSlug;
+    const ahLastSync = anime.animeheaven_last_synced_at || anime.updated_at || '';
+    const ahStatus = ahImported
+      ? `<span class="shared-badge shared-badge-success" title="${window._escapeHTML(ahSlug)}">✓ AnimeHeaven</span>`
+      : '<span class="shared-badge shared-badge-muted">—</span>';
+    const ahMeta = ahImported
+      ? `<small style="color:var(--text-muted);font-size:0.68rem;">${anime.episode_count || 0} eps · ${ahLastSync ? new Date(ahLastSync).toLocaleDateString() : 'never'}</small>`
+      : '';
     return `
       <tr class="${isSelected ? 'selected-row' : ''}" data-id="${anime.id}">
         <td><input type="checkbox" class="anime-select-checkbox" data-id="${anime.id}" ${isSelected ? 'checked' : ''}></td>
@@ -329,9 +341,11 @@ function _renderTableRows(items) {
         <td>${anime.is_featured ? window.Badge.featured(true) : '<span class="shared-badge shared-badge-muted">No</span>'}</td>
         <td>${anime.episode_count || 0}</td>
         <td>${(anime.view_count || 0).toLocaleString()}</td>
+        <td style="text-align:center;">${ahStatus}${ahMeta}</td>
         <td style="white-space:nowrap;">
           <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes"><i class="fas fa-video"></i></button>
-          <button class="btn-action sync" data-id="${anime.id}" title="Sync from Consumet"><i class="fas fa-sync"></i></button>
+          <button class="btn-action ah-sync" data-id="${anime.id}" title="Sync from AnimeHeaven" ${ahImported ? '' : 'disabled'}><i class="fas fa-sync"></i></button>
+          <button class="btn-action ah-import-now" data-id="${anime.id}" title="Import from AnimeHeaven Record"><i class="fas fa-download"></i></button>
           <button class="btn-action details" data-id="${anime.id}" title="View Details"><i class="fas fa-eye"></i></button>
           <button class="btn-action edit" data-id="${anime.id}" title="Edit"><i class="fas fa-edit"></i></button>
           <button class="btn-action delete" data-id="${anime.id}" title="Delete"><i class="fas fa-trash"></i></button>
@@ -533,9 +547,55 @@ async function _handleRowAction(action, id, button) {
     case 'sync':
       await _handleSync(id, button);
       break;
+    case 'ah-sync':
+      await _handleAnimeHeavenRowSync(id, button);
+      break;
+    case 'ah-import-now':
+      await _handleAnimeHeavenRowImport(id, button);
+      break;
     case 'details':
       await _showDetails(id);
       break;
+  }
+}
+
+// ── AnimeHeaven row actions (Catalog Service) ──────────────
+async function _handleAnimeHeavenRowSync(id, button) {
+  const anime = _allAnime.find(a => String(a.id) === String(id));
+  if (!anime?.animeheaven_slug) {
+    window.showToast?.('This anime has no AnimeHeaven slug. Import it first.', 'error');
+    return;
+  }
+  if (button) { button.disabled = true; button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+  try {
+    const res = await window.apiRequest(`/api/admin/animeheaven/sync/${id}`, { method: 'POST' });
+    window.showToast?.(res?.message || 'AnimeHeaven sync complete.', 'success');
+    await _fetchAnime();
+  } catch (error) {
+    window.showToast?.(`AnimeHeaven sync failed: ${error.message}`, 'error');
+  } finally {
+    if (button) { button.disabled = false; button.innerHTML = '<i class="fas fa-sync"></i>'; }
+  }
+}
+
+async function _handleAnimeHeavenRowImport(id, button) {
+  const anime = _allAnime.find(a => String(a.id) === String(id));
+  if (!anime?.animeheaven_slug) {
+    window.showToast?.('This anime has no AnimeHeaven record to import.', 'error');
+    return;
+  }
+  if (button) { button.disabled = true; button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+  try {
+    const res = await window.apiRequest('/api/admin/animeheaven/import', {
+      method: 'POST',
+      body: { identifier: anime.animeheaven_slug },
+    });
+    window.showToast?.(res?.message || 'AnimeHeaven import complete.', 'success');
+    await _fetchAnime();
+  } catch (error) {
+    window.showToast?.(`AnimeHeaven import failed: ${error.message}`, 'error');
+  } finally {
+    if (button) { button.disabled = false; button.innerHTML = '<i class="fas fa-download"></i>'; }
   }
 }
 
