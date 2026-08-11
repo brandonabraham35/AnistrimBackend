@@ -1,24 +1,33 @@
-/* c:\Users\benar\Desktop\AnistrimBackend2\Frontend\css\watch.css */
+/* ============================================================
+   AniStrim Premium Watch Experience
+   Original design inspired by the interaction quality of modern
+   streaming platforms — no proprietary assets or branding copied.
+   ============================================================ */
+
 :root {
     --player-accent: #6c2bd9;
+    --player-accent-hover: #8b5cf6;
     --player-text: #ffffff;
-    --player-text-muted: #a0a0a0;
-    --player-bg-overlay: rgba(10, 10, 15, 0.7);
+    --player-text-muted: #b0b0b8;
+    --player-bg-overlay: rgba(10, 10, 15, 0.72);
     --player-bg-solid: #0a0a0f;
+    --player-controls-h: 60px;
+    --player-font: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-body {
+html, body {
     background-color: var(--player-bg-solid);
     color: var(--player-text);
-    overflow: hidden; /* Prevent scrollbars when player is active */
+    overflow: hidden;
+    height: 100%;
+    font-family: var(--player-font);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
 }
 
 #player-container {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background: #000;
     display: flex;
     align-items: center;
@@ -30,6 +39,7 @@ body {
     height: 100%;
     position: relative;
     overflow: hidden;
+    background: #000;
 }
 
 #animePlayer {
@@ -37,15 +47,24 @@ body {
     height: 100%;
     object-fit: contain;
     background: #000;
+    cursor: none;
+}
+#player-wrap.controls-visible #animePlayer,
+#player-wrap.controls-visible-mobile #animePlayer {
+    cursor: default;
+}
+#animePlayer::cue {
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-family: var(--player-font);
+    font-size: 1.05em;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
 
-/* --- Overlays (Loading, Error, Controls) --- */
+/* ── Overlays (Loading, Error) ─────────────────────────────── */
 .player-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background: var(--player-bg-overlay);
     backdrop-filter: blur(10px);
     display: flex;
@@ -62,60 +81,75 @@ body {
     visibility: visible;
 }
 
+.spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(255, 255, 255, 0.15);
+    border-top-color: var(--player-accent);
+    border-radius: 50%;
+    animation: aspin 1s linear infinite;
+}
+.spinner.small {
+    width: 36px;
+    height: 36px;
+    border-width: 3px;
+}
+@keyframes aspin { to { transform: rotate(360deg); } }
+
+.buffering-spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 30;
+    display: none;
+    pointer-events: none;
+}
+.buffering-spinner.visible { display: block; }
+
+.loading-info, .error-actions { text-align: center; margin-top: 1.5rem; }
+.loading-info h2 { margin-bottom: 0.5rem; font-size: 1.1rem; font-weight: 600; }
+.loading-info p, .loading-info span { color: var(--player-text-muted); font-size: 0.9rem; }
+
+.error-icon { font-size: 3rem; }
+.error-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; max-width: 90%; }
+
+/* ── Controls Overlays ─────────────────────────────────────── */
 .controls-overlay {
     position: absolute;
     left: 0;
     width: 100%;
-    padding: 1rem 2rem;
+    padding: 1.25rem 1.75rem;
     z-index: 50;
     display: flex;
     align-items: center;
-    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
-    transition: opacity 0.3s, transform 0.3s;
     opacity: 0;
-}
-#player-wrap:not(.paused) .controls-overlay.hidden {
-    opacity: 0;
+    visibility: hidden;
     pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
 }
-#player-wrap.paused .controls-overlay,
-#player-wrap:hover .controls-overlay {
+#player-wrap.controls-visible .controls-overlay,
+#player-wrap.controls-visible-mobile .controls-overlay,
+#player-wrap.paused:not(.controls-hidden-on-pause) .controls-overlay,
+#player-wrap.ended .controls-overlay {
     opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
 }
 
 .controls-overlay.top {
     top: 0;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+    background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 60%, transparent 100%);
 }
-#player-wrap:not(.paused) .controls-overlay.top.hidden { transform: translateY(-100%); }
-
 .controls-overlay.bottom {
     bottom: 0;
     flex-direction: column;
     align-items: stretch;
+    padding-top: 2.5rem;
+    background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
 }
-#player-wrap:not(.paused) .controls-overlay.bottom.hidden { transform: translateY(100%); }
 
-
-/* --- Loading & Error States --- */
-.spinner {
-    width: 60px;
-    height: 60px;
-    border: 4px solid rgba(255, 255, 255, 0.2);
-    border-top-color: var(--player-accent);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.loading-info, .error-actions { text-align: center; margin-top: 1.5rem; }
-.loading-info h2, .error-actions h2 { margin-bottom: 0.5rem; }
-.loading-info p { color: var(--player-text-muted); }
-
-.error-icon { font-size: 3rem; }
-.error-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
-
-/* --- Controls --- */
+/* ── Player Buttons ────────────────────────────────────────── */
 .player-btn {
     background: transparent;
     border: none;
@@ -125,116 +159,426 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 50%;
+    transition: transform 0.15s ease, color 0.15s ease, background 0.15s ease;
+    touch-action: manipulation;
 }
-.player-btn:hover { color: var(--player-accent); }
+.player-btn:hover { color: var(--player-accent-hover); }
+.player-btn:active { transform: scale(0.92); }
 .player-btn:focus-visible {
     outline: 2px solid var(--player-accent);
     outline-offset: 2px;
     border-radius: 4px;
 }
 .icon-btn svg { width: 24px; height: 24px; fill: currentColor; }
+.player-btn.icon-btn.large svg { width: 30px; height: 30px; }
 
-.bottom-controls-main { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-.controls-left, .controls-right { display: flex; align-items: center; gap: 0.5rem; }
-
-/* Progress Bar */
-.progress-bar-container { width: 100%; padding: 0.5rem 0; }
-.progress-bar {
-    -webkit-appearance: none;
-    width: 100%;
-    height: 5px;
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 5px;
-    outline: none;
-    cursor: pointer;
-}
-.progress-bar::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 15px;
-    height: 15px;
-    background: var(--player-accent);
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-/* Volume */
-.volume-container { display: flex; align-items: center; }
-.volume-slider { display: none; width: 80px; }
-.volume-container:hover .volume-slider { display: block; }
-
-/* Skip & Next Episode */
-.skip-btn { background: rgba(0,0,0,0.6); padding: 0.5rem 1rem; border-radius: 20px; }
-.next-ep { backdrop-filter: blur(20px); background: rgba(10, 10, 15, 0.85); }
-.next-ep-actions { display: flex; gap: 1rem; }
-
-/* --- Settings Menu --- */
-.settings-menu {
-    position: absolute;
-    bottom: 70px;
-    right: 2rem;
-    z-index: 60;
-    background: var(--player-bg-overlay);
-    backdrop-filter: blur(8px);
-    border-radius: 8px;
-    width: 280px;
+/* ── Title Info ────────────────────────────────────────────── */
+.episode-title-info { display: flex; flex-direction: column; gap: 0.1rem; margin-left: 0.75rem; min-width: 0; }
+.episode-title-info h1 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0;
+    white-space: nowrap;
     overflow: hidden;
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(10px);
-    transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+    text-overflow: ellipsis;
+    max-width: 45vw;
 }
-.settings-menu.visible {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
+.episode-title-info p {
+    font-size: 0.78rem;
+    color: var(--player-text-muted);
+    margin: 0;
 }
-.settings-panel { display: flex; flex-direction: column; }
-.settings-item {
+
+/* ── Bottom Controls Row ───────────────────────────────────── */
+.bottom-controls-main {
     display: flex;
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    padding: 12px 16px;
-    font-size: 0.9rem;
+    gap: 0.75rem;
+}
+.controls-left, .controls-right { display: flex; align-items: center; gap: 0.25rem; }
+.controls-right { gap: 0.15rem; }
+
+/* ── Time Display ──────────────────────────────────────────── */
+.time-display {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--player-text);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    margin-left: 0.25rem;
+}
+.time-sep { color: var(--player-text-muted); opacity: 0.6; }
+.time-remaining { color: var(--player-text-muted); }
+
+/* ── Custom Progress Bar ───────────────────────────────────── */
+.progress-bar-container {
+    width: 100%;
+    padding: 0.35rem 0;
+    cursor: pointer;
+    touch-action: none;
+    position: relative;
+}
+.progress-track {
+    position: relative;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    overflow: visible;
+    transition: height 0.15s ease;
+}
+.progress-bar-container:hover .progress-track,
+.progress-bar-container.scrubbing .progress-track {
+    height: 7px;
+}
+.progress-played {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    width: 0%;
+    background: var(--player-accent);
+    border-radius: 4px;
+    will-change: width;
+}
+.progress-buffer {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    width: 0%;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    will-change: width;
+}
+.progress-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--player-accent-hover);
+    box-shadow: 0 0 8px rgba(108, 43, 217, 0.6);
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.15s ease;
+    will-change: left;
+}
+.progress-bar-container:hover .progress-thumb,
+.progress-bar-container.scrubbing .progress-thumb,
+.progress-bar-container.touching .progress-thumb {
+    transform: translate(-50%, -50%) scale(1);
+}
+.progress-hover {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    width: 0%;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    pointer-events: none;
+}
+.progress-tooltip {
+    position: absolute;
+    bottom: 16px;
+    left: 0%;
+    transform: translateX(-50%);
+    background: var(--player-bg-solid);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--player-text);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s, visibility 0.15s;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.progress-bar-container:hover .progress-tooltip,
+.progress-bar-container.scrubbing .progress-tooltip,
+.progress-bar-container.touching .progress-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ── Volume ────────────────────────────────────────────────── */
+.volume-container { display: flex; align-items: center; position: relative; }
+.volume-slider-wrap {
+    width: 0;
+    overflow: hidden;
+    transition: width 0.25s ease;
+    display: flex;
+    align-items: center;
+}
+.volume-container:hover .volume-slider-wrap,
+.volume-container.focused .volume-slider-wrap {
+    width: 90px;
+}
+.volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    margin: 0 0.4rem;
+}
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--player-accent-hover);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(108, 43, 217, 0.5);
+}
+.volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--player-accent-hover);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* ── Skip & Next Episode ───────────────────────────────────── */
+.skip-btn {
+    background: rgba(0, 0, 0, 0.6);
+    padding: 0.5rem 1.1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    transition: background 0.2s, border-color 0.2s;
+}
+.skip-btn:hover { background: rgba(108, 43, 217, 0.45); border-color: var(--player-accent); color: #fff; }
+
+.next-ep {
+    backdrop-filter: blur(20px);
+    background: rgba(10, 10, 15, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.next-ep span { color: var(--player-text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.next-ep h3 { margin: 0.5rem 0 1rem; font-size: 1.1rem; }
+.next-ep-actions { display: flex; gap: 0.75rem; align-items: center; }
+#next-ep-countdown { margin-top: 0.9rem; font-size: 0.85rem; color: var(--player-text-muted); }
+
+/* ── Center Action Indicator ───────────────────────────────── */
+.center-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 40;
+}
+.center-indicator-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--player-text);
+    border-radius: 50%;
+    width: 88px;
+    height: 88px;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.6);
+    backdrop-filter: blur(6px);
+}
+.center-indicator-icon svg { width: 36px; height: 36px; fill: currentColor; }
+.center-indicator-icon span { font-size: 0.75rem; font-weight: 600; }
+.center-indicator.flash .center-indicator-icon {
+    animation: indicator-pop 0.65s ease-out;
+}
+@keyframes indicator-pop {
+    0%   { opacity: 0; transform: scale(0.5); }
+    20%  { opacity: 1; transform: scale(1); }
+    65%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.08); }
+}
+
+/* ── Settings Menu ─────────────────────────────────────────── */
+.settings-menu {
+    position: absolute;
+    bottom: 80px;
+    right: 1.5rem;
+    z-index: 60;
+    background: rgba(15, 15, 22, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    width: 290px;
+    max-width: calc(100vw - 2rem);
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(12px) scale(0.98);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+    transform-origin: bottom right;
+}
+.settings-menu.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+.settings-panel { display: flex; flex-direction: column; max-height: 60vh; overflow-y: auto; }
+.settings-panel[hidden] { display: none; }
+.settings-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    font-size: 0.88rem;
     text-align: left;
-    transition: background 0.2s;
+    color: var(--player-text);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: var(--player-font);
 }
-.settings-item:hover { background: rgba(255,255,255,0.1); }
-.settings-item.active { color: var(--player-accent); font-weight: 600; }
-.setting-value { color: var(--player-text-muted); }
-.settings-item.active .setting-value { color: var(--player-accent); }
-
-.settings-panel[data-panel="quality"] .settings-item::before {
-    content: '•';
+.settings-item:hover { background: rgba(255, 255, 255, 0.08); }
+.settings-item.active { color: var(--player-accent-hover); font-weight: 600; }
+.setting-value { color: var(--player-text-muted); font-size: 0.85rem; }
+.settings-item.active .setting-value { color: var(--player-accent-hover); }
+.settings-item-label { white-space: nowrap; }
+.settings-back {
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    justify-content: flex-start;
+    color: var(--player-text-muted);
+}
+.settings-back:hover { color: var(--player-text); }
+#quality-options .settings-item::before,
+#speed-options .settings-item::before,
+#subtitle-options .settings-item::before,
+#audio-options .settings-item::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: transparent;
     margin-right: 8px;
-    color: transparent;
+    flex-shrink: 0;
 }
-.settings-panel[data-panel="quality"] .settings-item.active::before { color: var(--player-accent); }
+#quality-options .settings-item.active::before,
+#speed-options .settings-item.active::before,
+#subtitle-options .settings-item.active::before,
+#audio-options .settings-item.active::before {
+    background: var(--player-accent-hover);
+    box-shadow: 0 0 6px rgba(108, 43, 217, 0.6);
+}
 
-/* Episode Sidebar */
+/* ── Episode Sidebar ───────────────────────────────────────── */
 .player-sidebar {
     position: fixed;
     top: 0;
     right: 0;
-    width: 360px;
-    max-width: 90vw;
+    width: 380px;
+    max-width: 92vw;
     height: 100%;
-    background: var(--player-bg-solid);
+    background: rgba(10, 10, 15, 0.98);
     z-index: 200;
     transform: translateX(100%);
     transition: transform 0.3s ease-in-out;
     display: flex;
     flex-direction: column;
+    box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
 }
 .player-sidebar.visible { transform: translateX(0); }
-.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #333; }
-#sidebar-episode-list { overflow-y: auto; flex-grow: 1; }
-.episode-item { /* Styles for sidebar items */ }
-.episode-item.current { background-color: var(--player-accent); }
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.1rem 1.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-weight: 600;
+}
+#sidebar-episode-list { overflow-y: auto; flex-grow: 1; padding: 0.5rem; }
+.episode-item {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.6rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    align-items: center;
+    margin-bottom: 0.15rem;
+}
+.episode-item:hover { background: rgba(255, 255, 255, 0.06); }
+.episode-item.current { background: rgba(108, 43, 217, 0.2); }
+.ep-thumb-wrap { width: 80px; height: 48px; flex-shrink: 0; border-radius: 6px; overflow: hidden; position: relative; }
+.ep-thumb-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.ep-info { flex: 1; min-width: 0; }
+.ep-title { font-size: 0.82rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-duration { font-size: 0.72rem; color: var(--player-text-muted); margin-top: 0.15rem; }
+.ep-play-icon { color: var(--player-text-muted); flex-shrink: 0; font-size: 0.8rem; }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .controls-overlay { padding: 0.5rem 1rem; }
-    .time-display, #seek-backward-btn, #seek-forward-btn { display: none; }
+/* ── Mobile / Touch Optimizations ──────────────────────────── */
+@media (max-width: 768px), (pointer: coarse) {
+    .controls-overlay { padding: 0.85rem 1rem; }
+    .controls-overlay.top { padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem); }
+    .controls-overlay.bottom { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem); }
+    .icon-btn svg { width: 26px; height: 26px; }
+    .player-btn { padding: 0.6rem; }
+    .time-display { font-size: 0.78rem; }
+    .episode-title-info h1 { max-width: 60vw; font-size: 0.88rem; }
+    .progress-track { height: 5px; }
+    .progress-bar-container:hover .progress-track { height: 7px; }
+    .settings-menu { bottom: 90px; right: 0.75rem; width: 260px; }
+    .volume-slider-wrap { display: none; }
+    /* On touch, tap right side = forward 10s, tap left side = back 10s */
+    #player-wrap.touch-active .controls-left .player-btn.icon-btn.large { width: 44px; height: 44px; }
+}
+
+/* Touch double-tap zone hints */
+.touch-double-tap-hint {
+    position: absolute;
+    top: 30%;
+    bottom: 20%;
+    width: 30%;
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.touch-double-tap-hint.left { left: 0; }
+.touch-double-tap-hint.right { right: 0; }
+.touch-double-tap-hint.visible { opacity: 1; }
+.touch-double-tap-hint svg { width: 44px; height: 44px; fill: rgba(255, 255, 255, 0.5); }
+
+/* Hide on very small landscape (player fills screen) */
+@media (max-height: 420px) {
+    .episode-title-info p { display: none; }
+    .time-remaining { display: none; }
+    .controls-overlay { padding: 0.5rem 0.75rem; }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+    .center-indicator-icon,
+    .controls-overlay,
+    .settings-menu,
+    .spinner {
+        animation-duration: 0.01ms;
+        transition-duration: 0.01ms;
+    }
 }
