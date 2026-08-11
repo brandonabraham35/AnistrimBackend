@@ -2567,8 +2567,8 @@ let targetIdentifier = identifier || slug || null;
       if (gatePage.reason === REASON.CLOUDFLARE) recordProviderMetric('cloudflare', Date.now() - started);
       else if (gatePage.reason === REASON.TIMEOUT) recordProviderMetric('timeout', Date.now() - started);
       else if (gatePage.ok && gatePage.html) recordProviderMetric('success', Date.now() - started);
-      logger.info('[AnimeHeaven Performance] resolveEpisode', { title, episode: episodeNumber, ...timings, total: Date.now() - started });
       else recordProviderMetric('failure', Date.now() - started);
+      logger.info('[AnimeHeaven Performance] resolveEpisode', { title, episode: episodeNumber, ...timings, total: Date.now() - started });
 
       return {
         anime: details,
@@ -2687,8 +2687,7 @@ let targetIdentifier = identifier || slug || null;
       timings.sourceExtraction = Date.now() - extractionStart;
 
       // Concurrently resolve mirror sources and extract nested iframe subtitles
-      const [mirrorSources, directSubtitles, nestedIframeSubtitles] = await Promise.all([
-        resolveMirrorSources(sources, { referer: player.pageUrl || (await pickBaseUrl()) }),
+      const [directSubtitles, nestedIframeSubtitles] = await Promise.all([
         parseSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl())),
         extractNestedIframeSubtitles(player.html || '', player.pageUrl || (await pickBaseUrl())),
       ]);
