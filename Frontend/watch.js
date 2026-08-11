@@ -23,12 +23,6 @@ let availableProviders = [];
 let currentProvider = '';
 let currentStreamUrl = '';
 let currentAnimeTitle = '';
-let availableQualities = []; // { url, quality } populated from the resolved stream sources
-
-// ── Playback Prefs (persisted) ───────────────────────────────
-const PREF_VOLUME_KEY = 'anistrim_volume';
-const PREF_SPEED_KEY = 'anistrim_playback_speed';
-const PREF_AUTOPLAY_KEY = 'anistrim_autoplay_next';
 
 // ── Ad Mid-Roll Tracking ────────────────────────────────────
 let adPlayInterval = null;
@@ -116,8 +110,6 @@ async function loadWatch() {
 
     if (ep && ep.video_url) {
       await attachStreamSource(video, ep.video_url);
-      currentStreamUrl = ep.video_url;
-      populateQualityOptions([]);
       if (loadingOverlay) loadingOverlay.style.display = 'none';
       setupPlayer(video);
     } else {
@@ -232,7 +224,6 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
             // NEW: Update quality value in settings menu
             const qualityValue = document.getElementById('quality-value');
             if (qualityValue && source.quality) { qualityValue.textContent = source.quality; }
-            populateQualityOptions(sourcesToTry, source);
             return;
         } catch (err) {
             console.warn(`[PLAYER] Source failed to load: ${source.url}. Trying next source...`, err.message);
@@ -391,9 +382,9 @@ function setupPlayer(video) {
 
   video.addEventListener('ended', function() {
     if (currentEpId) saveProgress(currentEpId, Math.floor(video.duration || 0), true);
-    if (isPremium && nextEpData && isAutoplayEnabled()) {
+    if (isPremium && nextEpData) {
       startAutoplayCountdown();
-    } else if (nextEpData) {
+    } else if (!isPremium && nextEpData) {
       // NEW: Show next episode banner for manual click
       if (nextBanner) {
         nextBanner.style.display = 'flex';
@@ -430,40 +421,15 @@ function setupPlayer(video) {
 
   // NEW: Wire up new controls
   document.getElementById('play-pause-btn')?.addEventListener('click', togglePlay);
-  document.getElementById('seek-backward-btn')?.addEventListener('click', function() { skipBack(); flashIndicator('back10'); });
-  document.getElementById('seek-forward-btn')?.addEventListener('click', function() { skipForward(); flashIndicator('fwd10'); });
+  document.getElementById('seek-backward-btn')?.addEventListener('click', skipBack);
+  document.getElementById('seek-forward-btn')?.addEventListener('click', skipForward);
   document.getElementById('fullscreen-btn')?.addEventListener('click', toggleFullscreen);
   document.getElementById('back-btn')?.addEventListener('click', () => window.history.back());
-
-  // Volume: restore saved level, wire slider + mute button, keep icon in sync
-  const savedVolume = localStorage.getItem(PREF_VOLUME_KEY);
-  video.volume = savedVolume !== null ? parseFloat(savedVolume) : 1;
+  
   const volumeSlider = document.getElementById('volume-slider');
-  if (volumeSlider) volumeSlider.value = video.volume;
-  if (volumeSlider) volumeSlider.addEventListener('input', function(e) {
-    video.muted = false;
-    setVolume(e.target.value);
-    localStorage.setItem(PREF_VOLUME_KEY, e.target.value);
-    updateVolumeUI();
-  });
-  document.getElementById('volume-btn')?.addEventListener('click', toggleMute);
-  video.addEventListener('volumechange', updateVolumeUI);
-  updateVolumeUI();
+  if(volumeSlider) volumeSlider.addEventListener('input', (e) => setVolume(e.target.value));
 
-  // Playback speed: restore saved rate
-  video.playbackRate = getSavedSpeed();
-
-  // Picture-in-Picture (hide the button entirely if unsupported)
-  const pipBtn = document.getElementById('pip-btn');
-  if (pipBtn) {
-    if (document.pictureInPictureEnabled && !video.disablePictureInPicture) {
-      pipBtn.addEventListener('click', togglePiP);
-    } else {
-      pipBtn.style.display = 'none';
-    }
-  }
-
-  if (progressBar) progressBar.addEventListener('input', (e) => seekVideo(e));
+  if(progressBar) progressBar.addEventListener('input', (e) => seekVideo(e));
 
   document.getElementById('episodes-btn')?.addEventListener('click', () => {
     document.getElementById('episode-sidebar')?.classList.add('visible');
@@ -472,9 +438,6 @@ function setupPlayer(video) {
     document.getElementById('episode-sidebar')?.classList.remove('visible');
   });
 
-  initSettingsMenu();
-  setupKeyboardShortcuts();
-  setupDoubleTapSeek(wrap);
   setupControlsAutoHide(wrap, allControls);
   video.play()['catch'](function() { wrap.classList.add('paused'); });
 }
@@ -494,284 +457,9 @@ function setupControlsAutoHide(wrap, allControls) {
   wrap.addEventListener('mouseenter', resetControlsTimer);
   // NEW: Toggle play on video click, but not if controls are clicked
   wrap.addEventListener('click', function(e) {
-    if (e.target.closest('.controls-overlay') || e.target.closest('.skip-btn') || e.target.closest('.next-ep') || e.target.closest('.settings-menu')) return;
+    if (e.target.closest('.controls-overlay') || e.target.closest('.skip-btn') || e.target.closest('.next-ep')) return;
     var video = document.getElementById('animePlayer');
     if (video) togglePlay();
-  });
-}
-
-// ── Center Indicator (play/pause/seek flash feedback) ────────
-const INDICATOR_ICONS = {
-  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
-  pause: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
-  back10: '<svg viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg><span>10s</span>',
-  fwd10: '<svg viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg><span>10s</span>',
-  mute: '<svg viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0 0 14 8v1.79l2.48 2.48c.01-.09.02-.18.02-.27zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.94 8.94 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3z"/></svg>',
-  volumeUp: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>'
-};
-
-function flashIndicator(type, label) {
-  const wrap = document.getElementById('center-indicator');
-  const iconEl = wrap && wrap.querySelector('.center-indicator-icon');
-  if (!iconEl) return;
-  iconEl.innerHTML = INDICATOR_ICONS[type] || (label ? '<span>' + window._escapeHTML(label) + '</span>' : '');
-  wrap.classList.remove('flash');
-  void wrap.offsetWidth; // restart CSS animation
-  wrap.classList.add('flash');
-}
-
-// ── Settings Menu (Quality / Speed / Autoplay) ────────────────
-const PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-
-function initSettingsMenu() {
-  const menu = document.getElementById('settings-menu');
-  const settingsBtn = document.getElementById('settings-btn');
-  if (!menu || !settingsBtn) return;
-
-  settingsBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    const opening = !menu.classList.contains('visible');
-    menu.classList.toggle('visible');
-    if (opening) showSettingsPanel('main');
-  });
-
-  document.addEventListener('click', function(e) {
-    if (menu.classList.contains('visible') && !menu.contains(e.target) && e.target !== settingsBtn) {
-      menu.classList.remove('visible');
-    }
-  });
-
-  menu.querySelectorAll('[data-opens]').forEach(function(btn) {
-    btn.addEventListener('click', function() { showSettingsPanel(btn.dataset.opens); });
-  });
-  menu.querySelectorAll('[data-back]').forEach(function(btn) {
-    btn.addEventListener('click', function() { showSettingsPanel('main'); });
-  });
-
-  const autoplayBtn = document.getElementById('autoplay-toggle-btn');
-  if (autoplayBtn) {
-    autoplayBtn.addEventListener('click', function() { setAutoplayEnabled(!isAutoplayEnabled()); });
-  }
-
-  updateAutoplayLabel();
-  populateSpeedOptions();
-}
-
-function showSettingsPanel(name) {
-  document.querySelectorAll('#settings-menu .settings-panel').forEach(function(p) {
-    p.hidden = p.dataset.panel !== name;
-  });
-}
-
-function populateQualityOptions(sources, activeSource) {
-  availableQualities = sources || [];
-  const container = document.getElementById('quality-options');
-  if (!container) return;
-  if (!availableQualities.length) {
-    container.innerHTML = '<button class="settings-item active"><span>Auto</span></button>';
-    return;
-  }
-  container.innerHTML = availableQualities.map(function(s, i) {
-    const isActive = activeSource && s.url === activeSource.url;
-    const label = window._escapeHTML(s.quality || ('Source ' + (i + 1)));
-    return '<button class="settings-item' + (isActive ? ' active' : '') + '" data-quality-index="' + i + '"><span>' + label + '</span></button>';
-  }).join('');
-  container.querySelectorAll('[data-quality-index]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const idx = parseInt(btn.dataset.qualityIndex, 10);
-      selectQuality(availableQualities[idx]);
-    });
-  });
-}
-
-async function selectQuality(source) {
-  if (!source) return;
-  const video = document.getElementById('animePlayer');
-  if (!video) return;
-  const currentTime = video.currentTime;
-  const wasPlaying = !video.paused;
-  const loadingOverlay = document.getElementById('loading-overlay');
-  if (loadingOverlay) loadingOverlay.style.display = 'flex';
-  try {
-    await attachStreamSource(video, source.url);
-    currentStreamUrl = source.url;
-    video.addEventListener('loadedmetadata', function() {
-      if (currentTime > 0 && isFinite(currentTime)) video.currentTime = currentTime;
-      if (wasPlaying) video.play()['catch'](function() {});
-    }, { once: true });
-    const qualityValue = document.getElementById('quality-value');
-    if (qualityValue) qualityValue.textContent = source.quality || 'Auto';
-    populateQualityOptions(availableQualities, source);
-  } catch (e) {
-    console.error('Quality switch failed:', e);
-  } finally {
-    if (loadingOverlay) loadingOverlay.style.display = 'none';
-  }
-}
-
-function populateSpeedOptions() {
-  const container = document.getElementById('speed-options');
-  if (!container) return;
-  const saved = getSavedSpeed();
-  container.innerHTML = PLAYBACK_SPEEDS.map(function(s) {
-    const label = s === 1 ? 'Normal' : s + 'x';
-    const active = s === saved ? ' active' : '';
-    return '<button class="settings-item' + active + '" data-speed="' + s + '"><span>' + label + '</span></button>';
-  }).join('');
-  container.querySelectorAll('[data-speed]').forEach(function(btn) {
-    btn.addEventListener('click', function() { setPlaybackSpeed(parseFloat(btn.dataset.speed)); });
-  });
-  const speedValue = document.getElementById('speed-value');
-  if (speedValue) speedValue.textContent = saved === 1 ? 'Normal' : saved + 'x';
-}
-
-function getSavedSpeed() {
-  const raw = parseFloat(localStorage.getItem(PREF_SPEED_KEY));
-  return PLAYBACK_SPEEDS.indexOf(raw) !== -1 ? raw : 1;
-}
-
-function setPlaybackSpeed(rate) {
-  const video = document.getElementById('animePlayer');
-  if (video) video.playbackRate = rate;
-  localStorage.setItem(PREF_SPEED_KEY, rate);
-  const label = rate === 1 ? 'Normal' : rate + 'x';
-  const speedValue = document.getElementById('speed-value');
-  if (speedValue) speedValue.textContent = label;
-  document.querySelectorAll('#speed-options .settings-item').forEach(function(b) {
-    b.classList.toggle('active', parseFloat(b.dataset.speed) === rate);
-  });
-}
-
-function isAutoplayEnabled() {
-  const v = localStorage.getItem(PREF_AUTOPLAY_KEY);
-  return v === null ? true : v === '1';
-}
-
-function setAutoplayEnabled(val) {
-  localStorage.setItem(PREF_AUTOPLAY_KEY, val ? '1' : '0');
-  updateAutoplayLabel();
-}
-
-function updateAutoplayLabel() {
-  const el = document.getElementById('autoplay-value');
-  if (el) el.textContent = isAutoplayEnabled() ? 'On' : 'Off';
-}
-
-// ── Volume / Mute ──────────────────────────────────────────
-function toggleMute() {
-  const video = document.getElementById('animePlayer');
-  if (!video) return;
-  video.muted = !video.muted;
-  if (!video.muted && video.volume === 0) video.volume = 0.5;
-  updateVolumeUI();
-  flashIndicator(video.muted || video.volume === 0 ? 'mute' : 'volumeUp');
-}
-window.toggleMute = toggleMute;
-
-function updateVolumeUI() {
-  const video = document.getElementById('animePlayer');
-  const icon = document.getElementById('volume-icon');
-  const slider = document.getElementById('volume-slider');
-  if (!video || !icon) return;
-  const effectivelyMuted = video.muted || video.volume === 0;
-  icon.innerHTML = effectivelyMuted
-    ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 8v1.79l2.48 2.48c.01-.09.02-.18.02-.27zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.94 8.94 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>'
-    : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>';
-  if (slider) slider.value = effectivelyMuted ? 0 : video.volume;
-}
-
-function adjustVolume(delta) {
-  const video = document.getElementById('animePlayer');
-  if (!video) return;
-  video.muted = false;
-  video.volume = Math.min(1, Math.max(0, video.volume + delta));
-  localStorage.setItem(PREF_VOLUME_KEY, video.volume);
-  updateVolumeUI();
-  flashIndicator(video.volume === 0 ? 'mute' : 'volumeUp');
-}
-
-// ── Picture-in-Picture ─────────────────────────────────────
-async function togglePiP() {
-  const video = document.getElementById('animePlayer');
-  if (!video) return;
-  try {
-    if (document.pictureInPictureElement) {
-      await document.exitPictureInPicture();
-    } else if (document.pictureInPictureEnabled) {
-      await video.requestPictureInPicture();
-    }
-  } catch (e) {
-    console.warn('Picture-in-Picture failed:', e);
-  }
-}
-window.togglePiP = togglePiP;
-
-// ── Keyboard Shortcuts ──────────────────────────────────────
-function setupKeyboardShortcuts() {
-  document.addEventListener('keydown', function(e) {
-    const tag = e.target && e.target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    const video = document.getElementById('animePlayer');
-    if (!video) return;
-
-    switch (e.key.toLowerCase()) {
-      case ' ':
-      case 'k':
-        e.preventDefault();
-        togglePlay();
-        flashIndicator(video.paused ? 'pause' : 'play');
-        break;
-      case 'arrowleft':
-        skipBack();
-        flashIndicator('back10');
-        break;
-      case 'arrowright':
-        skipForward();
-        flashIndicator('fwd10');
-        break;
-      case 'arrowup':
-        e.preventDefault();
-        adjustVolume(0.05);
-        break;
-      case 'arrowdown':
-        e.preventDefault();
-        adjustVolume(-0.05);
-        break;
-      case 'm':
-        toggleMute();
-        break;
-      case 'f':
-        toggleFullscreen();
-        break;
-      case 'p':
-        togglePiP();
-        break;
-      case 'n':
-        if (nextEpData) playNextEp();
-        break;
-      default:
-        break;
-    }
-  });
-}
-
-// ── Double-Tap-to-Seek (mobile, Netflix-style) ───────────────
-function setupDoubleTapSeek(wrap) {
-  let lastTap = { time: 0, x: 0 };
-  wrap.addEventListener('touchend', function(e) {
-    if (e.target.closest('.controls-overlay') || e.target.closest('.settings-menu') || e.target.closest('.next-ep')) return;
-    const touch = e.changedTouches[0];
-    if (!touch) return;
-    const now = Date.now();
-    const dt = now - lastTap.time;
-    if (dt < 300 && Math.abs(touch.clientX - lastTap.x) < 60) {
-      const rect = wrap.getBoundingClientRect();
-      const isRight = touch.clientX - rect.left > rect.width / 2;
-      if (isRight) { skipForward(); flashIndicator('fwd10'); } else { skipBack(); flashIndicator('back10'); }
-      lastTap = { time: 0, x: 0 };
-    } else {
-      lastTap = { time: now, x: touch.clientX };
-    }
   });
 }
 
