@@ -2059,4 +2059,90 @@ async function getBlobFromIndexedDB(animeTitle, episodeNumber) {
   return new Promise(function(resolve, reject) { request.onsuccess = function() { resolve(request.result ? request.result.blob : null); }; request.onerror = function() { reject(request.error); }; });
 }
 
+// ════════════════════════════════════════════════════════════
+//  SEASON GROUPS & SIDEBAR TOGGLE (named exports)
+// ════════════════════════════════════════════════════════════
+
+/**
+ * Build a map of season number → episode array from allEpisodes.
+ * Returns an object like { 1: [...eps], 2: [...eps], ... }
+ */
+function buildSeasonGroups(episodes) {
+  var groups = {};
+  if (!episodes || !episodes.length) return groups;
+  episodes.forEach(function(ep) {
+    var s = ep.season || ep.season_number || 1;
+    if (!groups[s]) groups[s] = [];
+    groups[s].push(ep);
+  });
+  // Sort each group by episode number
+  Object.keys(groups).forEach(function(s) {
+    groups[s].sort(function(a, b) {
+      return (a.number || a.episode_number || 0) - (b.number || b.episode_number || 0);
+    });
+  });
+  return groups;
+}
+
+/** Cached season groups – rebuilt whenever allEpisodes changes */
+var seasonGroups = {};
+
+/**
+ * Toggle the episode sidebar drawer open/closed.
+ * @param {boolean} [force] – true = open, false = close, undefined = toggle
+ */
+function toggleEpisodeSidebar(force) {
+  var sidebar = document.getElementById('episode-sidebar');
+  if (!sidebar) return;
+  if (typeof force === 'boolean') {
+    sidebar.classList.toggle('visible', force);
+  } else {
+    sidebar.classList.toggle('visible');
+  }
+  // Pause video when sidebar opens (optional UX)
+  var video = document.getElementById('animePlayer');
+  if (sidebar.classList.contains('visible') && video && !video.paused) {
+    // Don't auto-pause; just let user browse
+  }
+}
+
+/**
+ * Exit the player and return to browse/details page.
+ */
+function exitPlayer() {
+  // Save progress before leaving
+  var video = document.getElementById('animePlayer');
+  if (video && currentAnimeTitle && currentEp) {
+    var progressSec = Math.floor(video.currentTime || 0);
+    var durationSec = Math.floor(video.duration || 0);
+    if (progressSec > 0 && durationSec > 0) {
+      // Fire-and-forget save
+      apiFetch('/api/watch/progress', {
+        method: 'POST',
+        body: JSON.stringify({
+          animeTitle: currentAnimeTitle,
+          episodeNumber: currentEp,
+          progressSec: progressSec,
+          durationSec: durationSec,
+          episodeId: currentEpisodeId || null
+        })
+      }).catch(function() {});
+    }
+  }
+  // Navigate back
+  var params = new URLSearchParams(window.location.search);
+  var animeId = params.get('id');
+  if (animeId) {
+    window.location.href = 'details.html?id=' + animeId;
+  } else {
+    window.location.href = 'browse.html';
+  }
+}
+
+// Expose to global scope for HTML onclick handlers
+window.buildSeasonGroups = buildSeasonGroups;
+window.seasonGroups = seasonGroups;
+window.toggleEpisodeSidebar = toggleEpisodeSidebar;
+window.exitPlayer = exitPlayer;
+
 

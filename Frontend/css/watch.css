@@ -582,3 +582,261 @@ html, body {
         transition-duration: 0.01ms;
     }
 }
+.season-nav {
+    display: none;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(10, 10, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.season-nav.visible { display: flex; }
+.season-btn {
+    flex: 1; min-width: 80px; padding: 0.5rem 0.75rem;
+    background: rgba(56, 56, 66, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px; color: var(--player-text);
+    font-size: 0.85rem; font-weight: 500; cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex; align-items: center; justify-content: center; gap: 0.25rem;
+}
+.season-btn:hover {
+    background: rgba(108, 43, 217, 0.3);
+    border-color: var(--player-accent);
+    color: var(--player-accent-hover);
+}
+.season-btn.active {
+    background: var(--player-accent);
+    border-color: var(--player-accent);
+    color: #fff; font-weight: 600;
+}
+.season-btn .season-count { font-size: 0.7rem; opacity: 0.8; }
+
+.player-sidebar.visible { transform: translateX(0); }
+.sidebar-header {
+    display: flex; align-items: center;
+    justify-content: space-between; padding: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sidebar-title-group { flex: 1; min-width: 0; }
+.sidebar-header h3 {
+    font-size: 1.1rem; font-weight: 600; margin: 0;
+    color: var(--player-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar-season-info {
+    display: flex; gap: 0.5rem; align-items: center;
+    font-size: 0.8rem; color: var(--player-text-muted);
+    margin-top: 0.25rem;
+}
+#close-sidebar-btn {
+    width: 32px; height: 32px; font-size: 1.2rem;
+    border-radius: 50%; background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12); color: var(--player-text);
+    cursor: pointer; transition: all 0.2s;
+}
+#close-sidebar-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--player-accent-hover);
+}
+.sidebar-episode-list {
+    flex: 1; overflow-y: auto; padding-bottom: 1rem;
+}
+.episode-item {
+    display: flex; gap: 0.75rem; align-items: center;
+    padding: 0.75rem 1rem; cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    transition: background 0.15s ease;
+}
+.episode-item:hover { background: rgba(255, 255, 255, 0.04); }
+.episode-item.current {
+    background: rgba(108, 43, 217, 0.1);
+    border-left: 3px solid var(--player-accent);
+}
+.episode-item.watched { opacity: 0.85; }
+.ep-thumb-wrap {
+    position: relative; width: 60px; height: 40px;
+    flex-shrink: 0; border-radius: 4px; overflow: hidden;
+}
+.ep-thumb-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.ep-play-icon {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem; pointer-events: none;
+}
+.ep-checkmark {
+    position: absolute; bottom: 2px; right: 2px;
+    background: var(--player-accent); color: #fff;
+    font-size: 0.6rem; width: 16px; height: 16px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+}
+.ep-info { flex: 1; min-width: 0; }
+.ep-title-row {
+    display: flex; align-items: center;
+    gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem;
+}
+.ep-title {
+    font-size: 0.9rem; font-weight: 500;
+    color: var(--player-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ep-badge {
+    font-size: 0.65rem; padding: 1px 6px;
+    border-radius: 3px; font-weight: 600;
+}
+.ep-badge.premium {
+    background: rgba(255, 215, 0, 0.2); color: #ffd700;
+}
+.ep-badge.current-badge {
+    background: var(--player-accent); color: #fff;
+}
+.ep-badge.download-badge {
+    background: rgba(34, 197, 94, 0.2); color: #22c55e;
+}
+.ep-description {
+    font-size: 0.72rem; color: var(--player-text-muted);
+    line-height: 1.3; margin-bottom: 0.3rem;
+    display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+}
+.ep-meta-row {
+    display: flex; align-items: center;
+    gap: 0.5rem; font-size: 0.75rem;
+    color: var(--player-text-muted);
+}
+.ep-season-meta { white-space: nowrap; }
+.ep-duration { white-space: nowrap; }
+.ep-progress-bar {
+    flex: 1; height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px; overflow: hidden; min-width: 50px;
+}
+.ep-progress-fill {
+    height: 100%; background: var(--player-accent);
+    border-radius: 2px; transition: width 0.2s ease;
+}
+.ep-progress-pct { white-space: nowrap; }
+
+.next-ep {
+    background: rgba(10, 10, 15, 0.95);
+    border-radius: 12px; padding: 2rem;
+    max-width: 380px; width: 90vw;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+.next-ep-header {
+    display: flex; align-items: center;
+    justify-content: center; gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.next-ep-label {
+    font-size: 0.85rem; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--player-text-muted);
+}
+.next-ep-countdown-badge {
+    background: var(--player-accent); color: #fff;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center;
+    justify-content: center; font-size: 0.9rem;
+    font-weight: 700;
+}
+.next-ep h3 {
+    font-size: 1.25rem; font-weight: 600;
+    margin: 0 0 0.5rem 0; color: var(--player-text);
+}
+.next-ep-meta {
+    color: var(--player-text-muted);
+    font-size: 0.85rem; margin-bottom: 1.25rem;
+}
+.next-ep-actions {
+    display: flex; flex-direction: column;
+    gap: 0.5rem; margin-bottom: 1rem;
+}
+.next-ep-primary {
+    background: var(--player-accent); color: #fff;
+    font-weight: 600; padding: 0.7rem;
+    border-radius: 8px; border: none;
+    cursor: pointer; transition: background 0.2s;
+}
+.next-ep-primary:hover {
+    background: var(--player-accent-hover);
+}
+.next-ep-actions .player-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--player-text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0.6rem; border-radius: 6px;
+    cursor: pointer; font-size: 0.85rem;
+    display: flex; align-items: center;
+    justify-content: center; gap: 0.5rem;
+    transition: all 0.2s;
+}
+.next-ep-actions .player-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+.next-ep-cancel-hint {
+    display: flex; justify-content: center;
+    padding-top: 0.5rem;
+}
+
+.resume-prompt .resume-card {
+    background: linear-gradient(180deg, #0a0a0f 0%, #1a1a2e 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px; padding: 2rem;
+    max-width: 380px; width: 90vw;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.resume-prompt h3 {
+    font-size: 1.25rem; font-weight: 600;
+    margin: 0 0 1rem 0; color: var(--player-text);
+}
+.resume-progress-text {
+    color: var(--player-text-muted);
+    font-size: 0.9rem; margin-bottom: 1.25rem;
+    line-height: 1.5;
+}
+.resume-progress-pct {
+    font-weight: 600; color: var(--player-accent);
+}
+.resume-saved-time {
+    display: block; margin-top: 0.25rem;
+    font-size: 0.8rem;
+}
+.resume-actions {
+    display: flex; gap: 0.75rem;
+    justify-content: center;
+}
+.resume-actions .player-btn {
+    flex: 1; padding: 0.7rem 1.25rem;
+    border-radius: 8px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+}
+#resume-continue-btn {
+    background: var(--player-accent); color: #fff;
+}
+#resume-continue-btn:hover {
+    background: var(--player-accent-hover);
+}
+#resume-restart-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--player-text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+#resume-restart-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+#skip-outro-btn {
+    background: rgba(108, 43, 217, 0.8);
+    color: #fff; border: none;
+    padding: 0.4rem 0.8rem; border-radius: 20px;
+    font-size: 0.8rem; margin-left: 0.5rem;
+    cursor: pointer; transition: background 0.2s;
+}
+#skip-outro-btn:hover {
+    background: rgba(108, 43, 217, 0.95);
+}
+#countdown-presets { padding: 0.5rem 0 0 0; }
