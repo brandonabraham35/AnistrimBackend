@@ -36,6 +36,22 @@
             </div>
         </div>
 
+        <!-- Resume Prompt Overlay (near-end continue) -->
+        <div id="resume-overlay" class="player-overlay resume-prompt">
+            <div class="resume-card">
+                <h3>Continue Watching?</h3>
+                <p class="resume-progress-text">
+                    <span id="resume-progress-pct">50%</span> of this episode
+                    <span id="resume-saved-time"></span>
+                    has already been watched.
+                </p>
+                <div class="resume-actions">
+                    <button id="resume-continue-btn" class="player-btn">Continue Watching</button>
+                    <button id="resume-restart-btn" class="player-btn">Restart from Beginning</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Player Wrapper -->
         <div id="player-wrap" class="paused">
             <video id="animePlayer" playsinline preload="metadata"></video>
@@ -64,6 +80,7 @@
                 </div>
                 <div style="flex-grow: 1;"></div>
                 <button id="skip-intro-btn" class="player-btn skip-btn" style="display: none;">Skip Intro</button>
+                <button id="skip-outro-btn" class="player-btn skip-btn" style="display: none; margin-left: 0.5rem;">Skip Outro</button>
             </div>
 
             <!-- Bottom Controls Overlay -->
@@ -83,10 +100,10 @@
 
                 <div class="bottom-controls-main">
                     <div class="controls-left">
-                        <button id="play-pause-btn" class="player-btn icon-btn" title="Play/Pause (Space)">
+                        <button id="play-pause-btn" class="player-btn icon-btn large" title="Play/Pause (Space)">
                             <svg id="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                         </button>
-                        <button id="prev-ep-btn" class="player-btn icon-btn" title="Previous Episode">
+                        <button id="prev-ep-btn" class="player-btn icon-btn" title="Previous Episode (Shift + ←)">
                             <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
                         </button>
                         <button id="seek-backward-btn" class="player-btn icon-btn" title="Back 10s (←)">
@@ -95,7 +112,7 @@
                         <button id="seek-forward-btn" class="player-btn icon-btn" title="Forward 10s (→)">
                             <svg viewBox="0 0 24 24"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/></svg>
                         </button>
-                        <button id="next-ep-btn" class="player-btn icon-btn" title="Next Episode">
+                        <button id="next-ep-btn" class="player-btn icon-btn" title="Next Episode (Shift + →)">
                             <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
                         </button>
                         <div class="volume-container">
@@ -114,10 +131,10 @@
                         </div>
                     </div>
                     <div class="controls-right">
-                        <button id="episodes-btn" class="player-btn icon-btn" title="Episodes">
+                        <button id="episodes-btn" class="player-btn icon-btn" title="Episodes (E)">
                             <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
                         </button>
-                        <button id="settings-btn" class="player-btn icon-btn" title="Settings">
+                        <button id="settings-btn" class="player-btn icon-btn" title="Settings (S)">
                             <svg viewBox="0 0 24 24"><path d="M19.4 12.3c.2-.4.2-.9 0-1.3l-1.9-3.3c-.2-.4-.6-.6-1-.6h-3.8c-.4 0-.8.2-1 .6L10 11c-.2.4-.2.9 0 1.3l1.8 3.2c.2.4.6.6 1 .6h3.8c.4 0 .8-.2 1-.6l1.8-3.2zM12 15c-1.7 0-3-1.3-3-3s1.3-3 3-3 3 1.3 3 3-1.3 3-3 3z"/></svg>
                         </button>
                         <button id="pip-btn" class="player-btn icon-btn" title="Picture-in-Picture (P)" style="display:none;">
@@ -149,9 +166,9 @@
                         <span class="settings-item-label">Audio Track</span>
                         <span class="setting-value" id="audio-value">Default</span>
                     </button>
-                    <button class="settings-item" id="autoplay-toggle-btn">
-                        <span class="settings-item-label">Autoplay Next Episode</span>
-                        <span class="setting-value" id="autoplay-value">On</span>
+                    <button class="settings-item" data-opens="autoplay">
+                        <span class="settings-item-label">Autoplay & Countdown</span>
+                        <span class="setting-value" id="autoplay-summary">On · 10s</span>
                     </button>
                 </div>
                 <div class="settings-panel" data-panel="quality" id="quality-panel" hidden>
@@ -170,29 +187,75 @@
                     <button class="settings-item settings-back" data-back>&larr; Audio Track</button>
                     <div id="audio-options"></div>
                 </div>
+                <div class="settings-panel" data-panel="autoplay" id="autoplay-panel" hidden>
+                    <button class="settings-item settings-back" data-back>&larr; Autoplay & Countdown</button>
+                    <button class="settings-item" id="autoplay-toggle-btn">
+                        <span class="settings-item-label">Autoplay Next Episode</span>
+                        <span class="setting-value" id="autoplay-value">On</span>
+                    </button>
+                    <button class="settings-item" id="countdown-config-btn">
+                        <span class="settings-item-label">Autoplay Countdown</span>
+                        <span class="setting-value" id="countdown-value">10s</span>
+                    </button>
+                    <div id="countdown-presets" style="display:none;">
+                        <button class="settings-item" data-countdown="5">5 seconds</button>
+                        <button class="settings-item" data-countdown="10">10 seconds</button>
+                        <button class="settings-item" data-countdown="15">15 seconds</button>
+                        <button class="settings-item" data-countdown="30">30 seconds</button>
+                    </div>
+                </div>
             </div>
 
-            <!-- Next Episode Overlay -->
+            <!-- End-of-Episode Overlay -->
             <div id="next-episode-overlay" class="player-overlay next-ep">
-                <span>Next Episode</span>
+                <div class="next-ep-header">
+                    <span class="next-ep-label">Next Episode</span>
+                    <span class="next-ep-countdown-badge" id="next-ep-countdown-badge">10</span>
+                </div>
                 <h3 id="next-ep-title-overlay"></h3>
+                <div class="next-ep-meta">
+                    <span id="next-ep-time-meta"></span>
+                </div>
                 <div class="next-ep-actions">
-                    <button id="play-next-btn" class="player-btn">Play Now</button>
-                    <button id="cancel-next-btn" class="player-btn icon-btn" title="Cancel">
+                    <button id="play-next-btn" class="player-btn next-ep-primary">Next Episode</button>
+                    <button id="replay-btn" class="player-btn">
+                        <span style="display:flex;align-items:center;gap:6px;">↺ Replay</span>
+                    </button>
+                    <button id="episode-list-btn" class="player-btn">
+                        <span style="display:flex;align-items:center;gap:6px;">☰ Episode List</span>
+                    </button>
+                    <button id="exit-player-btn" class="player-btn">
+                        <span style="display:flex;align-items:center;gap:6px;">✕ Exit Player</span>
+                    </button>
+                </div>
+                <div class="next-ep-cancel-hint">
+                    <button id="cancel-next-btn" class="player-btn icon-btn" title="Cancel autoplay">
                         <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                 </div>
-                <div id="next-ep-countdown"></div>
             </div>
         </div>
 
-        <!-- Episode Sidebar -->
+        <!-- Episode Sidebar / Drawer -->
         <div id="episode-sidebar" class="player-sidebar">
             <div class="sidebar-header">
-                <h3>Episodes</h3>
-                <button id="close-sidebar-btn" class="player-btn icon-btn">&times;</button>
+                <div class="sidebar-title-group">
+                    <h3 id="sidebar-anime-title"></h3>
+                    <div class="sidebar-season-info">
+                        <span id="sidebar-season-label">Season 1</span>
+                        <span id="sidebar-ep-count"></span>
+                    </div>
+                </div>
+                <button id="close-sidebar-btn" class="player-btn icon-btn" title="Close">&times;</button>
             </div>
-            <div id="sidebar-episode-list"></div>
+
+            <!-- Season Navigation -->
+            <div id="season-nav" class="season-nav">
+                <!-- Season buttons rendered dynamically; hidden when single season -->
+            </div>
+
+            <!-- Episode List -->
+            <div id="sidebar-episode-list" class="sidebar-episode-list"></div>
         </div>
     </div>
 

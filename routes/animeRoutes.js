@@ -87,6 +87,7 @@ router.get('/:animeId/episodes', async (req, res) => {
         const mapped = episodes.map(ep => ({
             id: ep.id,
             number: ep.episode_number,
+            season: ep.season || 1,
             title: ep.title,
             description: ep.description,
             thumbnail_url: ep.thumbnail_url,

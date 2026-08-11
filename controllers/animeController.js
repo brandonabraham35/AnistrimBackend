@@ -198,6 +198,7 @@ exports.getById = async (req, res) => {
     anime.episodes = episodeRows.map(ep => ({
       id: ep.id,
       number: ep.episode_number,
+      season: ep.season || 1,
       title: ep.title,
       description: ep.description,
       thumbnail_url: ep.thumbnail_url,

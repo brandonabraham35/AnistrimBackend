@@ -1,19 +1,21 @@
 // controllers/watchController.js
 // Video playback progress tracking ("Resume Watching" feature)
 // Next episode resolver for auto-play / binge-watching
+// Batch progress for episode sidebar watched/unwatched state
 const db = require('../config/db');
 const { ConsumetProvider } = require('../services/consumetProvider');
 const { fetchSkipTimes } = require('../services/aniSkipService');
 
 /**
  * POST /api/watch/progress
- * Body: { animeId, episodeNumber, progressSeconds, totalDurationSeconds }
+ * Body: { animeId, episodeId, episodeNumber, progressSeconds, totalDurationSeconds }
  * Saves/upserts the user's playback progress for a specific anime episode.
+ * Persists: anime ID, episode ID, playback position, duration, last watched timestamp.
  */
 exports.saveProgress = async (req, res) => {
   try {
     const userId = req.user.id; // Set by auth.protect middleware
-    const { animeId, episodeNumber, progressSeconds, totalDurationSeconds } = req.body;
+    const { animeId, episodeId, episodeNumber, progressSeconds, totalDurationSeconds } = req.body;
 
     // Validate required fields
     if (!animeId || episodeNumber === undefined || episodeNumber === null) {
@@ -21,13 +23,15 @@ exports.saveProgress = async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO watch_history (user_id, anime_id, episode_number, progress_seconds, total_duration_seconds)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO watch_history
+         (user_id, anime_id, episode_id, episode_number, progress_seconds, total_duration_seconds)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         progress_seconds        = VALUES(progress_seconds),
-         total_duration_seconds  = VALUES(total_duration_seconds),
-         updated_at              = NOW()`,
-      [userId, animeId, episodeNumber, progressSeconds || 0, totalDurationSeconds || 0]
+         progress_seconds         = VALUES(progress_seconds),
+         total_duration_seconds   = VALUES(total_duration_seconds),
+         episode_id               = COALESCE(VALUES(episode_id), episode_id),
+         updated_at               = NOW()`,
+      [userId, animeId, episodeId || null, episodeNumber, progressSeconds || 0, totalDurationSeconds || 0]
     );
 
     res.json({ message: 'Progress saved successfully.' });
@@ -70,6 +74,57 @@ exports.getProgress = async (req, res) => {
   } catch (err) {
     console.error('[WatchController] getProgress error:', err.message);
     res.status(500).json({ message: 'Failed to fetch progress.' });
+  }
+};
+
+/**
+ * GET /api/watch/progress/batch/:animeId
+ * Returns progress for every episode of an anime in a single query.
+ *
+ * Response shape (keyed by episode_number):
+ *   {
+ *     "1": { progressSec: 450, durationSec: 1455, watched: false },
+ *     "2": { progressSec: 0,   durationSec: 1380, watched: false },
+ *     ...
+ *   }
+ *
+ * `watched` is true when progress >= 95% of the recorded duration.
+ * Episodes with no watch_history entry are omitted from the payload;
+ * the frontend treats missing keys as unwatched / 0 progress.
+ */
+exports.getBatchProgress = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { animeId } = req.params;
+
+    if (!animeId) {
+      return res.status(400).json({ message: 'animeId is required.' });
+    }
+
+    const [rows] = await db.query(
+      `SELECT episode_number, progress_seconds, total_duration_seconds
+       FROM watch_history
+       WHERE user_id = ? AND anime_id = ?
+       ORDER BY episode_number ASC`,
+      [userId, animeId]
+    );
+
+    const progressMap = {};
+    rows.forEach(r => {
+      const duration = Number(r.total_duration_seconds) || 0;
+      const progress = Number(r.progress_seconds) || 0;
+      const watched = duration > 0 && progress >= duration * 0.95;
+      progressMap[String(r.episode_number)] = {
+        progressSec: progress,
+        durationSec: duration,
+        watched: watched,
+      };
+    });
+
+    res.json(progressMap);
+  } catch (err) {
+    console.error('[WatchController] getBatchProgress error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch batch progress.' });
   }
 };
 

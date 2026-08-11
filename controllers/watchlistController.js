@@ -246,7 +246,7 @@ exports.getLegacyProgress = async (req, res) => {
  */
 exports.saveLegacyProgress = async (req, res) => {
   try {
-    const { episodeId, progressSec, completed } = req.body || {};
+    const { episodeId, progressSec, completed, durationSec } = req.body || {};
 
     if (!episodeId) {
       return res.status(400).json({ message: 'episodeId is required.' });
@@ -262,11 +262,12 @@ exports.saveLegacyProgress = async (req, res) => {
     }
 
     const progressSeconds = Number(progressSec || 0);
-    const totalDurationSeconds = Number(episodeRows[0].duration_sec || 0);
+    const totalDurationSeconds = Number(durationSec || episodeRows[0].duration_sec || 0);
 
     req.body = {
       animeId: episodeRows[0].anime_id,
       episodeNumber: episodeRows[0].episode_number,
+      episodeId: Number(episodeId),
       progressSeconds,
       totalDurationSeconds,
     };
@@ -277,4 +278,3 @@ exports.saveLegacyProgress = async (req, res) => {
     res.status(500).json({ message: 'Failed to save progress.' });
   }
 };
-

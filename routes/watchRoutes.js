@@ -27,5 +27,8 @@ router.get('/progress/:animeId/:episodeNumber', watchCtrl.getProgress);
 // Get "Continue Watching" list (in-progress episodes)
 router.get('/continue-watching', watchCtrl.getContinueWatching);
 
+// Get batch progress for all episodes of an anime (for watched/unwatched state in sidebar)
+router.get('/progress/batch/:animeId', watchCtrl.getBatchProgress);
+
 module.exports = router;
 
