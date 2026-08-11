@@ -55,6 +55,7 @@
       return { ok: res.ok, status: res.status, data };
     } catch (e) {
       console.error('API error:', endpoint, e.message);
+      if (timeoutId) clearTimeout(timeoutId);
       return { ok: false, data: {} };
     }
   };
