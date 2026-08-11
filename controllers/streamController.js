@@ -117,51 +117,26 @@ exports.getStream = async (req, res) => {
       logger.debugStream(`[StreamController] Using explicit ?ep=${episodeNumber} from query param`, { animeTitle, episode: episodeNumber });
     } else {
       // Priority 2 & 3: Check database for media type and ID mapping
+      // SIMPLIFICATION: The route contract is /:animeTitle/:episodeNumber.
+      // We will no longer attempt to guess if the identifier is a database ID.
+      // The identifier from the URL is treated as the episode number unless it's a movie.
       try {
         const [mediaRows] = await db.query(
           'SELECT id, media_type FROM anime WHERE title = ? OR title_japanese = ? LIMIT 1',
           [animeTitle, animeTitle]
         );
 
-        if (mediaRows && mediaRows.length > 0) {
+        if (mediaRows?.length > 0) {
           mediaType = (mediaRows[0].media_type || 'TV').toUpperCase();
           mediaId = mediaRows[0].id;
 
-          // Priority 2: MOVIE detection — always override to Episode 1
           if (mediaType === 'MOVIE') {
             logger.debugStream(`[StreamController] "${animeTitle}" (id=${mediaId}) is a MOVIE — forcing episode to 1`, { animeTitle, mediaId });
             episodeNumber = 1;
             resolvedFrom = 'movieOverride';
           } else {
-            // Priority 3: Try to map the identifier as a DB episode record ID
-            // Only attempt mapping if identifier is numeric and > 100 (DB IDs are typically large)
-            const numericId = Number(episodeIdentifier);
-            const isLikelyDbId = Number.isInteger(numericId) && numericId > 100;
-
-            if (isLikelyDbId) {
-              const [episodes] = await db.query(
-                'SELECT episode_number FROM episodes WHERE id = ? AND anime_id = ?',
-                [episodeIdentifier, mediaId]
-              );
-
-              if (episodes && episodes.length > 0) {
-                episodeNumber = episodes[0].episode_number;
-                resolvedFrom = 'dbMapping';
-                logger.debugStream(`[StreamController] Mapped DB id ${episodeIdentifier} → Episode ${episodeNumber} for anime ${mediaId}`, { animeTitle, episode: episodeNumber });
-              } else {
-                // DB ID not found in this anime's episodes — return error rather than guessing
-                logger.warn(`[StreamController] DB id ${episodeIdentifier} not found in episodes for anime ${mediaId}`, { animeTitle, episodeIdentifier });
-                return res.status(404).json({
-                  success: false,
-                  error: `Episode record ID ${episodeIdentifier} not found for "${animeTitle}".`
-                });
-              }
-            } else {
-              // Priority 4: Use identifier directly as episode number
-              episodeNumber = episodeIdentifier;
-              resolvedFrom = 'direct';
-              logger.debugStream(`[StreamController] Using identifier as episode number: ${episodeNumber}`, { animeTitle, episode: episodeNumber });
-            }
+            episodeNumber = episodeIdentifier;
+            resolvedFrom = 'direct';
           }
         } else {
           // Anime not found in DB — identifier is the episode number
