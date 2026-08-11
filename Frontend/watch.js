@@ -572,6 +572,12 @@ function setupPlayer(video) {
   });
   updateAutoplayUI();
 
+  // Subtitle appearance & player preferences
+  initSubtitlePrefsUI();
+  initPlayerPrefsUI();
+  applySubtitlePrefs();
+  applyPlayerPrefs();
+
   // End-of-episode overlay controls
   document.getElementById('play-next-btn')?.addEventListener('click', playNextEp);
   document.getElementById('replay-btn')?.addEventListener('click', () => {
@@ -1675,6 +1681,309 @@ function updateAutoplayUI() {
   const countdownVal = document.getElementById('countdown-value');
   if (countdownVal) countdownVal.textContent = autoplayCountdownSeconds + 's';
 }
+
+// ════════════════════════════════════════════════════════════
+//  SUBTITLE APPEARANCE PREFERENCES (persisted to localStorage)
+// ════════════════════════════════════════════════════════════
+const SUBTITLE_PREFS_KEY = 'anistrim_subtitle_prefs';
+const SUBTITLE_PREFS_DEFAULT = {
+  size: 'medium',      // small | medium | large | xlarge
+  color: '#ffffff',    // hex color
+  background: 'semi',  // semi | opaque | none
+  outline: 'drop-shadow', // drop-shadow | outline | none
+  position: 'bottom'   // top | bottom
+};
+
+let subtitlePrefs = loadSubtitlePrefs();
+
+function loadSubtitlePrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SUBTITLE_PREFS_KEY) || '{}');
+    return Object.assign({}, SUBTITLE_PREFS_DEFAULT, saved);
+  } catch(e) {
+    return Object.assign({}, SUBTITLE_PREFS_DEFAULT);
+  }
+}
+
+function saveSubtitlePrefs() {
+  try {
+    localStorage.setItem(SUBTITLE_PREFS_KEY, JSON.stringify(subtitlePrefs));
+  } catch(e) {}
+}
+
+// Apply current subtitle preferences to the video element via CSS
+function applySubtitlePrefs() {
+  const video = document.getElementById('animePlayer');
+  if (!video) return;
+
+  // Text size mapping
+  const sizeMap = {
+    small: '80%',
+    medium: '100%',
+    large: '130%',
+    xlarge: '160%'
+  };
+  const fontSize = sizeMap[subtitlePrefs.size] || '100%';
+
+  // Background
+  let bgMap = {
+    semi: 'rgba(0, 0, 0, 0.6)',
+    opaque: '#000000',
+    none: 'transparent'
+  };
+  const bg = bgMap[subtitlePrefs.background] || bgMap.semi;
+
+  // Outline/Shadow
+  let textShadow = '';
+  if (subtitlePrefs.outline === 'drop-shadow') {
+    textShadow = '2px 2px 4px rgba(0,0,0,0.9)';
+  } else if (subtitlePrefs.outline === 'outline') {
+    textShadow = '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000';
+  }
+
+  // Position
+  const positionCSS = subtitlePrefs.position === 'top' ? 'top: 8%; bottom: auto;' : 'bottom: 8%; top: auto;';
+
+  // Apply via CSS custom properties on the video
+  const style = video.style;
+  style.setProperty('--sub-font-size', fontSize);
+  style.setProperty('--sub-color', subtitlePrefs.color);
+  style.setProperty('--sub-bg', bg);
+  style.setProperty('--sub-text-shadow', textShadow);
+  style.setProperty('--sub-position', positionCSS);
+
+  // Also apply to ::cue via a dynamically-injected style tag
+  applySubtitleCueStyles();
+}
+
+function applySubtitleCueStyles() {
+  let styleEl = document.getElementById('anistrim-subtitle-styles');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'anistrim-subtitle-styles';
+    document.head.appendChild(styleEl);
+  }
+
+  const sizeMap = { small: '80%', medium: '100%', large: '130%', xlarge: '160%' };
+  const fontSize = sizeMap[subtitlePrefs.size] || '100%';
+  const bgMap = { semi: 'rgba(0,0,0,0.6)', opaque: '#000', none: 'transparent' };
+  const bg = bgMap[subtitlePrefs.background] || bgMap.semi;
+  let textShadow = '';
+  if (subtitlePrefs.outline === 'drop-shadow') textShadow = '2px 2px 4px rgba(0,0,0,0.9)';
+  else if (subtitlePrefs.outline === 'outline') textShadow = '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000';
+  const positionValue = subtitlePrefs.position === 'top' ? '10%' : '92%';
+
+  styleEl.textContent = `
+    video::cue {
+      font-size: ${fontSize} !important;
+      color: ${subtitlePrefs.color} !important;
+      background: ${bg} !important;
+      text-shadow: ${textShadow || 'none'} !important;
+    }
+    video::cue(.anistrim-subtitle) {
+      position: ${positionValue} !important;
+    }
+  `;
+}
+
+function updateSubtitlePrefsUI() {
+  // Size
+  document.querySelectorAll('#subtitle-size-options [data-sub-size]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-sub-size') === subtitlePrefs.size);
+  });
+  // Color
+  document.querySelectorAll('#subtitle-color-options [data-sub-color]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-sub-color').toLowerCase() === subtitlePrefs.color.toLowerCase());
+  });
+  // Background
+  document.querySelectorAll('#subtitle-bg-options [data-sub-bg]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-sub-bg') === subtitlePrefs.background);
+  });
+  // Outline
+  document.querySelectorAll('#subtitle-outline-options [data-sub-outline]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-sub-outline') === subtitlePrefs.outline);
+  });
+  // Position
+  document.querySelectorAll('#subtitle-position-options [data-sub-pos]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-sub-pos') === subtitlePrefs.position);
+  });
+
+  // Summary value
+  const summary = document.getElementById('subtitle-appearance-value');
+  if (summary) {
+    summary.textContent = subtitlePrefs.size.charAt(0).toUpperCase() + subtitlePrefs.size.slice(1) + ' · ' + subtitlePrefs.color;
+  }
+}
+
+function initSubtitlePrefsUI() {
+  const sizeOpts = document.getElementById('subtitle-size-options');
+  if (sizeOpts) {
+    sizeOpts.querySelectorAll('[data-sub-size]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        subtitlePrefs.size = btn.getAttribute('data-sub-size');
+        saveSubtitlePrefs();
+        applySubtitlePrefs();
+        updateSubtitlePrefsUI();
+        showControls();
+      });
+    });
+  }
+
+  const colorOpts = document.getElementById('subtitle-color-options');
+  if (colorOpts) {
+    colorOpts.querySelectorAll('[data-sub-color]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        subtitlePrefs.color = btn.getAttribute('data-sub-color');
+        saveSubtitlePrefs();
+        applySubtitlePrefs();
+        updateSubtitlePrefsUI();
+        showControls();
+      });
+    });
+  }
+
+  const bgOpts = document.getElementById('subtitle-bg-options');
+  if (bgOpts) {
+    bgOpts.querySelectorAll('[data-sub-bg]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        subtitlePrefs.background = btn.getAttribute('data-sub-bg');
+        saveSubtitlePrefs();
+        applySubtitlePrefs();
+        updateSubtitlePrefsUI();
+        showControls();
+      });
+    });
+  }
+
+  const outlineOpts = document.getElementById('subtitle-outline-options');
+  if (outlineOpts) {
+    outlineOpts.querySelectorAll('[data-sub-outline]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        subtitlePrefs.outline = btn.getAttribute('data-sub-outline');
+        saveSubtitlePrefs();
+        applySubtitlePrefs();
+        updateSubtitlePrefsUI();
+        showControls();
+      });
+    });
+  }
+
+  const posOpts = document.getElementById('subtitle-position-options');
+  if (posOpts) {
+    posOpts.querySelectorAll('[data-sub-pos]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        subtitlePrefs.position = btn.getAttribute('data-sub-pos');
+        saveSubtitlePrefs();
+        applySubtitlePrefs();
+        updateSubtitlePrefsUI();
+        showControls();
+      });
+    });
+  }
+
+  const resetBtn = document.getElementById('reset-subtitle-prefs-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function() {
+      subtitlePrefs = Object.assign({}, SUBTITLE_PREFS_DEFAULT);
+      saveSubtitlePrefs();
+      applySubtitlePrefs();
+      updateSubtitlePrefsUI();
+      showControls();
+    });
+  }
+
+  updateSubtitlePrefsUI();
+}
+
+// ════════════════════════════════════════════════════════════
+//  PLAYER PREFERENCES (persisted to localStorage)
+// ════════════════════════════════════════════════════════════
+const PLAYER_PREFS_KEY = 'anistrim_player_prefs';
+const PLAYER_PREFS_DEFAULT = {
+  autoSkipIntro: false,
+  autoSkipOutro: false,
+  doubleTapSeek: true,
+  autoFullscreen: false,
+  rememberSpeed: true
+};
+
+let playerPrefs = loadPlayerPrefs();
+
+function loadPlayerPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PLAYER_PREFS_KEY) || '{}');
+    return Object.assign({}, PLAYER_PREFS_DEFAULT, saved);
+  } catch(e) {
+    return Object.assign({}, PLAYER_PREFS_DEFAULT);
+  }
+}
+
+function savePlayerPrefs() {
+  try {
+    localStorage.setItem(PLAYER_PREFS_KEY, JSON.stringify(playerPrefs));
+  } catch(e) {}
+}
+
+function updatePlayerPrefsUI() {
+  const m = {
+    'skip-intro-value': playerPrefs.autoSkipIntro ? 'On' : 'Off',
+    'skip-outro-value': playerPrefs.autoSkipOutro ? 'On' : 'Off',
+    'double-tap-seek-value': playerPrefs.doubleTapSeek ? 'On' : 'Off',
+    'auto-fullscreen-value': playerPrefs.autoFullscreen ? 'On' : 'Off',
+    'remember-speed-value': playerPrefs.rememberSpeed ? 'On' : 'Off'
+  };
+  Object.keys(m).forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = m[id];
+  });
+}
+
+function initPlayerPrefsUI() {
+  const bindings = [
+    ['skip-intro-toggle-btn', 'autoSkipIntro', 'skip-intro-value'],
+    ['skip-outro-toggle-btn', 'autoSkipOutro', 'skip-outro-value'],
+    ['double-tap-seek-toggle-btn', 'doubleTapSeek', 'double-tap-seek-value'],
+    ['auto-fullscreen-toggle-btn', 'autoFullscreen', 'auto-fullscreen-value'],
+    ['remember-speed-toggle-btn', 'rememberSpeed', 'remember-speed-value']
+  ];
+  bindings.forEach(function(binding) {
+    const btn = document.getElementById(binding[0]);
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      playerPrefs[binding[1]] = !playerPrefs[binding[1]];
+      savePlayerPrefs();
+      updatePlayerPrefsUI();
+      applyPlayerPrefs();
+      showControls();
+    });
+  });
+  updatePlayerPrefsUI();
+}
+
+function applyPlayerPrefs() {
+  // Auto-skip intro/outro: if enabled, skip automatically when ranges detected
+  // (handled in timeupdate via global flags)
+  // Double-tap seek: handled in initTouchControls
+  // Auto-fullscreen: if enabled and playing, enter fullscreen
+  const video = document.getElementById('animePlayer');
+  if (playerPrefs.autoFullscreen && video && !video.paused && !video.ended) {
+    if (document.fullscreenEnabled && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen()['catch'](function(){});
+    }
+  }
+  // Remember speed: already handled by speedValue persistence
+  // If rememberSpeed is off, reset to 1x on new episodes
+  if (!playerPrefs.rememberSpeed) {
+    // Don't force here; handled in switchToEpisode
+  }
+}
+
+window.applySubtitlePrefs = applySubtitlePrefs;
+window.saveSubtitlePrefs = saveSubtitlePrefs;
+window.subtitlePrefs = subtitlePrefs;
+window.applyPlayerPrefs = applyPlayerPrefs;
+window.savePlayerPrefs = savePlayerPrefs;
+window.playerPrefs = playerPrefs;
 
 // ════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS

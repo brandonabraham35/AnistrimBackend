@@ -840,3 +840,75 @@ html, body {
     background: rgba(108, 43, 217, 0.95);
 }
 #countdown-presets { padding: 0.5rem 0 0 0; }
+
+/* ════════════════════════════════════════════════════════════
+   SUBTITLE APPEARANCE & PLAYER PREFERENCES SETTINGS
+   ════════════════════════════════════════════════════════════ */
+.settings-subtitle-prefs {
+    padding: 0.5rem 0;
+}
+.settings-pref-group {
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.settings-pref-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--player-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.4rem;
+}
+.settings-pref-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.settings-pref-btn {
+    padding: 0.35rem 0.6rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    color: var(--player-text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.settings-pref-btn:hover {
+    background: rgba(108, 43, 217, 0.2);
+    border-color: var(--player-accent);
+}
+.settings-pref-btn.active {
+    background: var(--player-accent);
+    border-color: var(--player-accent);
+    color: #fff;
+    font-weight: 600;
+}
+.settings-pref-btn.color-swatch {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+.settings-pref-btn.color-swatch.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px var(--player-accent);
+}
+.settings-pref-btn.reset-prefs-btn {
+    width: 100%;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--player-text);
+    font-weight: 500;
+}
+.settings-pref-btn.reset-prefs-btn:hover {
+    background: rgba(255, 80, 80, 0.2);
+    border-color: rgba(255, 80, 80, 0.5);
+    color: #ff6b6b;
+}
+
+/* Subtitle cue styling applied to video */
+video::cue {
+    font-family: inherit;
+}

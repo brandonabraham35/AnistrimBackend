@@ -162,6 +162,10 @@
                         <span class="settings-item-label">Subtitles</span>
                         <span class="setting-value" id="subtitle-value">Off</span>
                     </button>
+                    <button class="settings-item" data-opens="subtitle-appearance">
+                        <span class="settings-item-label">Subtitle Appearance</span>
+                        <span class="setting-value" id="subtitle-appearance-value">Default</span>
+                    </button>
                     <button class="settings-item" data-opens="audio" id="audio-settings-item" style="display:none;">
                         <span class="settings-item-label">Audio Track</span>
                         <span class="setting-value" id="audio-value">Default</span>
@@ -169,6 +173,10 @@
                     <button class="settings-item" data-opens="autoplay">
                         <span class="settings-item-label">Autoplay & Countdown</span>
                         <span class="setting-value" id="autoplay-summary">On · 10s</span>
+                    </button>
+                    <button class="settings-item" data-opens="player-prefs">
+                        <span class="settings-item-label">Player Preferences</span>
+                        <span class="setting-value" id="player-prefs-value">⚙</span>
                     </button>
                 </div>
                 <div class="settings-panel" data-panel="quality" id="quality-panel" hidden>
@@ -182,6 +190,57 @@
                 <div class="settings-panel" data-panel="subtitle" id="subtitle-panel" hidden>
                     <button class="settings-item settings-back" data-back>&larr; Subtitles</button>
                     <div id="subtitle-options"></div>
+                </div>
+                <div class="settings-panel" data-panel="subtitle-appearance" id="subtitle-appearance-panel" hidden>
+                    <button class="settings-item settings-back" data-back>&larr; Subtitle Appearance</button>
+                    <div class="settings-subtitle-prefs">
+                        <div class="settings-pref-group">
+                            <label class="settings-pref-label">Text Size</label>
+                            <div class="settings-pref-options" id="subtitle-size-options">
+                                <button class="settings-pref-btn" data-sub-size="small">Small</button>
+                                <button class="settings-pref-btn active" data-sub-size="medium">Medium</button>
+                                <button class="settings-pref-btn" data-sub-size="large">Large</button>
+                                <button class="settings-pref-btn" data-sub-size="xlarge">X-Large</button>
+                            </div>
+                        </div>
+                        <div class="settings-pref-group">
+                            <label class="settings-pref-label">Text Color</label>
+                            <div class="settings-pref-options" id="subtitle-color-options">
+                                <button class="settings-pref-btn color-swatch active" data-sub-color="#ffffff" style="background:#ffffff;" title="White"></button>
+                                <button class="settings-pref-btn color-swatch" data-sub-color="#ffff00" style="background:#ffff00;" title="Yellow"></button>
+                                <button class="settings-pref-btn color-swatch" data-sub-color="#00ff00" style="background:#00ff00;" title="Green"></button>
+                                <button class="settings-pref-btn color-swatch" data-sub-color="#00ffff" style="background:#00ffff;" title="Cyan"></button>
+                                <button class="settings-pref-btn color-swatch" data-sub-color="#ff00ff" style="background:#ff00ff;" title="Magenta"></button>
+                                <button class="settings-pref-btn color-swatch" data-sub-color="#ff8800" style="background:#ff8800;" title="Orange"></button>
+                            </div>
+                        </div>
+                        <div class="settings-pref-group">
+                            <label class="settings-pref-label">Background</label>
+                            <div class="settings-pref-options" id="subtitle-bg-options">
+                                <button class="settings-pref-btn active" data-sub-bg="semi">Semi-transparent</button>
+                                <button class="settings-pref-btn" data-sub-bg="opaque">Opaque</button>
+                                <button class="settings-pref-btn" data-sub-bg="none">None</button>
+                            </div>
+                        </div>
+                        <div class="settings-pref-group">
+                            <label class="settings-pref-label">Outline / Shadow</label>
+                            <div class="settings-pref-options" id="subtitle-outline-options">
+                                <button class="settings-pref-btn active" data-sub-outline="drop-shadow">Drop Shadow</button>
+                                <button class="settings-pref-btn" data-sub-outline="outline">Outline</button>
+                                <button class="settings-pref-btn" data-sub-outline="none">None</button>
+                            </div>
+                        </div>
+                        <div class="settings-pref-group">
+                            <label class="settings-pref-label">Position</label>
+                            <div class="settings-pref-options" id="subtitle-position-options">
+                                <button class="settings-pref-btn" data-sub-pos="top">Top</button>
+                                <button class="settings-pref-btn active" data-sub-pos="bottom">Bottom</button>
+                            </div>
+                        </div>
+                        <div class="settings-pref-group">
+                            <button class="settings-pref-btn reset-prefs-btn" id="reset-subtitle-prefs-btn">Reset to Default</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="settings-panel" data-panel="audio" id="audio-panel" hidden>
                     <button class="settings-item settings-back" data-back>&larr; Audio Track</button>
@@ -203,6 +262,29 @@
                         <button class="settings-item" data-countdown="15">15 seconds</button>
                         <button class="settings-item" data-countdown="30">30 seconds</button>
                     </div>
+                </div>
+                <div class="settings-panel" data-panel="player-prefs" id="player-prefs-panel" hidden>
+                    <button class="settings-item settings-back" data-back>&larr; Player Preferences</button>
+                    <button class="settings-item" id="skip-intro-toggle-btn">
+                        <span class="settings-item-label">Auto-Skip Intro</span>
+                        <span class="setting-value" id="skip-intro-value">Off</span>
+                    </button>
+                    <button class="settings-item" id="skip-outro-toggle-btn">
+                        <span class="settings-item-label">Auto-Skip Outro</span>
+                        <span class="setting-value" id="skip-outro-value">Off</span>
+                    </button>
+                    <button class="settings-item" id="double-tap-seek-toggle-btn">
+                        <span class="settings-item-label">Double-Tap to Seek</span>
+                        <span class="setting-value" id="double-tap-seek-value">On</span>
+                    </button>
+                    <button class="settings-item" id="auto-fullscreen-toggle-btn">
+                        <span class="settings-item-label">Auto-Fullscreen on Play</span>
+                        <span class="setting-value" id="auto-fullscreen-value">Off</span>
+                    </button>
+                    <button class="settings-item" id="remember-speed-toggle-btn">
+                        <span class="settings-item-label">Remember Playback Speed</span>
+                        <span class="setting-value" id="remember-speed-value">On</span>
+                    </button>
                 </div>
             </div>
 
