@@ -18,11 +18,14 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
   const method = options.method || 'GET';
 
 // Only set Content-Type for JSON. Let the browser handle it for FormData.
+  // IMPORTANT: Avoid double-serialization. If the body is ALREADY a string
+  // (e.g. after a retry where options.body was mutated), do NOT stringify again.
   if (options.body && !(options.body instanceof FormData)) {
-    // Add safe logging
     console.log(`[API] ${method} ${url} (JSON Body)`);
     headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(options.body);
+    if (typeof options.body !== 'string') {
+      options.body = JSON.stringify(options.body);
+    }
   } else if (options.body instanceof FormData) {
     console.log(`[API] ${method} ${url} (FormData Body)`);
   } else {

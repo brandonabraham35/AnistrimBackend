@@ -40,6 +40,7 @@ const {
   PROVIDER_IDS,
   toHealthKey,
 } = require('./providerRegistry');
+const db = require('../config/db');
 const cache = require('../utils/cacheService');
 const logger = require('../utils/logger');
 const streamCacheService = require('./streamCacheService');
@@ -646,12 +647,56 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   // The slug + episode key are stored at import time.
   const identifiers = await animeHeavenImportService.resolvePlaybackIdentifiers(animeTitle, episodeNumber);
   if (identifiers.slug) {
+    logger.info('[AnimeHeaven Mapping]', {
+      animeId: identifiers.animeId,
+      identifier: identifiers.slug,
+      episode: episodeNumber,
+      episodeKey: identifiers.episodeKey || null,
+      episodeUrl: identifiers.episodeUrl || null,
+      source: 'database',
+    });
     logger.debugStream('[AnimeHeaven] DB identifiers found — skipping search', {
       anime: animeTitle,
       episode: episodeNumber,
       slug: identifiers.slug,
       hasEpisodeKey: !!identifiers.episodeKey,
     });
+
+    // ── SELF-HEALING: if the episode key is missing, use the stored slug to
+    // fetch details ONCE, locate the episode, persist the missing key, then
+    // continue playback. This is a one-time repair, not a search.
+    if (!identifiers.episodeKey && identifiers.animeId) {
+      try {
+        logger.info('[AnimeHeaven Mapping] Episode key missing — self-healing', {
+          animeId: identifiers.animeId,
+          identifier: identifiers.slug,
+          episode: episodeNumber,
+        });
+        const details = await animeHeavenProvider.getAnimeDetails(identifiers.slug);
+        const episodes = Array.isArray(details.episodes) ? details.episodes : [];
+        const ep = episodes.find(e => Number(e.number) === Number(episodeNumber))
+          || episodes.find(e => String(e.number) === String(episodeNumber));
+        if (ep && ep.key) {
+          await db.query(
+            'UPDATE episodes SET animeheaven_episode_key = ?, animeheaven_episode_url = COALESCE(?, animeheaven_episode_url) WHERE id = ?',
+            [ep.key, ep.url || null, identifiers.episodeId]
+          );
+          identifiers.episodeKey = ep.key;
+          identifiers.episodeUrl = identifiers.episodeUrl || ep.url || null;
+          logger.info('[AnimeHeaven Mapping] Self-healed episode key', {
+            animeId: identifiers.animeId,
+            episode: episodeNumber,
+            episodeKey: ep.key,
+          });
+        }
+      } catch (healErr) {
+        logger.warn('[AnimeHeaven Mapping] Self-heal failed (non-fatal)', {
+          animeId: identifiers.animeId,
+          episode: episodeNumber,
+          error: healErr.message,
+        });
+      }
+    }
   } else {
     logger.debugStream('[AnimeHeaven] No DB identifiers — will use search path (import-time only)', {
       anime: animeTitle,

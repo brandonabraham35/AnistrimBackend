@@ -305,12 +305,14 @@ async function upsertEpisodes(animeId, episodes) {
 
     if (existing.length) {
       const id = existing[0].id;
+      // NOTE: The `episodes` table has NO `updated_at` column (only `created_at`),
+      // so we must NOT reference `updated_at` here — that caused
+      // "Unknown column 'updated_at' in 'field list'".
       await db.query(
         `UPDATE episodes SET
            title = COALESCE(?, title),
            animeheaven_episode_key = COALESCE(?, animeheaven_episode_key),
-           animeheaven_episode_url = COALESCE(?, animeheaven_episode_url),
-           updated_at = NOW()
+           animeheaven_episode_url = COALESCE(?, animeheaven_episode_url)
          WHERE id = ?`,
         [ep.title || null, ep.key || null, ep.url || null, id]
       );

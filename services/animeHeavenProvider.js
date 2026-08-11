@@ -1549,6 +1549,32 @@ async function wait(ms) {
 }
 
 /**
+ * Structured per-stage tracing for the AnimeHeaven resolution pipeline.
+ * Logs start/success/failure + duration for each stage (resolveEpisode,
+ * resolveGatePage, resolvePlayer, extractStreams, resolveMirrorSources).
+ * Never logs cookies/tokens.
+ *
+ * @param {string} stage - stage name
+ * @param {string} status - 'start' | 'success' | 'failure'
+ * @param {object} meta - { anime, episode, durationMs, error? }
+ */
+function traceStage(stage, status, meta = {}) {
+  const entry = {
+    stage,
+    status,
+    anime: meta.anime || null,
+    episode: meta.episode !== undefined ? meta.episode : null,
+    durationMs: meta.durationMs !== undefined ? meta.durationMs : null,
+  };
+  if (meta.error) entry.error = meta.error;
+  if (status === 'failure') {
+    logger.warn('[AnimeHeaven Trace]', entry);
+  } else {
+    logger.info('[AnimeHeaven Trace]', entry);
+  }
+}
+
+/**
  * Run an array of async tasks with bounded concurrency (max N simultaneous).
  * Preserves input order in the results. Used to parallelize mirror/subtitle/
  * nested-iframe extraction without overwhelming the upstream CDN.
@@ -2538,6 +2564,7 @@ async searchAnime(query, limit = 10, episode) {
     logger.debugStream('[AnimeHeaven] resolveEpisode started', { title, episode });
     const started = Date.now();
     const timings = {};
+    traceStage('resolveEpisode', 'start', { anime: title, episode });
     try {
       const baseUrl = await pickBaseUrl();
       const episodeNumber = normalizeEpisodeNumber(episode);
