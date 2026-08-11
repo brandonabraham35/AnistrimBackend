@@ -67,6 +67,11 @@ async function loadWatch() {
     if (!animeData || !animeData.id) { showWatchError('Could not load anime data.'); return; }
 
     currentAnimeTitle = window._escapeHTML(animeData.title); // Escape anime title
+    // NEW: Populate loading overlay titles
+    const loadingAnimeTitle = document.getElementById('loading-anime-title');
+    const loadingEpisodeInfo = document.getElementById('loading-episode-info');
+    if (loadingAnimeTitle) loadingAnimeTitle.textContent = currentAnimeTitle;
+    if (loadingEpisodeInfo) loadingEpisodeInfo.textContent = 'Episode ' + currentEp;
     document.title = 'Ep ' + currentEp + ' - ' + window._escapeHTML(animeData.title) + ' | AniStrim'; // Escape anime title for document title
     document.getElementById('watch-ep-title').textContent = 'Episode ' + currentEp;
     document.getElementById('watch-anime-title').textContent = currentAnimeTitle;
@@ -84,43 +89,45 @@ async function loadWatch() {
     currentEpId  = ep && ep.id ? ep.id : null;
     nextEpData   = episodes.find(function(e) { return (e.number || e.episode_number) === ((ep && (ep.number || ep.episode_number)) || currentEp) + 1; }) || null;
 
+    // NEW: Target the new next episode overlay title element
     if (nextEpData) {
-      document.getElementById('next-ep-title').textContent = 'Episode ' + (nextEpData.number || nextEpData.episode_number);
+      const nextEpTitleOverlay = document.getElementById('next-ep-title-overlay');
+      if (nextEpTitleOverlay) nextEpTitleOverlay.textContent = 'Episode ' + (nextEpData.number || nextEpData.episode_number);
     }
 
+    // DORMANT: No #premium-lock element in new HTML
+    /*
     if (ep && ep.is_premium && !State.isPremium && !State.isAdmin) {
       document.getElementById('premium-lock').style.display = 'flex';
       document.getElementById('video-placeholder').style.display = 'none';
       renderMoreEpisodes(episodes, animeId);
       return;
     }
+    */
 
     var video = document.getElementById('animePlayer');
+    const loadingOverlay = document.getElementById('loading-overlay');
 
     if (ep && ep.video_url) {
       await attachStreamSource(video, ep.video_url);
-      document.getElementById('video-placeholder').style.display = 'none';
+      if (loadingOverlay) loadingOverlay.style.display = 'none';
       setupPlayer(video);
     } else {
-      var placeholder = document.getElementById('video-placeholder');
-      var spinner = document.getElementById('stream-spinner');
-      var errorDiv = document.getElementById('stream-error');
-      placeholder.style.display = 'flex';
-      if (spinner) spinner.style.display = 'block';
-      if (errorDiv) errorDiv.style.display = 'none';
+      // NEW: Use the new loading/error overlays
+      const errorOverlay = document.getElementById('error-overlay');
+      if (loadingOverlay) loadingOverlay.style.display = 'flex';
+      if (errorOverlay) errorOverlay.style.display = 'none';
 
       try {
         console.log('[PLAYER DEBUG] Starting pre-stream operations (fetchAvailableProviders)', { timestamp: new Date().toISOString() });
         await fetchAvailableProviders(animeData.title, currentEp);
         console.log('[PLAYER DEBUG] Finished fetchAvailableProviders', { timestamp: new Date().toISOString() });
         await resolveAndPlayStream(animeData.title, currentEp, video);
-        console.log('[PLAYER DEBUG] Finished resolveAndPlayStream', { timestamp: new Date().toISOString() });
-        placeholder.style.display = 'none';
+        console.log('[PLAYER DEBUG] Finished resolveAndPlayStream, hiding loading overlay.', { timestamp: new Date().toISOString() });
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
         setupPlayer(video);
       } catch (err) {
-        console.error('Stream resolution failed:', err.message);
-        if (spinner) spinner.style.display = 'none';
-        if (errorDiv) errorDiv.style.display = 'block';
+        showWatchError(err.message || 'Stream resolution failed.');
       }
     }
 
@@ -128,9 +135,11 @@ async function loadWatch() {
     renderMoreEpisodes(episodes, animeId);
 
     if (State.isPremium || State.isAdmin) {
-      document.getElementById('download-btn').style.display = 'flex';
+      // DORMANT: No #download-btn element in new HTML
+      // document.getElementById('download-btn').style.display = 'flex';
     } else {
-      showPremiumFeatureBanner();
+      // DORMANT: No #premium-feature-hint element in new HTML
+      // showPremiumFeatureBanner();
       startMidRollAdTracker(video);
     }
 
@@ -155,12 +164,14 @@ async function fetchAvailableProviders(animeTitle, episodeNumber) {
 
 // ── Multi-API: Populate server switcher dropdown ─────────────
 function populateServerSwitcher() {
-  var select = document.getElementById('serverSwitcher');
+  // DORMANT: No #serverSwitcher element in new HTML. The new UI has a quality selector.
+  // This function can be repurposed if quality selection logic is added.
+  /* var select = document.getElementById('serverSwitcher');
   if (!select || !availableProviders.length) {
     if (select) select.style.display = 'none';
     return;
   }
-
+  
   select.style.display = 'inline-block';
   select.innerHTML = '<option value="">Auto</option>';
   availableProviders.forEach(function(p) {
@@ -170,7 +181,7 @@ function populateServerSwitcher() {
     if (p.bestQuality) name += ' (' + p.bestQuality + ')';
     opt.textContent = name;
     select.appendChild(opt);
-  });
+  }); */
 }
 
 // ── Multi-API: Resolve and play stream ──────────────────────
@@ -210,8 +221,9 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
             currentProvider = data.provider || 'unknown';
             console.log("[PLAYER] Successfully attached stream:", currentStreamUrl);
 
-            var badge = document.getElementById('qualityBadge');
-            if (badge && source.quality) { badge.textContent = source.quality; badge.style.display = 'inline-block'; }
+            // NEW: Update quality value in settings menu
+            const qualityValue = document.getElementById('quality-value');
+            if (qualityValue && source.quality) { qualityValue.textContent = source.quality; }
             return;
         } catch (err) {
             console.warn(`[PLAYER] Source failed to load: ${source.url}. Trying next source...`, err.message);
@@ -231,26 +243,26 @@ async function switchProvider(providerName) {
   var currentTime = video.currentTime;
   var wasPlaying = !video.paused;
 
-  var placeholder = document.getElementById('video-placeholder');
-  var spinner = document.getElementById('stream-spinner');
-  placeholder.style.display = 'flex';
-  if (spinner) spinner.style.display = 'block';
+  // NEW: Use new loading/error overlays
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const errorOverlay = document.getElementById('error-overlay');
+  if (loadingOverlay) loadingOverlay.style.display = 'flex';
+  if (errorOverlay) errorOverlay.style.display = 'none';
 
   try {
     await resolveAndPlayStream(currentAnimeTitle, currentEp, video, providerName || undefined);
 
     video.addEventListener('loadedmetadata', function() {
-      if (currentTime > 5 && currentTime < (video.duration || Infinity)) {
+      if (currentTime > 1 && currentTime < (video.duration || Infinity)) {
         video.currentTime = currentTime;
       }
       if (wasPlaying) video.play()['catch'](function() {});
     }, { once: true });
 
-    placeholder.style.display = 'none';
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
   } catch (err) {
     console.error('Provider switch failed:', err.message);
-    if (spinner) spinner.style.display = 'none';
-    document.getElementById('stream-error').style.display = 'block';
+    showWatchError(err.message || 'Provider switch failed.');
   }
 }
 window.switchProvider = switchProvider;
@@ -271,6 +283,8 @@ function startMidRollAdTracker(video) {
 }
 
 function showMidRollAd(video) {
+  // DORMANT: No #adOverlay element in new HTML
+  /*
   var overlay = document.getElementById('adOverlay');
   if (!overlay) return;
 
@@ -302,18 +316,22 @@ function showMidRollAd(video) {
     clearInterval(tick);
     overlay.style.display = 'none';
     if (wasPlaying) video.play()['catch'](function() {});
-  }
+  } */
 }
 
 // ── Player Setup ───────────────────────────────────────────
 function setupPlayer(video) {
-  var wrap = document.getElementById('player-wrap');
-  var fill = document.getElementById('progress-fill');
-  var timeDisplay = document.getElementById('time-display');
-  var playIcon = document.getElementById('play-icon');
-  var controls = document.getElementById('videoControls');
-  var skipBtn = document.getElementById('skipIntroBtn');
-  var nextBanner = document.getElementById('nextEpisodeBtn');
+  // NEW: Get new player elements
+  const wrap = document.getElementById('player-wrap');
+  const progressBar = document.getElementById('progress-bar');
+  const timeDisplay = document.getElementById('time-display');
+  const playPauseBtn = document.getElementById('play-pause-btn');
+  const playIcon = document.getElementById('play-icon'); // This is inside the button
+  const bottomControls = document.querySelector('.controls-overlay.bottom');
+  const topControls = document.querySelector('.controls-overlay.top');
+  const allControls = [bottomControls, topControls];
+  const skipBtn = document.getElementById('skip-intro-btn');
+  const nextBanner = document.getElementById('next-episode-overlay');
   var isPremium = State.isPremium || State.isAdmin;
   
   // Temporary debug listeners
@@ -332,26 +350,28 @@ function setupPlayer(video) {
   if (currentEpId) loadProgress(video, currentEpId);
 
   video.addEventListener('timeupdate', function() {
-    var pct = (video.currentTime / (video.duration || 1)) * 100;
-    fill.style.width = pct + '%';
+    // NEW: Update range input for progress
+    if (progressBar && video.duration) {
+      progressBar.value = video.currentTime;
+      progressBar.max = video.duration;
+    }
     timeDisplay.textContent = fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration);
 
     if (isPremium && introRange && video.currentTime >= introRange.start && video.currentTime < introRange.end) {
-      skipBtn.style.display = 'block';
-      skipBtn.classList.remove('hidden');
+      if(skipBtn) skipBtn.style.display = 'block';
     } else {
-      skipBtn.style.display = 'none';
-      skipBtn.classList.add('hidden');
+      if(skipBtn) skipBtn.style.display = 'none';
     }
 
     if (isPremium && nextEpData && video.duration) {
       var remaining = video.duration - video.currentTime;
       if (remaining <= 30 && remaining > 0) {
-        nextBanner.style.display = 'block';
-        var secEl = document.getElementById('autoplay-countdown-num');
-        if (secEl) secEl.textContent = Math.ceil(remaining);
+        // NEW: Use new next episode overlay
+        if (nextBanner) nextBanner.style.display = 'flex';
+        const secEl = document.getElementById('next-ep-countdown');
+        if (secEl) secEl.textContent = `Playing next in ${Math.ceil(remaining)}s`;
       } else if (remaining > 30) {
-        nextBanner.style.display = 'none';
+        if (nextBanner) nextBanner.style.display = 'none';
       }
     }
 
@@ -365,14 +385,17 @@ function setupPlayer(video) {
     if (isPremium && nextEpData) {
       startAutoplayCountdown();
     } else if (!isPremium && nextEpData) {
-      nextBanner.style.display = 'block';
-      document.getElementById('next-ep-auto-label').style.display = 'none';
-      document.getElementById('next-ep-manual-label').style.display = 'block';
+      // NEW: Show next episode banner for manual click
+      if (nextBanner) {
+        nextBanner.style.display = 'flex';
+        const countdownEl = document.getElementById('next-ep-countdown');
+        if(countdownEl) countdownEl.style.display = 'none';
+      }
     }
   });
 
   video.addEventListener('play', function() {
-    playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+    if (playIcon) playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; // Pause icon
     wrap.classList.remove('paused');
 
     // Log video started event for performance monitoring, but only once.
@@ -387,20 +410,40 @@ function setupPlayer(video) {
         };
         apiFetch('/api/reports/client-event', { method: 'POST', body: JSON.stringify(payload) }).catch(err => console.warn('Failed to log videoStarted event:', err));
     }
-    showControls(controls);
+    showControls(allControls);
   });
   video.addEventListener('pause', function() {
-    playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+    if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>'; // Play icon
     wrap.classList.add('paused');
-    showControls(controls);
+    showControls(allControls);
     cancelAutoplay();
   });
 
-  setupControlsAutoHide(wrap, controls);
+  // NEW: Wire up new controls
+  document.getElementById('play-pause-btn')?.addEventListener('click', togglePlay);
+  document.getElementById('seek-backward-btn')?.addEventListener('click', skipBack);
+  document.getElementById('seek-forward-btn')?.addEventListener('click', skipForward);
+  document.getElementById('fullscreen-btn')?.addEventListener('click', toggleFullscreen);
+  document.getElementById('back-btn')?.addEventListener('click', () => window.history.back());
+  
+  const volumeSlider = document.getElementById('volume-slider');
+  if(volumeSlider) volumeSlider.addEventListener('input', (e) => setVolume(e.target.value));
+
+  if(progressBar) progressBar.addEventListener('input', (e) => seekVideo(e));
+
+  document.getElementById('episodes-btn')?.addEventListener('click', () => {
+    document.getElementById('episode-sidebar')?.classList.add('visible');
+  });
+  document.getElementById('close-sidebar-btn')?.addEventListener('click', () => {
+    document.getElementById('episode-sidebar')?.classList.remove('visible');
+  });
+
+  setupControlsAutoHide(wrap, allControls);
   video.play()['catch'](function() { wrap.classList.add('paused'); });
 }
 
-function setupControlsAutoHide(wrap, controls) {
+function setupControlsAutoHide(wrap, allControls) {
+  const controls = Array.isArray(allControls) ? allControls : [allControls];
   function resetControlsTimer() {
     showControls(controls);
     if (controlsTimer) clearTimeout(controlsTimer);
@@ -412,29 +455,33 @@ function setupControlsAutoHide(wrap, controls) {
   wrap.addEventListener('mousemove', resetControlsTimer);
   wrap.addEventListener('touchstart', resetControlsTimer);
   wrap.addEventListener('mouseenter', resetControlsTimer);
+  // NEW: Toggle play on video click, but not if controls are clicked
   wrap.addEventListener('click', function(e) {
-    if (e.target.closest('#videoControls') || e.target.closest('.skip-intro-btn') || e.target.closest('.next-ep-banner')) return;
+    if (e.target.closest('.controls-overlay') || e.target.closest('.skip-btn') || e.target.closest('.next-ep')) return;
     var video = document.getElementById('animePlayer');
     if (video) togglePlay();
   });
 }
 
-function showControls(controls) {
-  if (!controls) controls = document.getElementById('videoControls');
-  if (controls) controls.classList.remove('hidden');
+function showControls(controlsArray) {
+  controlsArray.forEach(controls => {
+    if (controls) controls.classList.remove('hidden');
+  });
 }
 
-function hideControls(controls) {
-  if (!controls) controls = document.getElementById('videoControls');
-  if (controls) controls.classList.add('hidden');
+function hideControls(controlsArray) {
+  controlsArray.forEach(controls => {
+    if (controls) controls.classList.add('hidden');
+  });
 }
 
 function startAutoplayCountdown() {
-  var nextBanner = document.getElementById('nextEpisodeBtn');
-  var countEl = document.getElementById('autoplay-countdown-num');
-  nextBanner.style.display = 'block';
-  document.getElementById('next-ep-auto-label').style.display = 'block';
-  document.getElementById('next-ep-manual-label').style.display = 'none';
+  // NEW: Use new next episode overlay elements
+  const nextBanner = document.getElementById('next-episode-overlay');
+  const countEl = document.getElementById('next-ep-countdown');
+  const playNextBtn = document.getElementById('play-next-btn');
+  if (playNextBtn) playNextBtn.onclick = playNextEp;
+  if (nextBanner) nextBanner.style.display = 'flex';
   var sec = 5;
   if (countEl) countEl.textContent = sec;
   autoplayCountdown = setInterval(function() {
@@ -449,25 +496,15 @@ function cancelAutoplay() {
 }
 window.cancelAutoplay = cancelAutoplay;
 
-function showPremiumFeatureBanner() {
-  var existing = document.getElementById('premium-feature-hint');
-  if (existing) return;
-  var banner = document.createElement('div');
-  banner.id = 'premium-feature-hint';
-
-
-  var watchInfo = document.querySelector('.watch-info');
-  if (watchInfo) watchInfo.after(banner);
-}
-
 async function loadProgress(video, epId) {
   try {
     var { data } = await apiFetch('/api/watchlist/progress/' + epId);
     if (data && data.progress_sec > 10 && !data.completed) {
       video.addEventListener('loadedmetadata', function() {
         video.currentTime = data.progress_sec;
-        var badge = document.getElementById('resume-badge');
-        if (badge) { badge.style.display = 'block'; setTimeout(function() { badge.style.display = 'none'; }, 4000); }
+        // DORMANT: No #resume-badge element in new HTML
+        // var badge = document.getElementById('resume-badge');
+        // if (badge) { badge.style.display = 'block'; setTimeout(function() { badge.style.display = 'none'; }, 4000); }
       }, { once: true });
     }
   } catch(e) {}
@@ -483,9 +520,18 @@ function togglePlay() { var v = document.getElementById('animePlayer'); v.paused
 window.togglePlay = togglePlay;
 function skipBack() { var v = document.getElementById('animePlayer'); if (!isFinite(v.duration)) return; v.currentTime = Math.max(0, v.currentTime - 10); }
 function skipForward() { var v = document.getElementById('animePlayer'); if (!isFinite(v.duration)) return; v.currentTime = Math.min(v.duration - 0.5, v.currentTime + 10); }
-function setVolume(v) { document.getElementById('animePlayer').volume = parseFloat(v); }
+function setVolume(v) { 
+  const video = document.getElementById('animePlayer');
+  if(video) video.volume = parseFloat(v); 
+}
 window.skipBack = skipBack; window.skipForward = skipForward; window.setVolume = setVolume;
-function seekVideo(e) { var v = document.getElementById('animePlayer'); var rect = e.currentTarget.getBoundingClientRect(); v.currentTime = ((e.clientX - rect.left) / rect.width) * (v.duration || 0); }
+function seekVideo(e) { 
+  const video = document.getElementById('animePlayer');
+  if (!video || !isFinite(video.duration)) return;
+  // NEW: Logic for range input
+  const progressBar = e.currentTarget;
+  video.currentTime = (progressBar.value / progressBar.max) * video.duration;
+}
 window.seekVideo = seekVideo;
 function toggleFullscreen() {
   var wrap = document.getElementById('player-wrap');
@@ -493,14 +539,15 @@ function toggleFullscreen() {
   else { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
 }
 window.toggleFullscreen = toggleFullscreen;
-function skipIntro() { if (!State.isPremium && !State.isAdmin) return; var video = document.getElementById('animePlayer'); if (introRange) video.currentTime = introRange.end; document.getElementById('skipIntroBtn').classList.add('hidden'); }
+function skipIntro() { if (!State.isPremium && !State.isAdmin) return; var video = document.getElementById('animePlayer'); if (introRange) video.currentTime = introRange.end; document.getElementById('skip-intro-btn').style.display = 'none'; }
 window.skipIntro = skipIntro;
 function playNextEp() { cancelAutoplay(); if (!nextEpData || !currentAnime) return; var nextNum = nextEpData.number || nextEpData.episode_number; location.href = 'watch.html?id=' + currentAnime.id + '&ep=' + nextNum; }
 window.playNextEp = playNextEp;
 function fmtTime(s) { if (!s || isNaN(s)) return '0:00'; return Math.floor(s/60) + ':' + Math.floor(s%60).toString().padStart(2,'0'); }
 
 function renderMoreEpisodes(episodes, animeId) {
-  var container = document.getElementById('more-episodes');
+  // NEW: Target the new sidebar list
+  var container = document.getElementById('sidebar-episode-list');
   if (!container) return;
   var epNum = currentEp;
   var others = episodes.filter(function(e) { return (e.number || e.episode_number) !== epNum; }).slice(0, 12);
@@ -516,32 +563,31 @@ function renderMoreEpisodes(episodes, animeId) {
     var playSvg = isLocked ? '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>' : '<polygon points="5 3 19 12 5 21 5 3"/>';
     var playColor = isLocked ? 'var(--orange)' : 'var(--text-muted)';
     // CANONICAL URL: watch.html?id=<animeId>&ep=<episodeNumber> — NEVER use database IDs
-    var targetEpNum = e.number || e.episode_number;
-    return '<div class="episode-item" onclick="location.href=\'watch.html?id=' + animeId + '&ep=' + targetEpNum + '\'"><div class="ep-thumb-wrap"><img src="' + thumbSrc + '" alt="' + epTitle.replace(/'/g,"\\'") + '" loading="lazy" onerror="cardImgError(this,\'' + epTitle.replace(/'/g,"\\'") + '\')" style="width:60px;height:40px;object-fit:cover;border-radius:4px;"></div><div class="ep-num" style="' + lockColor + '">' + lockIcon + '</div><div class="ep-info"><div class="ep-title">' + window._escapeHTML(epTitle) + premiumTag + '</div><div class="ep-duration">' + fmtTime(e.duration_sec || 1440) + '</div><span class="ep-play" style="color:' + playColor + '"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + playSvg + '</svg></span></div></div>';
+    const targetEpNum = e.number || e.episode_number;
+    const currentClass = targetEpNum === epNum ? 'current' : '';
+    // NEW: Markup to match new sidebar design if needed (assuming .episode-item is styled in watch.css)
+    return `<div class="episode-item ${currentClass}" onclick="location.href='watch.html?id=${animeId}&ep=${targetEpNum}'">
+              <div class="ep-thumb-wrap"><img src="${thumbSrc}" alt="${epTitle.replace(/'/g,"\\'")}" loading="lazy" onerror="cardImgError(this,'${epTitle.replace(/'/g,"\\'")}')"></div>
+              <div class="ep-info">
+                <div class="ep-title">${window._escapeHTML(epTitle)} ${premiumTag}</div>
+                <div class="ep-duration">${fmtTime(e.duration_sec || 1440)}</div>
+              </div>
+              <span class="ep-play-icon">${isLocked ? '🔒' : '▶'}</span>
+            </div>`;
   }).join('');
 }
 
 function showWatchError(msg) {
-  var wrap = document.getElementById('player-wrap');
-  var info = document.querySelector('.watch-info');
-  var moreEp = document.getElementById('more-episodes');
-  if (wrap) wrap.style.display = 'none';
-  if (info) info.style.display = 'none';
-  if (moreEp) moreEp.style.display = 'none';
-  var errEl = document.getElementById('watch-error');
-  if (!errEl) {
-    errEl = document.createElement('div');
-    errEl.id = 'watch-error';
-    errEl.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;min-height:50vh;';
-    var nav = document.querySelector('.navbar');
-    if (nav && nav.parentNode) nav.parentNode.insertBefore(errEl, nav.nextSibling);
-    else document.body.prepend(errEl);
-  }
-  errEl.style.display = 'flex';
-  var urlParams = new URLSearchParams(window.location.search);
-  var animeId = urlParams.get('animeId') || urlParams.get('id');
-  var backBtn = animeId ? '<button class="btn-secondary" onclick="location.href=\'details.html?id=' + animeId + '\'">&#8592; Back to Details</button>' : '';
-  errEl.innerHTML = '<div style="font-size:3rem;margin-bottom:12px;">&#9888;&#65039;</div><h3 style="font-size:1.1rem;font-weight:700;margin-bottom:8px;">Something went wrong</h3><p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:20px;max-width:360px;">' + msg + '</p><div style="display:flex;gap:10px;"><button class="btn-primary" onclick="location.reload()">&#8635; Retry</button>' + backBtn + '<button class="btn-secondary" onclick="location.href=\'browse.html\'">&#128269; Browse Anime</button></div>';
+  // NEW: Use the new error overlay
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const errorOverlay = document.getElementById('error-overlay');
+  const errorMessage = document.getElementById('error-message');
+
+  if (loadingOverlay) loadingOverlay.style.display = 'none';
+  if (errorOverlay) errorOverlay.style.display = 'flex';
+  if (errorMessage) errorMessage.textContent = msg;
+
+  document.getElementById('retry-btn')?.addEventListener('click', () => location.reload());
 }
 window.showWatchError = showWatchError;
 
@@ -554,6 +600,7 @@ function saveOfflineList(list) { localStorage.setItem(OFFLINE_STORAGE_KEY, JSON.
 function isEpisodeDownloaded(animeTitle, epNum) { return getOfflineList().some(function(e) { return e.animeTitle === animeTitle && e.episodeNumber === epNum; }); }
 
 async function handleDownload() {
+  // DORMANT: No download UI in new HTML
   if (!State.isPremium && !State.isAdmin) { if (confirm('Offline downloads are for premium users only. Upgrade now?')) location.href = 'upgrade.html'; return; }
   if (!currentAnimeTitle || !currentEp) { alert('Cannot download this episode.'); return; }
   if (isEpisodeDownloaded(currentAnimeTitle, currentEp)) {
@@ -578,6 +625,7 @@ async function handleDownload() {
 window.handleDownload = handleDownload;
 
 function closeOfflineModal() { document.getElementById('offlineModal').style.display = 'none'; document.getElementById('offlineProgress').style.width = '0%'; window.__pendingDownload = null; }
+
 window.closeOfflineModal = closeOfflineModal;
 
 async function startOfflineDownload() {
@@ -619,6 +667,7 @@ async function startOfflineDownload() {
 window.startOfflineDownload = startOfflineDownload;
 
 function deleteOfflineDownload() {
+  // DORMANT: No download UI in new HTML
   var list = getOfflineList();
   var filtered = list.filter(function(e) { return !(e.animeTitle === currentAnimeTitle && e.episodeNumber === currentEp); });
   saveOfflineList(filtered);
@@ -673,6 +722,7 @@ async function deleteBlobFromIndexedDB(animeTitle, episodeNumber) {
 
 // ── HLS / Stream Source Attacher ─────────────────────────────
 async function downloadEpisode(ep) {
+  // DORMANT: No download UI in new HTML
   if (!State.isPremium && !State.isAdmin) { if (confirm('Offline downloads are available for premium users only. Upgrade now?')) location.href = 'upgrade.html'; return; }
   if (!ep || !ep.id) { alert('Cannot download this episode.'); return; }
   var dlBtn = document.getElementById('download-btn');
