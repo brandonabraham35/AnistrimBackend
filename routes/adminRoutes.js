@@ -37,6 +37,13 @@ router.get('/anime/import/search',          imports.searchConsumet);
 router.post('/anime/import',                imports.importConsumetAnime);
 router.put('/anime/:id/sync',               imports.syncConsumetAnime);
 
+// ── AnimeHeaven Import & Sync (Phase 6 & 7) ────────────────
+router.get('/animeheaven/search',           imports.searchAnimeHeaven);
+router.get('/animeheaven/preview/:identifier', imports.previewAnimeHeaven);
+router.post('/animeheaven/import',          imports.importAnimeHeaven);
+router.post('/animeheaven/sync/:animeId',   imports.syncAnimeHeaven);
+router.get('/animeheaven/status/:animeId',  imports.getAnimeHeavenStatus);
+
 // Genres
 router.get('/genres',                       admin.getAllGenres);
 router.post('/genres',                      admin.createGenre);

@@ -2832,6 +2832,170 @@ sources = sortSourcesByQuality(sources)
   async resolveStream({ title, episode }) {
     return this.extractStreams({ title, episode });
   }
+
+  /**
+   * FAST PLAYBACK RESOLUTION — resolve a stream using a persisted
+   * AnimeHeaven identifier + episode key, skipping BOTH the search step
+   * AND the details/episode-list lookup. This is the cold-request path used
+   * after an AnimeHeaven import: the slug + gate key are stored in the DB.
+   *
+   * @param {object} params
+   * @param {string} params.slug — AnimeHeaven anime.php?<id> identifier
+   * @param {string} params.episodeKey — AnimeHeaven gate key for the episode
+   * @returns {Promise<object>} provider result ({ provider, streamUrl, sources, subtitles, ... })
+   */
+  async resolveStreamByKey({ slug, episodeKey }) {
+    logger.debugStream('[AnimeHeaven] resolveStreamByKey started', { slug, hasKey: !!episodeKey });
+    const started = Date.now();
+    const timings = {};
+
+    try {
+      const baseUrl = await pickBaseUrl();
+      if (!slug) {
+        logger.warn('[AnimeHeavenProvider] resolveStreamByKey missing slug');
+        return normalizeEmptyStream(REASON.SEARCH_EMPTY);
+      }
+
+      // Build details object from the slug so resolveGatePage can reference it.
+      const identifier = String(slug).trim();
+      const animeUrl = buildAnimeUrl(baseUrl, identifier);
+      const details = {
+        identifier,
+        slug: identifier,
+        url: animeUrl,
+        title: identifier,
+      };
+
+      // Resolve the gate page using the episode key directly.
+      const episode = episodeKey ? { key: String(episodeKey), number: null } : null;
+      if (!episode) {
+        logger.warn('[AnimeHeavenProvider] resolveStreamByKey missing episodeKey');
+        return normalizeEmptyStream(REASON.EPISODE_MISSING);
+      }
+
+      const gateStart = Date.now();
+      const gatePage = await resolveGatePage(baseUrl, details, episode);
+      timings.gate = Date.now() - gateStart;
+      timings.resolveGatePage = timings.gate;
+
+      if (!gatePage.ok || !gatePage.html) {
+        logger.warn('[AnimeHeavenProvider] resolveStreamByKey gate failed', {
+          slug,
+          reason: gatePage.reason,
+          status: gatePage.status,
+        });
+        if (gatePage.reason === REASON.CLOUDFLARE) recordProviderMetric('cloudflare', Date.now() - started);
+        else if (gatePage.reason === REASON.TIMEOUT) recordProviderMetric('timeout', Date.now() - started);
+        else recordProviderMetric('failure', Date.now() - started);
+        return normalizeEmptyStream(gatePage.reason || REASON.PLAYER_MISSING);
+      }
+
+      // Extract sources (mirrors + nested iframes + subtitles) — same path as
+      // extractStreams after the gate is resolved.
+      const extractionStart = Date.now();
+      const [direct, nested] = await Promise.all([
+        parseSources(gatePage.html, baseUrl),
+        extractNestedIframeSources(gatePage.html, baseUrl),
+      ]);
+
+      const merged = [];
+      for (const src of [...direct, ...nested]) {
+        if (!merged.some(x => x.url === src.url)) merged.push(src);
+      }
+
+      const mirrorStart = Date.now();
+      const mirrorSources = await resolveMirrorSources(merged, {
+        referer: gatePage.url || animeUrl,
+      });
+      timings.resolveMirrors = Date.now() - mirrorStart;
+      for (const src of mirrorSources) {
+        if (!merged.some(x => x.url === src.url)) merged.push(src);
+      }
+      timings.sourceExtraction = Date.now() - extractionStart;
+
+      // Subtitle extraction (direct + nested iframes).
+      const [directSubtitles, nestedIframeSubtitles] = await Promise.all([
+        parseSubtitles(gatePage.html || '', gatePage.url || animeUrl),
+        extractNestedIframeSubtitles(gatePage.html || '', gatePage.url || animeUrl),
+      ]);
+
+      let sources = sortSourcesByQuality(merged)
+        .filter(src => isPlayableMediaUrl(src.url))
+        .filter(src => !isConfirmedDeadOnErrorSource(src.url));
+
+      if (!sources.length) {
+        logger.info('[AnimeHeaven] Stream missing (by key)', { slug, episodeKey });
+        recordProviderMetric('failure', Date.now() - started);
+        return normalizeEmptyStream(playerOrStreamReason(merged));
+      }
+
+      // Attach playback context.
+      const sourceReferer = gatePage.url || animeUrl;
+      sources = sources.map(src => {
+        if (src.referer && src.origin) return src;
+        const ctx = getPlaybackContext(src.url, sourceReferer);
+        return Object.assign({}, src, {
+          referer: src.referer || ctx.referer,
+          origin: src.origin || ctx.origin,
+          cookies: src.cookies || ctx.cookies,
+        });
+      });
+
+      let subtitles = [...directSubtitles];
+      for (const row of nestedIframeSubtitles) {
+        if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
+      }
+
+      if (!subtitles.length) {
+        const sourceDerived = await discoverSubtitlesFromSources(sources, {
+          referer: sourceReferer,
+        });
+        for (const row of sourceDerived) {
+          if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
+        }
+      }
+
+      const rawSubtitles = (subtitles || []).map(track => Object.assign({}, track));
+      const streamUrl = sources[0]?.url || null;
+
+      timings.total = Date.now() - started;
+      logger.info('[AnimeHeaven Timing] resolveStreamByKey', {
+        slug,
+        episodeKey,
+        gate: timings.gate || 0,
+        resolveMirrors: timings.resolveMirrors || 0,
+        sourceExtraction: timings.sourceExtraction || 0,
+        total: timings.total,
+      });
+
+      recordProviderMetric('success', Date.now() - started);
+      recordProviderMetric('stream_success');
+
+      return {
+        provider: PROVIDER_NAME,
+        streamUrl,
+        sources,
+        subtitles: rawSubtitles,
+        subtitleMode: rawSubtitles.length ? 'external' : 'missing',
+        externalTracks: rawSubtitles.length > 0,
+      };
+    } catch (error) {
+      const msg = String(error?.message || '');
+      const reason = classifyFailure({ status: 0, message: msg, html: '' });
+      if (reason === REASON.TIMEOUT) recordProviderMetric('timeout', Date.now() - started);
+      else if (reason === REASON.CLOUDFLARE) recordProviderMetric('cloudflare', Date.now() - started);
+      else recordProviderMetric('failure', Date.now() - started);
+      logger.warn('[AnimeHeavenProvider] resolveStreamByKey failed', { slug, episodeKey, error: msg, reason });
+      timings.total = Date.now() - started;
+      return normalizeEmptyStream(reason);
+    }
+  }
+}
+
+// Helper: derive a stream-missing reason from merged sources.
+function playerOrStreamReason(sources) {
+  if (sources && sources.some(s => s && s.sourceType === 'iframe')) return REASON.PLAYER_MISSING;
+  return REASON.STREAM_MISSING;
 }
 
 module.exports = {

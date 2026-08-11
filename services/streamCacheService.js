@@ -349,11 +349,14 @@ async function getOrResolve(episodeId, provider, resolver) {
     // The resolver (AnimeHeaven extraction) can hang on a slow upstream.
     // Without a hard upper bound, the lock would remain held forever and
     // every subsequent request for the same episode would wait indefinitely.
-    // We race the resolver against a timeout. On timeout:
-    //   • the lock is released (finally block)
-    //   • a structured timeout result is returned
-    //   • the timeout is logged
-    //   • the next request can attempt a fresh resolution
+    //
+    // IMPORTANT (AnimeHeaven-first fix): On timeout we do NOT discard the
+    // still-running resolver. The resolver promise is left to complete in the
+    // background; when it eventually resolves with sources, we SAVE the result
+    // to the persistent cache so the NEXT request for this episode is a cache
+    // hit. This prevents the "system declares failure while AnimeHeaven is
+    // still succeeding" defect. The lock is released (finally block) so the
+    // next request can proceed — but it will find the freshly-saved cache row.
     let timedOut = false;
     const fresh = await Promise.race([
       resolver(),
@@ -366,11 +369,28 @@ async function getOrResolve(episodeId, provider, resolver) {
     ]);
 
     if (timedOut) {
-      logger.warn('[STREAM_CACHE] RESOLVER TIMEOUT — lock released', {
+      logger.warn('[STREAM_CACHE] RESOLVER TIMEOUT — lock released, late result will be cached', {
         episodeId,
         provider,
         timeoutMs: RESOLVER_TIMEOUT_MS,
       });
+      // Fire-and-forget: when the resolver eventually settles, save its result
+      // to the persistent cache so a subsequent request is a cache hit. This
+      // never throws and never blocks the current request.
+      resolver()
+        .then((late) => {
+          const lateResult =
+            late &&
+            !Array.isArray(late.sources) &&
+            Array.isArray(late.result && late.result.sources)
+              ? late.result
+              : late;
+          if (lateResult && Array.isArray(lateResult.sources) && lateResult.sources.length > 0) {
+            return saveStream(episodeId, provider, lateResult);
+          }
+          return false;
+        })
+        .catch(() => {});
       return null;
     }
 

@@ -3,8 +3,8 @@
 // Next episode resolver for auto-play / binge-watching
 // Batch progress for episode sidebar watched/unwatched state
 const db = require('../config/db');
-const { ConsumetProvider } = require('../services/consumetProvider');
 const { fetchSkipTimes } = require('../services/aniSkipService');
+const streamingService = require('../services/streamingService');
 
 /**
  * POST /api/watch/progress
@@ -185,13 +185,15 @@ exports.getContinueWatching = async (req, res) => {
  * GET /api/watch/next/:animeId/:currentEpisodeNumber
  * Resolves the next episode for an anime to enable auto-play / binge-watching.
  *
+ * AnimeHeaven-first (Phase 5): autoplay must use the SAME provider as the
+ * current playback. The next episode is resolved from the local DB (which was
+ * populated by the AnimeHeaven import) and streamed through the standard
+ * streaming engine — NO Consumet dependency.
+ *
  * Steps:
- *   1. Fetch the anime info and full episode list from the Consumet Anilist provider.
- *   2. Calculate targetEpisodeNumber = currentEpisodeNumber + 1.
- *   3. Search the episode list for a matching episode.
- *   4. If no next episode exists → { success: true, hasNextEpisode: false }.
- *   5. If found → fetch streaming sources for that episode.
- *   6. Return combined { success, hasNextEpisode, episode, sources }.
+ *   1. Look up the anime title + next episode from the local DB.
+ *   2. Resolve the stream via streamingService.resolveStream (AnimeHeaven-first).
+ *   3. Return combined { success, hasNextEpisode, episode, sources, providerUsed }.
  */
 exports.resolveNextEpisode = async (req, res) => {
   try {
@@ -206,25 +208,27 @@ exports.resolveNextEpisode = async (req, res) => {
 
     const targetEpisodeNumber = parseInt(currentEpisodeNumber, 10) + 1;
 
-    // Instantiate the Consumet provider
-    const consumet = new ConsumetProvider();
-
-    // Fetch anime info including the full episode list
-    const info = await consumet.fetchAnimeInfo(animeId);
-    const episodes = info?.episodes || [];
-
-    if (episodes.length === 0) {
+    // 1. Look up the anime title from the local DB.
+    const [animeRows] = await db.query(
+      'SELECT id, title FROM anime WHERE id = ? LIMIT 1',
+      [animeId]
+    );
+    if (!animeRows.length) {
       return res.json({
         success: true,
         hasNextEpisode: false,
-        message: 'No episode data available for this anime.',
+        message: 'Anime not found in catalogue.',
       });
     }
+    const animeTitle = animeRows[0].title;
 
-    // Find the next episode by number
-    const nextEpisode = episodes.find(ep => ep.number === targetEpisodeNumber);
+    // 2. Look up the next episode from the local DB.
+    const [epRows] = await db.query(
+      'SELECT id, episode_number, title, animeheaven_episode_key FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+      [animeId, targetEpisodeNumber]
+    );
 
-    if (!nextEpisode) {
+    if (!epRows.length) {
       return res.json({
         success: true,
         hasNextEpisode: false,
@@ -232,26 +236,36 @@ exports.resolveNextEpisode = async (req, res) => {
       });
     }
 
-    // Fetch streaming sources for the next episode
-    const sources = await consumet.getSources(nextEpisode.id);
+    const nextEpisode = epRows[0];
+
+    // 3. Resolve the stream through the standard streaming engine
+    //    (AnimeHeaven-first with fallback). This uses the persisted
+    //    animeheaven_slug + animeheaven_episode_key — NO search.
+    const result = await streamingService.resolveStream(animeTitle, targetEpisodeNumber, {
+      isPremium: req.user?.isPremium === true || req.user?.isAdmin === true,
+      episodeId: nextEpisode.id,
+    });
+
+    const episodePayload = {
+      id: nextEpisode.id,
+      number: nextEpisode.episode_number,
+      title: nextEpisode.title || null,
+      animeheaven_episode_key: nextEpisode.animeheaven_episode_key || null,
+    };
 
     return res.json({
       success: true,
       hasNextEpisode: true,
-      episode: {
-        id: nextEpisode.id,
-        number: nextEpisode.number,
-        title: nextEpisode.title || null,
-        image: nextEpisode.image || null,
-        description: nextEpisode.description || null,
-        airDate: nextEpisode.airDate || null,
-      },
+      episode: episodePayload,
       sources: {
-        sources: sources?.sources || [],
-        subtitles: sources?.subtitles || [],
-        intro: sources?.intro || null,
-        outro: sources?.outro || null,
+        sources: result.sources || [],
+        subtitles: result.subtitles || [],
+        intro: result.intro || null,
+        outro: result.outro || null,
       },
+      providerUsed: result.providerUsed || result.provider || 'animeheaven',
+      fallbackActivated: !!result.fallbackActivated,
+      attemptCount: result.attemptCount || 1,
     });
   } catch (err) {
     console.error('[WatchController] resolveNextEpisode error:', err.message);

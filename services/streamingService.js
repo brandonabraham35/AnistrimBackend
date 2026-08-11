@@ -1,49 +1,31 @@
 // ============================================================
-//  services/streamingService.js — AnimeHeaven-Only Playback Engine
+//  services/streamingService.js — AnimeHeaven-First Playback Engine
 //
-//  SINGLE-RESOLVER STREAMING PIPELINE (AnimeHeaven only):
-//    • The streaming engine uses EXACTLY ONE provider: AnimeHeaven.
-//    • All multi-provider logic has been removed:
-//        - No provider race
-//        - No provider rotation
-//        - No provider retries
-//        - No provider queues
-//        - No Consumet execution
-//        - No hosted Consumet execution
-//    • A Play request can no longer execute any Consumet resolver.
+//  PRIMARY PROVIDER: AnimeHeaven (metadata + stream).
+//  FALLBACK PROVIDERS: KickAssAnime, Hianime, AnimePahe (Consumet-backed),
+//  used ONLY after AnimeHeaven fails 3 times.
 //
-//  EXECUTION MODEL:
-//    Sequential, single-path resolution:
-//      1. AnimeHeaven is the ONLY provider in the execution path.
-//      2. Health is checked (skip if degraded) then the provider is
-//         invoked once. There is NO provider-level retry loop — the
-//         AnimeHeaven provider (services/animeHeavenProvider.js) has
-//         its own internal resilient scraping/nested/mirror fallbacks.
-//      3. The result (sources/subtitles) is normalized and quality
-//         filtered per user tier.
-//      4. A single pipeline failure produces a clean error message.
-//      5. Structured metrics are logged per attempt for diagnosis.
+//  FAST PLAYBACK RESOLUTION (Phase 3):
+//    Old: search → details → gate → stream
+//    New: DB lookup → animeheaven_slug → episode_key → gate → stream
+//    The search step NEVER runs during playback. It only runs once during
+//    import (services/animeHeavenImportService.js).
 //
-//  Quality Tiers:
-//    Free users:  ≤ 720p (480p, 720p)
-//    Premium/Admin users: up to 4K (1080p, 4K)
-//
-//  Proxy: Uses the SHARED proxy manager from utils/providerHttp.js
-//  and the same-origin reverse proxy URLs emitted by the AnimeHeaven
-//  provider (services/animeHeavenProvider.js).
+//  FALLBACK SYSTEM (Phase 4):
+//    AnimeHeaven is attempted 3 times. Only after all 3 fail do the
+//    fallback providers activate (in priority order). Provider health
+//    continues to work; AnimeHeaven failures are recorded; fallback usage
+//    is logged. The response includes:
+//      providerUsed, fallbackActivated, attemptCount
 //
 //  COMPATIBILITY:
 //    The public API surface (resolveStream, resolveAllProviders,
 //    filterSourcesByTier, getBestQualityLabel, getProviderHealthStatus,
 //    QUALITY_TIERS) and the response payload shape are PRESERVED so no
 //    controller/route/frontend changes are required.
-//
-//  NOTE: Consumet/hosted-Consumet/Miruro execution paths are REMOVED
-//  from this streaming engine. Legacy Consumet code may still exist
-//  elsewhere in the project (catalogue, admin import, etc.) but it is
-//  NEVER invoked by the streaming engine anymore.
 // ============================================================
 const { provider: animeHeavenProvider } = require('./animeHeavenProvider');
+const { ConsumetProvider } = require('./consumetProvider');
 const {
   isProviderHealthy,
   getProviderHealth,
@@ -62,6 +44,7 @@ const cache = require('../utils/cacheService');
 const logger = require('../utils/logger');
 const streamCacheService = require('./streamCacheService');
 const streamCacheConfig = require('../config/streamCache');
+const animeHeavenImportService = require('./animeHeavenImportService');
 
 // The provider tag used for the persistent stream cache.
 const STREAM_CACHE_ENABLED = streamCacheConfig.enabled;
@@ -87,8 +70,22 @@ const QUALITY_TIERS = {
 // already caps each call at its configured timeout.
 const PIPELINE_TIMEOUT_MS = parseInt(process.env.STREAM_PIPELINE_TIMEOUT_MS || '15000', 10);
 
+// ── Fallback Configuration (Phase 4) ────────────────────────
+// AnimeHeaven is attempted this many times before fallbacks activate.
+const ANIMEHEAVEN_MAX_ATTEMPTS = 3;
+
+// Fallback provider priority (Consumet-backed). Only used after AnimeHeaven
+// fails ANIMEHEAVEN_MAX_ATTEMPTS times.
+const FALLBACK_PROVIDER_ORDER = [
+  PROVIDER_IDS.KICK_ASS_ANIME,
+  PROVIDER_IDS.HIANIME,
+  PROVIDER_IDS.ANIME_PAHE,
+];
+
 // The single streaming provider for the playback engine.
 const ANIME_HEAVEN_TAG = PROVIDER_IDS.ANIME_HEAVEN; // 'animeheaven'
+
+// ── Helpers ─────────────────────────────────────────────────
 
 /**
  * Parse quality number from string like "1080p", "1080", "4K", "2160p"
@@ -182,17 +179,17 @@ function buildCacheKey(animeTitle, episodeNumber, providerName) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SINGLE PROVIDER EXECUTION (AnimeHeaven)
+//  ANIMEHEAVEN EXECUTION (primary)
 // ─────────────────────────────────────────────────────────────
 
 /**
  * Execute the AnimeHeaven provider for an anime episode.
  *
- * This is the ONLY execution path in the streaming engine. It performs a
- * single health check then a single provider invocation. There is NO retry
- * loop, NO concurrency race, NO queue, NO rotation — the AnimeHeaven
- * provider itself handles resilient scraping/mirror/nested fallbacks
- * internally.
+ * Uses the FAST path when persisted identifiers are available:
+ *   • slug + episodeKey → resolveStreamByKey (no search, no details)
+ *   • slug only         → extractStreams({ identifier: slug }) (no search)
+ *   • neither           → extractStreams({ title, episode }) (search — only
+ *                         for anime not yet imported via AnimeHeaven)
  *
  * NEVER throws — always resolves to a result object:
  *   { resolved: boolean, result: object|null, error: string|null,
@@ -200,9 +197,10 @@ function buildCacheKey(animeTitle, episodeNumber, providerName) {
  *
  * @param {string} animeTitle
  * @param {number|string} episodeNumber
+ * @param {object} [identifiers] — { slug, episodeKey } from DB lookup
  * @returns {Promise<object>} Encapsulated outcome
  */
-async function executeAnimeHeaven(animeTitle, episodeNumber) {
+async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}) {
   const healthKey = toHealthKey(ANIME_HEAVEN_TAG) || ANIME_HEAVEN_TAG;
   const start = Date.now();
 
@@ -236,10 +234,43 @@ async function executeAnimeHeaven(animeTitle, episodeNumber) {
   logger.debugStream('Stream attempt pending', { provider: ANIME_HEAVEN_TAG, anime: animeTitle, episode: episodeNumber });
 
   try {
-    const raw = await animeHeavenProvider.resolveStream({
-      title: animeTitle,
-      episode: episodeNumber,
-    });
+    let raw;
+    // FAST PATH: persisted slug + episode key → no search, no details.
+    if (identifiers.slug && identifiers.episodeKey) {
+      logger.debugStream('[AnimeHeaven] FAST path (slug + episodeKey)', {
+        anime: animeTitle,
+        episode: episodeNumber,
+        slug: identifiers.slug,
+      });
+      raw = await animeHeavenProvider.resolveStreamByKey({
+        slug: identifiers.slug,
+        episodeKey: identifiers.episodeKey,
+      });
+    } else if (identifiers.slug) {
+      // MEDIUM PATH: persisted slug only → no search, but details lookup.
+      logger.debugStream('[AnimeHeaven] MEDIUM path (slug only)', {
+        anime: animeTitle,
+        episode: episodeNumber,
+        slug: identifiers.slug,
+      });
+      raw = await animeHeavenProvider.extractStreams({
+        title: animeTitle,
+        episode: episodeNumber,
+        identifier: identifiers.slug,
+        slug: identifiers.slug,
+      });
+    } else {
+      // SLOW PATH: no persisted identifiers → full search (import-time only).
+      logger.debugStream('[AnimeHeaven] SLOW path (search)', {
+        anime: animeTitle,
+        episode: episodeNumber,
+      });
+      raw = await animeHeavenProvider.resolveStream({
+        title: animeTitle,
+        episode: episodeNumber,
+      });
+    }
+
     const result = normalizeProviderResult(raw);
 
     if (result && result.sources.length > 0) {
@@ -334,13 +365,150 @@ async function executeAnimeHeaven(animeTitle, episodeNumber) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  FALLBACK PROVIDER EXECUTION (Consumet-backed)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Execute a Consumet-backed fallback provider for an anime episode.
+ * Used ONLY after AnimeHeaven fails ANIMEHEAVEN_MAX_ATTEMPTS times.
+ *
+ * @param {string} providerId — canonical provider id (kickassanime, hianime, animepahe)
+ * @param {string} animeTitle
+ * @param {number|string} episodeNumber
+ * @returns {Promise<object>} Encapsulated outcome
+ */
+async function executeFallbackProvider(providerId, animeTitle, episodeNumber) {
+  const healthKey = toHealthKey(providerId) || providerId;
+  const start = Date.now();
+
+  if (!isProviderHealthy(healthKey)) {
+    logger.streamAttempt({
+      provider: providerId,
+      anime: animeTitle,
+      episode: episodeNumber,
+      attempt: 1,
+      result: 'skipped',
+      failureReason: 'provider marked degraded (skipped)',
+      httpStatus: 0,
+      timedOut: false,
+      cloudflareDetected: false,
+      startTime: new Date(start).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: Date.now() - start,
+    });
+    return {
+      resolved: false,
+      result: null,
+      error: 'provider marked degraded (skipped)',
+      category: 'PROVIDER_DEGRADED',
+      durationMs: Date.now() - start,
+    };
+  }
+
+  const attemptStart = Date.now();
+  logger.info('[PLAYBACK]', { event: 'fallbackProviderStarted', provider: providerId, animeTitle, episode: episodeNumber });
+
+  try {
+    const consumet = new ConsumetProvider();
+    const raw = await consumet.resolveStreamUrl({
+      provider: providerId,
+      title: animeTitle,
+      episode: episodeNumber,
+    });
+    const result = normalizeProviderResult(raw);
+
+    if (result && result.sources.length > 0) {
+      recordSuccess(healthKey, Date.now() - attemptStart);
+      logger.streamAttempt({
+        provider: providerId,
+        anime: animeTitle,
+        episode: episodeNumber,
+        attempt: 1,
+        result: 'success',
+        httpStatus: 0,
+        timedOut: false,
+        cloudflareDetected: false,
+        searchSuccess: true,
+        streamSuccess: true,
+        sources: result.sources.length,
+        startTime: new Date(attemptStart).toISOString(),
+        endTime: new Date().toISOString(),
+        latencyMs: Date.now() - attemptStart,
+      });
+      return {
+        resolved: true,
+        result,
+        error: null,
+        category: null,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const category = 'EMPTY';
+    logger.streamAttempt({
+      provider: providerId,
+      anime: animeTitle,
+      episode: episodeNumber,
+      attempt: 1,
+      result: 'no_sources',
+      failureReason: 'no playable stream found',
+      httpStatus: 0,
+      timedOut: false,
+      cloudflareDetected: false,
+      searchSuccess: null,
+      streamSuccess: false,
+      startTime: new Date(attemptStart).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: Date.now() - attemptStart,
+    });
+    recordFailure(healthKey, Date.now() - attemptStart);
+    return {
+      resolved: false,
+      result: null,
+      error: 'no playable stream found',
+      category,
+      durationMs: Date.now() - start,
+    };
+  } catch (err) {
+    const { category, description } = classifyError(err);
+    const timedOut = isTimeoutError(err);
+    logger.streamAttempt({
+      provider: providerId,
+      anime: animeTitle,
+      episode: episodeNumber,
+      attempt: 1,
+      result: timedOut ? 'timeout' : 'failure',
+      failureReason: description || err.message,
+      httpStatus: err.response?.status || 0,
+      timedOut,
+      cloudflareDetected: category === 'FORBIDDEN' || category === 'SERVER_ERROR',
+      searchSuccess: null,
+      streamSuccess: false,
+      error: description || err.message,
+      startTime: new Date(attemptStart).toISOString(),
+      endTime: new Date().toISOString(),
+      latencyMs: Date.now() - attemptStart,
+    });
+
+    if (isTimeoutError(err)) {
+      markTimeout(healthKey, Date.now() - attemptStart);
+    } else {
+      recordFailure(healthKey, Date.now() - attemptStart);
+    }
+
+    return {
+      resolved: false,
+      result: null,
+      error: description || err.message,
+      category: category || 'UNKNOWN',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 //  FRESH-RESOLUTION CONTINUATION (after cache invalidation)
 // ─────────────────────────────────────────────────────────────
-// Runs the SAME single-provider execution + payload-building path that
-// resolveStream uses after a normal cache miss. Used when the cache-source
-// liveness probe marks a cached source dead (403/404): the stale row is
-// invalidated and AnimeHeaven is resolved fresh (gate.php → new token) so the
-// user always gets a playable stream. NEVER throws.
 /**
  * @param {string} animeTitle
  * @param {number|string} episodeNumber
@@ -349,10 +517,11 @@ async function executeAnimeHeaven(animeTitle, episodeNumber) {
  * @param {string} tier
  * @param {number} overallStart
  * @param {boolean} usePersistentCache
+ * @param {object} identifiers — { slug, episodeKey }
  * @returns {Promise<object>} final stream payload
  */
-async function continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache) {
-  const resolveFresh = async () => executeAnimeHeaven(animeTitle, episodeNumber);
+async function continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers = {}) {
+  const resolveFresh = async () => executeAnimeHeaven(animeTitle, episodeNumber, identifiers);
 
   let outcome;
   if (usePersistentCache) {
@@ -430,21 +599,26 @@ async function continueWithFreshResolution(animeTitle, episodeNumber, episodeId,
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Resolve the best available stream for an anime episode via AnimeHeaven.
+ * Resolve the best available stream for an anime episode.
  *
- * Single-provider, sequential resolution. NEVER crashes on failure.
+ * AnimeHeaven-first with fallback providers:
+ *   1. DB lookup for persisted AnimeHeaven slug + episode key (NO search).
+ *   2. AnimeHeaven attempted ANIMEHEAVEN_MAX_ATTEMPTS (3) times.
+ *   3. Only after all 3 fail → fallback providers (KickAssAnime, Hianime,
+ *      AnimePahe) in priority order.
+ *
+ * NEVER crashes on failure.
  *
  * @param {string} animeTitle — Title of the anime
  * @param {number|string} episodeNumber — Episode number
  * @param {object} options
  * @param {boolean} options.isPremium — Whether user can access 1080p/4K
  * @param {string} [options.preferredProvider] — Accepted for backward
- *   compatibility but IGNORED (AnimeHeaven is the only provider).
-* @param {boolean} [options.skipCache] — Bypass cache for this request
+ *   compatibility but IGNORED (AnimeHeaven is the primary provider).
+ * @param {boolean} [options.skipCache] — Bypass cache for this request
  * @param {number|string} [options.episodeId] — Optional DB episode id used as
- *   the persistent-stream-cache key. When present, the persistent MySQL cache
- *   is checked BEFORE AnimeHeaven and a successful resolution is persisted.
- * @returns {Promise<{provider: string, streamUrl: string|null, sources: Array, subtitles: Array, bestQuality: string, tier: string}>}
+ *   the persistent-stream-cache key.
+ * @returns {Promise<{provider: string, streamUrl: string|null, sources: Array, subtitles: Array, bestQuality: string, tier: string, providerUsed: string, fallbackActivated: boolean, attemptCount: number}>}
  */
 async function resolveStream(animeTitle, episodeNumber, options = {}) {
   const { isPremium = false, skipCache = false, episodeId } = options;
@@ -465,7 +639,25 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
 
   logger.debugStream('resolveStream start', { anime: animeTitle, episode: episodeNumber, tier });
 
-// ── Cache Check ─────────────────────────────────────────
+  // ── Phase 3: DB lookup for persisted AnimeHeaven identifiers ──
+  // This is the FAST PATH. The search step NEVER runs during playback.
+  // The slug + episode key are stored at import time.
+  const identifiers = await animeHeavenImportService.resolvePlaybackIdentifiers(animeTitle, episodeNumber);
+  if (identifiers.slug) {
+    logger.debugStream('[AnimeHeaven] DB identifiers found — skipping search', {
+      anime: animeTitle,
+      episode: episodeNumber,
+      slug: identifiers.slug,
+      hasEpisodeKey: !!identifiers.episodeKey,
+    });
+  } else {
+    logger.debugStream('[AnimeHeaven] No DB identifiers — will use search path (import-time only)', {
+      anime: animeTitle,
+      episode: episodeNumber,
+    });
+  }
+
+  // ── Cache Check ─────────────────────────────────────────
   if (!skipCache) {
     const cacheKey = buildCacheKey(animeTitle, episodeNumber);
     try {
@@ -474,13 +666,6 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
         logger.debugStream('Cache hit', { anime: animeTitle, episode: episodeNumber });
 
         // ── TIER-SAFE CACHE HIT ─────────────────────────────
-        // The in-memory cache key does not include the requester's tier, so a
-        // cached payload may have been populated by a premium/admin user and
-        // thus contain premium-only (1080p/4K) sources. A free user must NEVER
-        // receive those. We therefore re-filter the cached sources for the
-        // CURRENT requester's tier on every hit, rebuild the response, and
-        // DO NOT mutate the shared cached object (so premium/admin users are
-        // never downgraded by a free user's request).
         const cachedSources = Array.isArray(cached.sources) ? cached.sources : [];
         const tierSources = filterSourcesByTier(cachedSources, isPremium);
         if (tierSources.length > 0) {
@@ -511,13 +696,11 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
             bestQuality: best.quality || 'auto',
             tier,
             cached: true,
+            providerUsed: cached.provider || ANIME_HEAVEN_TAG,
+            fallbackActivated: false,
+            attemptCount: 1,
           };
         }
-        // No sources match the current tier (e.g. a free user hit a
-        // premium-only cached payload). Treat this as a cache miss and fall
-        // through to normal resolution, which re-resolves and applies the
-        // user's tier. This never recreates a premium-only payload for a free
-        // user because the resolution path also filters by `isPremium`.
         logger.debugStream('Cache hit excluded by tier — falling through to resolution', {
           anime: animeTitle,
           episode: episodeNumber,
@@ -534,7 +717,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     logger.debugStream('Cache bypassed (skipCache=true)', { anime: animeTitle, episode: episodeNumber });
   }
 
-logger.debugStream('Stream provider selected', {
+  logger.debugStream('Stream provider selected', {
     anime: animeTitle,
     episode: episodeNumber,
     provider: ANIME_HEAVEN_TAG,
@@ -542,21 +725,12 @@ logger.debugStream('Stream provider selected', {
   });
 
   // ── Persistent DB cache (episode-scoped, AnimeHeaven only) ──
-  // When an episodeId is supplied AND the persistent cache is enabled, check
-  // the MySQL cache BEFORE contacting AnimeHeaven. On a hit we reuse the
-  // stored PRE-PROXY source (reconstructed here) and the controller feeds it
-  // through the existing proxy pipeline — AnimeHeaven is NOT contacted.
-  //
-  // On a miss, the single-flight getOrResolve() guarantees only ONE AnimeHeaven
-  // resolution for concurrent first plays, performs a second DB cache check
-  // after acquiring the lock, and persists a successful resolution.
   const usePersistentCache = STREAM_CACHE_ENABLED && !skipCache && episodeId != null && episodeId !== '';
 
-if (usePersistentCache) {
+  if (usePersistentCache) {
     const cachedLookup = await streamCacheService.findCachedStream(episodeId, STREAM_CACHE_PROVIDER);
     if (cachedLookup.result) {
       logger.debugStream('Persistent stream cache hit', { anime: animeTitle, episode: episodeNumber, episodeId });
-      // Reconstruct the winner + payload from the cached provider result.
       const cachedWinner = cachedLookup.result;
       const filteredSources = filterSourcesByTier(cachedWinner.sources, isPremium);
       if (filteredSources.length > 0) {
@@ -565,13 +739,6 @@ if (usePersistentCache) {
         , filteredSources[0]);
 
         // ── CACHE-SOURCE LIVENESS PROBE ─────────────────────
-        // The cached source embeds an expiring AnimeHeaven CDN token. If that
-        // token has been revoked/expired, serving the cached URL yields a 403/404
-        // playback failure. Before serving, FAIL-OPEN probe the BEST cached
-        // source (HEAD). Only an explicit 403/404 invalidates the cache and
-        // falls through to a fresh AnimeHeaven resolution (gate.php → new token).
-        // Any network error / timeout / 5xx keeps the cache (fail-open) so the
-        // probe can never break playback or add meaningful latency.
         const bestSource = best || {};
         const alive = await streamCacheService.isCachedSourceAlive(
           bestSource.url,
@@ -587,8 +754,7 @@ if (usePersistentCache) {
             episodeId,
           });
           await streamCacheService.deleteInvalidCache(episodeId, STREAM_CACHE_PROVIDER);
-          // Fall through to fresh AnimeHeaven resolution below.
-          return continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache);
+          return continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers);
         }
 
         const payload = {
@@ -616,38 +782,65 @@ if (usePersistentCache) {
           endTime: new Date().toISOString(),
           latencyMs: Date.now() - overallStart,
         });
-        return payload;
+        return {
+          ...payload,
+          providerUsed: payload.provider,
+          fallbackActivated: false,
+          attemptCount: 1,
+        };
       }
     }
   }
 
-  // ── Single provider execution ───────────────────────────
-  // Wrap the AnimeHeaven resolution in the single-flight cache guard when a
-  // persistent cache is active: this deduplicates concurrent first plays and
-  // persists the successful (PRE-PROXY) result for later reuse.
-  const resolveFresh = async () => executeAnimeHeaven(animeTitle, episodeNumber);
+  // ── Phase 4: AnimeHeaven-first with fallback ─────────────
+  // AnimeHeaven is attempted ANIMEHEAVEN_MAX_ATTEMPTS (3) times.
+  // Only after all 3 fail do the fallback providers activate.
+  let attemptCount = 0;
+  let fallbackActivated = false;
+  let winner = null;
+  let winnerProvider = null;
+  let lastError = null;
 
-  let outcome;
-  if (usePersistentCache) {
-    const fresh = await streamCacheService.getOrResolve(episodeId, STREAM_CACHE_PROVIDER, resolveFresh);
-    outcome = fresh && fresh.sources && fresh.sources.length > 0
-      ? { resolved: true, result: fresh, error: null, category: null, durationMs: 0 }
-      : { resolved: false, result: null, error: 'no playable stream found', category: 'EMPTY', durationMs: 0 };
-  } else {
-    outcome = await Promise.race([
-      resolveFresh(),
-      new Promise(resolve => setTimeout(() => resolve({
-        resolved: false,
-        result: null,
-        error: 'stream pipeline timed out',
-        category: 'TIMEOUT',
-        durationMs: PIPELINE_TIMEOUT_MS,
-      }), PIPELINE_TIMEOUT_MS)),
-    ]);
+  // Attempt 1..3: AnimeHeaven.
+  for (let attempt = 1; attempt <= ANIMEHEAVEN_MAX_ATTEMPTS; attempt++) {
+    attemptCount += 1;
+    logger.debugStream('[AnimeHeaven] Attempt', { anime: animeTitle, episode: episodeNumber, attempt, of: ANIMEHEAVEN_MAX_ATTEMPTS });
+
+    const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers);
+    if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
+      winner = outcome.result;
+      winnerProvider = ANIME_HEAVEN_TAG;
+      break;
+    }
+    lastError = outcome.error || 'no playable stream found';
+    // Small backoff between AnimeHeaven retries (avoid hammering upstream).
+    if (attempt < ANIMEHEAVEN_MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, 300 * attempt));
+    }
   }
 
-  const winner = outcome.result;
-  const winnerProvider = outcome.resolved ? ANIME_HEAVEN_TAG : null;
+  // If AnimeHeaven failed all 3 times → activate fallback providers.
+  if (!winner) {
+    fallbackActivated = true;
+    logger.warn('[AnimeHeaven] All 3 attempts failed — activating fallback providers', {
+      anime: animeTitle,
+      episode: episodeNumber,
+      lastError,
+    });
+
+    for (const providerId of FALLBACK_PROVIDER_ORDER) {
+      attemptCount += 1;
+      logger.debugStream('[Fallback] Attempting provider', { anime: animeTitle, episode: episodeNumber, provider: providerId });
+
+      const outcome = await executeFallbackProvider(providerId, animeTitle, episodeNumber);
+      if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
+        winner = outcome.result;
+        winnerProvider = providerId;
+        break;
+      }
+      lastError = outcome.error || 'no playable stream found';
+    }
+  }
 
   // ── Structured metrics log ──────────────────────────────
   const elapsed = Date.now() - overallStart;
@@ -660,6 +853,8 @@ if (usePersistentCache) {
       win: true,
       winner: winnerProvider,
       totalDurationMs: elapsed,
+      fallbackActivated,
+      attemptCount,
     });
   } else {
     logger.stream({
@@ -667,8 +862,10 @@ if (usePersistentCache) {
       duration: elapsed,
       totalDurationMs: elapsed,
       provider: ANIME_HEAVEN_TAG,
-      category: outcome.category,
-      error: outcome.error,
+      category: 'ALL_FAILED',
+      error: lastError,
+      fallbackActivated,
+      attemptCount,
     });
   }
 
@@ -733,7 +930,13 @@ if (usePersistentCache) {
       endTime: new Date().toISOString(),
       latencyMs: elapsed,
     });
-    return payload;
+
+    return {
+      ...payload,
+      providerUsed: payload.provider,
+      fallbackActivated,
+      attemptCount,
+    };
   }
 
   // ── Provider failed ─────────────────────────────────────
@@ -743,7 +946,7 @@ if (usePersistentCache) {
     anime: animeTitle,
     episode: episodeNumber,
     result: 'failure',
-    failureReason: outcome.error || 'all providers failed',
+    failureReason: lastError || 'all providers failed',
     httpStatus: 0,
     timedOut: false,
     cloudflareDetected: false,
@@ -757,7 +960,7 @@ if (usePersistentCache) {
 /**
  * Resolve streams for the "Switch Server" dropdown.
  *
- * With a single AnimeHeaven provider this returns at most one entry (the
+ * With AnimeHeaven as the primary provider this returns at most one entry (the
  * AnimeHeaven stream). The response shape is preserved so the frontend
  * contract is unchanged.
  *
@@ -773,7 +976,9 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
 
   logger.debugStream('resolveAllProviders start', { anime: animeTitle, episode: episodeNumber, provider: ANIME_HEAVEN_TAG });
 
-  const outcome = await executeAnimeHeaven(animeTitle, episodeNumber);
+  // Use the fast path (DB identifiers) when available.
+  const identifiers = await animeHeavenImportService.resolvePlaybackIdentifiers(animeTitle, episodeNumber);
+  const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers);
 
   if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
     const filteredSources = filterSourcesByTier(outcome.result.sources, isPremium);
@@ -818,4 +1023,7 @@ module.exports = {
   getBestQualityLabel,
   getProviderHealthStatus,
   QUALITY_TIERS,
+  // Exposed for tests/diagnostics.
+  ANIMEHEAVEN_MAX_ATTEMPTS,
+  FALLBACK_PROVIDER_ORDER,
 };

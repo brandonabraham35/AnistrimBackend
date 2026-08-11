@@ -804,10 +804,15 @@
         <div class="anime-import-dialog">
             <div class="anime-import-header"><h3 id="add-anime-modal-title">Add Anime</h3><button type="button" class="anime-import-close" id="close-add-anime-modal" aria-label="Close">&times;</button></div>
             <div class="anime-import-tabs" role="tablist" aria-label="Anime source">
-                <button type="button" class="anime-import-tab" data-anime-tab="kitsu" role="tab" aria-selected="true">&#9889; Auto-Import (Kitsu)</button>
+                <button type="button" class="anime-import-tab" data-anime-tab="animeheaven" role="tab" aria-selected="true">&#127909; AnimeHeaven</button>
+                <button type="button" class="anime-import-tab" data-anime-tab="kitsu" role="tab" aria-selected="false">&#9889; Auto-Import (Kitsu)</button>
                 <button type="button" class="anime-import-tab" data-anime-tab="manual" role="tab" aria-selected="false">&#128221; Manual Upload</button>
             </div>
-            <section class="anime-import-panel" data-anime-panel="kitsu">
+            <section class="anime-import-panel" data-anime-panel="animeheaven">
+                <form id="animeheaven-search-form" class="kitsu-search-bar"><input id="animeheaven-search-input" type="search" placeholder="Search AnimeHeaven, e.g. Bleach" required><button type="submit" class="btn">Search</button></form>
+                <div id="animeheaven-search-results" class="kitsu-search-results" aria-live="polite"></div>
+            </section>
+            <section class="anime-import-panel" data-anime-panel="kitsu" hidden>
                 <form id="kitsu-search-form" class="kitsu-search-bar"><input id="kitsu-search-input" type="search" placeholder="Search Consumet, e.g. Jujutsu Kaisen" required><button type="submit" class="btn">Search</button></form>
                 <div id="kitsu-search-results" class="kitsu-search-results" aria-live="polite"></div>
             </section>

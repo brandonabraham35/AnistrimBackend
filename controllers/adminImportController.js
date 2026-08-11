@@ -4,6 +4,7 @@ const catalogue = require('../services/catalogueService');
 const { ConsumetProvider } = require('../services/consumetProvider');
 const { uploadBufferToCloudinary, hasCloudinaryConfig } = require('../utils/bunnyUpload');
 const { PROVIDER_IDS } = require('../services/providerRegistry');
+const animeHeavenImportService = require('../services/animeHeavenImportService');
 
 const consumet = new ConsumetProvider();
 let cloudinaryColumnsPromise = null;
@@ -269,4 +270,136 @@ exports.syncConsumetAnime = async (req, res) => {
   if (!rows[0]?.source_id) return res.status(400).json({ message: 'This anime was not imported from Consumet.' });
   req.body = { providerId: rows[0].source_id };
   return exports.importConsumetAnime(req, res);
+};
+
+// ════════════════════════════════════════════════════════════
+//  ANIMEHEAVEN IMPORT (Phase 6) — AnimeHeaven is the PRIMARY
+//  metadata + stream provider. These endpoints let the admin
+//  dashboard search, preview, and import AnimeHeaven anime.
+// ════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/admin/animeheaven/search?q=...
+ * Search AnimeHeaven for an anime by title.
+ */
+exports.searchAnimeHeaven = async (req, res) => {
+  const query = String(req.query.q || '').trim();
+  if (!query) return res.status(400).json({ message: 'A search query is required.' });
+  try {
+    const results = await animeHeavenImportService.searchAnime(query);
+    res.json(results);
+  } catch (error) {
+    console.error('AnimeHeaven search failed:', error.message);
+    res.status(502).json({ message: 'AnimeHeaven search is temporarily unavailable.' });
+  }
+};
+
+/**
+ * GET /api/admin/animeheaven/preview/:identifier
+ * Preview an AnimeHeaven anime (metadata + episode list) WITHOUT importing.
+ */
+exports.previewAnimeHeaven = async (req, res) => {
+  const identifier = String(req.params.identifier || '').trim();
+  if (!identifier) return res.status(400).json({ message: 'identifier is required.' });
+  try {
+    const meta = await animeHeavenImportService.getAnime(identifier);
+    if (!meta) return res.status(404).json({ message: 'AnimeHeaven returned no metadata for this identifier.' });
+    res.json({
+      animeheaven_slug: meta.animeheaven_slug,
+      title: meta.title,
+      description: meta.description,
+      cover_image: meta.cover_image,
+      banner_image: meta.banner_image,
+      rating: meta.rating,
+      year: meta.year,
+      status: meta.status,
+      media_type: meta.media_type,
+      genres: meta.genres,
+      episodeCount: meta.episodes.length,
+      episodes: meta.episodes,
+    });
+  } catch (error) {
+    console.error('AnimeHeaven preview failed:', error.message);
+    res.status(502).json({ message: 'AnimeHeaven preview failed.' });
+  }
+};
+
+/**
+ * POST /api/admin/animeheaven/import
+ * Body: { identifier }
+ * Import an AnimeHeaven anime (metadata + episodes) into the local DB.
+ * Stores animeheaven_slug + animeheaven_episode_key.
+ */
+exports.importAnimeHeaven = async (req, res) => {
+  const identifier = String(req.body?.identifier || req.body?.slug || '').trim();
+  if (!identifier) return res.status(400).json({ message: 'identifier is required.' });
+  try {
+    const result = await animeHeavenImportService.importAnime(identifier, { adminId: req.user?.id });
+    res.status(201).json({
+      success: true,
+      message: `Imported "${result.anime.title}" with ${result.episodes.total} episodes from AnimeHeaven.`,
+      anime: result.anime,
+      slug: result.slug,
+      episodes: result.episodes,
+    });
+  } catch (error) {
+    console.error('AnimeHeaven import failed:', error.message);
+    res.status(502).json({ success: false, message: 'AnimeHeaven import failed.', error: error.message });
+  }
+};
+
+/**
+ * POST /api/admin/animeheaven/sync/:animeId
+ * Sync (refresh) an AnimeHeaven anime's episodes + metadata WITHOUT duplicating.
+ */
+exports.syncAnimeHeaven = async (req, res) => {
+  const animeId = Number(req.params.animeId);
+  if (!Number.isInteger(animeId)) return res.status(400).json({ message: 'Invalid anime id.' });
+  try {
+    const result = await animeHeavenImportService.syncAnime(animeId, { adminId: req.user?.id });
+    res.json({
+      success: true,
+      message: `Synced "${result.anime.title}" — ${result.episodes.inserted} inserted, ${result.episodes.updated} updated.`,
+      anime: result.anime,
+      episodes: result.episodes,
+    });
+  } catch (error) {
+    console.error('AnimeHeaven sync failed:', error.message);
+    res.status(502).json({ success: false, message: 'AnimeHeaven sync failed.', error: error.message });
+  }
+};
+
+/**
+ * GET /api/admin/animeheaven/status/:animeId
+ * Return the AnimeHeaven import status for an anime (slug, episode count, last sync).
+ */
+exports.getAnimeHeavenStatus = async (req, res) => {
+  const animeId = Number(req.params.animeId);
+  if (!Number.isInteger(animeId)) return res.status(400).json({ message: 'Invalid anime id.' });
+  try {
+    const [animeRows] = await db.query(
+      'SELECT id, title, animeheaven_slug, source_provider, source_id, updated_at FROM anime WHERE id = ? LIMIT 1',
+      [animeId]
+    );
+    if (!animeRows.length) return res.status(404).json({ message: 'Anime not found.' });
+    const anime = animeRows[0];
+    const [epRows] = await db.query(
+      'SELECT COUNT(*) AS total, SUM(CASE WHEN animeheaven_episode_key IS NOT NULL THEN 1 ELSE 0 END) AS with_keys FROM episodes WHERE anime_id = ?',
+      [animeId]
+    );
+    res.json({
+      animeId: anime.id,
+      title: anime.title,
+      animeheavenSlug: anime.animeheaven_slug || null,
+      sourceProvider: anime.source_provider || null,
+      sourceId: anime.source_id || null,
+      episodeCount: Number(epRows[0]?.total || 0),
+      episodesWithKeys: Number(epRows[0]?.with_keys || 0),
+      lastSync: anime.updated_at || null,
+      importStatus: anime.animeheaven_slug ? 'imported' : 'not_imported',
+    });
+  } catch (error) {
+    console.error('AnimeHeaven status failed:', error.message);
+    res.status(500).json({ message: 'Failed to fetch AnimeHeaven status.' });
+  }
 };

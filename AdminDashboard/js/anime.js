@@ -223,6 +223,10 @@ function _setupEventListeners() {
   modal?.querySelector('#kitsu-search-form')?.addEventListener('submit', _handleKitsuSearch);
   modal?.querySelector('#manual-add-anime-form')?.addEventListener('submit', _handleManualFormSubmit);
   modal?.querySelector('#kitsu-search-results')?.addEventListener('click', _handleKitsuResultClick);
+
+  // AnimeHeaven import tab (Phase 6)
+  modal?.querySelector('#animeheaven-search-form')?.addEventListener('submit', _handleAnimeHeavenSearch);
+  modal?.querySelector('#animeheaven-search-results')?.addEventListener('click', _handleAnimeHeavenResultClick);
 }
 
 // ─── Data Fetching ────────────────────────────────────────────────────────────
@@ -917,6 +921,112 @@ async function _importAllSearchResults(button) {
   button.textContent = `Imported ${completed}/${_importResults.length}`;
   window.showToast?.(`${completed} anime imported successfully.`, 'success');
   if (completed === _importResults.length) _closeAnimeModal();
+}
+
+// ─── AnimeHeaven Import (Phase 6) ─────────────────────────────────────────────
+// AnimeHeaven is the PRIMARY metadata + stream provider. This tab lets the
+// admin search AnimeHeaven, preview the anime + episodes, and import it.
+// The import stores animeheaven_slug + animeheaven_episode_key so playback
+// never needs to re-run AnimeHeaven search.
+
+async function _handleAnimeHeavenSearch(e) {
+  e.preventDefault();
+  const input = _$el('animeheaven-search-input');
+  const query = input?.value.trim();
+  if (!query) return;
+
+  const resultsContainer = _$el('animeheaven-search-results');
+  resultsContainer.innerHTML = '<p>Searching AnimeHeaven...</p>';
+
+  try {
+    const results = await window.apiRequest(`/api/admin/animeheaven/search?q=${encodeURIComponent(query)}`);
+    if (!results || results.length === 0) {
+      resultsContainer.innerHTML = '<p>No results found on AnimeHeaven.</p>';
+      return;
+    }
+    resultsContainer.innerHTML = results.map(item => `
+      <div class="kitsu-result-item" data-ah-id="${item.identifier || item.id}">
+        <img src="${item.image || item.cover || 'img/placeholder.png'}" alt="${item.title}" loading="lazy">
+        <div class="kitsu-result-info">
+          <strong>${window._escapeHTML(item.title)}</strong>
+          <small>AnimeHeaven · ${item.identifier || item.id}</small>
+        </div>
+        <button type="button" class="btn ah-preview-btn">Preview</button>
+        <button type="button" class="btn ah-import-btn">Import</button>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('[Anime CMS] AnimeHeaven search failed:', error);
+    resultsContainer.innerHTML = `<p style="color: var(--danger);">Search failed: ${error.message}</p>`;
+  }
+}
+
+async function _handleAnimeHeavenResultClick(e) {
+  const previewButton = e.target.closest('.ah-preview-btn');
+  const importButton = e.target.closest('.ah-import-btn');
+  if (!previewButton && !importButton) return;
+
+  const item = (previewButton || importButton).closest('.kitsu-result-item');
+  const identifier = item?.dataset.ahId;
+  if (!identifier) return;
+
+  if (previewButton) {
+    await _previewAnimeHeaven(identifier, item);
+    return;
+  }
+
+  const title = item.querySelector('strong')?.textContent || 'this anime';
+  if (!await _confirm('Import Anime', `Import "${title}" from AnimeHeaven? This will fetch metadata and episodes.`)) return;
+
+  if (await _importAnimeHeaven(identifier, item, importButton)) {
+    _closeAnimeModal();
+    await _fetchAnime();
+    window.showToast?.('Anime imported from AnimeHeaven successfully.', 'success');
+  }
+}
+
+async function _previewAnimeHeaven(identifier, item) {
+  const infoEl = item?.querySelector('.kitsu-result-info');
+  const original = infoEl?.innerHTML;
+  if (infoEl) infoEl.innerHTML = '<small>Loading preview...</small>';
+  try {
+    const preview = await window.apiRequest(`/api/admin/animeheaven/preview/${encodeURIComponent(identifier)}`);
+    if (!preview) {
+      if (infoEl) infoEl.innerHTML = original || '';
+      window.showToast?.('Preview failed.', 'error');
+      return;
+    }
+    if (infoEl) {
+      infoEl.innerHTML = `
+        <strong>${window._escapeHTML(preview.title)}</strong>
+        <small>${preview.year || 'Year unknown'} · ${preview.episodeCount} episodes · ${preview.media_type || 'TV'}</small>
+        <small>${window._escapeHTML((preview.description || '').slice(0, 120))}</small>
+        <small style="color:var(--accent);">Slug: ${window._escapeHTML(preview.animeheaven_slug)}</small>
+      `;
+    }
+  } catch (error) {
+    if (infoEl) infoEl.innerHTML = original || '';
+    window.showToast?.(`Preview failed: ${error.message}`, 'error');
+  }
+}
+
+async function _importAnimeHeaven(identifier, item, button) {
+  const originalMarkup = item?.innerHTML;
+  if (button) { button.disabled = true; button.textContent = '...'; }
+  if (item) { item.style.pointerEvents = 'none'; item.style.opacity = '0.7'; }
+  try {
+    await window.apiRequest('/api/admin/animeheaven/import', { method: 'POST', body: { identifier } });
+    return true;
+  } catch (error) {
+    console.error('[Anime CMS] AnimeHeaven import failed:', error);
+    if (item) {
+      item.innerHTML = originalMarkup || 'Import failed. Try again.';
+      item.style.pointerEvents = 'auto';
+      item.style.opacity = '1';
+    }
+    window.showToast?.(`Import failed: ${error.message}`, 'error');
+    return false;
+  }
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
