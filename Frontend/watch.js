@@ -30,6 +30,12 @@ let lastAdPlayedAt = 0;
 const AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 async function loadWatch() {
+  console.log('[PLAYER DEBUG] Episode clicked', {
+    anime: new URLSearchParams(window.location.search).get('id'),
+    episode: new URLSearchParams(window.location.search).get('ep'),
+    timestamp: new Date().toISOString()
+  });
+
   const params = new URLSearchParams(window.location.search);
 
   // ── CANONICAL URL PARAMS ──────────────────────────────────
@@ -104,8 +110,11 @@ async function loadWatch() {
       if (errorDiv) errorDiv.style.display = 'none';
 
       try {
+        console.log('[PLAYER DEBUG] Starting pre-stream operations (fetchAvailableProviders)', { timestamp: new Date().toISOString() });
         await fetchAvailableProviders(animeData.title, currentEp);
+        console.log('[PLAYER DEBUG] Finished fetchAvailableProviders', { timestamp: new Date().toISOString() });
         await resolveAndPlayStream(animeData.title, currentEp, video);
+        console.log('[PLAYER DEBUG] Finished resolveAndPlayStream', { timestamp: new Date().toISOString() });
         placeholder.style.display = 'none';
         setupPlayer(video);
       } catch (err) {
@@ -171,11 +180,20 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     url += '?preferredProvider=' + preferredProvider;
   }
 
+  const requestStart = Date.now();
+  console.log('[PLAYER DEBUG] STREAM REQUEST START', { url, method: 'GET', timestamp: new Date(requestStart).toISOString() });
+
   console.log("[PLAYER] Requesting stream from:", url);
-  var { data } = await apiFetch(url);
+  var { data, status } = await apiFetch(url);
+  const responseReceived = Date.now();
+  console.log('[PLAYER DEBUG] STREAM RESPONSE RECEIVED', { status, elapsedMs: responseReceived - requestStart, timestamp: new Date(responseReceived).toISOString() });
+
   console.log("[PLAYER] Stream API response", data);
 
   if (data && data.sources && data.sources.length > 0) {
+    const parsedTime = Date.now();
+    console.log('[PLAYER DEBUG] STREAM RESPONSE PARSED', { sources: data.sources.length, elapsedMs: parsedTime - requestStart, timestamp: new Date(parsedTime).toISOString() });
+
     const API_BASE_URL = window.getApiBaseUrl();
     const sourcesToTry = data.sources.map(source => ({
         ...source,
@@ -185,6 +203,7 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     for (const source of sourcesToTry) {
         try {
             console.log(`[PLAYER] Attempting to attach source: ${source.url} (Quality: ${source.quality})`);
+            console.log('[PLAYER DEBUG] SETTING VIDEO SOURCE', { source: source.url, timestamp: new Date().toISOString() });
             await attachStreamSource(video, source.url);
 
             currentStreamUrl = source.url;
@@ -296,13 +315,19 @@ function setupPlayer(video) {
   var skipBtn = document.getElementById('skipIntroBtn');
   var nextBanner = document.getElementById('nextEpisodeBtn');
   var isPremium = State.isPremium || State.isAdmin;
-
-  // Diagnostic Listeners
-  video.addEventListener("loadstart", () => console.log("[PLAYER] Event: loadstart"));
-  video.addEventListener("loadedmetadata", () => console.log("[PLAYER] Event: loadedmetadata - duration:", video.duration));
-  video.addEventListener("canplay", () => console.log("[PLAYER] Event: canplay"));
-  video.addEventListener("playing", () => console.log("[PLAYER] Event: playing"));
-  video.addEventListener("error", () => console.error("[PLAYER] Event: error", { code: video.error.code, message: video.error.message, networkState: video.networkState, readyState: video.readyState, currentSrc: video.currentSrc }));
+  
+  // Temporary debug listeners
+  ['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'playing', 'waiting', 'stalled', 'error'].forEach(eventName => {
+    video.addEventListener(eventName, () => {
+      console.log(`[VIDEO DEBUG] event=${eventName}`, {
+        currentTime: video.currentTime,
+        readyState: video.readyState,
+        networkState: video.networkState,
+        error: video.error,
+        timestamp: new Date().toISOString()
+      });
+    });
+  });
 
   if (currentEpId) loadProgress(video, currentEpId);
 

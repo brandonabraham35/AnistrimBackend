@@ -82,6 +82,15 @@ async function resolveEpisodeAuth(animeTitle, episodeNumber) {
  */
 exports.getStream = async (req, res) => {
   const { animeTitle, episodeNumber: episodeIdentifier } = req.params;
+  const requestReceivedTime = Date.now();
+  logger.info('[STREAM DEBUG] REQUEST RECEIVED', {
+    method: req.method,
+    url: req.originalUrl,
+    anime: animeTitle,
+    episode: episodeIdentifier,
+    timestamp: new Date(requestReceivedTime).toISOString()
+  });
+
   const { preferredProvider, ep: queryEp } = req.query;
 
   if (!animeTitle || !episodeIdentifier) {
@@ -201,10 +210,20 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
       episodeId = null;
     }
 
+    logger.info('[STREAM DEBUG] PROVIDER RESOLUTION START', { animeTitle, episodeNumber, timestamp: new Date().toISOString() });
+    const providerStart = Date.now();
+
     const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
       preferredProvider: preferredProvider || undefined,
       episodeId: episodeId || undefined,
+    });
+
+    const providerEnd = Date.now();
+    logger.info('[STREAM DEBUG] PROVIDER RESOLUTION END', {
+      elapsedMs: providerEnd - providerStart,
+      success: !!(result && result.sources && result.sources.length > 0),
+      timestamp: new Date(providerEnd).toISOString()
     });
 
     // Rewrite AnimeHeaven sources to anonymized /api/stream-proxy/:streamId
