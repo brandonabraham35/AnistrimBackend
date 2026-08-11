@@ -42,6 +42,7 @@ const db = require('../config/db');
 const logger = require('../utils/logger');
 const config = require('../config/streamCache');
 const { request } = require('../utils/providerHttp');
+const inFlightResolverManager = require('./inFlightResolverManager');
 
 // ── Cache-source liveness probe ────────────────────────────
 // A lightweight, FAIL-OPEN HEAD probe used to make cache-token freshness
@@ -92,62 +93,6 @@ async function isCachedSourceAlive(url, context = {}) {
     // not break).
     return true;
   }
-}
-
-// ── In-process single-flight lock ──────────────────────────
-// Map<`provider:episodeId`, Promise>. The actual cache remains MySQL-backed;
-// this lock only deduplicates concurrent resolutions within this process.
-const locks = new Map();
-
-// ── Hard upper bound for a single provider resolution ──────
-// If AnimeHeaven resolution hangs, the lock must NEVER be held forever.
-// This timeout guarantees the lock is released and a structured timeout
-// result is returned so subsequent requests for the same episode can
-// proceed (they will attempt a fresh resolution).
-const RESOLVER_TIMEOUT_MS = Number(process.env.STREAM_CACHE_RESOLVER_TIMEOUT_MS || 20000);
-
-function lockKey(provider, episodeId) {
-  return `${String(provider).toLowerCase()}:${episodeId}`;
-}
-
-/**
- * Acquire the single-flight lock for a (provider, episodeId) pair.
- *
- * This is a clean promise-based owner/waiter chain (NO polling): each lock
- * entry is a promise that resolves when its owner releases. A new acquirer
- * registers its own done-promise as the next entry and awaits the PREVIOUS
- * owner's promise settling first — chaining instead of spinning. This
- * preserves exactly-once resolution semantics within the process.
- *
- * The awaited previous promise is always awaited via `catch(...).then(...)`,
- * so a rejected upstream resolution cannot leave a stale lock (the next
- * acquirer still proceeds and becomes the new owner).
- *
- * @param {string} provider
- * @param {number|string} episodeId
- * @returns {Promise<() => void>} release function (resolves once this caller
- *   is the lock owner)
- */
-async function acquireLock(provider, episodeId) {
-  const key = lockKey(provider, episodeId);
-  const previous = locks.get(key) || Promise.resolve();
-
-  // Register this caller as the current entry so subsequent acquirers await us.
-  let release;
-  const done = new Promise((resolve) => { release = resolve; });
-  locks.set(key, done);
-
-  // Wait for the previous owner to settle (resolve OR reject) before we become
-  // the active owner. No polling — a single promise chain.
-  await previous.catch(() => {}).then(() => {});
-
-  // We are now the owner. Return a release function that is ALWAYS safe to
-  // call (idempotent-ish) and resolves the done promise so the next waiter
-  // proceeds.
-  return () => {
-    if (locks.get(key) === done) locks.delete(key);
-    release();
-  };
 }
 
 /**
@@ -317,16 +262,22 @@ async function markUsed(id) {
 }
 
 /**
- * Single-flight resolution wrapper: given an async resolver for AnimeHeaven,
- * guarantee only ONE upstream resolution per (provider,episodeId) for
- * concurrent requests, with a mandatory second DB cache check after acquiring
- * the lock.
+ * Single-flight resolution wrapper using the InFlightResolverManager.
+ *
+ * TRUE SINGLE-FLIGHT guarantees:
+ *   • Only ONE resolver runs per (provider, episodeId) at any time.
+ *   • On timeout the lock is NOT released — the resolver continues and the
+ *     entry stays registered until it settles (success or failure).
+ *   • A late success is NEVER discarded — it is cached (memory + persistent)
+ *     and delivered to all waiters.
+ *   • Waiting requests attach to the existing resolver — NO duplicate
+ *     AnimeHeaven executions.
  *
  * Flow:
- *   1. Fast-path DB cache check (already done by caller before calling this).
- *   2. Acquire in-process lock.
- *   3. SECOND DB cache check — if a concurrent holder populated it, use it.
- *   4. Otherwise run `resolver()` once, save to cache, return.
+ *   1. Check the in-flight manager's memory cache (recently-resolved result).
+ *   2. DB cache check — if a concurrent request persisted it, use it.
+ *   3. Register with the InFlightResolverManager (starts OR attaches).
+ *   4. Await the shared resolver promise — all waiters get the same result.
  *
  * @param {number|string} episodeId
  * @param {string} provider
@@ -335,87 +286,50 @@ async function markUsed(id) {
  */
 async function getOrResolve(episodeId, provider, resolver) {
   if (!episodeId) return resolver();
-  const release = await acquireLock(provider, episodeId);
-  try {
-    // Mandatory second cache check — a concurrent request may have just
-    // populated the cache while we were waiting for the lock.
-    const second = await findCachedStream(episodeId, provider);
-    if (second.result) {
-      logger.info('[STREAM_CACHE] LOCK_HIT', { episodeId, provider });
-      return second.result;
-    }
+  const key = inFlightResolverManager.keyFor(provider, episodeId);
 
-    // ── HARD TIMEOUT ON THE RESOLVER (Finding 5 fix) ────────
-    // The resolver (AnimeHeaven extraction) can hang on a slow upstream.
-    // Without a hard upper bound, the lock would remain held forever and
-    // every subsequent request for the same episode would wait indefinitely.
-    //
-    // IMPORTANT (AnimeHeaven-first fix): On timeout we do NOT discard the
-    // still-running resolver. The resolver promise is left to complete in the
-    // background; when it eventually resolves with sources, we SAVE the result
-    // to the persistent cache so the NEXT request for this episode is a cache
-    // hit. This prevents the "system declares failure while AnimeHeaven is
-    // still succeeding" defect. The lock is released (finally block) so the
-    // next request can proceed — but it will find the freshly-saved cache row.
-    let timedOut = false;
-    const fresh = await Promise.race([
-      resolver(),
-      new Promise((resolve) => {
-        setTimeout(() => {
-          timedOut = true;
-          resolve(null);
-        }, RESOLVER_TIMEOUT_MS);
-      }),
-    ]);
+  // 1. Fast-path: in-memory cache (a recently-successful result, before it
+  //    reaches the DB cache on the next request).
+  const memCached = inFlightResolverManager.getCached(key);
+  if (memCached && memCached.sources && memCached.sources.length > 0) {
+    logger.info('[STREAM_CACHE] MEMORY_HIT', { episodeId, provider });
+    return memCached;
+  }
 
-    if (timedOut) {
-      logger.warn('[STREAM_CACHE] RESOLVER TIMEOUT — lock released, late result will be cached', {
-        episodeId,
-        provider,
-        timeoutMs: RESOLVER_TIMEOUT_MS,
-      });
-      // Fire-and-forget: when the resolver eventually settles, save its result
-      // to the persistent cache so a subsequent request is a cache hit. This
-      // never throws and never blocks the current request.
-      resolver()
-        .then((late) => {
-          const lateResult =
-            late &&
-            !Array.isArray(late.sources) &&
-            Array.isArray(late.result && late.result.sources)
-              ? late.result
-              : late;
-          if (lateResult && Array.isArray(lateResult.sources) && lateResult.sources.length > 0) {
-            return saveStream(episodeId, provider, lateResult);
-          }
-          return false;
-        })
-        .catch(() => {});
-      return null;
-    }
+  // 2. DB cache check — a concurrent request may have persisted a result.
+  const second = await findCachedStream(episodeId, provider);
+  if (second.result) {
+    logger.info('[STREAM_CACHE] LOCK_HIT', { episodeId, provider });
+    return second.result;
+  }
 
-    // Normalize the resolver output to a PROVIDER RESULT before saving/returning.
-    // The AnimeHeaven execution wrapper (executeAnimeHeaven) returns an execution
-    // ENVELOPE { resolved, result, error, category, durationMs } with the playable
-    // provider result at `fresh.result`. Direct resolvers may return the provider
-    // result ({ provider, streamUrl, sources, subtitles }) directly. Both are
-    // normalized here so this function ALWAYS returns the provider-result shape,
-    // matching the cache-hit path (reconstructProviderResult). Callers read
-    // `.sources` on the returned value, so returning an envelope here would hide
-    // the successfully-resolved sources and cause a false "no playable stream found".
+  // 3. Register with the single-flight manager. If a resolver is already
+  //    in-flight for this key, this ATTACHES to it (no duplicate execution).
+  //    If a settled entry is still present (within grace), it returns the
+  //    cached result. Otherwise it starts ONE resolver.
+  const { promise } = inFlightResolverManager.register(key, async () => {
+    // Run the resolver ONCE. Normalize the output to a provider result.
+    const fresh = await resolver();
     const providerResult =
       fresh &&
       !Array.isArray(fresh.sources) &&
       Array.isArray(fresh.result && fresh.result.sources)
         ? fresh.result
         : fresh;
+
+    // Persist a successful result to the persistent cache — a late success
+    // is NEVER discarded. The manager also caches it in memory.
     if (providerResult && Array.isArray(providerResult.sources) && providerResult.sources.length > 0) {
       await saveStream(episodeId, provider, providerResult);
     }
     return providerResult;
-  } finally {
-    release();
-  }
+  });
+
+  // 4. Await the SHARED resolver promise. There is NO per-caller timeout that
+  //    abandons the result — the resolver runs to completion and all waiters
+  //    receive the same eventual result. (The manager's soft timeout only
+  //    records observability; it never cancels the resolver or releases the lock.)
+  return await promise;
 }
 
 // ── Optional background expiry sweeper ────────────────────
@@ -476,6 +390,6 @@ module.exports = {
   sweepExpired,
   startSweeper,
   isCachedSourceAlive,
-  // Exposed for tests/diagnostics.
-  lockKey,
+  // Expose the single-flight manager for observability + tests.
+  inFlightResolverManager,
 };

@@ -1548,6 +1548,39 @@ async function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Run an array of async tasks with bounded concurrency (max N simultaneous).
+ * Preserves input order in the results. Used to parallelize mirror/subtitle/
+ * nested-iframe extraction without overwhelming the upstream CDN.
+ *
+ * @param {Array} items - items to process
+ * @param {number} limit - max simultaneous jobs (default 3)
+ * @param {Function} fn - async (item, index) => result
+ * @returns {Promise<Array>} results in input order
+ */
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = [];
+  const workerCount = Math.max(1, Math.min(Number(limit) || 3, items.length || 1));
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex;
+      nextIndex += 1;
+      try {
+        results[idx] = await fn(items[idx], idx);
+      } catch (err) {
+        results[idx] = null;
+      }
+    }
+  }
+
+  for (let i = 0; i < workerCount; i++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
 async function fetchHtml(url, options = {}) {
   const {
     cookieKey = null,
@@ -2835,17 +2868,28 @@ sources = sortSourcesByQuality(sources)
 
   /**
    * FAST PLAYBACK RESOLUTION — resolve a stream using a persisted
-   * AnimeHeaven identifier + episode key, skipping BOTH the search step
-   * AND the details/episode-list lookup. This is the cold-request path used
-   * after an AnimeHeaven import: the slug + gate key are stored in the DB.
+   * AnimeHeaven identifier + episode key + episode URL, skipping BOTH the
+   * search step AND the details/episode-list lookup. This is the cold-request
+   * path used after an AnimeHeaven import: the slug + gate key + gate URL are
+   * stored in the DB, so the flow goes DIRECTLY:
+   *   episodeUrl/key → gate → player → streams
+   *
+   * Optimizations:
+   *   • Uses the stored episode URL directly for the gate (no gate.php
+   *     candidate loop when the URL is known).
+   *   • Parallelizes mirror + subtitle + nested-iframe extraction with bounded
+   *     concurrency (max 3 simultaneous jobs).
+   *   • Emits a per-stage timing breakdown (gateTime, mirrorTime, subtitleTime,
+   *     totalTime) for benchmarking.
    *
    * @param {object} params
    * @param {string} params.slug — AnimeHeaven anime.php?<id> identifier
    * @param {string} params.episodeKey — AnimeHeaven gate key for the episode
+   * @param {string} [params.episodeUrl] — stored AnimeHeaven gate URL (optional)
    * @returns {Promise<object>} provider result ({ provider, streamUrl, sources, subtitles, ... })
    */
-  async resolveStreamByKey({ slug, episodeKey }) {
-    logger.debugStream('[AnimeHeaven] resolveStreamByKey started', { slug, hasKey: !!episodeKey });
+  async resolveStreamByKey({ slug, episodeKey, episodeUrl }) {
+    logger.debugStream('[AnimeHeaven] resolveStreamByKey started', { slug, hasKey: !!episodeKey, hasUrl: !!episodeUrl });
     const started = Date.now();
     const timings = {};
 
@@ -2873,8 +2917,19 @@ sources = sortSourcesByQuality(sources)
         return normalizeEmptyStream(REASON.EPISODE_MISSING);
       }
 
+      // If a stored episode URL exists, use it DIRECTLY as the gate URL —
+      // this skips the gate.php candidate loop entirely (fastest path).
       const gateStart = Date.now();
-      const gatePage = await resolveGatePage(baseUrl, details, episode);
+      let gatePage;
+      if (episodeUrl) {
+        gatePage = await fetchHtml(episodeUrl, {
+          cookieKey: episode.key,
+          referer: animeUrl,
+          attempts: 2,
+        });
+      } else {
+        gatePage = await resolveGatePage(baseUrl, details, episode);
+      }
       timings.gate = Date.now() - gateStart;
       timings.resolveGatePage = timings.gate;
 
@@ -2890,34 +2945,38 @@ sources = sortSourcesByQuality(sources)
         return normalizeEmptyStream(gatePage.reason || REASON.PLAYER_MISSING);
       }
 
-      // Extract sources (mirrors + nested iframes + subtitles) — same path as
-      // extractStreams after the gate is resolved.
+      // ── BOUNDED-CONCURRENCY EXTRACTION (max 3 simultaneous jobs) ──
+      // Run source parsing, nested-iframe extraction, and subtitle extraction
+      // concurrently with a shared worker pool so we don't hammer the CDN
+      // while still parallelizing the slow network fetches.
       const extractionStart = Date.now();
-      const [direct, nested] = await Promise.all([
-        parseSources(gatePage.html, baseUrl),
-        extractNestedIframeSources(gatePage.html, baseUrl),
-      ]);
+      const gateReferer = gatePage.url || animeUrl;
+      const [direct, nested, directSubtitles, nestedIframeSubtitles] = await mapLimit(
+        [
+          () => parseSources(gatePage.html, baseUrl),
+          () => extractNestedIframeSources(gatePage.html, baseUrl),
+          () => parseSubtitles(gatePage.html || '', gateReferer),
+          () => extractNestedIframeSubtitles(gatePage.html || '', gateReferer),
+        ],
+        3,
+        (job) => job()
+      );
+      timings.sourceExtraction = Date.now() - extractionStart;
 
+      // Merge sources (dedupe).
       const merged = [];
       for (const src of [...direct, ...nested]) {
-        if (!merged.some(x => x.url === src.url)) merged.push(src);
+        if (src && !merged.some(x => x.url === src.url)) merged.push(src);
       }
 
+      // Mirror extraction (bounded to 3 mirrors at a time if many).
       const mirrorStart = Date.now();
-      const mirrorSources = await resolveMirrorSources(merged, {
-        referer: gatePage.url || animeUrl,
-      });
+      const mirrorSources = await resolveMirrorSources(merged, { referer: gateReferer });
       timings.resolveMirrors = Date.now() - mirrorStart;
+      timings.mirrorTime = timings.resolveMirrors;
       for (const src of mirrorSources) {
         if (!merged.some(x => x.url === src.url)) merged.push(src);
       }
-      timings.sourceExtraction = Date.now() - extractionStart;
-
-      // Subtitle extraction (direct + nested iframes).
-      const [directSubtitles, nestedIframeSubtitles] = await Promise.all([
-        parseSubtitles(gatePage.html || '', gatePage.url || animeUrl),
-        extractNestedIframeSubtitles(gatePage.html || '', gatePage.url || animeUrl),
-      ]);
 
       let sources = sortSourcesByQuality(merged)
         .filter(src => isPlayableMediaUrl(src.url))
@@ -2930,7 +2989,7 @@ sources = sortSourcesByQuality(sources)
       }
 
       // Attach playback context.
-      const sourceReferer = gatePage.url || animeUrl;
+      const sourceReferer = gateReferer;
       sources = sources.map(src => {
         if (src.referer && src.origin) return src;
         const ctx = getPlaybackContext(src.url, sourceReferer);
@@ -2941,10 +3000,11 @@ sources = sortSourcesByQuality(sources)
         });
       });
 
-      let subtitles = [...directSubtitles];
-      for (const row of nestedIframeSubtitles) {
+      let subtitles = [...(directSubtitles || [])];
+      for (const row of nestedIframeSubtitles || []) {
         if (!subtitles.some(x => x.url === row.url)) subtitles.push(row);
       }
+      timings.subtitleTime = timings.sourceExtraction;
 
       if (!subtitles.length) {
         const sourceDerived = await discoverSubtitlesFromSources(sources, {
@@ -2959,13 +3019,15 @@ sources = sortSourcesByQuality(sources)
       const streamUrl = sources[0]?.url || null;
 
       timings.total = Date.now() - started;
+      timings.totalTime = timings.total;
       logger.info('[AnimeHeaven Timing] resolveStreamByKey', {
         slug,
         episodeKey,
-        gate: timings.gate || 0,
-        resolveMirrors: timings.resolveMirrors || 0,
+        gateTime: timings.gate || 0,
+        mirrorTime: timings.mirrorTime || 0,
+        subtitleTime: timings.subtitleTime || 0,
         sourceExtraction: timings.sourceExtraction || 0,
-        total: timings.total,
+        totalTime: timings.total,
       });
 
       recordProviderMetric('success', Date.now() - started);
@@ -2978,6 +3040,7 @@ sources = sortSourcesByQuality(sources)
         subtitles: rawSubtitles,
         subtitleMode: rawSubtitles.length ? 'external' : 'missing',
         externalTracks: rawSubtitles.length > 0,
+        timings,
       };
     } catch (error) {
       const msg = String(error?.message || '');
@@ -2987,6 +3050,7 @@ sources = sortSourcesByQuality(sources)
       else recordProviderMetric('failure', Date.now() - started);
       logger.warn('[AnimeHeavenProvider] resolveStreamByKey failed', { slug, episodeKey, error: msg, reason });
       timings.total = Date.now() - started;
+      timings.totalTime = timings.total;
       return normalizeEmptyStream(reason);
     }
   }

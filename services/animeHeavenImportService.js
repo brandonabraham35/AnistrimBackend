@@ -309,16 +309,17 @@ async function upsertEpisodes(animeId, episodes) {
         `UPDATE episodes SET
            title = COALESCE(?, title),
            animeheaven_episode_key = COALESCE(?, animeheaven_episode_key),
+           animeheaven_episode_url = COALESCE(?, animeheaven_episode_url),
            updated_at = NOW()
          WHERE id = ?`,
-        [ep.title || null, ep.key || null, id]
+        [ep.title || null, ep.key || null, ep.url || null, id]
       );
       updated += 1;
     } else {
       await db.query(
-        `INSERT INTO episodes (anime_id, episode_number, title, animeheaven_episode_key)
-         VALUES (?, ?, ?, ?)`,
-        [animeId, number, ep.title || `Episode ${number}`, ep.key || null]
+        `INSERT INTO episodes (anime_id, episode_number, title, animeheaven_episode_key, animeheaven_episode_url)
+         VALUES (?, ?, ?, ?, ?)`,
+        [animeId, number, ep.title || `Episode ${number}`, ep.key || null, ep.url || null]
       );
       inserted += 1;
     }
@@ -428,15 +429,15 @@ async function syncAnime(animeId, options = {}) {
 // ── Lookup for playback ─────────────────────────────────────
 
 /**
- * Resolve the AnimeHeaven slug + episode key for a (title, episodeNumber)
- * pair directly from the DB — NO AnimeHeaven search.
+ * Resolve the AnimeHeaven slug + episode key + episode URL for a
+ * (title, episodeNumber) pair directly from the DB — NO AnimeHeaven search.
  *
  * @param {string} title
  * @param {number|string} episodeNumber
- * @returns {Promise<{ animeId: number|null, slug: string|null, episodeKey: string|null, episodeId: number|null }>}
+ * @returns {Promise<{ animeId: number|null, slug: string|null, episodeKey: string|null, episodeUrl: string|null, episodeId: number|null }>}
  */
 async function resolvePlaybackIdentifiers(title, episodeNumber) {
-  const out = { animeId: null, slug: null, episodeKey: null, episodeId: null };
+  const out = { animeId: null, slug: null, episodeKey: null, episodeUrl: null, episodeId: null };
   if (!title || episodeNumber === undefined || episodeNumber === null || episodeNumber === '') return out;
 
   try {
@@ -449,12 +450,13 @@ async function resolvePlaybackIdentifiers(title, episodeNumber) {
     out.slug = animeRows[0].animeheaven_slug || null;
 
     const [epRows] = await db.query(
-      'SELECT id, animeheaven_episode_key FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+      'SELECT id, animeheaven_episode_key, animeheaven_episode_url FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
       [animeRows[0].id, episodeNumber]
     );
     if (epRows.length) {
       out.episodeId = epRows[0].id;
       out.episodeKey = epRows[0].animeheaven_episode_key || null;
+      out.episodeUrl = epRows[0].animeheaven_episode_url || null;
     }
   } catch (err) {
     logger.warn('[AnimeHeavenImport] resolvePlaybackIdentifiers failed', { title, episode: episodeNumber, error: err.message });

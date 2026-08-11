@@ -235,16 +235,18 @@ async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}) {
 
   try {
     let raw;
-    // FAST PATH: persisted slug + episode key → no search, no details.
+    // FAST PATH: persisted slug + episode key (+ episode URL) → no search, no details.
     if (identifiers.slug && identifiers.episodeKey) {
       logger.debugStream('[AnimeHeaven] FAST path (slug + episodeKey)', {
         anime: animeTitle,
         episode: episodeNumber,
         slug: identifiers.slug,
+        hasEpisodeUrl: !!identifiers.episodeUrl,
       });
       raw = await animeHeavenProvider.resolveStreamByKey({
         slug: identifiers.slug,
         episodeKey: identifiers.episodeKey,
+        episodeUrl: identifiers.episodeUrl || null,
       });
     } else if (identifiers.slug) {
       // MEDIUM PATH: persisted slug only → no search, but details lookup.
@@ -931,6 +933,11 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       latencyMs: elapsed,
     });
 
+    // ── WARM-CACHE NEXT EPISODE (fire-and-forget) ─────────
+    // Preload the next episode's stream metadata in the background so the
+    // user's next-play is a warm cache hit. This never blocks the response.
+    prefetchNextEpisode(animeTitle, episodeNumber, isPremium).catch(() => {});
+
     return {
       ...payload,
       providerUsed: payload.provider,
@@ -955,6 +962,59 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     latencyMs: elapsed,
   });
   throw new Error(errorMsg);
+}
+
+/**
+ * Background warm-cache of the NEXT episode's stream metadata.
+ *
+ * When a user watches episode N, this preloads episode N+1's AnimeHeaven
+ * stream into the persistent cache so the next-play is a cache hit (warm),
+ * not a cold resolution. This is fire-and-forget: it never blocks the current
+ * request and any failure is swallowed.
+ *
+ * @param {string} animeTitle
+ * @param {number|string} currentEpisodeNumber
+ * @param {boolean} isPremium — premium tier for the warm cache
+ */
+async function prefetchNextEpisode(animeTitle, currentEpisodeNumber, isPremium) {
+  const nextEp = Number(currentEpisodeNumber) + 1;
+  if (!Number.isFinite(nextEp) || nextEp < 1) return;
+
+  try {
+    // Resolve the next episode's DB identifiers (slug + episode key + url).
+    const nextIdentifiers = await animeHeavenImportService.resolvePlaybackIdentifiers(animeTitle, nextEp);
+    if (!nextIdentifiers.slug || !nextIdentifiers.episodeKey) {
+      // No stored identifiers for the next episode — cannot warm-cache.
+      return;
+    }
+
+    // Resolve the next episode via the FAST path (no search) and cache it.
+    const outcome = await executeAnimeHeaven(animeTitle, nextEp, nextIdentifiers);
+    if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
+      // Persist to the persistent episode_stream_cache (if episodeId known).
+      if (nextIdentifiers.episodeId) {
+        await streamCacheService.saveStream(nextIdentifiers.episodeId, STREAM_CACHE_PROVIDER, outcome.result);
+      }
+      // Also cache in the in-memory stream cache for instant warm hits.
+      const cacheKey = buildCacheKey(animeTitle, nextEp);
+      const filtered = filterSourcesByTier(outcome.result.sources, isPremium);
+      const best = filtered.reduce((a, b) =>
+        parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
+      , filtered[0]);
+      if (best) {
+        await cache.set(cacheKey, {
+          provider: outcome.result.provider || ANIME_HEAVEN_TAG,
+          streamUrl: best.url,
+          sources: filtered,
+          subtitles: outcome.result.subtitles || [],
+          bestQuality: best.quality || 'auto',
+        }, STREAM_CACHE_TTL);
+      }
+      logger.info('[AnimeHeaven] Warm-cached next episode', { anime: animeTitle, nextEp, sources: outcome.result.sources.length });
+    }
+  } catch (err) {
+    logger.debugStream('Next-episode warm-cache failed (non-fatal)', { anime: animeTitle, nextEp, error: err.message });
+  }
 }
 
 /**
@@ -1023,6 +1083,7 @@ module.exports = {
   getBestQualityLabel,
   getProviderHealthStatus,
   QUALITY_TIERS,
+  prefetchNextEpisode,
   // Exposed for tests/diagnostics.
   ANIMEHEAVEN_MAX_ATTEMPTS,
   FALLBACK_PROVIDER_ORDER,
