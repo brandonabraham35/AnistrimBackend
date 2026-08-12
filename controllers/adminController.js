@@ -21,7 +21,18 @@ async function getSchema() {
 }
 
 const hasColumn = (schema, table, column) => Boolean(schema[table]?.has(column));
-const invalidateCatalogue = animeId => cache.delByPrefix('catalogue:').catch(error => console.warn('Catalogue cache invalidation failed:', error.message));
+const invalidateCatalogue = animeId => {
+  const jobs = [cache.delByPrefix('catalogue:')];
+  // Keep the automatic home-shelf sections in sync whenever an admin
+  // creates/updates/deletes anime. Failure is non-fatal.
+  try {
+    const homeShelf = require('../services/homeShelfService');
+    jobs.push(homeShelf.invalidate());
+  } catch (error) {
+    console.warn('Home shelf invalidation failed:', error.message);
+  }
+  return Promise.all(jobs).catch(error => console.warn('Catalogue cache invalidation failed:', error.message));
+};
 
 async function insertExistingColumns(table, values) {
   const schema = await getSchema();

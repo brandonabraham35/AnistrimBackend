@@ -60,6 +60,7 @@ app.use('/api/stream', require('./routes/streamRoutes'));
 app.use('/api/stream-proxy', require('./routes/streamProxyRoutes'));
 app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/home', require('./routes/homeShelfRoutes'));
 
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
 try {
@@ -133,6 +134,15 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Start background jobs
 require('./utils/premiumAutomation');
+
+// Start the automatic home-shelf section builder (trending/popular/new/classics).
+// Refreshes every 6 hours so the sections stay dynamic. Idempotent + failure-safe.
+try {
+  const homeShelfService = require('./services/homeShelfService');
+  homeShelfService.startScheduler();
+} catch (err) {
+  console.error('⚠️ [HOMESHELF] Scheduler init failed (non-fatal):', err && err.message);
+}
 
 // Start the lightweight persistent-stream-cache expiry sweeper (best-effort).
 // The sweeper interval is unref'd and failure-safe, so it never blocks playback
