@@ -153,6 +153,20 @@ exports.getContinueWatching = async (req, res) => {
          a.title       AS anime_title,
          a.cover_image AS anime_cover_image
        FROM watch_history wh
+       JOIN (
+         -- ONE card per anime: pick the most recently updated in-progress
+         -- episode for each anime_id, so episodes 1,2,3 of the same series do
+         -- not produce multiple Continue Watching cards.
+         SELECT w.user_id, w.anime_id, MAX(w.updated_at) AS max_updated
+         FROM watch_history w
+         WHERE w.user_id = ?
+           AND w.progress_seconds > 10
+           AND w.total_duration_seconds > 0
+           AND w.progress_seconds < (w.total_duration_seconds * 0.95)
+         GROUP BY w.user_id, w.anime_id
+       ) latest ON latest.user_id = wh.user_id
+                AND latest.anime_id  = wh.anime_id
+                AND latest.max_updated = wh.updated_at
        LEFT JOIN anime a ON a.id = CAST(wh.anime_id AS UNSIGNED)
        WHERE wh.user_id = ?
          AND wh.progress_seconds > 10
@@ -160,7 +174,7 @@ exports.getContinueWatching = async (req, res) => {
          AND wh.progress_seconds < (wh.total_duration_seconds * 0.95)
        ORDER BY wh.updated_at DESC
        LIMIT 10`,
-      [userId]
+      [userId, userId]
     );
 
     // Map to camelCase keys for the frontend
@@ -311,9 +325,30 @@ exports.getEpisodeSkipTimes = async (req, res) => {
       });
     }
 
+    // The frontend historically sends the INTERNAL database anime id here, but
+    // AniSkip/Anime-Skip require the MyAnimeList (MAL) id. Resolve the internal
+    // id → mal_id from the `anime` table when the provided value is not already
+    // a usable MAL id. Fall back to using the value as-is (backward compatible:
+    // if the client already sends a real MAL id, or no row maps, we still try).
+    let effectiveMalId = malId;
+    try {
+      if (/^\d+$/.test(String(malId))) {
+        const [rows] = await db.query(
+          'SELECT mal_id FROM anime WHERE id = ? AND mal_id IS NOT NULL LIMIT 1',
+          [parseInt(malId, 10)]
+        );
+        if (rows.length && rows[0].mal_id) {
+          effectiveMalId = String(rows[0].mal_id);
+        }
+      }
+    } catch (mapErr) {
+      // Non-fatal — fall through and attempt with the original value.
+      console.warn('[WatchController] skip-times mal_id lookup failed (non-fatal):', mapErr.message);
+    }
+
     // Make AniSkip non-fatal. If it fails, log a warning and return empty.
     try {
-      const result = await fetchSkipTimes(malId, episodeNumber);
+      const result = await fetchSkipTimes(effectiveMalId, episodeNumber);
       return res.json(result);
     } catch (skipErr) {
       console.warn(`[WatchController] AniSkip fetch failed (non-fatal): ${skipErr.message}`);

@@ -20,11 +20,21 @@ router.post('/checkout', protect, payments.initializeCheckout);
 router.get('/ipn-listener', payments.handlePesapalIPN);
 
 // ──────────────────────────────────────────────────────────────
-//  LEGACY: Webhook — no auth, Pesapal calls this directly
-//  Kept for backward compatibility with existing frontend.
+//  LEGACY: Webhook — Pesapal calls this directly.
+//  Kept for backward compatibility, but now optionally protected by a shared
+//  secret (PAYMENT_WEBHOOK_SECRET) when configured. Without a secret set, it
+//  falls back to the previous behaviour (re-verifying the order status against
+//  Pesapal before granting premium) so existing integrations keep working.
 // ──────────────────────────────────────────────────────────────
 router.post('/webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
   if (Buffer.isBuffer(req.body)) req.body = JSON.parse(req.body.toString());
+  const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+  if (secret) {
+    const supplied = req.get('x-webhook-signature') || req.query.signature || '';
+    if (supplied !== secret) {
+      return res.status(401).json({ message: 'Invalid webhook signature.' });
+    }
+  }
   next();
 }, payments.webhook);
 

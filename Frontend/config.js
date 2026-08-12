@@ -43,7 +43,12 @@
   const shared = window.AniStrimShared || {};
 
   shared.apiFetch = shared.apiFetch || async function apiFetch(endpoint, options = {}) {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    // When the body is FormData (e.g. multipart avatar upload), we must NOT set
+    // Content-Type: application/json — the browser sets the correct multipart
+    // boundary automatically. Forcing JSON would break file uploads.
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    const headers = { ...(options.headers || {}) };
+    if (!isFormData) headers['Content-Type'] = 'application/json';
     if (State?.token) headers['Authorization'] = `Bearer ${State.token}`;
 
     // ── Bounded request timeout ─────────────────────────────

@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const db = require('../config/db');
 const authController = require('../controllers/authController');
 const googleVerifyController = require('../controllers/googleVerifyController');
+const googleAuthController = require('../controllers/googleAuthController');
 const authMiddleware = require('../middleware/auth');
 const { handleImageUpload } = require('../utils/bunnyUpload');
 
@@ -46,12 +48,41 @@ router.get('/google/client-id', (req, res) => {
   res.json({ clientId });
 });
 
+// ── Google OAuth redirect flow (Capacitor / mobile deep-link) ──
+// These routes power the `anistrim://auth` deep-link handoff used by the
+// native app. They were previously unmounted, leaving the mobile flow broken.
+
+// @route   GET /api/auth/google/start
+// @desc    Begin the Google OAuth redirect flow (mobile)
+// @access  Public
+router.get('/google/start', googleAuthController.googleRedirect);
+
+// @route   GET /api/auth/google/callback
+// @desc    Google redirect_uri — exchanges the OAuth code, creates a short-lived
+//          login code, then deep-links back into the app.
+// @access  Public
+router.get('/google/callback', googleAuthController.googleCallback);
+
+// @route   GET /api/auth/google/token
+// @desc    Exchange the short-lived login code for a JWT + user. This is the
+//          endpoint the mobile frontend (google-auth-handler.js) calls after
+//          receiving anistrim://auth?code=...
+// @access  Public
+router.get('/google/token', googleAuthController.exchangeLoginCode);
+
 // @route   POST /api/auth/avatar
 // @desc    Upload user profile avatar
 // @access  Private
-router.post('/avatar', authMiddleware.protect, (req, res) => {
-    // The 'avatars' argument specifies the Cloudinary folder
-    handleImageUpload(req, res, 'avatars');
+router.post('/avatar', authMiddleware.protect, async (req, res) => {
+    // The 'avatars' argument specifies the Cloudinary folder.
+    // onUploaded persists the returned avatar URL to users.avatar_url so the
+    // profile survives a refresh (getMe reads avatar_url from the DB).
+    await handleImageUpload(req, res, 'avatars', async (result) => {
+        const avatarUrl = result?.secure_url || result?.url || result?.image_url || null;
+        if (avatarUrl && req.user?.id) {
+            await db.query('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, req.user.id]);
+        }
+    });
 });
 
 module.exports = router;

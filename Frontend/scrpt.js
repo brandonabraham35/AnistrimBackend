@@ -8,7 +8,24 @@ const State = {
   get user()      { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } },
   get isPremium() { return this.user?.isPremium === true; },
   get isAdmin()   { return this.user?.isAdmin   === true; },
-  get isLoggedIn(){ return !!this.token; },
+  // A token only counts as "logged in" if it exists AND has not expired.
+  // Decode the JWT `exp` claim (seconds since epoch) without a library so a
+  // stale/expired token no longer keeps the user marked as authenticated
+  // (the old behaviour — presence only). The server remains authoritative.
+  get isLoggedIn() {
+    const t = this.token;
+    if (!t) return false;
+    try {
+      const parts = t.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload && payload.exp && typeof payload.exp === 'number') {
+          if (payload.exp * 1000 < Date.now()) return false;
+        }
+      }
+    } catch (e) { /* malformed token — fall through to presence check */ }
+    return !!t;
+  },
   save(token, user) {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
@@ -58,26 +75,60 @@ function applyPremiumUI() {
 let heroAnime = [];
 let currentHeroIdx = 0;
 
+// De-duplicate a candidate list against already-rendered anime ids so a single
+// title does not appear in every homepage section.
+function dedupeAgainst(seen, list) {
+  const out = [];
+  for (const a of list) {
+    if (!a || a.id == null) continue;
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    out.push(a);
+  }
+  return out;
+}
+
 async function loadHomeContent() {
   if (!document.getElementById('trending-row')) return;
 
   // FIX 2: Load Continue Watching first
   loadContinueWatching();
 
-  try {
-    const { data: all, ok } = await apiFetch('/api/anime/trending');
-    if (!ok || !Array.isArray(all)) {
-      throw new Error('Invalid response from server');
-    }
+  const seen = new Set();
+  let trending = [];
 
-    heroAnime = all.filter(a => a.is_featured).slice(0,5);
-    if (!heroAnime.length) heroAnime = [...all].sort((a,b) => b.rating - a.rating).slice(0,5);
+  try {
+    // Trending / hero feed (also drives Popular + Classics fallback).
+    const { data: all, ok } = await apiFetch('/api/anime/trending');
+    if (ok && Array.isArray(all)) trending = all;
+
+    heroAnime = (trending.filter(a => a.is_featured).slice(0,5));
+    if (!heroAnime.length) heroAnime = [...trending].sort((a,b) => b.rating - a.rating).slice(0,5);
     setupHeroSlider();
 
-    renderRow('trending-row', all.filter(a => a.status === 'airing').slice(0,8));
-    renderRow('popular-row',  [...all].sort((a,b) => b.rating - a.rating).slice(0,8));
-    renderRow('new-row',      all.filter(a => (a.year||0) >= 2020).slice(0,8));
-    renderRow('classics-row', all.filter(a => (a.year||9999) < 2015).slice(0,8));
+    // Popular — highest-rated catalogue, de-duplicated.
+    const popular = dedupeAgainst(seen, [...trending].sort((a,b) => b.rating - a.rating));
+    renderRow('popular-row', popular.slice(0,8));
+
+    // Trending Now — currently airing / high engagement, de-duplicated.
+    const airing = dedupeAgainst(seen, trending.filter(a => a.status === 'airing'));
+    renderRow('trending-row', airing.slice(0,8));
+
+    // New Releases — use the dedicated "latest uploads" endpoint (independent
+    // of rating/status) so this row is truly distinct from trending.
+    try {
+      const { data: latest, ok: latestOk } = await apiFetch('/api/anime/latest?limit=12');
+      if (latestOk && Array.isArray(latest)) {
+        renderRow('new-row', dedupeAgainst(seen, latest).slice(0,8));
+      } else {
+        renderRow('new-row', dedupeAgainst(seen, trending.filter(a => (a.year||0) >= 2020)).slice(0,8));
+      }
+    } catch(e) {
+      renderRow('new-row', dedupeAgainst(seen, trending.filter(a => (a.year||0) >= 2020)).slice(0,8));
+    }
+
+    // Classics — older titles, de-duplicated.
+    renderRow('classics-row', dedupeAgainst(seen, trending.filter(a => (a.year||9999) < 2015)).slice(0,8));
   } catch(e) {
     console.error('Home load error:', e);
     showCatalogError('Could not connect to the server. The catalog data is currently unavailable.');
@@ -281,24 +332,11 @@ async function reloadCatalog() {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const { data: all, ok } = await apiFetch('/api/anime/trending');
-
-      if (!ok || !Array.isArray(all)) {
-        throw new Error('Invalid response from server');
-      }
-
-      // Success — populate the page
-      heroAnime = all.filter(a => a.is_featured).slice(0,5);
-      if (!heroAnime.length) heroAnime = [...all].sort((a,b) => b.rating - a.rating).slice(0,5);
-      setupHeroSlider();
-
-      renderRow('trending-row', all.filter(a => a.status === 'airing').slice(0,8));
-      renderRow('popular-row',  [...all].sort((a,b) => b.rating - a.rating).slice(0,8));
-      renderRow('new-row',      all.filter(a => (a.year||0) >= 2020).slice(0,8));
-      renderRow('classics-row', all.filter(a => (a.year||9999) < 2015).slice(0,8));
-
-      // Also reload continue watching
-      loadContinueWatching();
+      // Process the retry loop: a successful trending call does not guarantee
+      // the /latest call also succeeds, so delegate to the single shared render
+      // path (loadHomeContent) to avoid the duplicate render loop that used to
+      // exist between loadHomeContent and reloadCatalog.
+      await loadHomeContent();
 
       // Reset button
       if (btnIcon) btnIcon.textContent = '✓';
@@ -406,6 +444,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showAd(){
+    // NEVER show the interstitial on the watch page — it must not interrupt
+    // active video playback. (The player has its own separate ad tracking.)
+    const page = (window.location.pathname.split('/').pop() || 'index.html');
+    if (page === 'watch.html') return;
     if (document.querySelector('.ad-overlay')) return;
     injectAdStyles();
     const overlay = document.createElement('div');
@@ -414,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="ad-card">
         <h3>Sponsored</h3>
         <div class="ad-banner">🎬 Enjoying AniStrim?<br>Go ad-free with Premium</div>
-        <p>Your video will resume in <span id="ad-countdown">15</span>s</p>
+        <p>AniStrim is free thanks to partners like you.</p>
         <div class="ad-row">
           <button class="ad-skip" id="ad-skip-btn" disabled>Skip in 15s</button>
           <button class="ad-upgrade" onclick="location.href='upgrade.html'">Go Premium</button>
@@ -422,15 +464,12 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>`;
     document.body.appendChild(overlay);
 
-    // Pause any playing video so ads don't talk over the show
-    const vids = Array.from(document.querySelectorAll('video'));
-    const wasPlaying = vids.filter(v => !v.paused);
-    wasPlaying.forEach(v => v.pause());
-
+    // IMPORTANT: Do NOT pause any videos. Ads must never unexpectedly pause or
+    // interfere with video playback. The overlay is non-blocking for media.
     let left = 15;
     const cd  = overlay.querySelector('#ad-countdown');
     const btn = overlay.querySelector('#ad-skip-btn');
-    const tick = setInterval(() => { // Use _escapeHTML for countdown text
+    const tick = setInterval(() => {
       left--;
       if (cd)  cd.textContent  = Math.max(0, left);
       if (btn) btn.textContent = left > 0 ? `Skip in ${left}s` : 'Skip Ad';
@@ -443,13 +482,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function close(){
       clearInterval(tick);
       overlay.remove();
-      wasPlaying.forEach(v => { try { v.play(); } catch(e){} });
     }
   }
 
   function startAdsIfEligible(){
     if (!State.isLoggedIn) return;
     if (State.isPremium || State.isAdmin) return;
+    // Skip the watch page entirely so ads never interrupt playback.
+    const page = (window.location.pathname.split('/').pop() || 'index.html');
+    if (page === 'watch.html') return;
     // First ad after 10 min, then every 10 min
     setInterval(showAd, 10 * 60 * 1000);
   }

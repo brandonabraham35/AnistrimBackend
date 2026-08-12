@@ -39,13 +39,18 @@ async function deleteImage(publicId) {
   return cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
 }
 
-async function handleImageUpload(req, res, folderKey) {
+async function handleImageUpload(req, res, folderKey, onUploaded) {
   try {
     if (!isConfigured()) return res.status(503).json({ success: false, message: 'Cloudinary is not configured.' });
     await parseUpload(req, res);
     const file = firstUploadedFile(req);
     if (!file) return res.status(400).json({ success: false, message: 'No image uploaded.', acceptedFields: FIELD_NAMES });
     const result = await uploadBufferToCloudinary(file, folderKey);
+    // Allow callers (e.g. the avatar route) to persist the resulting URL
+    // (e.g. UPDATE users SET avatar_url = ?) before responding.
+    if (typeof onUploaded === 'function') {
+      await onUploaded(result);
+    }
     return res.json({ success: true, message: 'Image uploaded successfully.', ...result });
   } catch (error) {
     console.error('Cloudinary image upload failed:', error.message);
