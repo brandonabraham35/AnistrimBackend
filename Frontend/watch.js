@@ -1,5 +1,15 @@
 // watch.js — AniStrim Premium Watch Experience
 // ─────────────────────────────────────────────────────────────
+// TEMPORARY DEBUG: Log script evaluation + catch any errors that
+// would prevent loadWatch() from being registered.
+console.log('[WATCH DEBUG] watch.js script evaluating');
+window.addEventListener('error', function(e) {
+  console.error('[WATCH DEBUG] Global JS error:', e.message, 'at', e.filename + ':' + e.lineno);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[WATCH DEBUG] Unhandled promise rejection:', e.reason);
+});
+
 // Preserves the original playback/resolution backend (multi-API
 // streaming, AnimeHeaven proxy, skip-intro, autoplay-next, progress
 // tracking, ad tracker, offline downloads) and layers a premium,
@@ -96,8 +106,17 @@ function isTouchDevice() {
 //  PAGE LOAD / STREAM RESOLUTION  (unchanged backend contract)
 // ════════════════════════════════════════════════════════════
 async function loadWatch() {
+  console.log('[WATCH DEBUG] loadWatch() invoked');
   watchLog('page initialized', { url: window.location.href });
   console.log('[PLAYBACK] Requested episode', { url: window.location.href });
+  console.log('[WATCH DEBUG] URL =', window.location.href);
+  console.log('[WATCH DEBUG] search =', window.location.search);
+  console.log('[WATCH DEBUG] pathname =', window.location.pathname);
+  console.log('[WATCH DEBUG] State.isLoggedIn =', State?.isLoggedIn);
+  console.log('[WATCH DEBUG] State.token =', State?.token ? 'present' : 'missing');
+  console.log('[WATCH DEBUG] apiFetch type =', typeof window.apiFetch);
+  console.log('[WATCH DEBUG] getApiBaseUrl type =', typeof window.getApiBaseUrl);
+  console.log('[WATCH DEBUG] API base =', typeof window.getApiBaseUrl === 'function' ? window.getApiBaseUrl() : 'N/A');
 
   // Global safety timeout — never leave the user stuck on "Preparing player..."
   const PLAYBACK_TOTAL_TIMEOUT_MS = 90000;
@@ -110,6 +129,10 @@ async function loadWatch() {
   const animeId = params.get('id') || params.get('animeId');
   const epNumRaw = params.get('ep');
   const epIdRaw = params.get('epId');
+  console.log('[WATCH DEBUG] Parsed params:', { animeId, epNumRaw, epIdRaw });
+  console.log('[WATCH DEBUG] episodeId =', epIdRaw);
+  console.log('[WATCH DEBUG] animeId =', animeId);
+  console.log('[WATCH DEBUG] providerEpisodeId =', epIdRaw);
 
   if (params.get('animeId')) console.warn('[Watch] Legacy param "animeId" detected — use "id" instead');
   if (params.get('epId') && !params.get('ep')) console.warn('[Watch] Legacy param "epId" detected — use "ep" with episode NUMBER instead');
@@ -123,8 +146,10 @@ async function loadWatch() {
   if (!animeId) { clearTimeout(playbackTimeout); showWatchError('Missing anime ID. Please go back and try again.'); return; }
 
   try {
+    console.log('[WATCH DEBUG] starting playback initialization');
     setLoadingStatus('Finding episode...');
     watchLog('anime request started', { animeId });
+    console.log('[WATCH DEBUG] calling playback API: /api/anime/' + animeId);
 
     const animeRes = await apiFetch('/api/anime/' + animeId, { timeout: API_TIMEOUT_MS });
     if (animeRes.timedOut) {
@@ -2489,6 +2514,8 @@ window.exitPlayer = exitPlayer;
 // The watch page must kick off playback resolution on load. Without this,
 // loadWatch() is never invoked and the player stays stuck on
 // "Preparing player..." with NO backend request being made.
+console.log('[WATCH DEBUG] Registering DOMContentLoaded listener for loadWatch');
 document.addEventListener('DOMContentLoaded', loadWatch);
+console.log('[WATCH DEBUG] DOMContentLoaded listener registered');
 
 
