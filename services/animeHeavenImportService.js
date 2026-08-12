@@ -17,6 +17,7 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const { provider: animeHeavenProvider } = require('./animeHeavenProvider');
+const imageService = require('../utils/imageService');
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -362,6 +363,18 @@ async function importAnime(identifier, options = {}) {
 
   const meta = await getAnime(identifier);
   if (!meta) throw new Error('AnimeHeaven returned no metadata for identifier.');
+
+  // ── Centralized image normalization ──────────────────────
+  // Process cover/banner through the image service. Valid public URLs are
+  // returned as-is; non-URL/provider paths are uploaded to Cloudinary with
+  // deterministic public IDs. On failure, the original value is preserved
+  // (upsertAnime uses COALESCE to keep existing images).
+  const images = await imageService.processAnimeImages(
+    { cover: meta.cover_image, banner: meta.banner_image },
+    { sourceLabel: meta.title || identifier }
+  );
+  if (images.cover.url) meta.cover_image = images.cover.url;
+  if (images.banner.url) meta.banner_image = images.banner.url;
 
   const anime = await upsertAnime(meta);
   await replaceGenres(anime.id, meta.genres);
