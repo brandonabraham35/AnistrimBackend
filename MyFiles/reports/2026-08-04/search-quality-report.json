@@ -1,0 +1,685 @@
+{
+  "generatedAt": "2026-08-04T18:47:21.183Z",
+  "queryCount": 17,
+  "resultLimit": 10,
+  "perProvider": {
+    "animeheaven": {
+      "total": 17,
+      "top1Hits": 13,
+      "top10Hits": 15,
+      "empty": 0,
+      "errors": 0,
+      "latencySum": 44746,
+      "results": [
+        {
+          "query": "One Piece",
+          "expectedTitle": "One Piece",
+          "resultCount": 10,
+          "top1": false,
+          "top10": true,
+          "error": null,
+          "latencyMs": 0
+        },
+        {
+          "query": "ワンピース",
+          "expectedTitle": "One Piece",
+          "resultCount": 10,
+          "top1": false,
+          "top10": true,
+          "error": null,
+          "latencyMs": 3234
+        },
+        {
+          "query": "Naruto",
+          "expectedTitle": "Naruto",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1
+        },
+        {
+          "query": "ナルト",
+          "expectedTitle": "Naruto",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 1960
+        },
+        {
+          "query": "Jujutsu Kaisen",
+          "expectedTitle": "Jujutsu Kaisen",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1
+        },
+        {
+          "query": "Jujutsu",
+          "expectedTitle": "Jujutsu Kaisen",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1104
+        },
+        {
+          "query": "Demon Slayer",
+          "expectedTitle": "Demon Slayer",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 0
+        },
+        {
+          "query": "Kimetsu no Yaiba",
+          "expectedTitle": "Demon Slayer",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 3379
+        },
+        {
+          "query": "Steins;Gate",
+          "expectedTitle": "Steins Gate",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1
+        },
+        {
+          "query": "Stein Gate",
+          "expectedTitle": "Steins Gate",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 991
+        },
+        {
+          "query": "AOT",
+          "expectedTitle": "Attack on Titan",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 4280
+        },
+        {
+          "query": "Shingeki no Kyojin",
+          "expectedTitle": "Attack on Titan",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 4459
+        },
+        {
+          "query": "FMAB",
+          "expectedTitle": "Fullmetal Alchemist Brotherhood",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 4252
+        },
+        {
+          "query": "MHA",
+          "expectedTitle": "My Hero Academia",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 4469
+        },
+        {
+          "query": "SAO",
+          "expectedTitle": "Sword Art Online",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 5149
+        },
+        {
+          "query": "Re:Zero",
+          "expectedTitle": "Re:Zero",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 6066
+        },
+        {
+          "query": "ReZero",
+          "expectedTitle": "Re:Zero",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 5400
+        }
+      ],
+      "top1Accuracy": 76.47,
+      "top10Recall": 88.24,
+      "emptyRate": 0,
+      "errorRate": 0,
+      "avgLatencyMs": 2632.12
+    },
+    "consumet": {
+      "total": 17,
+      "top1Hits": 11,
+      "top10Hits": 11,
+      "empty": 0,
+      "errors": 0,
+      "latencySum": 48792,
+      "results": [
+        {
+          "query": "One Piece",
+          "expectedTitle": "One Piece",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 3797
+        },
+        {
+          "query": "ワンピース",
+          "expectedTitle": "One Piece",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 3146
+        },
+        {
+          "query": "Naruto",
+          "expectedTitle": "Naruto",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 6554
+        },
+        {
+          "query": "ナルト",
+          "expectedTitle": "Naruto",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 5002
+        },
+        {
+          "query": "Jujutsu Kaisen",
+          "expectedTitle": "Jujutsu Kaisen",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 4945
+        },
+        {
+          "query": "Jujutsu",
+          "expectedTitle": "Jujutsu Kaisen",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1058
+        },
+        {
+          "query": "Demon Slayer",
+          "expectedTitle": "Demon Slayer",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 2170
+        },
+        {
+          "query": "Kimetsu no Yaiba",
+          "expectedTitle": "Demon Slayer",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 1790
+        },
+        {
+          "query": "Steins;Gate",
+          "expectedTitle": "Steins Gate",
+          "resultCount": 7,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1714
+        },
+        {
+          "query": "Stein Gate",
+          "expectedTitle": "Steins Gate",
+          "resultCount": 7,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 1869
+        },
+        {
+          "query": "AOT",
+          "expectedTitle": "Attack on Titan",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 2700
+        },
+        {
+          "query": "Shingeki no Kyojin",
+          "expectedTitle": "Attack on Titan",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 2393
+        },
+        {
+          "query": "FMAB",
+          "expectedTitle": "Fullmetal Alchemist Brotherhood",
+          "resultCount": 10,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 1494
+        },
+        {
+          "query": "MHA",
+          "expectedTitle": "My Hero Academia",
+          "resultCount": 2,
+          "top1": false,
+          "top10": false,
+          "error": null,
+          "latencyMs": 1062
+        },
+        {
+          "query": "SAO",
+          "expectedTitle": "Sword Art Online",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 3563
+        },
+        {
+          "query": "Re:Zero",
+          "expectedTitle": "Re:Zero",
+          "resultCount": 10,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 2296
+        },
+        {
+          "query": "ReZero",
+          "expectedTitle": "Re:Zero",
+          "resultCount": 4,
+          "top1": true,
+          "top10": true,
+          "error": null,
+          "latencyMs": 3239
+        }
+      ],
+      "top1Accuracy": 64.71,
+      "top10Recall": 64.71,
+      "emptyRate": 0,
+      "errorRate": 0,
+      "avgLatencyMs": 2870.12
+    }
+  },
+  "queries": [
+    {
+      "provider": "animeheaven",
+      "query": "One Piece",
+      "expectedTitle": "One Piece",
+      "resultCount": 10,
+      "top1": false,
+      "top10": true,
+      "error": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "animeheaven",
+      "query": "ワンピース",
+      "expectedTitle": "One Piece",
+      "resultCount": 10,
+      "top1": false,
+      "top10": true,
+      "error": null,
+      "latencyMs": 3234
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Naruto",
+      "expectedTitle": "Naruto",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1
+    },
+    {
+      "provider": "animeheaven",
+      "query": "ナルト",
+      "expectedTitle": "Naruto",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 1960
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Jujutsu Kaisen",
+      "expectedTitle": "Jujutsu Kaisen",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Jujutsu",
+      "expectedTitle": "Jujutsu Kaisen",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1104
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Demon Slayer",
+      "expectedTitle": "Demon Slayer",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 0
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Kimetsu no Yaiba",
+      "expectedTitle": "Demon Slayer",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 3379
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Steins;Gate",
+      "expectedTitle": "Steins Gate",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Stein Gate",
+      "expectedTitle": "Steins Gate",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 991
+    },
+    {
+      "provider": "animeheaven",
+      "query": "AOT",
+      "expectedTitle": "Attack on Titan",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 4280
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Shingeki no Kyojin",
+      "expectedTitle": "Attack on Titan",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 4459
+    },
+    {
+      "provider": "animeheaven",
+      "query": "FMAB",
+      "expectedTitle": "Fullmetal Alchemist Brotherhood",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 4252
+    },
+    {
+      "provider": "animeheaven",
+      "query": "MHA",
+      "expectedTitle": "My Hero Academia",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 4469
+    },
+    {
+      "provider": "animeheaven",
+      "query": "SAO",
+      "expectedTitle": "Sword Art Online",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 5149
+    },
+    {
+      "provider": "animeheaven",
+      "query": "Re:Zero",
+      "expectedTitle": "Re:Zero",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 6066
+    },
+    {
+      "provider": "animeheaven",
+      "query": "ReZero",
+      "expectedTitle": "Re:Zero",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 5400
+    },
+    {
+      "provider": "consumet",
+      "query": "One Piece",
+      "expectedTitle": "One Piece",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 3797
+    },
+    {
+      "provider": "consumet",
+      "query": "ワンピース",
+      "expectedTitle": "One Piece",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 3146
+    },
+    {
+      "provider": "consumet",
+      "query": "Naruto",
+      "expectedTitle": "Naruto",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 6554
+    },
+    {
+      "provider": "consumet",
+      "query": "ナルト",
+      "expectedTitle": "Naruto",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 5002
+    },
+    {
+      "provider": "consumet",
+      "query": "Jujutsu Kaisen",
+      "expectedTitle": "Jujutsu Kaisen",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 4945
+    },
+    {
+      "provider": "consumet",
+      "query": "Jujutsu",
+      "expectedTitle": "Jujutsu Kaisen",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1058
+    },
+    {
+      "provider": "consumet",
+      "query": "Demon Slayer",
+      "expectedTitle": "Demon Slayer",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 2170
+    },
+    {
+      "provider": "consumet",
+      "query": "Kimetsu no Yaiba",
+      "expectedTitle": "Demon Slayer",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 1790
+    },
+    {
+      "provider": "consumet",
+      "query": "Steins;Gate",
+      "expectedTitle": "Steins Gate",
+      "resultCount": 7,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1714
+    },
+    {
+      "provider": "consumet",
+      "query": "Stein Gate",
+      "expectedTitle": "Steins Gate",
+      "resultCount": 7,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 1869
+    },
+    {
+      "provider": "consumet",
+      "query": "AOT",
+      "expectedTitle": "Attack on Titan",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 2700
+    },
+    {
+      "provider": "consumet",
+      "query": "Shingeki no Kyojin",
+      "expectedTitle": "Attack on Titan",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 2393
+    },
+    {
+      "provider": "consumet",
+      "query": "FMAB",
+      "expectedTitle": "Fullmetal Alchemist Brotherhood",
+      "resultCount": 10,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 1494
+    },
+    {
+      "provider": "consumet",
+      "query": "MHA",
+      "expectedTitle": "My Hero Academia",
+      "resultCount": 2,
+      "top1": false,
+      "top10": false,
+      "error": null,
+      "latencyMs": 1062
+    },
+    {
+      "provider": "consumet",
+      "query": "SAO",
+      "expectedTitle": "Sword Art Online",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 3563
+    },
+    {
+      "provider": "consumet",
+      "query": "Re:Zero",
+      "expectedTitle": "Re:Zero",
+      "resultCount": 10,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 2296
+    },
+    {
+      "provider": "consumet",
+      "query": "ReZero",
+      "expectedTitle": "Re:Zero",
+      "resultCount": 4,
+      "top1": true,
+      "top10": true,
+      "error": null,
+      "latencyMs": 3239
+    }
+  ]
+}

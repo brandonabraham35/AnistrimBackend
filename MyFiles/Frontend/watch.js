@@ -2406,58 +2406,25 @@ function initTouchControls(wrap, video) {
   if (!isTouchDevice()) return;
   wrap.classList.add('touch-active');
 
-  // IMPORTANT: The `touchstart` handler in initControlsAutoHide() calls
-  // showControls(), which adds the controls-visible(-mobile) class BEFORE
-  // touchend fires. So at touchend we can no longer tell whether the tap was
-  // meant to REVEAL the controls. We must capture the visibility at
-  // touchstart time (before showControls runs).
-  var tapStartedWithControlsHidden = false;
-
-  wrap.addEventListener('touchstart', function() {
-    tapStartedWithControlsHidden =
-      !wrap.classList.contains('controls-visible') &&
-      !wrap.classList.contains('controls-visible-mobile');
-  }, { passive: true });
-
   wrap.addEventListener('touchend', function(e) {
     const touch = e.changedTouches && e.changedTouches[0];
     if (!touch) return;
     const now = Date.now();
     const dx = Math.abs(touch.clientX - lastTapX);
-
-    // Double-tap zone: within 300ms and < 40px of the previous tap.
     if (now - lastTapTime < 300 && dx < 40) {
-      // Double-tap seek on left/right edges.
       const rect = wrap.getBoundingClientRect();
       const rel = (touch.clientX - rect.left) / rect.width;
       if (rel < 0.33) {
         suppressNextClick = true;
         skipBack();
-        e.preventDefault();
       } else if (rel > 0.66) {
         suppressNextClick = true;
         skipForward();
-        e.preventDefault();
       }
-      lastTapTime = now;
-      lastTapX = touch.clientX;
-      tapStartedWithControlsHidden = false;
-      return;
+      e.preventDefault();
     }
-
-    // SINGLE TAP: If the controls were hidden at touchstart, this tap is
-    // intended to REVEAL them — not to pause/play. The browser will still
-    // synthesize a `click` after touchend, which would otherwise togglePlay()
-    // and pause the video. Suppress that synthetic click so a single tap only
-    // reveals the controls. The SECOND tap (controls now visible) will toggle
-    // play/pause.
-    if (tapStartedWithControlsHidden) {
-      suppressNextClick = true;
-    }
-
     lastTapTime = now;
     lastTapX = touch.clientX;
-    tapStartedWithControlsHidden = false;
   }, { passive: false });
 }
 
@@ -2672,58 +2639,11 @@ function attachStreamSource(video, source) {
           }
         }
       });
-      // ── HLS ERROR RECOVERY ───────────────────────────────
-      // Fatal errors are recovered where possible instead of giving up.
-      //   • networkError / bufferStallError / bufferAppendError / bufferNudgeError
-      //     → recover by startLoad() (retries live segment/fragment fetches).
-      //   • mediaError → recoverMediaError() (reloads the media element).
-      //   • If a recovery is already in progress or we exhaust our attempts,
-      //     fall back to destroying + reloading the source once.
-      var hlsRecoveryAttempts = 0;
-      var hlsReloaded = false;
       hlsInstance.on(window.Hls.Events.ERROR, function(_event, data) {
-        if (!data || !data.fatal) return;
-        var type = data.type;
-        var canRetry =
-          type === 'networkError' ||
-          type === 'bufferStallError' ||
-          type === 'bufferAppendError' ||
-          type === 'bufferNudgeError';
-
-        // Recoverable via startLoad() — retry up to 4 times.
-        if (canRetry && hlsRecoveryAttempts < 4) {
-          hlsRecoveryAttempts++;
-          console.warn('[WATCH PLAYER] HLS fatal error (' + type + ') — recovering via startLoad() (attempt ' + hlsRecoveryAttempts + ')');
-          hlsInstance.startLoad();
-          return;
+        if (data.fatal) {
+          cleanup();
+          reject(new Error('HLS playback could not start.'));
         }
-
-        // Recoverable media error — reload the media element.
-        if (type === 'mediaError' && !hlsReloaded) {
-          hlsReloaded = true;
-          console.warn('[WATCH PLAYER] HLS mediaError — recovering via recoverMediaError()');
-          hlsInstance.recoverMediaError();
-          return;
-        }
-
-        // Last resort: destroy + reload the source once.
-        if (!hlsReloaded) {
-          hlsReloaded = true;
-          console.warn('[WATCH PLAYER] HLS fatal error (' + type + ') — reloading source');
-          try {
-            hlsInstance.destroy();
-            hlsInstance = new window.Hls();
-            hlsInstance.loadSource(source);
-            hlsInstance.attachMedia(video);
-            return;
-          } catch (e) {
-            console.error('[WATCH PLAYER] HLS reload failed:', e.message);
-          }
-        }
-
-        // All recovery attempts exhausted — surface the error.
-        cleanup();
-        reject(new Error('HLS playback could not start.'));
       });
       return;
     }

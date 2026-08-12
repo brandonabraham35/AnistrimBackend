@@ -1,0 +1,750 @@
+{
+  "generatedAt": "2026-08-06T14:29:32.321Z",
+  "metadata": {
+    "generatedAt": "2026-08-06T14:29:15.317Z",
+    "nodeVersion": "v24.18.0",
+    "platform": "win32 10.0.26200",
+    "arch": "x64",
+    "commitHash": "2df3c84",
+    "cwd": "C:\\Users\\benar\\Desktop\\AnistrimBackend2"
+  },
+  "environment": {
+    "envUsed": {
+      "PORT": "5087",
+      "STREAM_PROVIDERS": "animeheaven",
+      "STREAM_PIPELINE_TIMEOUT_MS": "60000",
+      "STREAM_CONCURRENCY": "1"
+    },
+    "note": "STREAM_PIPELINE_TIMEOUT_MS was raised to 60s for verification. Playback that succeeds under 60s but fails under 15s indicates timeout sensitivity."
+  },
+  "scores": {
+    "resolutionScore": 0,
+    "playbackScore": 0,
+    "proxyScore": 0,
+    "resolvedCount": 0,
+    "playableCount": 0,
+    "proxyUrlCount": 0,
+    "totalEpisodes": 24
+  },
+  "summary": {
+    "successfulEpisodes": 0,
+    "failedEpisodes": 24,
+    "resolvedEpisodes": 0,
+    "upstreamLeaks": 0,
+    "redirectEscapes": 0,
+    "totalRedirects": 0
+  },
+  "failuresByStage": {
+    "API resolve": 24,
+    "Provider resolution": 0,
+    "Proxy URL generation": 0,
+    "Proxy request": 0,
+    "Manifest fetch": 0,
+    "Segment fetch": 0,
+    "Range support": 0,
+    "Playback readiness": 0
+  },
+  "latency": {
+    "apiResolveAvgMs": 608,
+    "proxyFirstByteAvgMs": 0,
+    "manifestAvgMs": 0,
+    "firstPlayableAvgMs": 0,
+    "buckets": {
+      "apiResolveMs": [
+        2557,
+        1694,
+        513,
+        473,
+        460,
+        458,
+        461,
+        463,
+        455,
+        470,
+        466,
+        458,
+        466,
+        454,
+        458,
+        457,
+        455,
+        461,
+        456,
+        454,
+        560,
+        484,
+        490,
+        476
+      ],
+      "proxyFirstByteMs": [],
+      "manifestMs": [],
+      "firstPlayableMs": []
+    }
+  },
+  "rootCauses": [
+    "Most failures occur at the \"API resolve\" stage (24 episodes).",
+    "No streams resolved at all — the provider pipeline (search/details/gate) or the 15s pipeline deadline is failing."
+  ],
+  "recommendations": [
+    "Investigate the \"API resolve\" stage — inspect the structured JSON for per-episode failures and the diagnostics/ evidence.",
+    "The default 15s STREAM_PIPELINE_TIMEOUT_MS is likely too tight for AnimeHeaven. Confirm whether playback succeeds under a larger deadline (this test used 60s) and raise the production pipeline timeout if so.",
+    "Ensure every AnimeHeaven source is rewritten to a same-origin proxy URL before it reaches the client.",
+    "Re-run this tool periodically to catch playback regressions, and compare the generated report against the previous run."
+  ],
+  "results": {
+    "passed": [],
+    "failed": [
+      {
+        "name": "resolve One Piece",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Naruto",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Jujutsu Kaisen",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Demon Slayer",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Steins Gate",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Attack on Titan",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Fullmetal Alchemist Brotherhood",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve My Hero Academia",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Sword Art Online",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Re:Zero",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Bleach",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Death Note",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Tokyo Ghoul",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Hunter x Hunter",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Fairy Tail",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Black Clover",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Dragon Ball Z",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve One Punch Man",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Mob Psycho 100",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Vinland Saga",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Code Geass",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Cowboy Bebop",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Neon Genesis Evangelion",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      },
+      {
+        "name": "resolve Naruto Shippuden",
+        "stage": "API resolve",
+        "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}"
+      }
+    ],
+    "warnings": []
+  },
+  "episodes": [
+    {
+      "title": "One Piece",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 2557
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Naruto",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 1694
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Jujutsu Kaisen",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 513
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Demon Slayer",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 473
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Steins Gate",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 460
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Attack on Titan",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 458
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Fullmetal Alchemist Brotherhood",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 461
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "My Hero Academia",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 463
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Sword Art Online",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 455
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Re:Zero",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 470
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Bleach",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 466
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Death Note",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 458
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Tokyo Ghoul",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 466
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Hunter x Hunter",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 454
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Fairy Tail",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 458
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Black Clover",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 457
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Dragon Ball Z",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 455
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "One Punch Man",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 461
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Mob Psycho 100",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 456
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Vinland Saga",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 454
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Code Geass",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 560
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Cowboy Bebop",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 484
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Neon Genesis Evangelion",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 490
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    },
+    {
+      "title": "Naruto Shippuden",
+      "episode": 1,
+      "provider": null,
+      "streamUrl": null,
+      "proxyFormat": null,
+      "proxyStatus": null,
+      "contentType": null,
+      "resolved": false,
+      "playable": false,
+      "checks": {
+        "apiResolve": false
+      },
+      "latencies": {
+        "apiResolveMs": 476
+      },
+      "redirects": 0,
+      "failureStage": "API resolve",
+      "error": "API returned 502: {\"success\":false,\"error\":\"Could not resolve a stream. Try another provider or check back later.\"}",
+      "manifest": null,
+      "mp4": null
+    }
+  ]
+}

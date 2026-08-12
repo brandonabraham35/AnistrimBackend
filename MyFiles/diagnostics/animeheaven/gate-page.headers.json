@@ -1,0 +1,11 @@
+{
+  "date": "Thu, 06 Aug 2026 09:00:18 GMT",
+  "server": "Apache/2.4.55 (Ubuntu)",
+  "cache-control": "no-store, no-cache, must-revalidate",
+  "x-frame-options": "SAMEORIGIN",
+  "vary": "Accept-Encoding",
+  "content-length": "5276",
+  "keep-alive": "timeout=5, max=85",
+  "connection": "Keep-Alive",
+  "content-type": "text/html; charset=utf-8"
+}

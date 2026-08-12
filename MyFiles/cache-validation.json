@@ -1,0 +1,225 @@
+{
+  "generatedAt": "2026-08-04T13:41:05.075Z",
+  "provider": "services/animeHeavenProvider.js",
+  "method": "runtime-only cache audit with mocked providerHttp.request and virtualized Date.now",
+  "requestUnderTest": {
+    "type": "identical_request",
+    "method": "provider.getAnimeDetails",
+    "args": [
+      "cachetest1"
+    ],
+    "runs": 100
+  },
+  "metrics": {
+    "cacheHits": 99,
+    "cacheMisses": 1,
+    "hitRate": 99,
+    "missRate": 1,
+    "averageResponseMs": 0.658,
+    "p95ResponseMs": 1.027,
+    "totalNetworkCallsObserved": 4
+  },
+  "memoryUsage": {
+    "rssStart": 70578176,
+    "rssEnd": 73646080,
+    "rssPeak": 74514432,
+    "rssDelta": 3067904,
+    "heapUsedStart": 17183768,
+    "heapUsedEnd": 15657736,
+    "heapUsedDelta": -1526032
+  },
+  "cacheExpiration": {
+    "ttlMsTested": 120000,
+    "virtualAdvanceMs": 120001,
+    "networkCallsDeltaAfterExpiry": 1,
+    "responseMsAfterExpiry": 1.666,
+    "networkCallsDeltaImmediateRepeat": 0,
+    "responseMsImmediateRepeat": 0.627,
+    "expiredAsExpected": true,
+    "recachedAsExpected": true
+  },
+  "cacheInvalidation": {
+    "strategy": "different cache key by changing identifier from cachetest1 to cachetest2",
+    "networkCallsDeltaOnNewKey": 1,
+    "responseMsOnNewKey": 0.98,
+    "networkCallsDeltaOnRepeatNewKey": 0,
+    "responseMsOnRepeatNewKey": 0.626,
+    "invalidatedAsExpected": true,
+    "newKeyRecachedAsExpected": true
+  },
+  "validations": {
+    "noCrash": true,
+    "noHang": true
+  },
+  "traces": {
+    "firstTenRuns": [
+      {
+        "index": 1,
+        "cacheHit": false,
+        "networkCallsDelta": 2,
+        "responseMs": 10.059,
+        "rss": 71200768,
+        "heapUsed": 17917664
+      },
+      {
+        "index": 2,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 1.886,
+        "rss": 71225344,
+        "heapUsed": 18194560
+      },
+      {
+        "index": 3,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.998,
+        "rss": 71520256,
+        "heapUsed": 18407288
+      },
+      {
+        "index": 4,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.801,
+        "rss": 71487488,
+        "heapUsed": 18585216
+      },
+      {
+        "index": 5,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.745,
+        "rss": 71876608,
+        "heapUsed": 18800992
+      },
+      {
+        "index": 6,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.666,
+        "rss": 72364032,
+        "heapUsed": 18969784
+      },
+      {
+        "index": 7,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.868,
+        "rss": 71688192,
+        "heapUsed": 19187616
+      },
+      {
+        "index": 8,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.553,
+        "rss": 71696384,
+        "heapUsed": 19352288
+      },
+      {
+        "index": 9,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.769,
+        "rss": 71249920,
+        "heapUsed": 19593872
+      },
+      {
+        "index": 10,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.774,
+        "rss": 71602176,
+        "heapUsed": 19784184
+      }
+    ],
+    "lastTenRuns": [
+      {
+        "index": 91,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.548,
+        "rss": 74182656,
+        "heapUsed": 17488976
+      },
+      {
+        "index": 92,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.476,
+        "rss": 74182656,
+        "heapUsed": 17651736
+      },
+      {
+        "index": 93,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.515,
+        "rss": 74182656,
+        "heapUsed": 17814488
+      },
+      {
+        "index": 94,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.55,
+        "rss": 74182656,
+        "heapUsed": 17977160
+      },
+      {
+        "index": 95,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.452,
+        "rss": 74182656,
+        "heapUsed": 18139840
+      },
+      {
+        "index": 96,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.53,
+        "rss": 74182656,
+        "heapUsed": 18305984
+      },
+      {
+        "index": 97,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.521,
+        "rss": 74489856,
+        "heapUsed": 18468792
+      },
+      {
+        "index": 98,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.606,
+        "rss": 74178560,
+        "heapUsed": 18641216
+      },
+      {
+        "index": 99,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.436,
+        "rss": 74182656,
+        "heapUsed": 18806248
+      },
+      {
+        "index": 100,
+        "cacheHit": true,
+        "networkCallsDelta": 0,
+        "responseMs": 0.449,
+        "rss": 74182656,
+        "heapUsed": 18968960
+      }
+    ],
+    "networkCallBreakdownByUrl": {
+      "https://animeheaven.me": 1,
+      "https://animeheaven.me/anime.php?cachetest1": 2,
+      "https://animeheaven.me/anime.php?cachetest2": 1
+    }
+  }
+}

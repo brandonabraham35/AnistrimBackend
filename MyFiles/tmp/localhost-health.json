@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-08-04T12:13:09.513Z",
+  "url": "http://localhost:5000/api/health",
+  "error": {
+    "code": "ECONNREFUSED",
+    "message": "AggregateError"
+  }
+}

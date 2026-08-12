@@ -1,0 +1,89 @@
+{
+  "generatedAt": "2026-08-04T18:33:01.719Z",
+  "summary": {
+    "total": 12,
+    "clean": 12,
+    "cloudflareDetected": 0,
+    "cloudflareRate": 0,
+    "animeheavenHealth": {
+      "consecutiveFailures": 3,
+      "degraded": false,
+      "successRate": "97.5%"
+    }
+  },
+  "detected": [],
+  "results": [
+    {
+      "url": "https://ck.animeheaven.me/video.mp4?d3fe66f33eb43f610d5dca5262923d0b&35b2d9c8bc1a8bbe4b6e53d944ba586d&error2",
+      "cloudflare": false,
+      "status": 200,
+      "error": "stream has been aborted"
+    },
+    {
+      "url": "https://ct.animeheaven.me/video.mp4?d3fe66f33eb43f610d5dca5262923d0b&35b2d9c8bc1a8bbe4b6e53d944ba586d&error",
+      "cloudflare": false,
+      "status": 0,
+      "error": "timeout of 8000ms exceeded"
+    },
+    {
+      "url": "https://po.animeheaven.me/video.mp4?d3fe66f33eb43f610d5dca5262923d0b&35b2d9c8bc1a8bbe4b6e53d944ba586d",
+      "cloudflare": false,
+      "status": 0,
+      "error": "timeout of 8000ms exceeded"
+    },
+    {
+      "url": "https://po.animeheaven.me/video.mp4?d3fe66f33eb43f610d5dca5262923d0b&d",
+      "cloudflare": false,
+      "status": 0,
+      "error": "timeout of 8000ms exceeded"
+    },
+    {
+      "url": "https://ck.animeheaven.me/video.mp4?c5fe97dc4862635ffd63a5dc495a26f3&35b2d9c8bc1a8bbe5c450f80693999e8&error2",
+      "cloudflare": false,
+      "status": 404,
+      "error": "Request failed with status code 404"
+    },
+    {
+      "url": "https://ct.animeheaven.me/video.mp4?c5fe97dc4862635ffd63a5dc495a26f3&35b2d9c8bc1a8bbe5c450f80693999e8&error",
+      "cloudflare": false,
+      "status": 404,
+      "error": "Request failed with status code 404"
+    },
+    {
+      "url": "https://rt.animeheaven.me/video.mp4?c5fe97dc4862635ffd63a5dc495a26f3&35b2d9c8bc1a8bbe5c450f80693999e8",
+      "cloudflare": false,
+      "status": 200,
+      "error": null
+    },
+    {
+      "url": "https://rt.animeheaven.me/video.mp4?c5fe97dc4862635ffd63a5dc495a26f3&d",
+      "cloudflare": false,
+      "status": 0,
+      "error": "socket hang up"
+    },
+    {
+      "url": "https://animeheaven.ru/",
+      "cloudflare": false,
+      "status": 200,
+      "error": null
+    },
+    {
+      "url": "https://animeheaven.me/",
+      "cloudflare": false,
+      "status": 200,
+      "error": null
+    },
+    {
+      "url": "https://kickassanime.am/",
+      "cloudflare": false,
+      "status": 200,
+      "error": null
+    },
+    {
+      "url": "https://animepahe.ru/",
+      "cloudflare": false,
+      "status": 200,
+      "error": null
+    }
+  ]
+}

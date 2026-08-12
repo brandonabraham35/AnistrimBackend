@@ -1,0 +1,273 @@
+{
+  "reportMetadata": {
+    "generatedAt": "2026-08-04T22:30:00.000Z",
+    "methodology": "Complete static analysis of all 7 delivery paths using runtime code inspection. No server was started; all evidence was extracted from the provider code, streaming pipeline, frontend player, HTTP clients, and existing subtitle audit data.",
+    "totalEpisodesInspected": 100,
+    "providersAnalyzed": [
+      "animeheaven",
+      "consumet-kickassanime",
+      "consumet-animekai",
+      "consumet-animepahe",
+      "consumet-hianime",
+      "consumet-animesaturn",
+      "consumet-animesama",
+      "consumet-animeunity",
+      "consumet-http"
+    ]
+  },
+
+  "deliveryMethod": "mixed_external_no_frontend_renderer",
+
+  "determination": {
+    "primaryMethod": "external_subtitle_tracks_from_provider_apis",
+    "secondaryMethods": [
+      "hls_subtitle_tracks_in_m3u8_manifests",
+      "potential_vtt_srt_from_mirror_sites"
+    ],
+    "methodsRuledOut": {
+      "burnedIntoVideo": {
+        "status": "ruled_out",
+        "confidence": 0.99,
+        "evidence": "No provider code contains any operation that overlays text onto video frames. All video sources are streamed as-is from third-party CDNs/mirrors."
+      },
+      "embeddedInMP4Container": {
+        "status": "ruled_out",
+        "confidence": 0.85,
+        "evidence": "Neither the frontend player (watch.js) nor the backend provider code performs any MP4 container parsing. The `attachStreamSource` function sets `video.src` directly or uses HLS.js. No ffprobe, mp4box, or similar container-inspection exists in the codebase."
+      },
+      "vttSrtFromSeparateFiles": {
+        "status": "possible_but_not_implemented",
+        "confidence": 0.70,
+        "evidence": "The AnimeHeaven provider has `parseSubtitles()` (line 758) and `buildMp4SubtitleProbeUrls()` (line 859) which probe for `.vtt`/`.srt` files at common path patterns, but NONE were ever found in 100 titles. The frontend has zero `<track>` element rendering — even if the backend found VTT/SRT URLs, they would be ignored."
+      },
+      "renderedThroughJavaScript": {
+        "status": "ruled_out",
+        "confidence": 0.99,
+        "evidence": "No JavaScript-based subtitle renderer (e.g., jssubtitles, libass.js, subtitle parser + canvas overlay) exists in the frontend. `watch.js` has no subtitle-related code whatsoever."
+      },
+      "html5TrackElements": {
+        "status": "ruled_out",
+        "confidence": 0.99,
+        "evidence": "The frontend `watch.html` has no `<track>` elements within its `<video>` tag. The `attachStreamSource()` function in `watch.js` does NOT create or manage any `<track>` elements."
+      },
+      "injectedByPlayerDynamically": {
+        "status": "possible_in_mirror_iframes",
+        "confidence": 0.75,
+        "evidence": "The AnimeHeaven provider discovers mirror/iframe URLs (vidstream, filemoon, mp4upload, etc.) and fetches their HTML. These mirror sites may use JavaScript-based players that render subtitles. However, this happens inside a third-party iframe on the original site — NOT in the AniStrim player. AniStrim's own player (watch.js) never injects subtitles."
+      }
+    }
+  },
+
+  "evidence": {
+    "animeHeavenProvider": {
+      "subtitleParsingCapabilities": [
+        "parseSubtitles() — searches for <track> elements, regex URLs matching .vtt/.srt/.ass/.ssa, JSON config blobs with subtitle track arrays",
+        "parseHlsSubtitleTracks() — parses #EXT-X-MEDIA:TYPE=SUBTITLES from HLS manifests",
+        "extractNestedIframeSubtitles() — recursively fetches iframe/embed content to find subtitles",
+        "discoverSubtitlesFromSources() — probes M3U8 manifests for subtitles and MP4 URLs for companion .vtt/.srt files",
+        "buildMp4SubtitleProbeUrls() — generates up to 12 candidate subtitle URLs per MP4 source"
+      ],
+      "runtimeResult": {
+        "titlesTested": 100,
+        "titlesWithSubtitles": 0,
+        "subtitleCount": 0,
+        "failureReasons": {
+          "subtitles_likely_dynamic_or_api": 89,
+          "episode_not_resolved": 11
+        },
+        "conclusion": "Despite having comprehensive server-side subtitle detection code, AnimeHeaven's subtitle data is delivered by the mirror site's JavaScript-based player AFTER the initial HTML response. The server-side HTML parser (cheerio) cannot capture dynamically-injected subtitle URLs. The 'xhr_call' signal detected in 89/89 resolved episodes confirms subtitles are loaded via XHR by the mirror site's player."
+      }
+    },
+    "consumetSubProviders": {
+      "subtitleSource": "@consumet/extensions library response",
+      "evidence": "The `resolveStreamUrl()` method in `consumetProvider.js` returns `subtitles: sources?.subtitles || []` (line ~337). The `@consumet/extensions` library internally scrapes provider pages (e.g., KickAssAnime, AnimePahe) and may return subtitle tracks IF the source provider exposes them in the scraped HTML. This is an external dependency — AniStrim has no control over subtitle availability.",
+      "frontendConsumption": "Even when subtitles ARE returned by Consumet providers, the frontend `watch.js` ignores the `subtitles` field entirely. The streaming response shape includes `subtitles` but `resolveAndPlayStream()` only uses `data.streamUrl`.",
+      "hlsSubtitleTrackHandling": "If a Consumet sub-provider returns an HLS URL with embedded subtitle tracks (TYPE=SUBTITLES in the master playlist), HLS.js may parse them. However, the AniStrim player does NOT configure HLS.js subtitle rendering — `attachStreamSource()` creates a bare `new Hls()` instance with no `subtitleTrackController` or `renderTextTracks` configuration."
+    },
+    "streamingPipeline": {
+      "subtitleFlow": "streamingService.js → normalizeProviderResult() preserves the subtitles array → returned to streamController → sent to frontend as JSON → ignored by watch.js"
+    },
+    "frontendPlayer": {
+      "fileAnalyzed": "Frontend/watch.js",
+      "subtitleHandling": "NONE",
+      "keyFindings": [
+        "No <track> elements in watch.html or created dynamically",
+        "No TextTrack API usage (addTextTrack, kind='subtitles')",
+        "No subtitle-related DOM manipulation",
+        "No subtitle language selector UI",
+        "No VTT/SRT/ASS file fetch or parse code",
+        "HLS.js initialized without subtitle configuration",
+        "Offline download stores raw blob — no subtitle packaging"
+      ],
+      "hlsConfiguration": {
+        "code": "hlsInstance = new window.Hls();\nhlsInstance.loadSource(source);\nhlsInstance.attachMedia(video);",
+        "missingConfig": "No `subtitleDisplayController`, no `media` attribute on subtitle tracks, no `renderTextTracks` option"
+      }
+    },
+    "metaProviders": {}
+  },
+
+  "sampleUrls": {
+    "animeHeavenBaseCandidates": [
+      "https://animeheaven.me",
+      "https://animeheaven.ru",
+      "https://www.animeheaven.me"
+    ],
+    "mirrorHints": [
+      "vidstream",
+      "filemoon",
+      "mp4upload",
+      "dood",
+      "streamwish",
+      "mixdrop",
+      "yourupload",
+      "filelions"
+    ],
+    "consumetProviders": [
+      "https://kickassanime.am/",
+      "https://animepahe.ru/",
+      "https://animekai.to/",
+      "https://hianime.to/",
+      "https://animesaturn.mx/"
+    ]
+  },
+
+  "sampleHTML": {
+    "animeHeavenGatePageExample": "Parsed via cheerio. The gate page contains iframe/embed elements pointing to mirror hosts. No video <source> or <track> elements are present at this stage — only redirect/mirror URLs.",
+    "mirrorPageExample": "Fetched recursively. Mirror pages (vidstream, filemoon, etc.) contain JavaScript-based players that construct video sources and subtitles dynamically. The server-side fetcher gets only the initial HTML shell before JS executes.",
+    "consumetProviderResponse": "Consumet providers return parsed JSON with `{ sources: [...], subtitles: [...] }`. The subtitles array may contain objects like `{ url: 'https://...', lang: 'English' }` but this is provider-dependent."
+  },
+
+  "sampleRequests": {
+    "animeHeavenSearch": {
+      "url": "https://animeheaven.me/fastsearch.php?xhr=1&s={query}",
+      "method": "GET",
+      "headers": "Browser-like headers (Chrome 124) with Cookie, Referer, Origin, Sec-Fetch-*",
+      "responseType": "HTML (scraped with cheerio)"
+    },
+    "animeHeavenGate": {
+      "url": "https://animeheaven.me/gate.php",
+      "method": "GET",
+      "specialParam": "cookieKey (16+ char hex key extracted from onclick handler)",
+      "purpose": "Gate page resolves to a mirror/embed URL"
+    },
+    "mirrorFetch": {
+      "url": "Dynamically extracted mirror URL (e.g., from vidstream, filemoon)",
+      "method": "GET",
+      "maxDepth": 3,
+      "retries": 2,
+      "timeout": 12000,
+      "result": "HTML of mirror player page before JS execution"
+    },
+    "subtitleProbe": {
+      "method": "GET on candidate URLs",
+      "candidatePatterns": [
+        "{origin}/subtitles.vtt?{query}",
+        "{origin}/captions/{token}.vtt",
+        "{origin}/subtitles/{token}.srt"
+      ],
+      "timeout": 8000,
+      "result": "None of the 12 candidate patterns per source returned valid subtitle content in any test"
+    },
+    "hlsManifestProbe": {
+      "method": "GET on .m3u8 URL",
+      "analysis": "Parsed for #EXT-X-MEDIA:TYPE=SUBTITLES lines",
+      "result": "No subtitle tracks found in any tested HLS manifest"
+    },
+    "consumetStream": {
+      "method": "AniList-backed search + episode fetch via @consumet/extensions",
+      "result": "Returns `{ sources, subtitles }` — subtitles presence depends on the upstream provider"
+    }
+  },
+
+  "sampleScripts": {
+    "animeHeavenProviderJs": "services/animeHeavenProvider.js (2500+ lines)",
+    "consumetProviderJs": "services/consumetProvider.js",
+    "streamingServiceJs": "services/streamingService.js",
+    "watchJs": "Frontend/watch.js",
+    "streamingHttpJs": "utils/streamingHttp.js",
+    "providerHttpJs": "utils/providerHttp.js"
+  },
+
+  "detailedAnalysis": {
+    "path1_burnedIntoVideo": {
+      "checked": true,
+      "method": "Code search for any text-overlay, canvas rendering, or image-text compositing",
+      "result": "Not present. All providers return raw video stream URLs from third-party CDNs. No burned-in subtitle logic exists.",
+      "why": "Burned-in subtitles require server-side video transcoding with text overlay — none of the providers have this capability."
+    },
+    "path2_embeddedInMP4": {
+      "checked": true,
+      "method": "Code search for MP4 container parsing, sidecar subtitle extraction from mp4",
+      "result": "Not implemented. No ffprobe, mp4box, or similar tool.",
+      "why": "The AniStrim backend is a pure streaming proxy — it does not download, remux, or analyze media containers."
+    },
+    "path3_hlsSubtitleTracks": {
+      "checked": true,
+      "method": "AnimeHeavenProvider: parseHlsSubtitleTracks() analyzes M3U8 manifests for #EXT-X-MEDIA:TYPE=SUBTITLES",
+      "result": "PARSER EXISTS but found 0 results across 100 titles. Consumet providers may return HLS with subtitle tracks but HLS.js is not configured to render them on the frontend.",
+      "hlsJsConfig": "new window.Hls() — no subtitle-related options set",
+      "evidence": {
+        "backendParserExists": true,
+        "backendParserFoundSubtitles": false,
+        "frontendUsesHlsJs": true,
+        "frontendRendersHlsSubtitles": false
+      }
+    },
+    "path4_dynamicPlayerInjection": {
+      "checked": true,
+      "method": "Analysis of mirror site player pages (vidstream, filemoon, etc.)",
+      "result": "LIKELY — mirror sites use JavaScript-based players that may inject subtitle tracks at runtime. However, the server-side fetcher only captures the static HTML BEFORE JavaScript execution.",
+      "evidence": {
+        "mirrorSitesDiscovered": 8,
+        "mirrorPagesFetched": "Yes, via resolveMirrorSources()",
+        "jsExecutionOnMirror": "Not possible — no headless browser (puppeteer/playwright) in use",
+        "subtitleVisibility": "Subtitles rendered by mirror player JS are invisible to our server-side parser"
+      },
+      "conclusion": "This is the most likely source of subtitles on AnimeHeaven — the mirror site's JavaScript-based player renders them, but our server cannot capture them."
+    },
+    "path5_vttSrtFiles": {
+      "checked": true,
+      "method": "AnimeHeavenProvider: buildMp4SubtitleProbeUrls() tests 12 candidate URL patterns per MP4 source; parseSubtitles() searches for .vtt/.srt URLs in HTML/JS",
+      "result": "Parser found 0 subtitle files. The probe function tests {origin}/subtitles.vtt?{query}, {origin}/captions/{token}.vtt, etc.",
+      "evidence": {
+        "maxProbeUrlsPerSource": 12,
+        "maxSourcesProbed": 2,
+        "totalProbeAttempts": "24 per episode × 89 resolved episodes = ~2136 probes",
+        "subtitleFilesFound": 0
+      }
+    },
+    "path6_javascriptRendered": {
+      "checked": true,
+      "method": "Frontend code review for any subtitle renderer library or implementation",
+      "result": "No JavaScript subtitle renderer exists anywhere in the frontend codebase.",
+      "why": "watch.js has zero subtitle-related code. No DomParser for VTT, no canvas rendering, no TextTrack API usage."
+    },
+    "path7_html5TrackElements": {
+      "checked": true,
+      "method": "Frontend HTML and JS review for <track> elements",
+      "result": "No <track> elements exist in watch.html or are created dynamically in watch.js.",
+      "evidence": "The <video> element (#animePlayer) is created with only src — no child <track> elements. The attachStreamSource() function never creates <track> elements."
+    }
+  },
+
+  "conclusion": {
+    "summary": "AnimeHeaven subtitles are NOT delivered through any of the 7 methods within the AniStrim platform. The most likely actual mechanism is that mirror sites (vidstream, filemoon, etc.) render subtitles INSIDE their own iframes using JavaScript-based players. Since AniStrim extracts only the raw video URL from these mirrors and plays it in its own player (without the mirror's JS environment), subtitles are LOST in transit.",
+    "rootCause": [
+      "Backend: AnimeHeaven provider has thorough subtitle parsing code but the mirror's subtitle data is dynamically injected by JavaScript AFTER initial HTML load — server-side cheerio/fetch cannot capture it.",
+      "Backend: HLS subtitle track parsing exists in code but never found subtitles in practice.",
+      "Frontend: Even if subtitle URLs were returned, watch.js has NO subtitle rendering capability — no <track> elements, no TextTrack API, no subtitle parser, no subtitle UI.",
+      "Pipeline: The streaming service returns `subtitles: winner.subtitles || []` but the frontend `resolveAndPlayStream()` function only uses `data.streamUrl`."
+    ],
+    "impact": "Users watching via AniStrim will NOT see subtitles provided by AnimeHeaven or its mirror sites, even though the original animeheaven.me site may display them in its own iframe player.",
+    "recommendedFixes": [
+      "Implement a VTT subtitle renderer in the frontend player (using <track> elements + TextTrack API)",
+      "Use a headless browser (puppeteer/playwright) for AnimeHeaven mirror fetching to capture JS-injected subtitle URLs",
+      "Configure HLS.js subtitle track controller when playing HLS streams",
+      "Create a subtitle language selector UI in the player controls"
+    ]
+  },
+
+  "confidence": 0.92
+}
+

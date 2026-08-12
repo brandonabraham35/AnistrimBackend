@@ -1,53 +1,53 @@
 // =============================================================
-//  controllers/streamProxyController.js — Secure AnimeHeaven Playback Proxy
+//  controllers/streamProxyQueryController.js — Stateless Query-Based Playback Proxy
 //
 //  WHY:
-//    AnimeHeaven CDNs are hotlink-protected: they require the cookie,
-//    referer and origin headers that the scraper established server-side
-//    before serving media. A browser cannot supply those (it never had
-//    them), so direct playback of the raw CDN URL fails. This controller
-//    proxies playback through the server, injecting the exact context
-//    captured during scraping, so the browser gets a clean, playable
-//    same-origin stream.
+//    The AnimeHeaven provider now emits every stream URL in the stateless,
+//    query-based proxy format:
+//      /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
+//    The browser never talks to the AnimeHeaven CDNs directly. This controller
+//    receives the encoded target URL + referer, injects the server-side playback
+//    context (Cookie/Referer/Origin/UA) that hotlink-protected CDNs require, and
+//    streams the media back to the client.
 //
 //  FEATURES:
-//    • MP4 streaming with full byte-range (Range/Content-Range/Accept-Ranges)
+//    • Only `provider=animeheaven` is accepted (proxy mode). Any other provider
+//      is rejected — OTHER PROVIDERS ARE UNAFFECTED.
+//    • MP4/direct media: full byte-range (Range/Content-Range/Accept-Ranges).
 //    • HLS manifest rewriting is delegated to utils/hlsRewriter.js — the
-//      single source of truth shared with streamProxyQueryController.js.
-//      A response is treated as a manifest when the upstream Content-Type is
+//      single source of truth shared with streamProxyController.js. A response
+//      is treated as a manifest when the upstream Content-Type is
 //      application/vnd.apple.mpegurl / application/x-mpegURL / ... OR the URL
 //      ends in .m3u8. Every child URI (variant playlists, media playlists,
 //      TS/fMP4 segments, audio/subtitle playlists, key URIs, init segments,
 //      LL-HLS parts/preload-hints, I-frame playlists, byte-range segments) is
-//      rewritten to /api/stream-proxy/:streamId?url=<encoded> so all
-//      subsequent requests stay behind the proxy. Supports relative +
-//      absolute + query/tokenized URLs (data:/blob: pass through untouched).
-//    • Low-memory streaming — upstream response is piped through, never
-//      buffered whole (except HLS manifests, which are small text and are
-//      buffered under a hard cap).
-//    • Injects Referer, Origin, Cookie, User-Agent, Range, Accept,
-//      Accept-Encoding, Connection from the stored context + client request.
-//    • Reuses utils/providerHttp.request() so retries, health tracking and
-//      unified header building stay centralized (no duplicate HTTP layer).
-//    • Timeout handling + one retry for transient upstream failures.
-//    • Structured JSON errors; never crashes Express.
+//      rewritten to the SAME /api/stream/proxy format via buildProxyUrl() —
+//      with the manifest URL as the referer. Supports relative + absolute +
+//      query/tokenized URLs (data:/blob: pass through untouched).
+//    • Builds upstream headers via getPlaybackContext() — the SINGLE source of
+//      truth for the provider's cookie jar + browser-like UA.
+//    • Low-memory streaming — upstream response is piped, never buffered whole
+//      (except small HLS manifests, buffered under a hard cap).
+//    • Reuses utils/providerHttp.request() for a unified HTTP/proxy layer.
 //
 //  SECURITY (NOT an open proxy):
-//    • streamId must exist and not be expired (else 404).
-//    • Every requested URL host must match the host stored in the context
-//      (streamProxyStore.isHostAllowed). Only registered AnimeHeaven CDN
-//      hosts are reachable.
-//    • Cookies/referers/origins/tokens NEVER leave the server.
+//    • provider must equal 'animeheaven' (else 403).
+//    • url must be an absolute http(s) URL (else 400).
+//    • Only http/https targets are ever fetched; the query is stateless so no
+//      stream context is stored — cookies/referers/origins never reach the client.
 // =============================================================
 'use strict';
 
 const { request } = require('../utils/providerHttp');
-const streamProxyStore = require('../utils/streamProxyStore');
 const logger = require('../utils/logger');
-// Single source of truth for the playback headers. getPlaybackContext reuses
-// the provider's existing cookie jar (no duplicate cookie logic) and returns
-// the exact browser-like User-Agent used during scraping.
-const { getPlaybackContext } = require('../services/animeHeavenProvider');
+// SSRF protection: rejects targets that resolve to private/loopback/link-local
+// addresses before the upstream request is made.
+const { assertSafeTargetHost } = require('../utils/ssrfGuard');
+// Single source of truth for playback headers + the proxy URL shape.
+const {
+  getPlaybackContext,
+  buildProxyUrl,
+} = require('../services/animeHeavenProvider');
 // Shared header helpers (upstream header build + safe response relay + CORS)
 // so both proxy controllers never diverge.
 const {
@@ -61,17 +61,12 @@ const { rewriteHlsManifest, isHlsUri, isHlsContentType } = require('../utils/hls
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024; // 2MB cap for HLS manifests
-const PROXY_BASE = '/api/stream-proxy';
 const PROXY_PROVIDER_TAG = 'animeheaven-proxy';
+const ALLOWED_PROVIDER = 'animeheaven';
 
 /**
  * Perform the upstream fetch as a stream and pipe it to the client.
  * Used for MP4/segment/direct media (non-manifest) requests.
- *
- * Reuses utils/providerHttp.request() so retries, health tracking and the
- * unified header/proxy layer stay centralized. skipProxy=true keeps the CDN
- * fetch direct (the CDN URLs are not meant to be tunnelled through the
- * scraping proxy), while still benefiting from the shared HTTP layer.
  *
  * @param {string} url - upstream URL
  * @param {object} headers - upstream headers
@@ -117,67 +112,57 @@ function collectToBuffer(stream, maxBytes) {
 }
 
 /**
- * Small helper to safely extract a host for logging.
- */
-function safeHost(url) {
-  try {
-    return new URL(url).host;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * GET /api/stream-proxy/:streamId
- * Handles both MP4 (byte-range stream) and HLS (manifest rewrite + relay).
- *
+ * GET /api/stream/proxy
  * Query params:
- *   url — OPTIONAL. When present, this is a child resource (segment/variant/
- *         key/subtitle/audio) of an HLS manifest and must resolve to the SAME
- *         host as the stored context. When absent, context.targetUrl is used.
+ *   provider — must be 'animeheaven' (only AnimeHeaven uses proxy mode).
+ *   url      — encoded absolute http(s) target URL.
+ *   referer  — encoded referer page (the AnimeHeaven gate/embed/mirror).
  */
 exports.streamMedia = async (req, res) => {
-  const { streamId } = req.params;
-  const requestedUrl = req.query.url || null;
+  const provider = String(req.query.provider || '').toLowerCase();
+  const target = String(req.query.url || '').trim();
+  const referer = req.query.referer ? String(req.query.referer).trim() : null;
 
-  logger.info('[StreamProxy] Incoming request', {
-    streamId: streamId.slice(0, 8) + '...',
-    requestedUrl: requestedUrl ? requestedUrl.substring(0, 100) + '...' : null,
-    range: req.headers.range || 'none',
-  });
-
-  // ── Security: validate the stream context ────────────────
-  const ctx = streamProxyStore.get(streamId);
-  if (!ctx) {
-    return res.status(404).json({ error: 'Stream context not found or expired.' });
+  // ── Only AnimeHeaven uses proxy mode ────────────────────
+  if (provider !== ALLOWED_PROVIDER) {
+    logger.warn('[streamProxyQuery] Unsupported provider rejected', { provider: provider || '(missing)' });
+    return res.status(403).json({ error: 'Proxy mode is only available for animeheaven.' });
   }
 
-  // Determine the target URL.
-  const target = requestedUrl || ctx.targetUrl;
+  // ── Validate the target URL ─────────────────────────────
   if (!target) {
-    return res.status(404).json({ error: 'No target URL registered for this stream.' });
+    return res.status(400).json({ error: 'Missing url query parameter.' });
+  }
+  let parsed;
+  try {
+    parsed = new URL(target);
+  } catch {
+    return res.status(400).json({ error: 'Invalid target URL.' });
+  }
+  if (!/^https?:$/.test(parsed.protocol)) {
+    return res.status(400).json({ error: 'Only http(s) targets are allowed.' });
   }
 
-  // Host-matching: any requested URL must be on the SAME host as the context.
-  // This prevents the proxy from becoming an open proxy.
-  if (!streamProxyStore.isHostAllowed(ctx, target)) {
-    logger.warn('[streamProxy] Host mismatch rejected', {
-      streamId: streamId.slice(0, 8),
-      requestedHost: safeHost(target),
-      allowedHost: ctx.host,
+  // ── SSRF protection ────────────────────────────────────
+  // Reject any target whose resolved destination is loopback, link-local,
+  // private, or otherwise internal (preventing the proxy from being used to
+  // reach cloud metadata endpoints, localhost, internal networks, etc.).
+  // This runs BEFORE the upstream request is made. The AnimeHeaven media/CDN,
+  // HLS playlist, segment, subtitle, and mirror hosts all resolve to public
+  // IPs, so legitimate playback is unaffected.
+  const ssrfError = await assertSafeTargetHost(parsed);
+  if (ssrfError) {
+    logger.warn('[streamProxyQuery] SSRF target rejected', {
+      target: target.substring(0, 160),
+      reason: ssrfError,
     });
-    return res.status(403).json({ error: 'Requested host not allowed for this stream.' });
+    return res.status(400).json({ error: 'Target host is not a permitted public address.' });
   }
 
-  // Derive the authoritative playback context (userAgent + fresh cookies from
-  // the shared cookie jar) via the provider — no duplicate cookie logic.
-  const playback = getPlaybackContext(target, ctx.referer || null);
-  // Correct argument order: buildUpstreamHeaders(playback, req, ctx).
-  // The FRESH playback context (referer/origin/cookies from the shared cookie
-  // jar) must take precedence over the stored ctx. Passing them swapped made
-  // the function prefer the potentially-stale store-time cookies/headers, which
-  // broke playback when AnimeHeaven rotated its CDN cookies.
-  const upstreamHeaders = buildUpstreamHeaders(playback, req, ctx);
+  // Derive the authoritative playback context (UA + fresh cookies from the
+  // shared cookie jar) via the provider — no duplicate cookie logic.
+  const playback = getPlaybackContext(target, referer);
+  const upstreamHeaders = buildUpstreamHeaders(playback, req);
   const started = Date.now();
 
   try {
@@ -197,20 +182,10 @@ exports.streamMedia = async (req, res) => {
         break;
       } catch (err) {
         pipeError = err;
-        logger.warn('[StreamProxy] Upstream fetch attempt failed', {
-          attempt: attempt + 1,
-          target: target.substring(0, 100) + '...',
-          error: err.message,
-        });
         attempt += 1;
-        // Retry once for transient network errors / 5xx / empty responses.
         const transient = !err.response || err.response.status >= 500 || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT';
         if (attempt <= 1 && transient) {
-          logger.warn('[streamProxy] Retrying upstream', {
-            streamId: streamId.slice(0, 8),
-            attempt,
-            error: err.message,
-          });
+          logger.warn('[streamProxyQuery] Retrying upstream', { attempt, error: err.message });
           await new Promise((r) => setTimeout(r, 300));
           continue;
         }
@@ -221,11 +196,6 @@ exports.streamMedia = async (req, res) => {
     if (!upstream) {
       if (!res.headersSent) {
         const status = pipeError?.response?.status;
-        logger.error('[StreamProxy] Upstream final failure', {
-          target: target.substring(0, 100) + '...',
-          status: status || 'N/A',
-          error: pipeError?.message,
-        });
         if (status) {
           res.status(status).json({ error: `Upstream error ${status}.` });
         } else {
@@ -241,7 +211,6 @@ exports.streamMedia = async (req, res) => {
         streamType: 'mp4',
         error: pipeError?.message,
         latencyMs: Date.now() - started,
-        streamId: streamId.slice(0, 8),
       });
       return;
     }
@@ -254,13 +223,6 @@ exports.streamMedia = async (req, res) => {
     const contentLength = Number(upstream.headers?.['content-length'] || 0);
     const isHls = isHlsContentType(contentType) || (isHlsUri(target) && !/^audio\//i.test(contentType));
 
-    logger.info('[StreamProxy] Upstream response received', {
-      status: upstream.status,
-      contentType,
-      contentLength,
-      isHls,
-    });
-
     if (isHls) {
       // Enforce the size cap (pre-check via header, then hard-stop while
       // collecting) so a mislabelled/huge body cannot exhaust memory.
@@ -272,9 +234,9 @@ exports.streamMedia = async (req, res) => {
       const body = await collectToBuffer(upstream.data, MAX_MANIFEST_BYTES);
       const manifestText = body.toString('utf8');
 
-      // Build the streamId-scoped proxy URL for every child resource.
-      const proxyUrlBuilder = (absUrl) =>
-        `${PROXY_BASE}/${streamId}?url=${encodeURIComponent(absUrl)}`;
+      // Rewrite every child URI to the SAME stateless proxy format, using the
+      // manifest URL as the referer so the CDN authorizes each child request.
+      const proxyUrlBuilder = (absUrl) => buildProxyUrl(absUrl, target);
 
       const { body: rewritten, rewritten: count } = rewriteHlsManifest(
         manifestText,
@@ -294,31 +256,20 @@ exports.streamMedia = async (req, res) => {
         httpStatus: upstream.status,
         streamType: 'hls',
         latencyMs: Date.now() - started,
-        streamId: streamId.slice(0, 8),
         rewritten: count,
       });
       return;
     }
 
     // ── MP4 / direct media path: stream with byte-range ────
-    // Copy safe headers (Content-Type, Content-Length, Content-Range,
-    // Accept-Ranges, Cache-Control, ETag, Last-Modified). This naturally
-    // produces HTTP 206 Partial Content when the client sent a Range header.
     copySafeHeaders(upstream.headers, res);
     res.status(upstream.status);
     setCorsHeaders(res);
 
-    logger.info('[StreamProxy] Streaming started', {
-      responseStatus: res.statusCode,
-      responseContentType: res.getHeader('Content-Type'),
-      responseContentRange: res.getHeader('Content-Range') || 'N/A',
-    });
-
-    // Pipe the upstream stream to the client (low-memory).
     upstream.data.pipe(res);
 
     upstream.data.on('error', (err) => {
-      logger.warn('[streamProxy] Upstream stream error', { streamId: streamId.slice(0, 8), error: err.message });
+      logger.warn('[streamProxyQuery] Upstream stream error', { error: err.message });
       if (!res.headersSent) {
         res.status(502).json({ error: 'Upstream stream error.' });
       } else {
@@ -327,7 +278,6 @@ exports.streamMedia = async (req, res) => {
     });
 
     res.on('close', () => {
-      // Abort the upstream if the client disconnects mid-stream.
       if (upstream.data && typeof upstream.data.destroy === 'function') {
         upstream.data.destroy();
       }
@@ -340,7 +290,6 @@ exports.streamMedia = async (req, res) => {
       streamType: 'mp4',
       bytes: upstream.headers['content-length'] || null,
       latencyMs: Date.now() - started,
-      streamId: streamId.slice(0, 8),
     });
   } catch (err) {
     if (!res.headersSent) {
@@ -349,13 +298,11 @@ exports.streamMedia = async (req, res) => {
       res.end();
     }
     logger.streamAttempt({
-      level: 'error',
       provider: PROXY_PROVIDER_TAG,
       result: 'failure',
       httpStatus: err.response?.status || 0,
       error: err.message,
       latencyMs: Date.now() - started,
-      streamId: streamId.slice(0, 8),
     });
   }
 };
@@ -364,9 +311,8 @@ exports.streamMedia = async (req, res) => {
  * Preflight handler for the proxy route (CORS).
  */
 exports.preflight = (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCorsHeaders(res);
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Content-Type');
   res.setHeader('Access-Control-Max-Age', '86400');
   res.status(204).end();
 };

@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-08-06T16:38:02.452Z",
+  "runId": "2026-08-06",
+  "overallStatus": "FAIL",
+  "productionScore": 42,
+  "subsystems": [
+    {
+      "name": "Streams",
+      "status": "FAIL",
+      "message": "Healthy rate 0%",
+      "score": 0,
+      "weight": 0.2,
+      "weightedContribution": 0
+    },
+    {
+      "name": "Search",
+      "status": "PARTIAL",
+      "message": "Top-10 recall 88.24%",
+      "score": 60,
+      "weight": 0.15,
+      "weightedContribution": 9
+    },
+    {
+      "name": "Metadata",
+      "status": "PASS",
+      "message": "Completeness 100%",
+      "score": 100,
+      "weight": 0.1,
+      "weightedContribution": 10
+    },
+    {
+      "name": "Subtitles",
+      "status": "FAIL",
+      "message": "Coverage 11.11% (external 0%)",
+      "score": 0,
+      "weight": 0.1,
+      "weightedContribution": 0
+    },
+    {
+      "name": "Mirrors",
+      "status": "PARTIAL",
+      "message": "0 mirror hosts detected",
+      "score": 60,
+      "weight": 0.05,
+      "weightedContribution": 3
+    },
+    {
+      "name": "Cache",
+      "status": "FAIL",
+      "message": "Hit ratio 0%",
+      "score": 0,
+      "weight": 0.1,
+      "weightedContribution": 0
+    },
+    {
+      "name": "Failure Recovery",
+      "status": "PASS",
+      "message": "Recovery rate 100%",
+      "score": 100,
+      "weight": 0.1,
+      "weightedContribution": 10
+    },
+    {
+      "name": "Concurrency",
+      "status": "FAIL",
+      "message": "Real success rate 0%",
+      "score": 0,
+      "weight": 0.1,
+      "weightedContribution": 0
+    },
+    {
+      "name": "Cloudflare",
+      "status": "PASS",
+      "message": "Cloudflare rate 0%",
+      "score": 100,
+      "weight": 0.05,
+      "weightedContribution": 5
+    },
+    {
+      "name": "Health",
+      "status": "PASS",
+      "message": "No degraded providers",
+      "score": 100,
+      "weight": 0.05,
+      "weightedContribution": 5
+    }
+  ],
+  "counts": {
+    "pass": 4,
+    "partial": 2,
+    "fail": 4
+  },
+  "failedCritical": [
+    "Streams",
+    "Subtitles",
+    "Cache",
+    "Concurrency"
+  ],
+  "recommendations": [
+    "[Streams] Healthy rate 0%",
+    "[Search] Top-10 recall 88.24%",
+    "[Subtitles] Coverage 11.11% (external 0%)",
+    "[Mirrors] 0 mirror hosts detected",
+    "[Cache] Hit ratio 0%",
+    "[Concurrency] Real success rate 0%"
+  ],
+  "trend": {
+    "previousScore": 52,
+    "deltaScore": -10,
+    "previousOverallStatus": "FAIL",
+    "resolvedFailures": [],
+    "newFailures": [
+      "Concurrency"
+    ]
+  },
+  "trendSummary": {
+    "improvements": [],
+    "regressions": [
+      "Concurrency"
+    ],
+    "newFailures": [
+      "Concurrency"
+    ],
+    "resolvedFailures": []
+  }
+}

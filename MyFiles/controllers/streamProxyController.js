@@ -172,12 +172,7 @@ exports.streamMedia = async (req, res) => {
   // Derive the authoritative playback context (userAgent + fresh cookies from
   // the shared cookie jar) via the provider — no duplicate cookie logic.
   const playback = getPlaybackContext(target, ctx.referer || null);
-  // Correct argument order: buildUpstreamHeaders(playback, req, ctx).
-  // The FRESH playback context (referer/origin/cookies from the shared cookie
-  // jar) must take precedence over the stored ctx. Passing them swapped made
-  // the function prefer the potentially-stale store-time cookies/headers, which
-  // broke playback when AnimeHeaven rotated its CDN cookies.
-  const upstreamHeaders = buildUpstreamHeaders(playback, req, ctx);
+  const upstreamHeaders = buildUpstreamHeaders(ctx, req, playback);
   const started = Date.now();
 
   try {
