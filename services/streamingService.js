@@ -655,6 +655,13 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       episodeUrl: identifiers.episodeUrl || null,
       source: 'database',
     });
+    logger.info('[PLAYBACK] Provider episode ID', {
+      animeTitle,
+      episode: episodeNumber,
+      slug: identifiers.slug,
+      episodeKey: identifiers.episodeKey || null,
+      episodeUrl: identifiers.episodeUrl || null,
+    });
     logger.debugStream('[AnimeHeaven] DB identifiers found — skipping search', {
       anime: animeTitle,
       episode: episodeNumber,

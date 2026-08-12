@@ -200,10 +200,19 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     try {
       if (mediaId && episodeNumber) {
         const [epRows] = await db.query(
-          'SELECT id, is_premium FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+          'SELECT id, is_premium, animeheaven_episode_key, animeheaven_episode_url FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
           [mediaId, episodeNumber]
         );
         episodeId = epRows && epRows[0] ? epRows[0].id : null;
+        if (epRows && epRows[0]) {
+          logger.info('[PLAYBACK] Loaded imported episode', {
+            animeId: mediaId,
+            episode: episodeNumber,
+            episodeId: epRows[0].id,
+            hasProviderKey: !!epRows[0].animeheaven_episode_key,
+            hasProviderUrl: !!epRows[0].animeheaven_episode_url,
+          });
+        }
       }
     } catch (epErr) {
       logger.debugStream('[StreamController] episodeId lookup failed (cache will be bypassed)', { animeTitle, episode: episodeNumber, error: epErr.message });
@@ -213,6 +222,7 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     logger.info('[STREAM DEBUG] PROVIDER RESOLUTION START', { animeTitle, episodeNumber, timestamp: new Date().toISOString() });
     const providerStart = Date.now();
 
+    logger.info('[PLAYBACK] Provider: animeheaven', { animeTitle, episode: episodeNumber, episodeId });
     const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       isPremium,
       preferredProvider: preferredProvider || undefined,

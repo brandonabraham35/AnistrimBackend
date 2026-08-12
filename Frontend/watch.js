@@ -97,6 +97,15 @@ function isTouchDevice() {
 // ════════════════════════════════════════════════════════════
 async function loadWatch() {
   watchLog('page initialized', { url: window.location.href });
+  console.log('[PLAYBACK] Requested episode', { url: window.location.href });
+
+  // Global safety timeout — never leave the user stuck on "Preparing player..."
+  const PLAYBACK_TOTAL_TIMEOUT_MS = 90000;
+  let playbackTimeout = setTimeout(() => {
+    console.error('[PLAYBACK] Total playback timeout exceeded');
+    showWatchError('Playback timed out. Please try again.');
+  }, PLAYBACK_TOTAL_TIMEOUT_MS);
+
   const params = new URLSearchParams(window.location.search);
   const animeId = params.get('id') || params.get('animeId');
   const epNumRaw = params.get('ep');
@@ -111,7 +120,7 @@ async function loadWatch() {
     currentEp = parseInt(epIdRaw, 10) || 1;
   }
 
-  if (!animeId) { showWatchError('Missing anime ID. Please go back and try again.'); return; }
+  if (!animeId) { clearTimeout(playbackTimeout); showWatchError('Missing anime ID. Please go back and try again.'); return; }
 
   try {
     setLoadingStatus('Finding episode...');
@@ -119,14 +128,22 @@ async function loadWatch() {
 
     const animeRes = await apiFetch('/api/anime/' + animeId, { timeout: API_TIMEOUT_MS });
     if (animeRes.timedOut) {
+      console.error('[PLAYBACK] Anime fetch timed out', { animeId });
+      clearTimeout(playbackTimeout);
       showWatchError('Timed out loading anime data. Please check your connection and try again.');
       return;
     }
     const animeData = animeRes.data;
     currentAnime = animeData;
     currentAnimeId = animeData && animeData.id ? String(animeData.id) : animeId;
-    if (!animeData || !animeData.id) { showWatchError('Could not load anime data.'); return; }
+    if (!animeData || !animeData.id) {
+      console.error('[PLAYBACK] Invalid anime data', { animeId, ok: animeRes.ok, status: animeRes.status });
+      clearTimeout(playbackTimeout);
+      showWatchError('Could not load anime data.');
+      return;
+    }
     watchLog('anime request completed', { animeId, title: animeData.title });
+    console.log('[PLAYBACK] Loaded anime', { animeId, title: animeData.title });
 
     currentAnimeTitle = window._escapeHTML(animeData.title);
     const loadingAnimeTitle = document.getElementById('loading-anime-title');
@@ -144,12 +161,16 @@ async function loadWatch() {
     watchLog('episodes request started', { animeId });
     const episodesRes = await apiFetch('/api/anime/' + animeId + '/episodes', { timeout: API_TIMEOUT_MS });
     if (episodesRes.timedOut) {
+      console.error('[PLAYBACK] Episodes fetch timed out', { animeId });
+      clearTimeout(playbackTimeout);
       showWatchError('Timed out loading episode list. Please try again.');
       return;
     }
     const episodesData = episodesRes.data;
     const episodes = Array.isArray(episodesData) ? episodesData : [];
     watchLog('episodes request completed', { animeId, count: episodes.length });
+    console.log('[PLAYBACK] Loaded episodes', { animeId, count: episodes.length });
+    if (!episodes.length) console.warn('[PLAYBACK] No episodes found for anime', { animeId });
 
     // Store full episode list and build season list
     allEpisodes = episodes;
@@ -201,11 +222,16 @@ async function loadWatch() {
 
       try {
         setLoadingStatus('Finding stream...');
+        console.log('[PLAYBACK] Resolving stream', { animeTitle: animeData.title, episode: currentEp });
         await resolveAndPlayStream(animeData.title, currentEp, video);
         if (loadingOverlay) loadingOverlay.style.display = 'none';
         watchLog('stream resolution completed', { episode: currentEp });
+        console.log('[PLAYBACK] Stream resolved', { provider: currentProvider, quality: currentStreamQuality });
         setupPlayer(video);
+        console.log('[PLAYBACK] Player initialization');
       } catch (err) {
+        console.error('[PLAYBACK] Stream resolution failed', { episode: currentEp, error: err.message });
+        clearTimeout(playbackTimeout);
         showWatchError(err.message || 'Stream resolution failed.');
       }
     }
@@ -217,8 +243,11 @@ async function loadWatch() {
       startMidRollAdTracker(video);
     }
 
+    clearTimeout(playbackTimeout);
+
   } catch(e) {
-    console.error('Watch error:', e);
+    console.error('[PLAYBACK] Watch error', { error: e.message });
+    clearTimeout(playbackTimeout);
     showWatchError('Network error. Please check your connection and try again.');
   }
 }
@@ -783,7 +812,9 @@ async function switchToEpisode(epNum) {
     // Resolve stream from backend
     setLoadingStatus('Finding stream...');
     try {
-      const streamRes = await apiFetch('/api/stream/' + encodeURIComponent(currentAnimeTitle) + '/' + epNumber, { timeout: STREAM_TIMEOUT_MS });
+      // Use the RAW anime title (not HTML-escaped) for the backend API call.
+      const rawAnimeTitle = currentAnime && currentAnime.title ? currentAnime.title : currentAnimeTitle;
+      const streamRes = await apiFetch('/api/stream/' + encodeURIComponent(rawAnimeTitle) + '/' + epNumber, { timeout: STREAM_TIMEOUT_MS });
       if (streamRes.timedOut || !streamRes.data || !streamRes.data.sources || !streamRes.data.sources.length) {
         throw new Error('No stream sources returned for this episode.');
       }
