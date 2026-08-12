@@ -260,6 +260,20 @@ body {
 }
 .scroll-container::-webkit-scrollbar { display: none; }
 
+/* ===================== REUSABLE ANIME POSTER ===================== */
+/* Centralized poster image fitting for ALL anime artwork.
+   - Uses object-fit: cover to fill the frame (no letterboxing)
+   - Uses object-position: center top to keep faces/important artwork
+     (usually in the upper portion of anime posters) visible
+   - Preserves aspect ratio — never distorts or stretches
+   - Works for tall, wide, and high-resolution posters */
+.anime-poster {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
 /* ===================== HOME CARDS ===================== */
 .card {
   flex-shrink: 0; width: 148px;
@@ -273,7 +287,7 @@ body {
   border-radius: var(--radius); overflow: hidden;
   background: var(--card-bg); margin-bottom: 8px;
 }
-.card-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-img-wrap img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
 
 .card-badge {
   position: absolute; top: 8px; left: 8px;
@@ -371,7 +385,7 @@ body {
   border-radius: var(--radius); overflow: hidden;
   background: var(--card-bg); margin-bottom: 8px;
 }
-.browse-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.browse-card-img img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
 .browse-card-badge {
   position: absolute; top: 8px; left: 8px;
   background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
@@ -401,7 +415,7 @@ body {
   background: var(--card-bg); overflow: hidden;
 }
 .details-hero img {
-  width: 100%; height: 100%; object-fit: cover; object-position: top; display: block;
+  width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block;
 }
 .details-hero::after {
   content: ''; position: absolute; bottom: 0; left: 0; right: 0;
@@ -492,7 +506,7 @@ body {
   width: 60px; height: 80px; border-radius: 8px;
   overflow: hidden; flex-shrink: 0; background: var(--card-bg2);
 }
-.wl-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.wl-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .wl-info { flex: 1; min-width: 0; }
 .wl-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 5px; }
 .wl-status-badge {
