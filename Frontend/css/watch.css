@@ -114,6 +114,67 @@ html, body {
 .error-icon { font-size: 3rem; }
 .error-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; max-width: 90%; }
 
+/* ── Premium Gate ──────────────────────────────────────────── */
+.premium-gate .premium-gate-card {
+    background: linear-gradient(160deg, #0a0a0f 0%, #1a1030 100%);
+    border: 1px solid rgba(139, 92, 246, 0.35);
+    border-radius: 16px;
+    padding: 2.5rem 2rem;
+    max-width: 420px;
+    width: 90vw;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(108, 43, 217, 0.15);
+}
+.premium-gate-icon {
+    font-size: 3rem;
+    margin-bottom: 0.75rem;
+    filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.5));
+}
+.premium-gate-card h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem 0;
+    color: var(--player-text);
+}
+.premium-gate-card p {
+    color: var(--player-text-muted);
+    font-size: 0.95rem;
+    margin: 0 0 1.5rem 0;
+    line-height: 1.5;
+}
+.premium-gate-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.premium-gate-primary {
+    background: var(--player-accent);
+    color: #fff;
+    font-weight: 600;
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 0.95rem;
+}
+.premium-gate-primary:hover {
+    background: var(--player-accent-hover);
+}
+.premium-gate-actions .player-btn:not(.premium-gate-primary) {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--player-text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0.7rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+.premium-gate-actions .player-btn:not(.premium-gate-primary):hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
 /* ── Controls Overlays ─────────────────────────────────────── */
 .controls-overlay {
     position: absolute;

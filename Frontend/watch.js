@@ -250,6 +250,16 @@ async function loadWatch() {
     document.getElementById('watch-ep-title').textContent = 'Episode ' + currentEp;
     document.getElementById('watch-anime-title').textContent = currentAnimeTitle;
 
+    // ── Poster image (displayed before playback) ────────────
+    // Use the anime cover image or episode thumbnail as the video poster.
+    const posterUrl = (animeData.cover_image && animeData.cover_image.trim() && animeData.cover_image !== 'undefined')
+      ? animeData.cover_image
+      : (animeData.poster_path || '');
+    const videoEl = document.getElementById('animePlayer');
+    if (videoEl && posterUrl) {
+      videoEl.poster = posterUrl;
+    }
+
     // Populate sidebar title
     const sidebarTitleEl = document.getElementById('sidebar-anime-title');
     if (sidebarTitleEl) sidebarTitleEl.textContent = currentAnimeTitle;
@@ -315,6 +325,17 @@ async function loadWatch() {
     const errorOverlay = document.getElementById('error-overlay');
     if (loadingOverlay) loadingOverlay.style.display = 'flex';
     if (errorOverlay) errorOverlay.style.display = 'none';
+
+    // ── PREMIUM GATE (frontend, before stream resolution) ──
+    // If this episode requires Premium and the user is not authorized, show
+    // the subscription gate immediately instead of wasting a stream request.
+    // The backend ALSO enforces this server-side (403), so this is a UX
+    // improvement, not the authority.
+    if (ep && ep.is_premium && !State.isPremium && !State.isAdmin) {
+      clearTimeout(playbackTimeout);
+      showPremiumGate(ep.title || ('Episode ' + epNum));
+      return;
+    }
 
     try {
       // ── PREMIUM/AUTH CHECK (informational; server enforces for real) ──
@@ -867,36 +888,47 @@ function setupPlayer(video) {
   // fmtTime displays
   updateTimeDisplay(video);
 
-  // Attempt autoplay (existing behaviour) — handle the Promise properly.
-  // NotAllowedError (autoplay blocked) must NOT be treated as a stream failure.
+  // ── AUTOPLAY with muted fallback ──────────────────────────
+  // Attempt unmuted autoplay first. If the browser's autoplay policy blocks
+  // it (NotAllowedError), retry MUTED (which is generally allowed). If muted
+  // autoplay also fails, show a "Tap to Play" button. This is NEVER treated
+  // as a stream failure and NEVER shows "Unable to Play".
   window.__aniStrimPlaybackDebug.playAttempted = true;
-  video.play().then(function() {
-    window.__aniStrimPlaybackDebug.playSucceeded = true;
-    setPlayerState(PLAYER_STATES.PLAYING, { source: 'autoplay' });
-  }).catch(function(err) {
-    window.__aniStrimPlaybackDebug.playError = err.name || err.message;
-    console.warn('[WATCH PLAYER] autoplay blocked or playback failed', {
-      name: err.name,
-      message: err.message,
-      code: video.error?.code,
-      readyState: video.readyState,
-      networkState: video.networkState,
-      currentSrc: video.currentSrc
+  const attemptPlay = function(preserveUnmuted) {
+    return video.play().then(function() {
+      window.__aniStrimPlaybackDebug.playSucceeded = true;
+      setPlayerState(PLAYER_STATES.PLAYING, { source: 'autoplay' });
+    }).catch(function(err) {
+      window.__aniStrimPlaybackDebug.playError = err.name || err.message;
+      console.warn('[WATCH PLAYER] autoplay blocked or playback failed', {
+        name: err.name,
+        message: err.message,
+        code: video.error?.code,
+        readyState: video.readyState,
+        networkState: video.networkState,
+        currentSrc: video.currentSrc
+      });
+      // If unmuted was blocked, try muted (autoplay policies allow muted).
+      if (preserveUnmuted && !video.muted) {
+        video.muted = true;
+        video.volume = 0;
+        return attemptPlay(false);
+      }
+      // Muted autoplay also blocked (or a real error) — show Play button.
+      wrap.classList.add('paused');
+      setPlayIcon(false);
+      setPlayerState(PLAYER_STATES.AUTOPLAY_BLOCKED, {
+        reason: err.name || err.message,
+        readyState: video.readyState
+      });
+      // Hide the loading overlay — the player is READY, just not playing.
+      const loadingOverlay = document.getElementById('loading-overlay');
+      if (loadingOverlay) loadingOverlay.style.display = 'none';
+      // Ensure the controls (incl. the Play button) are visible.
+      showControls();
     });
-    // Autoplay blocked — keep the player visible with a Play button.
-    // This is NOT a stream failure and MUST NOT show "Unable to Play".
-    wrap.classList.add('paused');
-    setPlayIcon(false);
-    setPlayerState(PLAYER_STATES.AUTOPLAY_BLOCKED, {
-      reason: err.name || err.message,
-      readyState: video.readyState
-    });
-    // Hide the loading overlay — the player is READY, just not playing.
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.style.display = 'none';
-    // Ensure the controls (incl. the Play button) are visible.
-    showControls();
-  });
+  };
+  attemptPlay(true);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2428,6 +2460,59 @@ function cardImgError(img, title) {
     img.src = makeFallbackImg(title);
   }
 }
+
+// ════════════════════════════════════════════════════════════
+//  PREMIUM GATE
+// ════════════════════════════════════════════════════════════
+// Shown BEFORE any stream resolution when the episode requires Premium and
+// the user is not authorized. The backend enforces this server-side too
+// (returns 403), but we gate on the frontend first for a better UX and to
+// avoid wasting a stream request.
+function showPremiumGate(epTitle) {
+  watchLog('premium gate shown', { episode: epTitle });
+  setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, { episode: epTitle });
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const premiumOverlay = document.getElementById('premium-overlay');
+  const errorOverlay = document.getElementById('error-overlay');
+  const resumeOverlay = document.getElementById('resume-overlay');
+  if (loadingOverlay) loadingOverlay.style.display = 'none';
+  if (errorOverlay) errorOverlay.style.display = 'none';
+  if (resumeOverlay) resumeOverlay.style.display = 'none';
+  if (premiumOverlay) {
+    premiumOverlay.style.display = 'flex';
+    premiumOverlay.style.opacity = '1';
+    premiumOverlay.style.visibility = 'visible';
+  }
+
+  const titleEl = document.getElementById('premium-gate-title');
+  if (titleEl) titleEl.textContent = 'Premium Episode';
+  const msgEl = document.getElementById('premium-gate-message');
+  if (msgEl) {
+    msgEl.textContent = State.isLoggedIn
+      ? 'This episode requires a Premium subscription. Upgrade to watch.'
+      : 'This episode requires a Premium subscription. Sign in and upgrade to watch.';
+  }
+
+  const upgradeBtn = document.getElementById('premium-gate-upgrade-btn');
+  if (upgradeBtn) {
+    upgradeBtn.onclick = function() {
+      if (State.isLoggedIn) {
+        // Remember where to return after upgrade
+        try { localStorage.setItem('anistrim_redirect_after_auth', window.location.href); } catch(e) {}
+        window.location.href = 'upgrade.html';
+      } else {
+        // Not logged in — go to login, then return to this episode
+        try { localStorage.setItem('anistrim_redirect_after_auth', window.location.href); } catch(e) {}
+        window.location.href = 'login.html';
+      }
+    };
+  }
+  const backBtn = document.getElementById('premium-gate-back-btn');
+  if (backBtn) {
+    backBtn.onclick = function() { window.history.back(); };
+  }
+}
+window.showPremiumGate = showPremiumGate;
 
 // ════════════════════════════════════════════════════════════
 //  ERROR OVERLAY  (preserved recovery actions)
