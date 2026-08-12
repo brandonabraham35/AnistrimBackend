@@ -1,10 +1,12 @@
 // login.js — BACKEND defined in scrpt.js
 //
-// Uses the native @capawesome/capacitor-google-sign-in plugin for Google
-// authentication inside the Capacitor WebView. Replaces the previous
-// web-based Google Identity Services (GIS) flow, which caused a WebView crash.
+// Google login uses the In-App Browser OAuth workflow via the official
+// @capacitor/browser and @capacitor/app plugins. The backend starts the
+// Google OAuth flow in an in-app browser window, then hands back to the
+// app through a deep link carrying the session token.
 
-import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
+import { Browser } from '@capacitor/browser';
+import { App } from '@capacitor/app';
 
 // ── Email/Password Login ────────────────────────────────────
 async function handleLogin() {
@@ -42,68 +44,74 @@ async function handleLogin() {
 }
 window.handleLogin = handleLogin;
 
-// ── Native Google Login (Capacitor) ─────────────────────────
-// Handles the "Continue with Google" button inside the native app.
-// Flow:
-//   1. User clicks the button -> nativeGoogleLogin() is triggered
-//   2. GoogleSignIn.signIn() opens the native Google account chooser
-//   3. We extract the returned ID token and log it
-//   4. We send the ID token to POST /api/auth/google/verify
-//   5. Backend verifies and returns our JWT
-//   6. We store the token and redirect into the app
-async function nativeGoogleLogin() {
+// ── In-App Browser Google Login ─────────────────────────────
+// Opens the backend's Google OAuth start endpoint inside the in-app browser.
+// After the user authenticates, the backend redirects back to the app via a
+// deep link, which is handled by the appUrlOpen listener below.
+async function loginWithInAppBrowser() {
   try {
-    const result = await GoogleSignIn.signIn();
-
-    // Extract the ID token. The plugin exposes it directly on the result,
-    // with fallbacks for different plugin versions.
-    const idToken = result.idToken
-      || result.authentication?.idToken
-      || result.user?.idToken;
-
-    if (!idToken) {
-      throw new Error('No ID token received from Google.');
-    }
-
-    console.log('[Login] Native Google ID token received:', idToken);
-
-    // Send the ID token to our backend for verification
-    await sendIdTokenToBackend(idToken);
-
+    const oauthUrl = `${BACKEND}/api/auth/google/start`;
+    await Browser.open({ url: oauthUrl, windowName: '_blank' });
   } catch (err) {
-    console.error('[Login] Native Google login error:', err?.message || err);
-    showError('Google sign-in failed. Please try again.');
+    console.error('[Login] In-App Browser error:', err?.message || err);
+    showError('Could not open Google sign-in. Please try again.');
   }
 }
-window.nativeGoogleLogin = nativeGoogleLogin;
+window.loginWithInAppBrowser = loginWithInAppBrowser;
 
-// Send the ID token to POST /api/auth/google/verify
-async function sendIdTokenToBackend(idToken) {
+// ── Deep Link Handler ───────────────────────────────────────
+// Fires when the app is woken up via a deep link (e.g. anistrim://auth?token=...).
+async function handleAppUrlOpen(data) {
   try {
-    const res = await fetch(`${BACKEND}/api/auth/google/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken })
-    });
-
-    const data = await res.json();
-
-    if (res.ok && data.token && data.user) {
-      // Success — store session and redirect
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('isFirstVisit', 'true');
-
-      // Redirect based on role — same logic as email login
-      window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
-    } else {
-      showError(data.message || 'Google sign-in failed. Please try again.');
-    }
+    // Shut down the in-app browser window
+    await Browser.close();
   } catch (e) {
-    console.error('[Login] Backend verification error:', e);
-    showError('Cannot reach server. Please check your connection.');
+    // Browser may already be closed — safe to ignore
+  }
+
+  if (!data || !data.url) return;
+
+  try {
+    const url = new URL(data.url);
+    const token = url.searchParams.get('token');
+
+    // Preferred flow: backend hands back a direct session token
+    if (token) {
+      localStorage.setItem('session_token', token);
+      localStorage.setItem('token', token);
+      window.location.href = '/home.html';
+      return;
+    }
+
+    // Fallback for the existing backend handoff: a short-lived exchange code.
+    // If the deep link carries ?code=, exchange it for the session token.
+    const code = url.searchParams.get('code');
+    if (code) {
+      const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
+      const data2 = await res.json();
+      if (res.ok && data2.token) {
+        localStorage.setItem('session_token', data2.token);
+        localStorage.setItem('token', data2.token);
+        if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
+        localStorage.setItem('isFirstVisit', 'true');
+        window.location.href = data2.user?.isAdmin ? 'admin.html' : 'index.html';
+      } else {
+        showError(data2.message || 'Google sign-in failed. Please try again.');
+      }
+      return;
+    }
+
+    // Cancelled / error deep link (e.g. anistrim://auth-error)
+    if (url.href.includes('auth-error')) {
+      showError('Google sign-in was cancelled or failed.');
+    }
+  } catch (err) {
+    console.error('[Login] Deep link parse error:', err?.message || err);
   }
 }
+
+// Register the global appUrlOpen listener once
+App.addListener('appUrlOpen', handleAppUrlOpen);
 
 // ── Error Display ─────────────────────────────────────────
 function showError(msg) {
@@ -134,8 +142,8 @@ function showError(msg) {
 
 // ── Event Listeners ──────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Bind the native Google login to the "Continue with Google" button
-  document.getElementById('google-login-btn')?.addEventListener('click', nativeGoogleLogin);
+  // Bind the in-app browser login to the "Continue with Google" button
+  document.getElementById('google-login-btn')?.addEventListener('click', loginWithInAppBrowser);
 
   document.getElementById('login-pass')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') handleLogin();
@@ -147,5 +155,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Export globally
 window.handleLogin = handleLogin;
-window.nativeGoogleLogin = nativeGoogleLogin;
+window.loginWithInAppBrowser = loginWithInAppBrowser;
 window.showError = showError;

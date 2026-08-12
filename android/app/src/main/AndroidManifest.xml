@@ -22,20 +22,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link: anistrim://auth?code=xxx — Google OAuth callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="anistrim" android:host="auth" />
-            </intent-filter>
-
-            <!-- Deep link: anistrim:// (catch-all for any anistrim:// path) -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="anistrim" />
+                <data android:scheme="anistrin" />
             </intent-filter>
 
         </activity>
