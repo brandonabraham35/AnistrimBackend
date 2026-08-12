@@ -1004,7 +1004,14 @@ async function _handleAnimeHeavenSearch(e) {
       resultsContainer.innerHTML = '<p>No results found on AnimeHeaven.</p>';
       return;
     }
-    resultsContainer.innerHTML = results.map(item => `
+    // Store the full search results for the "Import All" action.
+    _ahSearchResults = results;
+    resultsContainer.innerHTML = `
+      <div class="universal-import-bar">
+        <span>${results.length} matching title${results.length === 1 ? '' : 's'}</span>
+        <button type="button" class="btn universal-import-btn" id="ah-import-all-btn">Import All</button>
+      </div>
+    ` + results.map(item => `
       <div class="kitsu-result-item" data-ah-id="${item.identifier || item.id}">
         <img src="${item.image || item.cover || 'img/placeholder.png'}" alt="${item.title}" loading="lazy">
         <div class="kitsu-result-info">
@@ -1022,6 +1029,13 @@ async function _handleAnimeHeavenSearch(e) {
 }
 
 async function _handleAnimeHeavenResultClick(e) {
+  // "Import All" button for the AnimeHeaven search results.
+  const importAllButton = e.target.closest('#ah-import-all-btn');
+  if (importAllButton) {
+    await _importAllAnimeHeavenResults(importAllButton);
+    return;
+  }
+
   const previewButton = e.target.closest('.ah-preview-btn');
   const importButton = e.target.closest('.ah-import-btn');
   if (!previewButton && !importButton) return;
@@ -1086,6 +1100,51 @@ async function _importAnimeHeaven(identifier, item, button) {
     }
     window.showToast?.(`Import failed: ${error.message}`, 'error');
     return false;
+  }
+}
+
+// ── AnimeHeaven "Import All" (Universal Bulk Import) ────────
+// Sends ALL search result identifiers to the backend in one request.
+// The backend imports them with bounded concurrency and returns a summary.
+let _ahSearchResults = [];
+
+async function _importAllAnimeHeavenResults(button) {
+  if (!_ahSearchResults.length) return;
+  const total = _ahSearchResults.length;
+  if (!await _confirm('Import All', `Import all ${total} AnimeHeaven search results? This will fetch metadata and episodes for each.`)) return;
+
+  button.disabled = true;
+  button.textContent = `Importing 0/${total}...`;
+
+  try {
+    const identifiers = _ahSearchResults.map(r => r.identifier || r.id).filter(Boolean);
+    const res = await window.apiRequest('/api/admin/animeheaven/bulk-import', {
+      method: 'POST',
+      body: { identifiers },
+    });
+
+    const summary = res || {};
+    const imported = summary.imported || 0;
+    const alreadyExists = summary.alreadyExists || 0;
+    const failed = summary.failed || 0;
+
+    button.textContent = `${total} processed · ${imported} imported · ${alreadyExists} existed · ${failed} failed`;
+
+    // Show a detailed summary toast.
+    const parts = [];
+    if (imported) parts.push(`${imported} imported`);
+    if (alreadyExists) parts.push(`${alreadyExists} already existed`);
+    if (failed) parts.push(`${failed} failed`);
+    window.showToast?.(`Bulk import complete: ${parts.join(', ') || 'no changes'}.`, failed ? 'error' : 'success');
+
+    // Refresh the anime table to show newly imported records.
+    await _fetchAnime();
+  } catch (error) {
+    console.error('[Anime CMS] AnimeHeaven bulk import failed:', error);
+    button.textContent = 'Import All';
+    window.showToast?.(`Bulk import failed: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
   }
 }
 

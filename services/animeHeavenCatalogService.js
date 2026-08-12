@@ -81,31 +81,88 @@ async function syncAnime(animeId, options = {}) {
 
 // ── Bulk Import ────────────────────────────────────────────
 
+// Controlled concurrency: process at most this many imports simultaneously.
+// Keeps Render/server resource usage bounded while still being much faster
+// than fully sequential imports.
+const BULK_IMPORT_CONCURRENCY = 3;
+
+/**
+ * Run an async worker pool with bounded concurrency.
+ * @param {Array} items
+ * @param {number} concurrency
+ * @param {Function} worker — async (item, index) => result
+ * @returns {Promise<Array>} results in original order
+ */
+async function runWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function workerLoop() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  const workers = [];
+  const workerCount = Math.min(concurrency, items.length);
+  for (let i = 0; i < workerCount; i++) {
+    workers.push(workerLoop());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Bulk-import multiple AnimeHeaven anime by identifier.
+ *
+ * Idempotent: if an anime already exists (by animeheaven_slug), it is
+ * updated in place (missing metadata/episode identifiers filled in) and
+ * counted as `alreadyExists` — never duplicated.
+ *
+ * Partial failures are isolated: one failed anime does not abort the rest.
+ *
  * @param {string[]} identifiers
  * @param {object} [options]
- * @returns {Promise<{ imported: number, failed: number, results: Array }>}
+ * @returns {Promise<{ total: number, imported: number, alreadyExists: number, failed: number, results: Array }>}
  */
 async function bulkImport(identifiers, options = {}) {
   const list = Array.isArray(identifiers) ? identifiers.filter(Boolean) : [];
   const results = [];
   let imported = 0;
+  let alreadyExists = 0;
   let failed = 0;
 
-  for (const identifier of list) {
+  const outcomes = await runWithConcurrency(list, BULK_IMPORT_CONCURRENCY, async (identifier) => {
     try {
+      // Check if this slug is already imported (idempotency detection).
+      const already = await isImported(identifier);
       const result = await importAnime(identifier, options);
-      results.push({ identifier, success: true, animeId: result.anime.id, title: result.anime.title });
-      imported += 1;
+      return {
+        identifier,
+        success: true,
+        animeId: result.anime.id,
+        title: result.anime.title,
+        alreadyExists: already,
+        episodes: result.episodes,
+      };
     } catch (err) {
       logger.warn('[AnimeHeavenCatalog] bulk import failed', { identifier, error: err.message });
-      results.push({ identifier, success: false, error: err.message });
+      return { identifier, success: false, error: err.message };
+    }
+  });
+
+  for (const outcome of outcomes) {
+    results.push(outcome);
+    if (outcome.success) {
+      if (outcome.alreadyExists) alreadyExists += 1;
+      else imported += 1;
+    } else {
       failed += 1;
     }
   }
 
-  return { imported, failed, results };
+  return { total: list.length, imported, alreadyExists, failed, results };
 }
 
 // ── Bulk Sync ──────────────────────────────────────────────
