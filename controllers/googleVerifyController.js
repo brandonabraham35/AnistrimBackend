@@ -14,7 +14,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 function signToken(user) {
   return jwt.sign(
-    { id: user.id, email: user.email, isAdmin: !!user.is_admin, isPremium: !!user.is_premium },
+    { id: user.id, email: user.email, isAdmin: !!user.is_admin, isPremium: !!user.is_premium, isVerified: true },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
@@ -32,7 +32,7 @@ exports.verifyGoogleToken = function (req, res) {
     if (!idToken) {
       return res.status(400).json({ message: 'Google ID token is required.' });
     }
-
+                                                                                                 
     if (typeof idToken !== 'string' || idToken.length < 20) {
       return res.status(400).json({ message: 'Invalid Google ID token format.' });
     }

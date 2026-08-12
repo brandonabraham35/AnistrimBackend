@@ -13,9 +13,14 @@ const { handleImageUpload } = require('../utils/bunnyUpload');
 router.post('/login', authController.login);
 
 // @route   POST /api/auth/signup
-// @desc    Register a new user account
+// @desc    Register a new user account (requires email verification)
 // @access  Public
 router.post('/signup', authController.signup);
+
+// @route   POST /api/auth/verify-email
+// @desc    Verify a manual registration using the emailed 6-digit OTP
+// @access  Public
+router.post('/verify-email', authController.verifyEmailToken);
 
 // @route   GET /api/auth/me
 // @desc    Fetch the current authenticated user profile

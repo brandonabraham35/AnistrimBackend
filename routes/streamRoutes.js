@@ -7,6 +7,7 @@ const router = express.Router();
 const streamController = require('../controllers/streamController');
 const streamProxyQueryController = require('../controllers/streamProxyQueryController');
 const { protect } = require('../middleware/auth');
+const { verifyTokenAndStatus } = require('../middleware/authMiddleware');
 
 // ── Stateless Query-Based Playback Proxy (AnimeHeaven only) ─
 // GET /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
@@ -15,23 +16,16 @@ const { protect } = require('../middleware/auth');
 router.options('/proxy', streamProxyQueryController.preflight);
 router.get('/proxy', streamProxyQueryController.streamMedia);
 
-// ── Public: Best stream (AnimeHeaven single provider) ──────
+// ── Protected: Best stream (AnimeHeaven single provider) ───
 // GET /api/stream/:animeTitle/:episodeNumber
 // Optional query param: preferredProvider=animeheaven
 //   (accepted for backward compatibility but IGNORED — AnimeHeaven is the
 //    only streaming provider. The response contract is unchanged.)
-// Optional auth (if token provided, will unlock premium quality)
-router.get('/:animeTitle/:episodeNumber', (req, res, next) => {
-  // Optional auth — if token present, attach user for tier enforcement
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const jwt = require('jsonwebtoken');
-      req.user = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
-    } catch (_) {}
-  }
-  next();
-}, streamController.getStream);
+// The verifyTokenAndStatus middleware enforces strict email verification:
+//   • no/invalid token  → 401
+//   • verified token    → next() (unlocks premium quality)
+//   • unverified token  → 403 { requiresVerification: true }
+router.get('/:animeTitle/:episodeNumber', verifyTokenAndStatus, streamController.getStream);
 
 // ── Public: List all providers for "Switch Server" dropdown ─
 // GET /api/stream/providers/:animeTitle/:episodeNumber
