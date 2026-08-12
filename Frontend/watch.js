@@ -308,13 +308,14 @@ async function loadWatch() {
     // slow response), the stream request would never fire and the player
     // would stay stuck on "Preparing player...". Fire-and-forget instead.
     loadBatchProgress(animeId).catch(() => {});
-    renderEpisodeSidebar(episodes, animeId);
-
-    // Populate season navigation
-    renderSeasonNav();
-
-    // Update sidebar season label
-    updateSidebarSeasonLabel();
+    // Sidebar rendering is isolated so a UI failure never blocks stream resolution.
+    try {
+      renderEpisodeSidebar(episodes, animeId);
+      renderSeasonNav();
+      updateSidebarSeasonLabel();
+    } catch (uiErr) {
+      console.error('[WATCH] Sidebar render error (non-fatal, playback continues)', uiErr);
+    }
 
     var video = document.getElementById('animePlayer');
     const loadingOverlay = document.getElementById('loading-overlay');
@@ -628,7 +629,6 @@ function showMidRollAd(video) {
 // ════════════════════════════════════════════════════════════
 function setupPlayer(video) {
   if (playerSetupDone) return;
-  playerSetupDone = true;
 
   const wrap = document.getElementById('player-wrap');
   const skipBtn = document.getElementById('skip-intro-btn');
@@ -874,19 +874,29 @@ function setupPlayer(video) {
     showControls();
   });
 
-  // ── Custom progress bar ──────────────────────────────────
-  initProgressBar(video);
-  initControlsAutoHide(wrap);
-  initKeyboardShortcuts();
-  initTouchControls(wrap, video);
+  // ── Player control initialization (defensive) ────────────
+  // Each subsystem is wrapped so a failure in one optional feature (e.g. PiP,
+  // progress UI) never prevents playback or permanently marks the player as
+  // initialized. playerSetupDone is set ONLY after all init succeeds.
+  try {
+    initProgressBar(video);
+    initControlsAutoHide(wrap);
+    initKeyboardShortcuts();
+    initTouchControls(wrap, video);
 
-  // Restore saved playback speed / volume
-  video.playbackRate = speedValue;
-  updateSpeedUI();
-  updateVolumeIcon();
+    // Restore saved playback speed / volume
+    video.playbackRate = speedValue;
+    updateSpeedUI();
+    updateVolumeIcon();
 
-  // fmtTime displays
-  updateTimeDisplay(video);
+    // fmtTime displays
+    updateTimeDisplay(video);
+  } catch (controlErr) {
+    console.error('[WATCH] Player control init error (non-fatal)', controlErr);
+  }
+
+  // Mark as initialized only after the control systems are set up.
+  playerSetupDone = true;
 
   // ── AUTOPLAY with muted fallback ──────────────────────────
   // Attempt unmuted autoplay first. If the browser's autoplay policy blocks
@@ -2446,18 +2456,29 @@ function renderMoreEpisodes(episodes, animeId) {
   renderEpisodeSidebar(episodes, animeId);
 }
 
-function makeFallbackImg(title) {
-  if (window.makeFallbackImg) return window.makeFallbackImg(title);
-  // Generate a colored placeholder based on title hash
+// FIXED: renamed local helper to watchFallbackImg to avoid infinite recursion.
+// Previously it called window.makeFallbackImg which (due to browser
+// global-function naming) pointed back to this same local function, causing
+// "Maximum call stack size exceeded" and crashing thumbnail rendering.
+function watchFallbackImg(title) {
+  // Prefer the shared namespaced helper from config.js (no recursion).
+  if (window.AniStrimShared && typeof window.AniStrimShared.makeFallbackImg === 'function') {
+    return window.AniStrimShared.makeFallbackImg(title);
+  }
+  // Fallback local implementation (only used if shared helper missing).
   var hash = 0;
-  for (var i = 0; i < title.length; i++) hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  for (var i = 0; i < (title || '').length; i++) hash = (title || '').charCodeAt(i) + ((hash << 5) - hash);
   var color = '#' + (hash & 0x00FFFFFF).toString(16).padStart(6, '0');
   return 'https://ui-avatars.com/api/?background=' + color.substring(1) + '&color=ffffff&bold=true&name=' + encodeURIComponent(title || 'Anime');
 }
 
+function makeFallbackImg(title) {
+  return watchFallbackImg(title);
+}
+
 function cardImgError(img, title) {
   if (img && title) {
-    img.src = makeFallbackImg(title);
+    img.src = watchFallbackImg(title);
   }
 }
 

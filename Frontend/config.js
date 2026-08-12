@@ -65,7 +65,11 @@
         ...(controller ? { signal: controller.signal } : {}),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401) {
+      // Only force a login redirect on authentication-critical requests.
+      // Background/fire-and-forget requests (e.g. watch progress polling) pass
+      // { skipAuthRedirect: true } so a 401 there never kicks the user out of
+      // the player mid-watch.
+      if (res.status === 401 && !options.skipAuthRedirect) {
         State?.clear?.();
         window.location.href = 'login.html';
       }
