@@ -256,31 +256,33 @@ async function loadWatch() {
     var video = document.getElementById('animePlayer');
     const loadingOverlay = document.getElementById('loading-overlay');
 
-    if (ep && ep.video_url) {
-      setLoadingStatus('Loading video...');
-      await attachStreamSource(video, ep.video_url);
-      if (loadingOverlay) loadingOverlay.style.display = 'none';
-      setupPlayer(video);
-      watchLog('source selected', { directVideo: true });
-    } else {
-      const errorOverlay = document.getElementById('error-overlay');
-      if (loadingOverlay) loadingOverlay.style.display = 'flex';
-      if (errorOverlay) errorOverlay.style.display = 'none';
+    // ── CANONICAL PLAYBACK PATH ─────────────────────────────
+    // Both direct video_url and backend-resolved streams go through
+    // initializePlayerWithSource() — the SAME function Change Server uses.
+    const errorOverlay = document.getElementById('error-overlay');
+    if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    if (errorOverlay) errorOverlay.style.display = 'none';
 
-      try {
+    try {
+      if (ep && ep.video_url) {
+        setLoadingStatus('Loading video...');
+        await initializePlayerWithSource(video, { url: ep.video_url, quality: 'auto' }, {
+          provider: 'direct',
+          sources: [{ url: ep.video_url, quality: 'auto' }],
+          subtitles: []
+        });
+        watchLog('source selected', { directVideo: true });
+      } else {
         setLoadingStatus('Finding stream...');
         console.log('[PLAYBACK] Resolving stream', { animeTitle: animeData.title, episode: currentEp });
         await resolveAndPlayStream(animeData.title, currentEp, video);
-        if (loadingOverlay) loadingOverlay.style.display = 'none';
         watchLog('stream resolution completed', { episode: currentEp });
-        console.log('[PLAYBACK] Stream resolved', { provider: currentProvider, quality: currentStreamQuality });
-        setupPlayer(video);
         console.log('[PLAYBACK] Player initialization');
-      } catch (err) {
-        console.error('[PLAYBACK] Stream resolution failed', { episode: currentEp, error: err.message });
-        clearTimeout(playbackTimeout);
-        showWatchError(err.message || 'Stream resolution failed.');
       }
+    } catch (err) {
+      console.error('[PLAYBACK] Stream resolution failed', { episode: currentEp, error: err.message });
+      clearTimeout(playbackTimeout);
+      showWatchError(err.message || 'Stream resolution failed.');
     }
 
     loadSkipTimes(animeId, epNum);
@@ -318,7 +320,51 @@ function populateServerSwitcher() {
   // DORMANT: No #serverSwitcher element in the new HTML. Quality is now the primary selector.
 }
 
+// ── CANONICAL PLAYER INITIALIZATION ─────────────────────────
+// The single function that INITIAL page load, Change Server, Retry,
+// Next episode, and Previous episode all use to attach a resolved source
+// and bring up the player UI. This consolidates the previously-divergent
+// paths so there is exactly ONE way playback begins.
+function initializePlayerWithSource(video, source, metadata) {
+  console.log('[WATCH PLAYER] Player initialization started', {
+    sourceType: source && source.sourceType || 'mp4',
+    quality: source && source.quality || 'auto'
+  });
+
+  // Hide the loading overlay — the player is about to become visible.
+  const loadingOverlay = document.getElementById('loading-overlay');
+  if (loadingOverlay) loadingOverlay.style.display = 'none';
+
+  // Attach the source to the video element (HLS or MP4).
+  return attachStreamSource(video, source.url).then(function() {
+    console.log('[WATCH PLAYER] Player initialized');
+
+    // Set playback metadata.
+    currentStreamUrl = source.url;
+    currentProvider = metadata.provider || 'unknown';
+    currentStreamQuality = source.quality || 'auto';
+    if (metadata.sources) currentStreamSources = metadata.sources;
+
+    // Attach subtitles if returned.
+    if (metadata.subtitles && metadata.subtitles.length) {
+      attachSubtitles(video, metadata.subtitles);
+    }
+
+    // Update quality display.
+    const qualityValue = document.getElementById('quality-value');
+    if (qualityValue) qualityValue.textContent = currentStreamQuality;
+
+    // Set up the player controls (idempotent).
+    setupPlayer(video);
+
+    console.log('[PLAYBACK] Stream resolved', { provider: currentProvider, quality: currentStreamQuality });
+    return true;
+  });
+}
+
 // ── Multi-API: Resolve and play stream ──────────────────────
+// Requests the stream from the backend, then uses
+// initializePlayerWithSource() to attach and play it.
 async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredProvider) {
   var url = '/api/stream/' + encodeURIComponent(animeTitle) + '/' + episodeNumber;
   if (preferredProvider) {
@@ -350,27 +396,30 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     }));
     currentStreamSources = sourcesToTry;
 
+    // Log the response structure for debugging (safe fields only).
+    console.log('[WATCH PLAYER] Stream response received', {
+      provider: data.provider,
+      sourceCount: data.sources.length,
+      bestQuality: data.bestQuality,
+      tier: data.tier,
+      subtitleCount: (data.subtitles || []).length
+    });
+
+    // Try each source through the canonical player initialization.
     for (const source of sourcesToTry) {
         try {
             console.log(`[PLAYER] Attempting to attach source: ${source.url} (Quality: ${source.quality})`);
             setLoadingStatus('Connecting to server...');
             watchLog('source selected', { url: source.url, quality: source.quality });
-            await attachStreamSource(video, source.url);
 
-            currentStreamUrl = source.url;
-            currentProvider = data.provider || 'unknown';
-            currentStreamQuality = source.quality || 'auto';
+            await initializePlayerWithSource(video, source, {
+              provider: data.provider,
+              sources: sourcesToTry,
+              subtitles: data.subtitles || []
+            });
+
             console.log("[PLAYER] Successfully attached stream:", currentStreamUrl);
             watchLog('video source attached', { provider: currentProvider, quality: source.quality });
-
-            // Attach external subtitle tracks returned by the provider (best effort).
-            if (data.subtitles && data.subtitles.length) {
-              attachSubtitles(video, data.subtitles);
-            }
-
-            // Update quality value in settings menu
-            const qualityValue = document.getElementById('quality-value');
-            if (qualityValue) qualityValue.textContent = currentStreamQuality;
 
             // Populate the server switcher lazily (non-blocking, no re-scrape)
             if (!availableProviders.length && data.provider) {
@@ -874,35 +923,22 @@ async function switchToEpisode(epNum) {
     playerSetupDone = false;
   }
 
-  let sourceUrl = ep.video_url;
-  if (!sourceUrl) {
-    // Resolve stream from backend
-    setLoadingStatus('Finding stream...');
-    try {
-      // Use the RAW anime title (not HTML-escaped) for the backend API call.
-      const rawAnimeTitle = currentAnime && currentAnime.title ? currentAnime.title : currentAnimeTitle;
-      const streamRes = await apiFetch('/api/stream/' + encodeURIComponent(rawAnimeTitle) + '/' + epNumber, { timeout: STREAM_TIMEOUT_MS });
-      if (streamRes.timedOut || !streamRes.data || !streamRes.data.sources || !streamRes.data.sources.length) {
-        throw new Error('No stream sources returned for this episode.');
-      }
-      const API_BASE_URL = window.getApiBaseUrl();
-      const sourcesToTry = streamRes.data.sources.map(s => ({
-        ...s,
-        url: s.url.startsWith('http') ? s.url : API_BASE_URL + s.url
-      }));
-      currentStreamSources = sourcesToTry;
-      sourceUrl = sourcesToTry[0].url;
-      currentProvider = streamRes.data.provider || 'unknown';
-      currentStreamQuality = sourcesToTry[0].quality || 'auto';
-    } catch (err) {
-      showWatchError(err.message || 'Stream resolution failed for this episode.');
-      if (loadingOverlay) loadingOverlay.style.display = 'none';
-      return;
-    }
-  }
-
+  // Use the canonical stream resolution + player initialization path.
+  // This ensures episode navigation uses the SAME pipeline as initial load
+  // and Change Server — no divergent playback logic.
   try {
-    await attachStreamSource(video, sourceUrl);
+    if (ep.video_url) {
+      // Direct video URL — attach directly.
+      await initializePlayerWithSource(video, { url: ep.video_url, quality: 'auto' }, {
+        provider: 'direct',
+        sources: [{ url: ep.video_url, quality: 'auto' }],
+        subtitles: []
+      });
+    } else {
+      // Resolve stream from backend via the canonical path.
+      const rawAnimeTitle = currentAnime && currentAnime.title ? currentAnime.title : currentAnimeTitle;
+      await resolveAndPlayStream(rawAnimeTitle, epNumber, video);
+    }
     if (loadingOverlay) loadingOverlay.style.display = 'none';
 
     // Re-setup player (event listeners are idempotent now)
