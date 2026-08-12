@@ -2454,4 +2454,10 @@ window.seasonGroups = seasonGroups;
 window.toggleEpisodeSidebar = toggleEpisodeSidebar;
 window.exitPlayer = exitPlayer;
 
+// ── INITIALIZE THE PLAYER ────────────────────────────────
+// The watch page must kick off playback resolution on load. Without this,
+// loadWatch() is never invoked and the player stays stuck on
+// "Preparing player..." with NO backend request being made.
+document.addEventListener('DOMContentLoaded', loadWatch);
+
 
