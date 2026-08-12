@@ -194,6 +194,72 @@ async function bulkSync(animeIds, options = {}) {
   return { synced, failed, results };
 }
 
+// ── Playback Readiness Validation ──────────────────────────
+
+/**
+ * Validate that an imported anime has all the provider metadata needed for
+ * immediate playback (no AnimeHeaven search at play time).
+ *
+ * Checks:
+ *   • anime.animeheaven_slug exists (provider anime ID)
+ *   • at least one episode exists
+ *   • every episode has animeheaven_episode_key (provider episode ID)
+ *   • every episode has animeheaven_episode_url where available
+ *
+ * @param {number|string} animeId
+ * @returns {Promise<{ animeId, title, slug, playbackReady, totalEpisodes, episodesWithKeys, episodesWithUrls, missingKeys, missingUrls, missingEpisodeNumbers }>}
+ */
+async function validatePlaybackReadiness(animeId) {
+  const id = Number(animeId);
+  if (!Number.isInteger(id)) {
+    return { animeId: id, playbackReady: false, error: 'Invalid anime id.' };
+  }
+
+  const [animeRows] = await db.query(
+    'SELECT id, title, animeheaven_slug FROM anime WHERE id = ? LIMIT 1',
+    [id]
+  );
+  if (!animeRows.length) {
+    return { animeId: id, playbackReady: false, error: 'Anime not found.' };
+  }
+  const anime = animeRows[0];
+  const slug = anime.animeheaven_slug || null;
+
+  const [epRows] = await db.query(
+    `SELECT episode_number, animeheaven_episode_key, animeheaven_episode_url
+     FROM episodes WHERE anime_id = ? ORDER BY episode_number ASC`,
+    [id]
+  );
+
+  const totalEpisodes = epRows.length;
+  const episodesWithKeys = epRows.filter(e => e.animeheaven_episode_key).length;
+  const episodesWithUrls = epRows.filter(e => e.animeheaven_episode_url).length;
+  const missingKeys = epRows.filter(e => !e.animeheaven_episode_key).length;
+  const missingUrls = epRows.filter(e => !e.animeheaven_episode_url).length;
+  const missingEpisodeNumbers = epRows
+    .filter(e => !e.animeheaven_episode_key)
+    .map(e => e.episode_number);
+
+  // Playback ready = provider anime ID exists AND episodes exist AND every
+  // episode has the provider episode key (the gate key required by
+  // resolveStreamByKey). The episode URL is a bonus but not strictly required
+  // for the FAST path (slug + key is enough).
+  const playbackReady = !!slug && totalEpisodes > 0 && missingKeys === 0;
+
+  return {
+    animeId: anime.id,
+    title: anime.title,
+    slug,
+    playbackReady,
+    totalEpisodes,
+    episodesWithKeys,
+    episodesWithUrls,
+    missingKeys,
+    missingUrls,
+    missingEpisodeNumbers,
+  };
+}
+
 // ── Missing Episode Detection ──────────────────────────────
 
 /**
@@ -357,6 +423,7 @@ module.exports = {
   bulkSync,
   dailyRefresh,
   detectMissingEpisodes,
+  validatePlaybackReadiness,
   isImported,
   hasEpisodeKey,
   getCatalogStatus,

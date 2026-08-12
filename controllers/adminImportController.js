@@ -371,6 +371,23 @@ exports.syncAnimeHeaven = async (req, res) => {
 };
 
 /**
+ * GET /api/admin/animeheaven/playback-ready/:animeId
+ * Validate that an imported anime has all provider metadata needed for
+ * immediate playback (no AnimeHeaven search at play time).
+ */
+exports.getAnimeHeavenPlaybackReady = async (req, res) => {
+  const animeId = Number(req.params.animeId);
+  if (!Number.isInteger(animeId)) return res.status(400).json({ message: 'Invalid anime id.' });
+  try {
+    const readiness = await animeHeavenCatalogService.validatePlaybackReadiness(animeId);
+    res.json(readiness);
+  } catch (error) {
+    console.error('AnimeHeaven playback readiness failed:', error.message);
+    res.status(500).json({ message: 'Failed to validate playback readiness.' });
+  }
+};
+
+/**
  * GET /api/admin/animeheaven/status/:animeId
  * Return the AnimeHeaven import status for an anime (slug, episode count, last sync).
  */

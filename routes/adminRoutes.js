@@ -43,6 +43,7 @@ router.get('/animeheaven/preview/:identifier', imports.previewAnimeHeaven);
 router.post('/animeheaven/import',          imports.importAnimeHeaven);
 router.post('/animeheaven/sync/:animeId',   imports.syncAnimeHeaven);
 router.get('/animeheaven/status/:animeId',  imports.getAnimeHeavenStatus);
+router.get('/animeheaven/playback-ready/:animeId', imports.getAnimeHeavenPlaybackReady);
 
 // ── AnimeHeaven Catalog Service (primary catalog provider) ─
 router.get('/animeheaven/catalog/status',   imports.getAnimeHeavenCatalogStatus);
