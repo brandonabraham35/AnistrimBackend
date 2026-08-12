@@ -1,8 +1,10 @@
 // login.js — BACKEND defined in scrpt.js
 //
-// Uses the shared Google auth module (google-auth-handler.js) for GIS.
-// Shared module handles: library loading, client ID fetch, GIS init,
-// credential callback, error states, and loading UI.
+// Uses the native @capawesome/capacitor-google-sign-in plugin for Google
+// authentication inside the Capacitor WebView. Replaces the previous
+// web-based Google Identity Services (GIS) flow, which caused a WebView crash.
+
+import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
 
 // ── Email/Password Login ────────────────────────────────────
 async function handleLogin() {
@@ -40,39 +42,40 @@ async function handleLogin() {
 }
 window.handleLogin = handleLogin;
 
-// ── Google Identity Services (GIS) Popup Login ──────────────
-// Uses the shared google-auth-handler.js module.
+// ── Native Google Login (Capacitor) ─────────────────────────
+// Handles the "Continue with Google" button inside the native app.
 // Flow:
-//   1. User clicks "Continue with Google" button
-//   2. handleGoogleLogin() calls window.initGoogleAuth('google-login-btn')
-//   3. Shared module shows Google account chooser via GIS prompt()
-//   4. GIS returns credential (ID token) in callback
-//   5. We send the ID token to POST /api/auth/google/verify
-//   6. Backend verifies and returns our JWT
-//   7. We store the token and redirect into the app
-
-async function handleGoogleLogin() {
+//   1. User clicks the button -> nativeGoogleLogin() is triggered
+//   2. GoogleSignIn.signIn() opens the native Google account chooser
+//   3. We extract the returned ID token and log it
+//   4. We send the ID token to POST /api/auth/google/verify
+//   5. Backend verifies and returns our JWT
+//   6. We store the token and redirect into the app
+async function nativeGoogleLogin() {
   try {
-    // Use the shared Google auth module
-    const response = await window.initGoogleAuth('google-login-btn');
+    const result = await GoogleSignIn.signIn();
 
-    if (!response || !response.credential) {
-      showError('Google sign-in failed. No credential received.');
-      return;
+    // Extract the ID token. The plugin exposes it directly on the result,
+    // with fallbacks for different plugin versions.
+    const idToken = result.idToken
+      || result.authentication?.idToken
+      || result.user?.idToken;
+
+    if (!idToken) {
+      throw new Error('No ID token received from Google.');
     }
 
-    const idToken = response.credential;
-    console.log('[Login] Google ID token received, verifying with backend...');
+    console.log('[Login] Native Google ID token received:', idToken);
 
     // Send the ID token to our backend for verification
     await sendIdTokenToBackend(idToken);
 
   } catch (err) {
-    // Error already displayed by shared module
-    console.error('[Login] Google auth error:', err.message);
-    // Only show error if the shared module didn't already display one
+    console.error('[Login] Native Google login error:', err?.message || err);
+    showError('Google sign-in failed. Please try again.');
   }
 }
+window.nativeGoogleLogin = nativeGoogleLogin;
 
 // Send the ID token to POST /api/auth/google/verify
 async function sendIdTokenToBackend(idToken) {
@@ -131,6 +134,9 @@ function showError(msg) {
 
 // ── Event Listeners ──────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Bind the native Google login to the "Continue with Google" button
+  document.getElementById('google-login-btn')?.addEventListener('click', nativeGoogleLogin);
+
   document.getElementById('login-pass')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') handleLogin();
   });
@@ -141,6 +147,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Export globally
 window.handleLogin = handleLogin;
-window.handleGoogleLogin = handleGoogleLogin;
+window.nativeGoogleLogin = nativeGoogleLogin;
 window.showError = showError;
-

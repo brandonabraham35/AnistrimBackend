@@ -5,9 +5,9 @@
     "lint:fix": "eslint . --fix",
     "seed:catalogue": "node scripts/seed-catalogue.js",
     "validate:nightly": "node validation/index.js",
-"validate:quick": "node validation/index.js --quick",
+    "validate:quick": "node validation/index.js --quick",
     "validate:concurrency": "node validation/index.js --skipConcurrency",
-"test:hls": "node --test test/hlsRewriter.test.js",
+    "test:hls": "node --test test/hlsRewriter.test.js",
     "test:ssrf": "node --test test/ssrfGuard.test.js"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "@capacitor/cli": "^8.4.2",
     "@capacitor/core": "^8.4.2",
     "@capacitor/ios": "^8.4.2",
+    "@capawesome/capacitor-google-sign-in": "^0.1.2",
     "@consumet/extensions": "^1.8.8",
     "axios": "^1.18.1",
     "bcrypt": "^6.0.0",

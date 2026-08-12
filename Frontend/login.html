@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.gstatic.com; frame-src https://accounts.google.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login | AniStrim</title>
@@ -20,7 +20,7 @@
   <!-- Error message container -->
   <p id="auth-error" style="display:none;"></p>
 
-  <button class="google-btn" id="google-login-btn" onclick="handleGoogleLogin()">
+  <button class="google-btn" id="google-login-btn">
     <!-- Google G icon -->
     <span id="google-btn-icon" style="width:26px;height:26px;background:white;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 8px rgba(108,43,217,0.4);">
       <svg width="15" height="15" viewBox="0 0 24 24">
@@ -55,12 +55,9 @@
   </div>
 </div>
 
-<!-- Google Identity Services library (no async/defer — load deterministically) -->
-<script src="https://accounts.google.com/gsi/client"></script>
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
-<script src="google-auth-handler.js"></script>
-<script src="login.js"></script>
+<script type="module" src="login.js"></script>
 </body>
 </html>
 
