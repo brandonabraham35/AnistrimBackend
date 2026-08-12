@@ -94,7 +94,11 @@ const AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 // ── Playback stage timeouts (ms) ────────────────────────────
 const API_TIMEOUT_MS = 30000;
-const STREAM_TIMEOUT_MS = 60000;
+// Cold AnimeHeaven resolutions can take a while (3 attempts + fallbacks).
+// Keep the stream request timeout generous so a slow cold resolve isn't
+// mistaken for a hard failure — the backend caches the result afterwards,
+// so a retry (or Change Server) returns instantly.
+const STREAM_TIMEOUT_MS = 90000;
 const SOURCE_ATTACH_TIMEOUT_MS = 30000;
 
 // ── Playback health object (debug-friendly) ────────────────
@@ -118,6 +122,55 @@ window.__aniStrimPlaybackDebug = {
 function isTouchDevice() {
   return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
     (window.matchMedia && matchMedia('(pointer: coarse)').matches);
+}
+
+// ── PLAYBACK STATE MACHINE ────────────────────────────────
+// Explicit, deterministic watch-page states. The page must NEVER treat
+// "still loading / no source yet" as an error. Only the backend genuinely
+// failing (or a hard network failure) may transition to ERROR.
+const PLAYER_STATES = {
+  INITIALIZING: 'INITIALIZING',
+  AUTH_CHECK: 'AUTH_CHECK',
+  PREMIUM_CHECK: 'PREMIUM_CHECK',
+  STREAM_LOADING: 'STREAM_LOADING',
+  SOURCE_READY: 'SOURCE_READY',
+  PLAYER_LOADING: 'PLAYER_LOADING',
+  PLAYING: 'PLAYING',
+  PAUSED: 'PAUSED',
+  BUFFERING: 'BUFFERING',
+  ENDED: 'ENDED',
+  AUTOPLAY_BLOCKED: 'AUTOPLAY_BLOCKED',
+  PLAYBACK_ERROR: 'PLAYBACK_ERROR',
+  AUTH_REQUIRED: 'AUTH_REQUIRED',
+  PREMIUM_REQUIRED: 'PREMIUM_REQUIRED',
+};
+let playerState = PLAYER_STATES.INITIALIZING;
+
+function setPlayerState(state, meta = {}) {
+  playerState = state;
+  watchLog('stateChange', { state, ...meta });
+  if (window.__aniStrimPlaybackDebug) {
+    window.__aniStrimPlaybackDebug.state = state;
+  }
+  // Update the loading-status text to reflect the current state.
+  const statusText = {
+    [PLAYER_STATES.INITIALIZING]: 'Preparing player...',
+    [PLAYER_STATES.AUTH_CHECK]: 'Checking account...',
+    [PLAYER_STATES.PREMIUM_CHECK]: 'Checking access...',
+    [PLAYER_STATES.STREAM_LOADING]: 'Finding stream...',
+    [PLAYER_STATES.SOURCE_READY]: 'Stream ready',
+    [PLAYER_STATES.PLAYER_LOADING]: 'Loading video...',
+    [PLAYER_STATES.PLAYING]: 'Playing',
+    [PLAYER_STATES.PAUSED]: 'Paused',
+    [PLAYER_STATES.BUFFERING]: 'Buffering...',
+    [PLAYER_STATES.ENDED]: 'Ended',
+    [PLAYER_STATES.AUTOPLAY_BLOCKED]: 'Ready to play',
+    [PLAYER_STATES.PLAYBACK_ERROR]: 'Playback problem',
+    [PLAYER_STATES.AUTH_REQUIRED]: 'Sign in required',
+    [PLAYER_STATES.PREMIUM_REQUIRED]: 'Premium required',
+  };
+  const statusEl = document.getElementById('loading-status');
+  if (statusEl && statusText[state]) setLoadingStatus(statusText[state]);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -264,25 +317,58 @@ async function loadWatch() {
     if (errorOverlay) errorOverlay.style.display = 'none';
 
     try {
+      // ── PREMIUM/AUTH CHECK (informational; server enforces for real) ──
+      // The backend performs the authoritative premium check. Here we only
+      // log the client's known state so the page can show the correct UI.
+      setPlayerState(PLAYER_STATES.PREMIUM_CHECK, {
+        isPremium: State.isPremium || false,
+        isAdmin: State.isAdmin || false,
+        isLoggedIn: State.isLoggedIn || false,
+      });
+
       if (ep && ep.video_url) {
+        setPlayerState(PLAYER_STATES.STREAM_LOADING, { mode: 'direct' });
         setLoadingStatus('Loading video...');
         await initializePlayerWithSource(video, { url: ep.video_url, quality: 'auto' }, {
           provider: 'direct',
           sources: [{ url: ep.video_url, quality: 'auto' }],
           subtitles: []
         });
+        setPlayerState(PLAYER_STATES.SOURCE_READY, { directVideo: true });
         watchLog('source selected', { directVideo: true });
       } else {
+        setPlayerState(PLAYER_STATES.STREAM_LOADING, { mode: 'backend' });
         setLoadingStatus('Finding stream...');
-        console.log('[PLAYBACK] Resolving stream', { animeTitle: animeData.title, episode: currentEp });
-        await resolveAndPlayStream(animeData.title, currentEp, video);
+        console.log('[PLAYBACK] Resolving stream', { animeTitle: currentAnimeTitle, episode: currentEp });
+        // IMPORTANT: Use the EXACT same arguments as the "Change Server"
+        // button (currentAnimeTitle + preferredProvider='animeheaven') so the
+        // initial load and Change Server follow an identical, proven path.
+        await resolveAndPlayStream(currentAnimeTitle, currentEp, video, 'animeheaven');
+        setPlayerState(PLAYER_STATES.SOURCE_READY, { episode: currentEp });
         watchLog('stream resolution completed', { episode: currentEp });
         console.log('[PLAYBACK] Player initialization');
       }
     } catch (err) {
-      console.error('[PLAYBACK] Stream resolution failed', { episode: currentEp, error: err.message });
-      clearTimeout(playbackTimeout);
-      showWatchError(err.message || 'Stream resolution failed.');
+      console.error('[PLAYBACK] Stream resolution failed (first attempt)', { episode: currentEp, error: err.message });
+      // ── AUTO-RETRY (Silent, Change-Server path) ──────────
+      // The user should NEVER see the error / Change-Server page on the normal
+      // first-load path. If the first attempt fails (e.g. cold cache timeout),
+      // automatically retry using the EXACT same call the "Change Server"
+      // button uses — which is proven to reach the player. Only if THIS also
+      // fails do we surface the error overlay.
+      try {
+        setLoadingStatus('Retrying connection...');
+        console.log('[PLAYBACK] Auto-retrying stream resolution (Change-Server path)');
+        await resolveAndPlayStream(currentAnimeTitle, currentEp, video, 'animeheaven');
+        setPlayerState(PLAYER_STATES.SOURCE_READY, { episode: currentEp, viaRetry: true });
+        watchLog('stream resolution completed after retry', { episode: currentEp });
+        console.log('[PLAYBACK] Player initialization (after retry)');
+      } catch (retryErr) {
+        console.error('[PLAYBACK] Stream resolution failed (retry)', { episode: currentEp, error: retryErr.message });
+        clearTimeout(playbackTimeout);
+        setPlayerState(PLAYER_STATES.PLAYBACK_ERROR, { message: retryErr.message });
+        showWatchError(retryErr.message || 'Stream resolution failed.');
+      }
     }
 
     loadSkipTimes(animeId, epNum);
@@ -390,20 +476,48 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     watchLog('stream response parsed', { sources: data.sources.length, elapsedMs: parsedTime - requestStart });
 
     const API_BASE_URL = window.getApiBaseUrl();
-    const sourcesToTry = data.sources.map(source => ({
+    const sourcesToTry = data.sources
+      .map(source => ({
         ...source,
         url: source.url.startsWith('http') ? source.url : API_BASE_URL + source.url
-    }));
+      }))
+      // ── SOURCE SELECTION ─────────────────────────────────
+      // Prefer sources that are actually suitable for browser playback and
+      // drop "download-only" sources. The backend proxies AnimeHeaven via
+      // /api/stream-proxy/:streamId — those are the browser-playable ones.
+      // `.m3u8` (HLS) and `.mp4` (direct/proxy) are the playable formats.
+      .filter(source => {
+        const st = (source.sourceType || '').toLowerCase();
+        const type = (source.type || '').toLowerCase();
+        const url = source.url || '';
+        const isProxy = url.includes('/api/stream-proxy/') || url.includes('/proxy/');
+        const isPlayableFormat = /\.(m3u8|mp4)(?:$|\?)/i.test(url) || isProxy;
+        // Explicitly exclude download-only sources.
+        if (st === 'download' || st === 'download-link' || type === 'download') return false;
+        // If we can't tell, keep it (the loop still tries and recovers).
+        return isPlayableFormat || !st && !type;
+      })
+      // Order: proxy/HLS first, then direct MP4, then the rest.
+      .sort((a, b) => {
+        const aProxy = (a.url || '').includes('/api/stream-proxy/') || /\.m3u8/i.test(a.url);
+        const bProxy = (b.url || '').includes('/api/stream-proxy/') || /\.m3u8/i.test(b.url);
+        return (bProxy ? 1 : 0) - (aProxy ? 1 : 0);
+      });
     currentStreamSources = sourcesToTry;
 
     // Log the response structure for debugging (safe fields only).
     console.log('[WATCH PLAYER] Stream response received', {
       provider: data.provider,
       sourceCount: data.sources.length,
+      playableSourceCount: sourcesToTry.length,
       bestQuality: data.bestQuality,
       tier: data.tier,
       subtitleCount: (data.subtitles || []).length
     });
+
+    if (sourcesToTry.length === 0) {
+      throw new Error('No browser-playable stream source returned.');
+    }
 
     // Try each source through the canonical player initialization.
     for (const source of sourcesToTry) {
@@ -513,13 +627,25 @@ function setupPlayer(video) {
       const loadingOverlay = document.getElementById('loading-overlay');
       const bufferingEl = document.getElementById('buffering-spinner');
       if (eventName === 'waiting' || eventName === 'stalled') {
+        setPlayerState(PLAYER_STATES.BUFFERING, { readyState: video.readyState });
         setLoadingStatus('Buffering...');
         if (loadingOverlay) loadingOverlay.style.display = 'flex';
         if (bufferingEl) bufferingEl.classList.add('visible');
-      } else if (eventName === 'playing' || eventName === 'canplay') {
+      } else if (eventName === 'playing') {
+        setPlayerState(PLAYER_STATES.PLAYING, { readyState: video.readyState });
         if (loadingOverlay) loadingOverlay.style.display = 'none';
         if (bufferingEl) bufferingEl.classList.remove('visible');
+      } else if (eventName === 'canplay') {
+        setPlayerState(PLAYER_STATES.SOURCE_READY, { readyState: video.readyState });
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+        if (bufferingEl) bufferingEl.classList.remove('visible');
+      } else if (eventName === 'loadedmetadata') {
+        setPlayerState(PLAYER_STATES.PLAYER_LOADING, { readyState: video.readyState });
       } else if (eventName === 'error') {
+        setPlayerState(PLAYER_STATES.PLAYBACK_ERROR, {
+          code: video.error ? video.error.code : null,
+          message: video.error ? video.error.message : null
+        });
         if (loadingOverlay) loadingOverlay.style.display = 'none';
         if (bufferingEl) bufferingEl.classList.remove('visible');
       }
@@ -746,6 +872,7 @@ function setupPlayer(video) {
   window.__aniStrimPlaybackDebug.playAttempted = true;
   video.play().then(function() {
     window.__aniStrimPlaybackDebug.playSucceeded = true;
+    setPlayerState(PLAYER_STATES.PLAYING, { source: 'autoplay' });
   }).catch(function(err) {
     window.__aniStrimPlaybackDebug.playError = err.name || err.message;
     console.warn('[WATCH PLAYER] autoplay blocked or playback failed', {
@@ -757,11 +884,18 @@ function setupPlayer(video) {
       currentSrc: video.currentSrc
     });
     // Autoplay blocked — keep the player visible with a Play button.
+    // This is NOT a stream failure and MUST NOT show "Unable to Play".
     wrap.classList.add('paused');
     setPlayIcon(false);
+    setPlayerState(PLAYER_STATES.AUTOPLAY_BLOCKED, {
+      reason: err.name || err.message,
+      readyState: video.readyState
+    });
     // Hide the loading overlay — the player is READY, just not playing.
     const loadingOverlay = document.getElementById('loading-overlay');
     if (loadingOverlay) loadingOverlay.style.display = 'none';
+    // Ensure the controls (incl. the Play button) are visible.
+    showControls();
   });
 }
 
@@ -774,7 +908,8 @@ function showControls() {
   if (isTouchDevice()) wrap.classList.add('controls-visible-mobile');
   else wrap.classList.add('controls-visible');
   if (controlsTimer) clearTimeout(controlsTimer);
-  controlsTimer = setTimeout(hideControls, 3000);
+  const autoHideDelay = isTouchDevice() ? 5000 : 4000;
+  controlsTimer = setTimeout(hideControls, autoHideDelay);
 }
 
 function hideControls() {
@@ -789,6 +924,12 @@ function hideControls() {
   // or when the end-of-episode / resume overlay is visible.
   if (!video || video.paused || video.ended || isScrubbing) return;
   if (!isFinite(video.duration)) return;
+  // Never hide while still in a loading/buffering/preparing state.
+  if (playerState === PLAYER_STATES.INITIALIZING ||
+      playerState === PLAYER_STATES.STREAM_LOADING ||
+      playerState === PLAYER_STATES.PLAYER_LOADING ||
+      playerState === PLAYER_STATES.BUFFERING ||
+      playerState === PLAYER_STATES.AUTOPLAY_BLOCKED) return;
   const endOverlay = document.getElementById('next-episode-overlay');
   const resumeOverlay = document.getElementById('resume-overlay');
   if (endOverlay && endOverlay.style.display === 'flex') return;
@@ -805,6 +946,15 @@ function initControlsAutoHide(wrap) {
     const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
     if (tag !== 'input' && tag !== 'textarea') showControls();
   });
+  // Re-show controls on fullscreen change — never leave them stuck hidden.
+  document.addEventListener('fullscreenchange', showControls);
+  document.addEventListener('webkitfullscreenchange', showControls);
+  document.addEventListener('mozfullscreenchange', showControls);
+  document.addEventListener('MSFullscreenChange', showControls);
+  // Re-show controls when the window regains focus.
+  window.addEventListener('focus', showControls);
+  wrap.addEventListener('pointerdown', showControls);
+  wrap.addEventListener('dblclick', showControls);
 
   // Click on video area toggles play/pause (desktop) or controls (touch)
   wrap.addEventListener('click', function(e) {
@@ -2393,11 +2543,12 @@ function attachStreamSource(video, source) {
     }
 
     // ── MP4 / Direct source ─────────────────────────────────
-    // CRITICAL FIX: For MP4 (especially 206 partial-content from the proxy),
-    // `loadedmetadata` may never fire if the browser can't determine duration
-    // from the initial range response. Resolve on the FIRST of:
-    //   canplay / loadeddata / loadedmetadata / durationchange
-    // This ensures the player becomes visible even if metadata is delayed.
+    // For MP4 (especially 206 partial-content from the proxy), resolve ONLY
+    // when the video is actually ready to play. We deliberately EXCLUDE
+    // `durationchange` here: it can fire with `NaN` duration long before the
+    // media is playable, which would make setupPlayer() call play() too early
+    // and surface a false "Unable to Play". The 10s fallback below still
+    // guarantees the player becomes visible even if metadata is delayed.
     console.log('[WATCH PLAYER] assigning source:', {
       provider: currentProvider || 'unknown',
       sourceType: 'mp4',
@@ -2426,8 +2577,8 @@ function attachStreamSource(video, source) {
       resolve();
     }
 
-    // Resolve on the first media-ready event.
-    ['canplay', 'loadeddata', 'loadedmetadata', 'durationchange'].forEach(function(evt) {
+    // Resolve on the first REAL media-ready event (not durationchange).
+    ['canplay', 'loadeddata', 'loadedmetadata'].forEach(function(evt) {
       video.addEventListener(evt, onReady, { once: true });
     });
 
