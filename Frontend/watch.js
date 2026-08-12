@@ -97,6 +97,24 @@ const API_TIMEOUT_MS = 30000;
 const STREAM_TIMEOUT_MS = 60000;
 const SOURCE_ATTACH_TIMEOUT_MS = 30000;
 
+// ── Playback health object (debug-friendly) ────────────────
+window.__aniStrimPlaybackDebug = {
+  pageInitialized: false,
+  animeId: null,
+  episodeNumber: null,
+  streamRequestStarted: false,
+  streamResponseReceived: false,
+  sourceCount: 0,
+  selectedSource: null,
+  videoElementFound: false,
+  sourceAttached: false,
+  metadataLoaded: false,
+  canPlay: false,
+  playAttempted: false,
+  playSucceeded: false,
+  playError: null,
+};
+
 function isTouchDevice() {
   return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
     (window.matchMedia && matchMedia('(pointer: coarse)').matches);
@@ -222,7 +240,11 @@ async function loadWatch() {
     prevEpData = episodes.find(function(e) { return (e.number || e.episode_number) === epNum - 1; }) || null;
 
     // ── Fetch batch progress and render episode sidebar ──────
-    await loadBatchProgress(animeId);
+    // CRITICAL FIX: loadBatchProgress must NOT block stream resolution.
+    // If the /api/watch/progress/batch/ request hangs (protected endpoint,
+    // slow response), the stream request would never fire and the player
+    // would stay stuck on "Preparing player...". Fire-and-forget instead.
+    loadBatchProgress(animeId).catch(() => {});
     renderEpisodeSidebar(episodes, animeId);
 
     // Populate season navigation
@@ -670,8 +692,28 @@ function setupPlayer(video) {
   // fmtTime displays
   updateTimeDisplay(video);
 
-  // Attempt autoplay (existing behaviour)
-  video.play()['catch'](function() { wrap.classList.add('paused'); });
+  // Attempt autoplay (existing behaviour) — handle the Promise properly.
+  // NotAllowedError (autoplay blocked) must NOT be treated as a stream failure.
+  window.__aniStrimPlaybackDebug.playAttempted = true;
+  video.play().then(function() {
+    window.__aniStrimPlaybackDebug.playSucceeded = true;
+  }).catch(function(err) {
+    window.__aniStrimPlaybackDebug.playError = err.name || err.message;
+    console.warn('[WATCH PLAYER] autoplay blocked or playback failed', {
+      name: err.name,
+      message: err.message,
+      code: video.error?.code,
+      readyState: video.readyState,
+      networkState: video.networkState,
+      currentSrc: video.currentSrc
+    });
+    // Autoplay blocked — keep the player visible with a Play button.
+    wrap.classList.add('paused');
+    setPlayIcon(false);
+    // Hide the loading overlay — the player is READY, just not playing.
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2314,8 +2356,29 @@ function attachStreamSource(video, source) {
       return;
     }
 
-    video.src = source;
-    video.addEventListener('loadedmetadata', function() {
+    // ── MP4 / Direct source ─────────────────────────────────
+    // CRITICAL FIX: For MP4 (especially 206 partial-content from the proxy),
+    // `loadedmetadata` may never fire if the browser can't determine duration
+    // from the initial range response. Resolve on the FIRST of:
+    //   canplay / loadeddata / loadedmetadata / durationchange
+    // This ensures the player becomes visible even if metadata is delayed.
+    console.log('[WATCH PLAYER] assigning source:', {
+      provider: currentProvider || 'unknown',
+      sourceType: 'mp4',
+      mimeType: 'video/mp4',
+      url: source
+    });
+
+    // Track playback health for debugging.
+    if (window.__aniStrimPlaybackDebug) {
+      window.__aniStrimPlaybackDebug.sourceAttached = true;
+      window.__aniStrimPlaybackDebug.selectedSource = source;
+    }
+
+    let resolved = false;
+    function onReady() {
+      if (resolved) return;
+      resolved = true;
       cleanup();
       watchLog('loadedmetadata', { hls: false });
       currentQualityIndex = -1;
@@ -2325,11 +2388,44 @@ function attachStreamSource(video, source) {
       refreshSubtitleTracks();
       populateSubtitleOptions();
       resolve();
-    }, { once: true });
+    }
+
+    // Resolve on the first media-ready event.
+    ['canplay', 'loadeddata', 'loadedmetadata', 'durationchange'].forEach(function(evt) {
+      video.addEventListener(evt, onReady, { once: true });
+    });
+
     video.addEventListener('error', function() {
+      if (resolved) return;
+      resolved = true;
       cleanup();
+      console.error('[WATCH PLAYER] video error:', {
+        code: video.error?.code,
+        message: video.error?.message,
+        currentSrc: video.currentSrc
+      });
       reject(new Error('Video source could not be loaded.'));
     }, { once: true });
+
+    // Fallback: if no media event fires within 10s, still resolve so the
+    // player becomes visible (the browser may be buffering slowly).
+    const fallbackResolve = setTimeout(function() {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      console.warn('[WATCH PLAYER] No media event within 10s — resolving anyway');
+      resolve();
+    }, 10000);
+
+    // Override cleanup to also clear the fallback timer.
+    const originalCleanup = cleanup;
+    cleanup = function() {
+      clearTimeout(timeout);
+      clearTimeout(fallbackResolve);
+      originalCleanup();
+    };
+
+    video.src = source;
     video.load();
   });
 }
