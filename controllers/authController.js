@@ -207,10 +207,17 @@ exports.forgotPassword = async (req, res) => {
         const frontendBase = process.env.FRONTEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
         const devLink = `${frontendBase.replace(/\/$/, '')}/reset-password.html?token=${token}`;
 
-        return res.status(200).json({
+        // Only expose the reset link in non-production environments.
+        // In production the link is delivered by email (see email transport).
+        const isProduction = process.env.NODE_ENV === 'production';
+        const response = {
             message: 'If an account exists for that email, a reset link has been sent.',
-            dev_link: devLink,
-        });
+        };
+        if (!isProduction) {
+            response.dev_link = devLink;
+        }
+
+        return res.status(200).json(response);
     } catch (error) {
         log(`CRITICAL ERROR during forgotPassword: ${error.message}`);
         console.error(error);

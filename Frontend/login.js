@@ -1,12 +1,18 @@
 // login.js — BACKEND defined in scrpt.js
 //
-// Google login uses the In-App Browser OAuth workflow via the official
-// @capacitor/browser and @capacitor/app plugins. The backend starts the
-// Google OAuth flow in an in-app browser window, then hands back to the
-// app through a deep link carrying the session token.
+// Google login supports two environments:
+//   • Native (Capacitor WebView): In-App Browser OAuth via the Capacitor
+//     Browser + App plugins (accessed off the window.Capacitor global).
+//   • Web (plain browser): Google Identity Services (GIS) via the shared
+//     google-auth-handler.js module.
+//
+// No ES-module imports are used — this file is a plain script, matching the
+// rest of the codebase, so it runs in the raw WebView without a bundler.
 
-import { Browser } from '@capacitor/browser';
-import { App } from '@capacitor/app';
+// ── Capacitor plugin handles (present only inside the native app) ──
+const CapBrowser = window.Capacitor?.Plugins?.Browser;
+const CapApp     = window.Capacitor?.Plugins?.App;
+const isNative   = !!window.Capacitor?.isNativePlatform?.();
 
 // ── Email/Password Login ────────────────────────────────────
 async function handleLogin() {
@@ -44,27 +50,68 @@ async function handleLogin() {
 }
 window.handleLogin = handleLogin;
 
-// ── In-App Browser Google Login ─────────────────────────────
-// Opens the backend's Google OAuth start endpoint inside the in-app browser.
-// After the user authenticates, the backend redirects back to the app via a
-// deep link, which is handled by the appUrlOpen listener below.
+// ── Google Login (native + web) ─────────────────────────────
 async function loginWithInAppBrowser() {
+  const oauthUrl = `${BACKEND}/api/auth/google/start`;
+
+  if (isNative && CapBrowser) {
+    // Native: open the backend OAuth start endpoint in the in-app browser.
+    // The backend redirects back to the app via a deep link handled below.
+    try {
+      await CapBrowser.open({ url: oauthUrl, windowName: '_blank' });
+    } catch (err) {
+      console.error('[Login] In-App Browser error:', err?.message || err);
+      showError('Could not open Google sign-in. Please try again.');
+    }
+    return;
+  }
+
+  // Web: use the shared Google Identity Services module (google-auth-handler.js)
   try {
-    const oauthUrl = `${BACKEND}/api/auth/google/start`;
-    await Browser.open({ url: oauthUrl, windowName: '_blank' });
+    const response = await window.initGoogleAuth('google-login-btn');
+    if (!response || !response.credential) {
+      showError('Google sign-in failed. No credential received.');
+      return;
+    }
+    console.log('[Login] Google ID token received, verifying with backend...');
+    await sendIdTokenToBackend(response.credential);
   } catch (err) {
-    console.error('[Login] In-App Browser error:', err?.message || err);
-    showError('Could not open Google sign-in. Please try again.');
+    console.error('[Login] Google auth error:', err?.message || err);
   }
 }
 window.loginWithInAppBrowser = loginWithInAppBrowser;
 
-// ── Deep Link Handler ───────────────────────────────────────
+// Send the ID token to POST /api/auth/google/verify (web GIS flow)
+async function sendIdTokenToBackend(idToken) {
+  try {
+    const res = await fetch(`${BACKEND}/api/auth/google/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken })
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.token && data.user) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('isFirstVisit', 'true');
+      window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
+    } else {
+      showError(data.message || 'Google sign-in failed. Please try again.');
+    }
+  } catch (e) {
+    console.error('[Login] Backend verification error:', e);
+    showError('Cannot reach server. Please check your connection.');
+  }
+}
+
+// ── Deep Link Handler (native only) ─────────────────────────
 // Fires when the app is woken up via a deep link (e.g. anistrim://auth?token=...).
 async function handleAppUrlOpen(data) {
   try {
     // Shut down the in-app browser window
-    await Browser.close();
+    await CapBrowser?.close();
   } catch (e) {
     // Browser may already be closed — safe to ignore
   }
@@ -79,12 +126,11 @@ async function handleAppUrlOpen(data) {
     if (token) {
       localStorage.setItem('session_token', token);
       localStorage.setItem('token', token);
-      window.location.href = '/home.html';
+      window.location.href = 'index.html';
       return;
     }
 
     // Fallback for the existing backend handoff: a short-lived exchange code.
-    // If the deep link carries ?code=, exchange it for the session token.
     const code = url.searchParams.get('code');
     if (code) {
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
@@ -110,8 +156,10 @@ async function handleAppUrlOpen(data) {
   }
 }
 
-// Register the global appUrlOpen listener once
-App.addListener('appUrlOpen', handleAppUrlOpen);
+// Register the global appUrlOpen listener (native only)
+if (CapApp?.addListener) {
+  CapApp.addListener('appUrlOpen', handleAppUrlOpen);
+}
 
 // ── Error Display ─────────────────────────────────────────
 function showError(msg) {
@@ -142,7 +190,7 @@ function showError(msg) {
 
 // ── Event Listeners ──────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Bind the in-app browser login to the "Continue with Google" button
+  // Bind the Google login to the "Continue with Google" button
   document.getElementById('google-login-btn')?.addEventListener('click', loginWithInAppBrowser);
 
   document.getElementById('login-pass')?.addEventListener('keydown', e => {
