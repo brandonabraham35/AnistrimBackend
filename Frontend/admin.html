@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mobile-native.css">
 <title>Admin Dashboard | AniStrim</title>
   <!--
     Single, dual-target admin dashboard.
@@ -617,9 +619,33 @@ function setText(id, val) { const el = document.getElementById(id); if(el) el.te
 document.addEventListener('DOMContentLoaded', () => {
   // ── Tri-state admin gate ─────────────────────────────────
   // AUTHENTICATING (spinner) → AUTHORIZED (render) → UNAUTHORIZED (redirect).
-  // Never treat "role not yet loaded" as "not an admin".
+  // Never treat "role not yet loaded" as "not an admin", and never block the
+  // UI on a network round-trip. If the cached session already says admin we
+  // render immediately (fail-open on pending) and re-verify the role in the
+  // background — the server-side `adminOnly` middleware is the real guard for
+  // writes. A bounded /api/auth/me refresh is used ONLY when we have no cached
+  // role, with a hard timeout so the spinner can never hang forever.
   (async () => {
     const gate = document.getElementById('admin-gate');
+    const debug = true; // diagnosable from logcat/console; toggle off for prod
+
+    // Helper: race a promise against a timeout so a hung /api/auth/me can never
+    // leave the gate spinning. Resolves the promise's value or null.
+    const withTimeout = (p, ms) => new Promise(resolve => {
+      const t = setTimeout(() => resolve(null), ms);
+      Promise.resolve(p).then(
+        v => { clearTimeout(t); resolve(v); },
+        () => { clearTimeout(t); resolve(null); }
+      );
+    });
+
+    const reveal = (user) => {
+      document.body.classList.add('admin-authorized');
+      if (gate) gate.remove();
+      loadDashboard();
+      loadEpisodeAnimeDropdown();
+      if (debug) console.log('[AdminGate] authorized', { role: user && user.isAdmin });
+    };
 
     // 1. No session at all → login. Remember where to return.
     if (!State.isLoggedIn) {
@@ -628,37 +654,44 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // 2. Session present → settle the role. The cached localStorage.user may be
-    //    stale or momentarily uncommitted right after login (WebView is slower),
-    //    so re-fetch from /api/auth/me which is server-authoritative for isAdmin.
-    //    Fail-open on pending/network error: fall back to the cached user and let
-    //    the server-side adminOnly middleware be the real authorization gate.
-    let user = State.user;
-    const debug = true; // diagnosable from logcat/console; toggle off for prod
-    try {
-      const fresh = (typeof Auth !== 'undefined' && Auth.refresh)
-        ? await Auth.refresh()
-        : null;
-      if (fresh) user = fresh;
-      if (debug) console.log('[AdminGate] refresh', { hasSession: true, role: user && user.isAdmin, target: 'admin', hasUser: !!user });
-    } catch (e) {
-      if (debug) console.log('[AdminGate] refresh fell back to cache', e && e.message);
-      // fail-open on pending: use cached user
-    }
-
-    // 3. Decide.
-    if (!user || user.isAdmin !== true) {
-      if (debug) console.log('[AdminGate] unauthorized', { hasUser: !!user, isAdmin: !!(user && user.isAdmin) });
-      window.location.replace('index.html');
+    // 2. Fast path: we already have a cached admin role → render immediately,
+    //    then refresh the role in the background (server-authoritative) so a
+    //    demoted admin can be caught, but never block on it.
+    const cachedUser = State.user;
+    if (cachedUser && cachedUser.isAdmin === true) {
+      reveal(cachedUser);
+      setTimeout(() => {
+        if (typeof Auth !== 'undefined' && Auth.refresh) {
+          withTimeout(Auth.refresh(), 5000).catch(() => {});
+        }
+      }, 0);
       return;
     }
 
-    // 4. Authorized — reveal the dashboard and hydrate.
-    if (debug) console.log('[AdminGate] authorized');
-    document.body.classList.add('admin-authorized');
-    if (gate) gate.remove();
-    loadDashboard();
-    loadEpisodeAnimeDropdown();
+    // 3. Slow path (no cached admin role): bounded refresh, fail-open on
+    //    pending/network to the cached user, then decide. Never treat a
+    //    "not loaded" role as "not an admin" — but if after the timeout we
+    //    genuinely have no admin claim, redirect for a normal (non-admin) user.
+    let user = cachedUser;
+    try {
+      const fresh = (typeof Auth !== 'undefined' && Auth.refresh)
+        ? await withTimeout(Auth.refresh(), 5000)
+        : null;
+      if (fresh) user = fresh;
+      if (debug) console.log('[AdminGate] refresh settled', { role: user && user.isAdmin, hasUser: !!user });
+    } catch (e) {
+      if (debug) console.log('[AdminGate] refresh fell back to cache', e && e.message);
+    }
+
+    if (user && user.isAdmin === true) {
+      reveal(user);
+      return;
+    }
+
+    // Not an admin (or no session user resolved) → home, not login (they ARE
+    // signed in; /api/auth/me said they're not an admin).
+    if (debug) console.log('[AdminGate] unauthorized', { hasUser: !!user, isAdmin: !!(user && user.isAdmin) });
+    window.location.replace('index.html');
   })();
 });
 
