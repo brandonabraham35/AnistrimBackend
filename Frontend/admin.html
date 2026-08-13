@@ -374,7 +374,10 @@ async function loadEpisodeAnimeDropdown() {
     .filter(Boolean);
   if (!selects.length) return;
   try {
-    const { ok, data } = await apiFetch('/api/admin/anime');
+    // skipAuthRedirect: a 401 here must NOT clear the session + redirect to
+    // login.html — that caused the /admin -> login -> index reload loop.
+    const { ok, status, data } = await apiFetch('/api/admin/anime', { skipAuthRedirect: true });
+    if (status === 401) { showSessionExpired(); return; }
     if (!ok || !Array.isArray(data)) return;
     selects.forEach(sel => {
       const current = sel.value;
@@ -395,7 +398,8 @@ function openSelectedEpisodesForEdit() {
 // ── Anime CMS ────────────────────────────────────────────
 async function loadAnimeList() {
   try {
-    const { ok, data } = await apiFetch('/api/admin/anime');
+    const { ok, status, data } = await apiFetch('/api/admin/anime', { skipAuthRedirect: true });
+    if (status === 401) { showSessionExpired(); return; }
     if (!ok) return;
     setText('anime-count', data.length);
     document.getElementById('anime-table-body').innerHTML = data.map(a => `
@@ -504,7 +508,8 @@ window.submitAddEpisode = submitAddEpisode;
 
 // ── Users ────────────────────────────────────────────────
 async function loadUsers() {
-  const { ok, data } = await apiFetch('/api/admin/users');
+  const { ok, status, data } = await apiFetch('/api/admin/users', { skipAuthRedirect: true });
+  if (status === 401) { showSessionExpired(); return; }
   if (!ok) return;
   // Backend returns a flat array of users (not { users: [], total: N })
   const users = Array.isArray(data) ? data : (data.users || []);
@@ -539,7 +544,8 @@ window.togglePremium = togglePremium;
 
 // ── Revenue ──────────────────────────────────────────────
 async function loadRevenue() {
-  const { ok, data } = await apiFetch('/api/payments/revenue');
+  const { ok, status, data } = await apiFetch('/api/payments/revenue', { skipAuthRedirect: true });
+  if (status === 401) { showSessionExpired(); return; }
   if (!ok) return;
   const s = data.stats || {};
   setText('rev-total',   `UGX ${Number(s.total_revenue||0).toLocaleString()}`);
@@ -566,7 +572,10 @@ async function loadDashboard() {
   // Retry once after 2s on failure
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const { ok, data } = await apiFetch('/api/admin/dashboard/overview');
+      // skipAuthRedirect: a 401 here must NOT clear the session + redirect to
+      // login.html — that triggered the /admin -> login -> index reload loop.
+      const { ok, status, data } = await apiFetch('/api/admin/dashboard/overview', { skipAuthRedirect: true });
+      if (status === 401) { showSessionExpired(); return; }
       if (!ok || !data.overview) { throw new Error('Invalid dashboard response'); }
 
       const overview = data.overview;
@@ -621,6 +630,18 @@ async function loadDashboard() {
 }
 
 function setText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
+
+// Show a graceful "session expired" notice if an admin API 401s, instead of
+// letting apiFetch auto-redirect to login (which caused the reload loop).
+function showSessionExpired() {
+  if (document.getElementById('admin-session-expired')) return;
+  const el = document.createElement('div');
+  el.id = 'admin-session-expired';
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100000;background:#3a1f1f;color:#f87171;padding:12px 16px;text-align:center;font:600 0.9rem/1.4 "Outfit",sans-serif;border-bottom:1px solid rgba(239,68,68,0.3);';
+  el.innerHTML = 'Your admin session has expired. <a href="login.html" style="color:#fff;text-decoration:underline;">Sign in again</a>';
+  document.body.appendChild(el);
+}
+window.showSessionExpired = window.showSessionExpired || showSessionExpired;
 
 document.addEventListener('DOMContentLoaded', () => {
   // ── Tri-state admin gate ─────────────────────────────────
