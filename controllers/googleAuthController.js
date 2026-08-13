@@ -2,8 +2,8 @@
 // Google OAuth redirect flow for Capacitor mobile app using deep-link handoff.
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
-const db = require('../config/db');
-const { signUserToken } = require('../utils/token');
+const { signAuthToken } = require('../utils/token');
+const { upsertGoogleUser } = require('../services/googleUpsert');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
@@ -44,10 +44,8 @@ function createLoginCode(token, user) {
 function consumeLoginCode(code) {
   const record = loginCodeStore.get(code);
   loginCodeStore.delete(code);
-
   if (!record) return null;
   if (Date.now() > record.expiresAt) return null;
-
   return record;
 }
 
@@ -76,11 +74,8 @@ exports.googleCallback = async (req, res) => {
     client.setCredentials(tokens);
 
     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: {
-        Authorization: `Bearer ${tokens.access_token}`,
-      },
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
-
     if (!userInfoResponse.ok) {
       const text = await userInfoResponse.text();
       throw new Error(`Failed to fetch Google user info: ${text}`);
@@ -88,65 +83,13 @@ exports.googleCallback = async (req, res) => {
 
     const payload = await userInfoResponse.json();
 
-
     if (!payload?.email) return res.send(errorPage('Could not get your email.'));
     if (payload.email_verified === false) return res.send(errorPage('Google email is not verified.'));
 
-    const googleEmail = payload.email;
-    const googleName = payload.name || googleEmail.split('@')[0];
-    const googleAvatar = payload.picture || null;
-    const googleId = payload.sub;
+    // Find-or-create / link the user (verified, google provider).
+    const user = await upsertGoogleUser(payload);
 
-    const [existing] = await db.query('SELECT * FROM users WHERE email = ?', [googleEmail]);
-    let user;
-
-    if (existing.length > 0) {
-      user = existing[0];
-      if (!user.google_id) {
-        // Link the Google identity to the existing email account. Google vouching
-        // for the mailbox promotes a stuck unverified manual account to verified
-        // and clears any stale OTP state.
-        await db.query(
-          `UPDATE users SET google_id = ?, is_verified = 1,
-             avatar_url = COALESCE(avatar_url, ?),
-             verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
-             last_login = NOW(), updated_at = NOW()
-           WHERE id = ?`,
-          [googleId, googleAvatar, user.id]
-        );
-        const [updatedRows] = await db.query('SELECT * FROM users WHERE id = ?', [user.id]);
-        user = updatedRows[0];
-      }
-    } else {
-      // New user — verified from the start (Google vouched for this email).
-      try {
-        const [result] = await db.query(
-          'INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium, is_verified) VALUES (?, ?, NULL, ?, ?, 0, 0, 1)',
-          [googleName, googleEmail, googleAvatar, googleId]
-        );
-        const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
-        user = newRows[0];
-      } catch (insertError) {
-        // Race guard: another request created this row between our SELECT (or a
-        // manual signup took this email). Re-select by email and link instead.
-        if (insertError.code !== 'ER_DUP_ENTRY') throw insertError;
-        const [dupeRows] = await db.query('SELECT * FROM users WHERE email = ?', [googleEmail]);
-        if (!dupeRows.length) throw insertError;
-        user = dupeRows[0];
-        await db.query(
-          `UPDATE users SET google_id = ?, is_verified = 1,
-             avatar_url = COALESCE(avatar_url, ?),
-             verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
-             last_login = NOW(), updated_at = NOW()
-           WHERE id = ?`,
-          [googleId, googleAvatar, user.id]
-        );
-        const [updatedRows] = await db.query('SELECT * FROM users WHERE id = ?', [user.id]);
-        user = updatedRows[0];
-      }
-    }
-
-    const token = signUserToken(user);
+    const token = signAuthToken(user);
     const userObj = makeUserObj(user);
     const loginCode = createLoginCode(token, userObj);
 
@@ -217,7 +160,7 @@ function successPage(code) {
 }
 
 function errorPage(message) {
-  // Build HTML entities programmatically so they survive any transport encoding.
+  // Build HTML entities programmatically so they survive transport encoding.
   const amp = String.fromCharCode(38);
   const safeMessage = String(message).replace(/[<>&"]/g, ch => ({
     '<': amp + 'lt;',

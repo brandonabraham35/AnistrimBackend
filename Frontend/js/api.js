@@ -1,0 +1,98 @@
+// Frontend/js/api.js — single API wrapper for all frontend auth calls.
+// Uses the API base URL exposed by config.js (window.getApiBaseUrl).
+// Attaches Authorization (JWT) when present, parses JSON once, and handles
+// 403 (requiresVerification) and 401 globally. Throws ApiError otherwise.
+//
+// Must be loaded AFTER config.js/scrpt.js so it overrides window.apiFetch
+// with this canonical version.
+
+(function () {
+  'use strict';
+
+  var API_BASE = (typeof window.getApiBaseUrl === 'function')
+    ? window.getApiBaseUrl()
+    : 'https://anistrimbackend.onrender.com';
+
+  function ApiError(message, status, data) {
+    this.message = message || 'Request failed';
+    this.status = status || 0;
+    this.data = data || null;
+  }
+  ApiError.prototype = Object.create(Error.prototype);
+  ApiError.prototype.constructor = ApiError;
+
+  function getToken() {
+    return localStorage.getItem('token') || localStorage.getItem('session_token') || '';
+  }
+
+  async function apiFetch(path, options) {
+    options = options || {};
+    var headers = Object.assign({}, options.headers || {});
+    var body = options.body;
+    var isFormData = (typeof FormData !== 'undefined') && (body instanceof FormData);
+    if (!isFormData && !(body instanceof URLSearchParams)) {
+      headers['Content-Type'] = 'application/json';
+      if (body && typeof body !== 'string') {
+        body = JSON.stringify(body);
+      }
+    }
+    var token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    var res;
+    try {
+      res = await fetch(API_BASE + path, {
+        method: options.method || 'GET',
+        headers: headers,
+        body: body || undefined
+      });
+    } catch (e) {
+      throw new ApiError('Cannot reach server. Please check your connection.', 0);
+    }
+
+    var data = {};
+    try {
+      data = await res.json();
+    } catch (e) {
+      data = {};
+    }
+
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('session_token');
+      window.location.href = 'login.html';
+      return data;
+    }
+
+    if (res.status === 403 && data && data.requiresVerification === true) {
+      var email = data.email || '';
+      if (email) {
+        sessionStorage.setItem('pendingEmail', email);
+        localStorage.setItem('pendingEmail', email);
+      }
+      // Best-effort: request a fresh code so the user lands on a valid OTP.
+      // Ignore failures (throttle / offline) - the OTP page still loads.
+      if (options.resendOtp !== false && email) {
+        try {
+          await fetch(API_BASE + '/api/auth/resend-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+          });
+        } catch (e) { /* ignore */ }
+      }
+      var q = email ? ('?email=' + encodeURIComponent(email)) : '';
+      window.location.href = 'verify-otp.html' + q;
+      return data;
+    }
+
+    if (!res.ok) {
+      throw new ApiError((data && data.message) || 'Request failed', res.status, data);
+    }
+
+    return data;
+  }
+
+  window.apiFetch = apiFetch;
+  window.ApiError = ApiError;
+})();

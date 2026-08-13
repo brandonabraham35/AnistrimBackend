@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendEmail } = require('../utils/mailer');
-const { signUserToken } = require('../utils/token');
+const { signAuthToken } = require('../utils/token');
 
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
@@ -62,7 +62,7 @@ async function issueVerificationCode(userId, email) {
       </p>
     </div>`;
   try {
-    await sendEmail(email, 'Your AniStrim verification code', html);
+    await sendEmail(email, 'Your AniStrim verification code', html, verificationCode);
     log(`Verification email dispatched to: ${email}`);
     return true;
   } catch (mailError) {
@@ -153,7 +153,7 @@ exports.login = async (req, res) => {
         // Update last_login
         await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
 
-        const token = signUserToken(user);
+        const token = signAuthToken(user);
 
         log(`Login successful: ${email} (admin: ${!!user.is_admin})`);
 
@@ -249,7 +249,7 @@ exports.signup = async (req, res) => {
 
         let emailSent = false;
         try {
-            await sendEmail(email, 'Verify your AniStrim account', html);
+            await sendEmail(email, 'Verify your AniStrim account', html, verificationCode);
             await pool.query('UPDATE users SET verification_last_sent = NOW() WHERE id = ?', [userId]);
             emailSent = true;
             log(`Verification email dispatched to: ${email}`);
@@ -338,7 +338,7 @@ exports.verifyEmailToken = async (req, res) => {
         );
 
         // Sign a brand-new JWT via the shared helper (id + userId + isVerified: true)
-        const token = signUserToken({ ...user, is_verified: 1 });
+        const token = signAuthToken({ ...user, is_verified: 1 });
 
         log(`Email verified for: ${email}`);
 
@@ -378,10 +378,12 @@ exports.resendVerification = async (req, res) => {
 
         const user = rows[0];
 
-        // Throttle resends to >= 60s apart.
+        // Throttle resends to >= 60s apart. Report how long to wait (seconds).
         const lastSent = new Date(user.verification_last_sent);
         if (!Number.isNaN(lastSent.getTime()) && (Date.now() - lastSent.getTime()) < RESEND_THROTTLE_SECONDS * 1000) {
-            return res.status(429).json({ success: false, message: 'Please wait before requesting another code.' });
+            const waitMs = RESEND_THROTTLE_SECONDS * 1000 - (Date.now() - lastSent.getTime());
+            const retryAfter = Math.max(1, Math.ceil(waitMs / 1000));
+            return res.status(429).json({ success: false, retryAfter, message: 'Please wait before requesting another code.' });
         }
 
         const verificationCode = generateVerificationCode();
@@ -409,7 +411,7 @@ exports.resendVerification = async (req, res) => {
 
         let emailSent = false;
         try {
-            await sendEmail(email, 'Your new AniStrim verification code', html);
+            await sendEmail(email, 'Your new AniStrim verification code', html, verificationCode);
             emailSent = true;
             log(`Verification code resent to: ${email}`);
         } catch (mailError) {

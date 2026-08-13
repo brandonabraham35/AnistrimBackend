@@ -6,6 +6,10 @@
 //   • Web (plain browser): Google Identity Services (GIS) via the shared
 //     google-auth-handler.js module.
 //
+// Email/password login uses the shared apiFetch wrapper (js/api.js), which
+// handles 403 (requiresVerification → OTP screen), 401 (clear + login.html),
+// and throws ApiError with a friendly message for other errors.
+//
 // No ES-module imports are used — this file is a plain script, matching the
 // rest of the codebase, so it runs in the raw WebView without a bundler.
 
@@ -25,34 +29,27 @@ async function handleLogin() {
   btn.disabled = true;
 
   try {
-    const res  = await fetch(`${BACKEND}/api/auth/login`, {
+    // apiFetch: on 403 requiresVerification it fires resend-otp and redirects
+    // to the OTP screen; on 401 it clears the token and goes to login.html.
+    const data = await window.apiFetch('/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password }),
+      resendOtp: true
     });
-    const data = await res.json();
 
-    if (res.ok) {
+    if (data && data.token) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
-    } else if (res.status === 403 && data.requiresVerification) {
-      // Unverified account — route to the OTP screen. The backend already
-      // re-issued a fresh code on this 403 (see authController.login).
-      const pending = data.email || email;
-      const emailSent = data.emailSent ? '1' : '0';
-      sessionStorage.setItem('pendingEmail', pending);
-      sessionStorage.setItem('otpEmailSent', emailSent);
-      window.location.href = `verify-otp.html?email=${encodeURIComponent(pending)}&emailSent=${emailSent}`;
       return;
-    } else {
-      showError(data.message || 'Incorrect email or password.');
-      btn.textContent = 'Sign In';
-      btn.disabled = false;
     }
+
+    showError((data && data.message) || 'Incorrect email or password.');
+    btn.textContent = 'Sign In';
+    btn.disabled = false;
   } catch (e) {
-    showError('Cannot reach server. Please check your connection.');
+    showError(e && e.message ? e.message : 'Cannot reach server. Please check your connection.');
     btn.textContent = 'Sign In';
     btn.disabled = false;
   }
@@ -64,8 +61,6 @@ async function loginWithInAppBrowser() {
   const oauthUrl = `${BACKEND}/api/auth/google/start`;
 
   if (isNative && CapBrowser) {
-    // Native: open the backend OAuth start endpoint in the in-app browser.
-    // The backend redirects back to the app via a deep link handled below.
     try {
       await CapBrowser.open({ url: oauthUrl, windowName: '_blank' });
     } catch (err) {
@@ -75,7 +70,6 @@ async function loginWithInAppBrowser() {
     return;
   }
 
-  // Web: use the shared Google Identity Services module (google-auth-handler.js)
   try {
     const response = await window.initGoogleAuth('google-login-btn');
     if (!response || !response.credential) {
@@ -93,33 +87,27 @@ window.loginWithInAppBrowser = loginWithInAppBrowser;
 // Send the ID token to POST /api/auth/google/verify (web GIS flow)
 async function sendIdTokenToBackend(idToken) {
   try {
-    const res = await fetch(`${BACKEND}/api/auth/google/verify`, {
+    const data = await window.apiFetch('/api/auth/google/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken })
     });
-
-    const data = await res.json();
-
-    if (res.ok && data.token && data.user) {
+    if (data && data.token && data.user) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
     } else {
-      showError(data.message || 'Google sign-in failed. Please try again.');
+      showError((data && data.message) || 'Google sign-in failed. Please try again.');
     }
   } catch (e) {
     console.error('[Login] Backend verification error:', e);
-    showError('Cannot reach server. Please check your connection.');
+    showError(e && e.message ? e.message : 'Cannot reach server. Please check your connection.');
   }
 }
 
 // ── Deep Link Handler (native only) ─────────────────────────
-// Fires when the app is woken up via a deep link (e.g. anistrim://auth?token=...).
 async function handleAppUrlOpen(data) {
   try {
-    // Shut down the in-app browser window
     await CapBrowser?.close();
   } catch (e) {
     // Browser may already be closed — safe to ignore
@@ -131,7 +119,6 @@ async function handleAppUrlOpen(data) {
     const url = new URL(data.url);
     const token = url.searchParams.get('token');
 
-    // Preferred flow: backend hands back a direct session token
     if (token) {
       localStorage.setItem('session_token', token);
       localStorage.setItem('token', token);
@@ -139,7 +126,6 @@ async function handleAppUrlOpen(data) {
       return;
     }
 
-    // Fallback for the existing backend handoff: a short-lived exchange code.
     const code = url.searchParams.get('code');
     if (code) {
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
@@ -156,7 +142,6 @@ async function handleAppUrlOpen(data) {
       return;
     }
 
-    // Cancelled / error deep link (e.g. anistrim://auth-error)
     if (url.href.includes('auth-error')) {
       showError('Google sign-in was cancelled or failed.');
     }
@@ -165,7 +150,6 @@ async function handleAppUrlOpen(data) {
   }
 }
 
-// Register the global appUrlOpen listener (native only)
 if (CapApp?.addListener) {
   CapApp.addListener('appUrlOpen', handleAppUrlOpen);
 }
@@ -187,7 +171,6 @@ function showError(msg) {
   }
   el.style.display = 'block';
   el.textContent = msg;
-  // Auto-clear after 10 seconds
   if (el._clearTimer) clearTimeout(el._clearTimer);
   el._clearTimer = setTimeout(() => {
     if (el && el.parentNode) {
@@ -199,7 +182,6 @@ function showError(msg) {
 
 // ── Event Listeners ──────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Bind the Google login to the "Continue with Google" button
   document.getElementById('google-login-btn')?.addEventListener('click', loginWithInAppBrowser);
 
   document.getElementById('login-pass')?.addEventListener('keydown', e => {

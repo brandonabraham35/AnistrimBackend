@@ -1,32 +1,37 @@
-// utils/token.js — shared JWT signing for AniStrim sessions.
+// utils/token.js — centralized JWT signing for AniStrim sessions.
 //
-// Single source of truth for session tokens so every auth path (manual login,
-// Google verify, Google OAuth redirect) mints identical JWT claims.
+// Every auth path (manual login, signup/verify-otp, Google verify, Google
+// OAuth redirect) mints an IDENTICAL claim shape via signAuthToken, so no
+// session can diverge from another or from the database.
 //
-// The payload ALWAYS carries the user's CURRENT isVerified status from the DB
-// row — never a hardcoded value. This keeps the token claim and the database
-// in agreement, which is what middleware/authMiddleware.verifyTokenAndStatus
-// relies on ("only verified users stream").
+// Claim shape: { userId, email, name, isVerified, authProvider }
+//   (plus iat/exp, and id/isAdmin/isPremium kept for backward compatibility
+//   with consumers that read them from the token).
 //
-// Emits BOTH `id` and `userId` so every consumer (getMe, watch, download)
-// works during the migration window. The `user` object must include id, name,
-// email, is_admin, is_premium, is_verified.
+// isVerified is ALWAYS derived from the DB row (user.is_verified) — never
+// hardcoded — so the JWT and the database stay in agreement, which is what
+// middleware/authMiddleware.verifyTokenAndStatus relies on.
 const jwt = require('jsonwebtoken');
 
-function signUserToken(user) {
+function signAuthToken(user) {
   return jwt.sign(
     {
-      id: user.id,
       userId: user.id,
-      name: user.name,
       email: user.email,
+      name: user.name,
+      isVerified: !!user.is_verified,
+      authProvider: user.auth_provider || 'local',
+      // Backward compatibility for existing consumers (getMe, watch, admin):
+      id: user.id,
       isAdmin: !!user.is_admin,
       isPremium: !!user.is_premium,
-      isVerified: !!user.is_verified,
     },
     process.env.JWT_SECRET,
     { expiresIn: '7d', algorithm: 'HS256' }
   );
 }
 
-module.exports = { signUserToken };
+// Backward-compatible alias used by any code that still references signUserToken.
+const signUserToken = signAuthToken;
+
+module.exports = { signAuthToken, signUserToken };

@@ -23,9 +23,10 @@
       We sent a 6-digit code to <strong id="otp-email" style="color:var(--purple);"></strong>.
       Enter it below to activate your account.
     </p>
-    <div class="input-group">
+    <div class="input-group" id="otp-code-group">
       <label>Verification Code</label>
-      <input type="text" id="otp-code" inputmode="numeric" maxlength="6" placeholder="••••••"
+      <input type="text" id="otp-code" inputmode="numeric" maxlength="6" placeholder="------"
+             autocomplete="one-time-code"
              style="text-align:center;font-size:1.4rem;letter-spacing:8px;font-weight:700;">
     </div>
     <button class="auth-submit" id="otp-submit" onclick="handleVerifyOtp()">Verify & Continue</button>
@@ -33,23 +34,45 @@
       <button id="otp-resend" onclick="handleResendOtp()" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:0.85rem;text-decoration:underline;">
         Resend code
       </button>
+      <span id="resend-timer" style="color:var(--text-dim);font-size:0.8rem;margin-left:4px;"></span>
       <br>
-      <a href="signup.html">← Back to Sign Up</a>
+      <a href="login.html">← Back to Sign In</a>
     </div>
   </div>
 </div>
 
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
+<script src="js/api.js"></script>
 <script>
-// ── Load the pending email from the signup/login funnel ───────
+// ── Load the pending email: ?email= is the source of truth, then
+//    sessionStorage, then localStorage (mobile webview fallback). ──
 const qs = new URLSearchParams(location.search);
-const pendingEmail = qs.get('email') || sessionStorage.getItem('pendingEmail') || localStorage.getItem('pendingEmail') || '';
-if (pendingEmail) { sessionStorage.setItem('pendingEmail', pendingEmail); localStorage.setItem('pendingEmail', pendingEmail); }
-const emailDisplay = document.getElementById('otp-email');
-if (emailDisplay) emailDisplay.textContent = pendingEmail || 'your email';
+const qsEmail = qs.get('email');
+let pendingEmail = qsEmail || sessionStorage.getItem('pendingEmail') || localStorage.getItem('pendingEmail') || '';
+if (pendingEmail) {
+  sessionStorage.setItem('pendingEmail', pendingEmail);
+  localStorage.setItem('pendingEmail', pendingEmail);
+} else {
+  // No email anywhere — nothing to verify. Back to login.
+  window.location.href = 'login.html';
+}
 
-// Warn when the code could not be delivered so the user taps "Resend code".
+// Mask the email for display (e.g. j***@gmail.com).
+function maskEmail(email) {
+  if (!email) return '';
+  const at = email.indexOf('@');
+  if (at <= 1) return email;
+  const local = email.slice(0, at);
+  const first = local.charAt(0);
+  const domain = email.slice(at);
+  return first + '***' + domain;
+}
+
+const emailDisplay = document.getElementById('otp-email');
+if (emailDisplay) emailDisplay.textContent = maskEmail(pendingEmail);
+
+// Warn when the code could not be delivered (e.g. SMTP not configured).
 const qsEmailSentOk = qs.get('emailSent') !== null ? qs.get('emailSent') === '1' : (sessionStorage.getItem('otpEmailSent') !== '0');
 if (!qsEmailSentOk && emailDisplay && !document.getElementById('otp-delivery-note')) {
   const note = document.createElement('p');
@@ -59,75 +82,116 @@ if (!qsEmailSentOk && emailDisplay && !document.getElementById('otp-delivery-not
   emailDisplay.parentNode?.insertBefore(note, emailDisplay.nextSibling);
 }
 
+// ── 6-digit input: auto-advance + paste support ─────────
+const codeInput = document.getElementById('otp-code');
+codeInput.addEventListener('input', () => {
+  // Keep only digits (drop any pasted non-numeric chars).
+  let v = codeInput.value.replace(/\D/g, '').slice(0, 6);
+  codeInput.value = v;
+  if (v.length === 6) {
+    handleVerifyOtp();
+  }
+});
+
 // ── Verify the OTP ───────────────────────────────────────────
 async function handleVerifyOtp() {
-  const code = document.getElementById('otp-code')?.value?.trim();
-  const email = pendingEmail || document.getElementById('otp-email')?.textContent?.trim();
+  const code = codeInput.value.trim();
+  const email = pendingEmail;
   const btn = document.getElementById('otp-submit');
 
   if (!code || code.length !== 6) { showError('Please enter the 6-digit code.'); return; }
-  if (!email) { showError('Session expired. Please sign up again.'); return; }
+  if (!email) { window.location.href = 'login.html'; return; }
 
   btn.textContent = 'Verifying...';
   btn.disabled = true;
 
   try {
-    const res = await fetch(`${API}/api/auth/verify-otp`, {
+    const data = await window.apiFetch('/api/auth/verify-otp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, code })
     });
-    const data = await res.json();
 
-    if (res.ok && data.token) {
+    if (data && data.token) {
       localStorage.setItem('token', data.token);
       if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       sessionStorage.removeItem('pendingEmail');
       window.location.href = 'index.html';
-    } else {
-      showError(data.message || 'Verification failed. Please try again.');
-      btn.textContent = 'Verify & Continue';
-      btn.disabled = false;
+      return;
     }
+
+    showError((data && data.message) || 'Verification failed. Please try again.');
+    btn.textContent = 'Verify & Continue';
+    btn.disabled = false;
   } catch (e) {
-    console.error('Verify OTP error:', e);
-    showError('Cannot reach server. Please check your connection.');
+    // Distinguish the common error types for a clear message.
+    const msg = (e && e.message) || '';
+    let friendly = 'Verification failed. Please try again.';
+    if (/too many/i.test(msg)) friendly = 'Too many attempts. Please tap "Resend code" to get a new code.';
+    else if (/expired/i.test(msg)) friendly = 'This code has expired. Please tap "Resend code" for a new one.';
+    else if (/invalid/i.test(msg)) friendly = 'That code is incorrect. Please check and try again.';
+    else if (/connection|server/i.test(msg)) friendly = 'Cannot reach server. Please check your connection.';
+    showError(friendly);
     btn.textContent = 'Verify & Continue';
     btn.disabled = false;
   }
 }
 window.handleVerifyOtp = handleVerifyOtp;
 
-// ── Resend the OTP ───────────────────────────────────────────
+// ── Resend OTP with live cooldown timer ───────────────────────
+const RESEND_COOLDOWN = 60; // seconds; matches backend RESEND_THROTTLE_SECONDS
+
+function startResendCooldown(seconds) {
+  const btn = document.getElementById('otp-resend');
+  const timer = document.getElementById('resend-timer');
+  let remaining = seconds;
+
+  btn.disabled = true;
+  timer.textContent = '(wait ' + remaining + 's)';
+
+  const interval = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(interval);
+      btn.disabled = false;
+      timer.textContent = '';
+    } else {
+      timer.textContent = '(wait ' + remaining + 's)';
+    }
+  }, 1000);
+}
+
 async function handleResendOtp() {
-  const email = pendingEmail || document.getElementById('otp-email')?.textContent?.trim();
+  const email = pendingEmail;
   const btn = document.getElementById('otp-resend');
 
-  if (!email) { showError('Session expired. Please sign up again.'); return; }
+  if (!email) { window.location.href = 'login.html'; return; }
 
   btn.textContent = 'Sending...';
   btn.disabled = true;
 
   try {
-    const res = await fetch(`${API}/api/auth/resend-otp`, {
+    const data = await window.apiFetch('/api/auth/resend-otp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
     });
-    const data = await res.json();
-
-    if (res.ok) {
-      showError('A new code has been sent to your email.');
-    } else {
-      showError(data.message || 'Could not resend the code. Please wait and try again.');
-    }
+    showError('A new code has been sent to your email.');
+    startResendCooldown(RESEND_COOLDOWN);
   } catch (e) {
-    console.error('Resend OTP error:', e);
-    showError('Cannot reach server. Please check your connection.');
+    const msg = (e && e.message) || '';
+    if (/(wait|throttl)/i.test(msg)) {
+      // Backend returned 429 — start cooldown from the reported retryAfter if present.
+      const retryAfter = (e && e.data && e.data.retryAfter) ? e.data.retryAfter : RESEND_COOLDOWN;
+      showError('Please wait before requesting another code.');
+      startResendCooldown(retryAfter);
+    } else {
+      showError('Could not resend the code. Please wait and try again.');
+      startResendCooldown(RESEND_COOLDOWN);
+    }
   } finally {
     btn.textContent = 'Resend code';
-    btn.disabled = false;
+    // Cooldown re-enables it via startResendCooldown; if not started, re-enable.
+    if (!btn.disabled) btn.disabled = false;
   }
 }
 window.handleResendOtp = handleResendOtp;
@@ -144,7 +208,6 @@ function showError(msg) {
   }
   el.style.display = 'block';
   el.textContent = msg;
-  // Auto-clear after 10 seconds
   if (el._clearTimer) clearTimeout(el._clearTimer);
   el._clearTimer = setTimeout(() => {
     if (el && el.parentNode) {
@@ -156,10 +219,8 @@ function showError(msg) {
 window.showError = showError;
 
 // ── Enter key submits the code ──────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('otp-code')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') handleVerifyOtp();
-  });
+codeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleVerifyOtp();
 });
 </script>
 </body>

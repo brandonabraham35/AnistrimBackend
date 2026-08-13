@@ -41,6 +41,44 @@ Download and install:
 
 ---
 
+### Email / Verification & Google Sign-In Configuration
+
+For email OTPs and Google Sign-In to work, set these in `.env` (see `.env.example`):
+
+```env
+# Email / SMTP — REQUIRED for OTP delivery
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+MAIL_FROM="AniStrim <no-reply@anistrim.com>"
+
+# JWT
+JWT_SECRET=any_long_random_string_here
+JWT_EXPIRES_IN=7d
+
+# Google OAuth — from Google Cloud Console
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+FRONTEND_URL=http://localhost:5500
+```
+
+Behavior:
+
+- **Production**: if SMTP is missing, the server logs a loud startup error and throws on send, so OTP delivery can never silently fail. OTP codes are never logged.
+- **Development**: if SMTP is missing, the OTP is printed to the console (so signup/verify still works locally).
+
+### Database Migrations
+
+Apply pending schema migrations (idempotent, tracked in a `schema_migrations` table):
+
+```bash
+npm run migrate
+```
+
+This runs every `.sql` file in `migrations/` in filename order. The email-verification columns (`is_verified`, `verification_code`, `verification_expires`, `verification_attempts`, `verification_last_sent`, `auth_provider`, `google_id`) are added by `migrations/002_add_email_verification.sql`.
+
 ### STEP 3 — Configure Environment
 
 ```bash

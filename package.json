@@ -1,6 +1,7 @@
 {
   "scripts": {
     "start": "node server.js",
+    "migrate": "node scripts/migrate.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "seed:catalogue": "node scripts/seed-catalogue.js",
