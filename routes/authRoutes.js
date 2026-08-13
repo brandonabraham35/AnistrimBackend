@@ -42,6 +42,12 @@ router.get('/me', authMiddleware.protect, authController.getMe);
 // @access  Public
 router.post('/forgot-password', authController.forgotPassword);
 
+// @route   POST /api/auth/set-password
+// @desc    Set a password for the AUTHENTICATED account (e.g. Google-only
+//          users). Requires a valid session JWT — proves ownership.
+// @access  Private
+router.post('/set-password', authMiddleware.protect, authController.setPassword);
+
 // @route   POST /api/auth/reset-password
 // @desc    Reset a user password using the reset token
 // @access  Public
@@ -71,7 +77,6 @@ router.get('/google/client-id', (req, res) => {
 });
 
 // ── Google OAuth redirect flow (Capacitor / mobile deep-link) ──
-// /google/start accepts ?intent=login|signup and carries it through OAuth state.
 
 // @route   GET /api/auth/google/start
 // @desc    Begin the Google OAuth redirect flow (mobile). ?intent=login|signup

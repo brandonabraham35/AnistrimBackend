@@ -466,6 +466,57 @@ exports.getMe = async (req, res) => {
     }
 };
 
+// ─── Set password for an authenticated account ────────────────
+// Lets a Google-only user (password_hash = NULL, auth_provider = 'google')
+// set a password AFTER proving ownership via their authenticated session.
+//
+// Safety:
+//   • Route must run behind authMiddleware.protect (authenticated JWT).
+//   • Only sets password_hash — never removes google_id, never changes
+//     auth_provider (Google stays a linked provider), never touches
+//     is_verified or verification fields.
+//   • Enforces the same password policy as signup (>= 6 characters).
+//   • Does NOT expose whether other accounts exist (works only on the
+//     authenticated user's own id from the verified JWT).
+exports.setPassword = async (req, res) => {
+    const userId = req.user?.id || req.user?.userId;
+    const { newPassword } = req.body;
+
+    if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated. Please log in.' });
+    }
+    if (!newPassword || String(newPassword).length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    try {
+        // Load the user to confirm ownership and preserve google linkage.
+        const [rows] = await pool.query(
+            'SELECT id, password_hash, google_id, auth_provider FROM users WHERE id = ?',
+            [userId]
+        );
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        const user = rows[0];
+
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(String(newPassword), salt);
+
+        // Update ONLY password_hash. google_id and auth_provider stay intact.
+        await pool.query(
+            'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+            [passwordHash, user.id]
+        );
+
+        return res.json({ success: true, message: 'Password set successfully. You can now also sign in with your email and password.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during setPassword: ${error.message}`);
+        console.error(error);
+        res.status(500).json({ message: 'Server error while setting password.' });
+    }
+};
+
 // ─── Compatibility: request password reset link ─────────────────
 exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
