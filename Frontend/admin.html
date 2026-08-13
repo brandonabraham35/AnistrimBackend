@@ -3,8 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="mobile-native.css">
+  <!-- Root-absolute paths: /style.css, /config.js, /scrpt.js resolve from the
+       origin root. This is required because admin.html is served at /admin,
+       /admin/ and /admin/<section> — relative "config.js" would resolve to
+       /admin/config.js and 404/return HTML, breaking the page and leaving the
+       loader stuck. Absolute paths work in the browser AND the Capacitor
+       WebView (both serve the app from the origin root). -->
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/mobile-native.css">
 <title>Admin Dashboard | AniStrim</title>
   <!--
     Single, dual-target admin dashboard.
@@ -342,8 +348,8 @@
   </main>
 </div>
 
-<script src="config.js"></script>
-<script src="scrpt.js"></script>
+<script src="/config.js"></script>
+<script src="/scrpt.js"></script>
 <script>
 // ── Tab Switcher ──────────────────────────────────────────
 function showTab(name, el) {
