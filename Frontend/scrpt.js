@@ -3,35 +3,25 @@ const API = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl(
 const BACKEND = API; // alias used by login.js, signup.js, google-auth-handler.js
 
 // ===================== GLOBAL STATE =====================
-const State = {
-  get token()     { return localStorage.getItem('token'); },
-  get user()      { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } },
-  get isPremium() { return this.user?.isPremium === true; },
-  get isAdmin()   { return this.user?.isAdmin   === true; },
-  // A token only counts as "logged in" if it exists AND has not expired.
-  // Decode the JWT `exp` claim (seconds since epoch) without a library so a
-  // stale/expired token no longer keeps the user marked as authenticated
-  // (the old behaviour — presence only). The server remains authoritative.
-  get isLoggedIn() {
-    const t = this.token;
-    if (!t) return false;
-    try {
-      const parts = t.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (payload && payload.exp && typeof payload.exp === 'number') {
-          if (payload.exp * 1000 < Date.now()) return false;
-        }
-      }
-    } catch (e) { /* malformed token — fall through to presence check */ }
-    return !!t;
-  },
-  save(token, user) {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(user));
-  },
-  clear() { localStorage.clear(); }
-};
+// ── Global State ────────────────────────────────────────
+// Delegates to the centralized Auth module (config.js) so there is a single
+// source of truth for the JWT + user. Auth decodes the JWT only for expiry
+// awareness — the server remains authoritative for authorization. This object
+// is retained for backward compatibility with pages that read State.*.
+const State = (function () {
+  const getAuth = () => window.Auth || null; // Auth is defined in config.js (loaded first)
+  return {
+    get token()      { const a = getAuth(); return a ? a.token : (localStorage.getItem('token') || ''); },
+    get user()       { const a = getAuth(); return a ? a.user : (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } })(); },
+    get isPremium()  { return this.user?.isPremium === true; },
+    get isAdmin()    { return this.user?.isAdmin   === true; },
+    // token present AND not expired — used only for UX gating (not authz).
+    get isLoggedIn() { const a = getAuth(); return a ? a.isLoggedIn : !!this.token; },
+    save(token, user) { const a = getAuth(); if (a) a.save(token, user); else { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(user)); } },
+    clear()          { const a = getAuth(); if (a) a.clear(); else localStorage.clear(); },
+    async refresh()  { const a = getAuth(); if (a && a.refresh) return a.refresh(); return this.user; },
+  };
+})();
 
 // ===================== AUTH GATE =====================
 (function() {

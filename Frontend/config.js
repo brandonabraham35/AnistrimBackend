@@ -161,6 +161,88 @@
     el.src = shared.makeFallbackImg(title);
   };
 
+  // ── Centralized Auth State ─────────────────────────────
+  // Single source of truth for the JWT + user. All flows write through Auth,
+  // never via scattered localStorage calls. The JWT backend contract is
+  // unchanged; the token is decoded ONLY for UX/expiry awareness.
+  //
+  // save(token, user)   — store token + user (and any session_token fallback)
+  // clear()             — remove token, user, and all temporary auth/redirect state
+  // get user/token      — lazy readers
+  // isLoggedIn          — token present AND not expired (server is authoritative
+  //                       for authorization; this is only UX gating)
+  // refresh()           — call GET /api/auth/me and update the stored user from
+  //                       the server (authoritative for isPremium/isVerified/
+  //                       isAdmin/avatar/auth_provider/premium_expires_at)
+  var Auth = window.Auth || (function () {
+    var TOKEN_KEY = 'token';
+    var SESSION_KEY = 'session_token';
+    var USER_KEY = 'user';
+
+    function readUser() {
+      try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch (e) { return null; }
+    }
+    function writeUser(u) { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
+    function readToken() { return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(SESSION_KEY) || ''; }
+
+    function decodeExp(token) {
+      try {
+        var parts = String(token).split('.');
+        if (parts.length === 3) {
+          var p = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          if (p && typeof p.exp === 'number') return p.exp * 1000;
+        }
+      } catch (e) { /* malformed — treat as no exp */ }
+      return null;
+    }
+
+    return {
+      get token() { return readToken(); },
+      get user() { return readUser(); },
+      set user(u) { if (u) writeUser(u); else localStorage.removeItem(USER_KEY); },
+      isExpired() {
+        var exp = decodeExp(readToken());
+        return exp !== null && exp < Date.now();
+      },
+      get isLoggedIn() {
+        var t = readToken();
+        if (!t) return false;
+        var exp = decodeExp(t);
+        if (exp !== null && exp < Date.now()) return false; // expired => not logged in
+        return true;
+      },
+      save(token, user) {
+        if (token) { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(SESSION_KEY, token); }
+        if (user) { writeUser(user); }
+      },
+      setUser(user) { if (user) writeUser(user); },
+      getUser() { return readUser(); },
+      clear() {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem('isFirstVisit');
+        sessionStorage.removeItem('pendingEmail');
+        sessionStorage.removeItem('otpEmailSent');
+        sessionStorage.removeItem('__authRedirecting');
+      },
+      async refresh() {
+        var t = readToken();
+        if (!t || this.isExpired()) { this.clear(); return null; }
+        try {
+          var res = await fetch((window.getApiBaseUrl ? window.getApiBaseUrl() : API_BASE_URL) + '/api/auth/me', {
+            headers: { 'Authorization': 'Bearer ' + t, 'Accept': 'application/json' }
+          });
+          if (res.status === 401) { this.clear(); return null; }
+          var data = await res.json().catch(function () { return null; });
+          if (data && data.id) { writeUser(data); return data; }
+          return readUser();
+        } catch (e) { return readUser(); }
+      }
+    };
+  })();
+  window.Auth = Auth;
+
   // Preserve the public browser globals used by the existing page scripts.
   window.AniStrimShared = shared;
   window._escapeHTML = shared.escapeHTML;

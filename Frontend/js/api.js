@@ -31,7 +31,10 @@
   // admin -> admin.html, everyone else -> index.html. Callers must RETURN
   // immediately after calling this (never fall into an error handler).
   function redirectAfterAuthentication(user) {
-    if (user) localStorage.setItem('user', JSON.stringify(user));
+    // Persist the authenticated user via the centralized Auth module so every
+    // flow writes the same user object (server-authoritative fields).
+    if (window.Auth && user) window.Auth.setUser(user);
+    else if (user) localStorage.setItem('user', JSON.stringify(user));
     sessionStorage.removeItem('pendingEmail');
     sessionStorage.removeItem('otpEmailSent');
     localStorage.removeItem('pendingEmail');
@@ -75,9 +78,14 @@
     }
 
     if (res.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('session_token');
-      window.location.href = 'login.html';
+      // Clear centralized auth state. Only force logout for auth-critical
+      // requests; background calls pass skipAuthRedirect/global401Redirect:false
+      // so a 401 there (watch progress, optional analytics) never logs them out.
+      if (window.Auth) window.Auth.clear();
+      else { localStorage.removeItem('token'); localStorage.removeItem('session_token'); }
+      if (options.global401Redirect !== false && options.skipAuthRedirect !== true) {
+        window.location.href = 'login.html';
+      }
       return data;
     }
 
