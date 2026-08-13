@@ -42,6 +42,16 @@ const State = {
     'reset-password.html','forgot-password.html',
     'details.html','browse.html',''
   ];
+
+  // When auth has just succeeded we immediately navigate to the intended home
+  // (index.html or admin.html). Skip the gate so it never overrides that
+  // destination with a second "already logged in -> index.html" redirect.
+  const authRedirecting = sessionStorage.getItem('__authRedirecting') === '1';
+  if (authRedirecting) {
+    sessionStorage.removeItem('__authRedirecting');
+    return;
+  }
+
   if (!State.isLoggedIn && !publicPages.includes(page)) { window.location.href = 'login.html'; return; }
   if (State.isLoggedIn && (page === 'login.html' || page === 'signup.html')) { window.location.href = 'index.html'; }
 })();

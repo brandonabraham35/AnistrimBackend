@@ -25,6 +25,23 @@
     return localStorage.getItem('token') || localStorage.getItem('session_token') || '';
   }
 
+  // ── Centralized post-authentication redirect ─────────────
+  // Single source of truth for where the app goes after a successful
+  // login/signup/OTP. Stores the user, clears stale funnel state, routes
+  // admin -> admin.html, everyone else -> index.html. Callers must RETURN
+  // immediately after calling this (never fall into an error handler).
+  function redirectAfterAuthentication(user) {
+    if (user) localStorage.setItem('user', JSON.stringify(user));
+    sessionStorage.removeItem('pendingEmail');
+    sessionStorage.removeItem('otpEmailSent');
+    localStorage.removeItem('pendingEmail');
+    // One-shot guard so scrpt.js's "logged in -> index" gate can't stomp this.
+    sessionStorage.setItem('__authRedirecting', '1');
+    var dest = (user && user.isAdmin) ? 'admin.html' : 'index.html';
+    window.location.replace(dest);
+  }
+  window.redirectAfterAuthentication = redirectAfterAuthentication;
+
   async function apiFetch(path, options) {
     options = options || {};
     var headers = Object.assign({}, options.headers || {});

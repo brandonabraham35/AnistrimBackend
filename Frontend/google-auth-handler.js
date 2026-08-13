@@ -457,7 +457,7 @@
       localStorage.setItem('isFirstVisit', 'true');
       window.history.replaceState({}, document.title, window.location.pathname);
       hideOverlay();
-      window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
+      window.redirectAfterAuthentication(data.user);
     } catch(e) {
       hideOverlay();
       console.error('Deep link auth error:', e);

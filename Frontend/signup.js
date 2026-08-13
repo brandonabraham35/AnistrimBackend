@@ -50,9 +50,8 @@ async function handleSignUp() {
 
     if (data && data.token) {
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
-      window.location.href = 'index.html';
+      window.redirectAfterAuthentication(data.user);
       return;
     }
 
@@ -105,9 +104,8 @@ async function sendIdTokenToBackend(idToken) {
 
     if (data && data.token && data.user) {
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
-      window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
+      window.redirectAfterAuthentication(data.user);
       return;
     }
     showError((data && data.message) || 'Google sign-in failed. Please try again.');
@@ -138,7 +136,7 @@ async function handleAppUrlOpen(data) {
     if (token) {
       localStorage.setItem('session_token', token);
       localStorage.setItem('token', token);
-      window.location.href = 'index.html';
+      window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'));
       return;
     }
 
@@ -151,7 +149,7 @@ async function handleAppUrlOpen(data) {
         localStorage.setItem('token', data2.token);
         if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
         localStorage.setItem('isFirstVisit', 'true');
-        window.location.href = data2.user?.isAdmin ? 'admin.html' : 'index.html';
+        window.redirectAfterAuthentication(data2.user);
       } else {
         showError(data2.message || 'Google sign-in failed. Please try again.');
       }
