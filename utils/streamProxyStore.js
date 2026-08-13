@@ -13,7 +13,10 @@
 //      automatically reclaimed.
 //    • Last-access tracking so inactive contexts are removed.
 //    • Maps streamId → { targetUrl, host, referer, origin, cookies,
-//      headers, createdAt, lastAccessAt, hits }.
+//      headers, userId, createdAt, lastAccessAt, hits }.
+//    • userId (optional) binds the ticket to the verified user who
+//      requested the stream — defense-in-depth so a shared/scraped
+//      streamId cannot be silently replayed by another account.
 //    • Pure in-memory (no disk). Single-process assumption is fine
 //      for this backend (Render single instance).
 // =============================================================
@@ -62,7 +65,7 @@ sweeper._anistrim = true;
 
 /**
  * Register a stream context and return its short streamId.
- * @param {object} entry - { targetUrl, host, referer, origin, cookies, headers }
+ * @param {object} entry - { targetUrl, host, referer, origin, cookies, headers, userId }
  * @returns {string} streamId
  */
 function store(entry = {}) {
@@ -88,6 +91,7 @@ const streamId = generateStreamId();
     cookies: entry.cookies || null,
     userAgent: entry.userAgent || null,
     headers: entry.headers || null,
+    userId: entry.userId || null,
     createdAt: now,
     lastAccessAt: now,
     hits: 0,

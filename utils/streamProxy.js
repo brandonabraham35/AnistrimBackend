@@ -63,10 +63,11 @@ function isAnimeHeavenSource(src) {
  * Register a single source's context and return a sanitized proxy URL.
  *
  * @param {object} src - normalized source with context
+ * @param {number|string|null} userId - optional id of the requesting user
  * @returns {{ url: string, quality: string, sourceType: string|null }|null}
  *   A sanitized source object whose url is the proxy endpoint, or null on failure.
  */
-function rewriteSource(src) {
+function rewriteSource(src, userId = null) {
   // Resolve the authoritative playback context (referer/origin/cookies/
   // userAgent) from the provider so the stored context always carries the
   // exact headers the CDN expects — reusing the provider's cookie jar.
@@ -78,6 +79,7 @@ function rewriteSource(src) {
     cookies: src.cookies || playback.cookies || null,
     userAgent: src.userAgent || playback.userAgent || null,
     headers: src.headers || null,
+    userId,
   });
   if (!streamId) {
     logger.warn('[streamProxy] Failed to register source context', { url: src.url });
@@ -103,15 +105,16 @@ function rewriteSource(src) {
  * Hianime behavior is completely untouched.
  *
  * @param {object|null} result - normalized provider result
+ * @param {number|string|null} userId - optional id of the requesting user
  * @returns {object|null} A public-safe result, or null if all proxied sources failed.
  */
-function rewriteResultToProxy(result) {
+function rewriteResultToProxy(result, userId = null) {
   if (!result || !Array.isArray(result.sources)) return result;
 
   const rewritten = [];
   for (const src of result.sources) {
     if (isAnimeHeavenSource(src)) {
-      const safe = rewriteSource(src);
+      const safe = rewriteSource(src, userId);
       if (safe) rewritten.push(safe);
       // If a single source fails to register, we skip it (fail-soft) rather
       // than dropping the whole result.

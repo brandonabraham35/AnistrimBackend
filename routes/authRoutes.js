@@ -22,6 +22,16 @@ router.post('/signup', authController.signup);
 // @access  Public
 router.post('/verify-email', authController.verifyEmailToken);
 
+// @route   POST /api/auth/verify-otp
+// @desc    Alias for /verify-email (spec-canonical route name)
+// @access  Public
+router.post('/verify-otp', authController.verifyEmailToken);
+
+// @route   POST /api/auth/resend-otp
+// @desc    Resend a new 6-digit verification code (throttled)
+// @access  Public
+router.post('/resend-otp', authController.resendVerification);
+
 // @route   GET /api/auth/me
 // @desc    Fetch the current authenticated user profile
 // @access  Private

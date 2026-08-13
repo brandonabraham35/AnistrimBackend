@@ -240,7 +240,7 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     // URLs. Context (cookies/referer/origin) is stored server-side in the
     // streamProxyStore and NEVER returned to the browser. Anonymous
     // providers (Consumet, etc.) are returned unchanged.
-    const publicResult = streamProxy.rewriteResultToProxy(result) || result;
+    const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null) || result;
 
     const elapsed = Date.now() - startTime;
     logger.streamAttempt({
@@ -400,7 +400,7 @@ const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
 
     // Rewrite through the proxy so downloads also carry the cookie/referer
     // context the scraper established (and never expose it to the client).
-    const publicResult = streamProxy.rewriteResultToProxy(result) || result;
+    const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null) || result;
 
     res.json({
       success: true,

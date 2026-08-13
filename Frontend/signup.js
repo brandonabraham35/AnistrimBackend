@@ -37,6 +37,14 @@ async function handleSignUp() {
     });
     const data = await res.json();
 
+    // New registration returns 201 + requiresVerification → send the user to
+    // the OTP funnel. Do NOT store a token (the 201 body carries none).
+    if (res.status === 201 && data.requiresVerification) {
+      sessionStorage.setItem('pendingEmail', email);
+      window.location.href = 'verify-otp.html';
+      return;
+    }
+
     if (res.ok) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));

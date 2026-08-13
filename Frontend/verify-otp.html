@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Email | AniStrim</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mobile-native.css">
+</head>
+<body class="auth-body">
+<div class="auth-box">
+  <div class="auth-logo">
+    <div class="auth-logo-icon">A</div>
+    <h1>Ani<span>Strim</span></h1>
+    <p>Verify your email</p>
+  </div>
+
+  <!-- Error message container -->
+  <p id="auth-error" style="display:none;"></p>
+
+  <div id="otp-form">
+    <p style="font-size:0.85rem;color:var(--text-dim);text-align:center;line-height:1.6;margin-bottom:16px;">
+      We sent a 6-digit code to <strong id="otp-email" style="color:var(--purple);"></strong>.
+      Enter it below to activate your account.
+    </p>
+    <div class="input-group">
+      <label>Verification Code</label>
+      <input type="text" id="otp-code" inputmode="numeric" maxlength="6" placeholder="••••••"
+             style="text-align:center;font-size:1.4rem;letter-spacing:8px;font-weight:700;">
+    </div>
+    <button class="auth-submit" id="otp-submit" onclick="handleVerifyOtp()">Verify & Continue</button>
+    <div class="auth-links" style="text-align:center;">
+      <button id="otp-resend" onclick="handleResendOtp()" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:0.85rem;text-decoration:underline;">
+        Resend code
+      </button>
+      <br>
+      <a href="signup.html">← Back to Sign Up</a>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="scrpt.js"></script>
+<script>
+// ── Load the pending email from the signup funnel ─────────────
+const pendingEmail = sessionStorage.getItem('pendingEmail') || '';
+const emailDisplay = document.getElementById('otp-email');
+if (emailDisplay) emailDisplay.textContent = pendingEmail || 'your email';
+
+// ── Verify the OTP ───────────────────────────────────────────
+async function handleVerifyOtp() {
+  const code = document.getElementById('otp-code')?.value?.trim();
+  const email = pendingEmail || document.getElementById('otp-email')?.textContent?.trim();
+  const btn = document.getElementById('otp-submit');
+
+  if (!code || code.length !== 6) { showError('Please enter the 6-digit code.'); return; }
+  if (!email) { showError('Session expired. Please sign up again.'); return; }
+
+  btn.textContent = 'Verifying...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${API}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.token) {
+      localStorage.setItem('token', data.token);
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('isFirstVisit', 'true');
+      sessionStorage.removeItem('pendingEmail');
+      window.location.href = 'index.html';
+    } else {
+      showError(data.message || 'Verification failed. Please try again.');
+      btn.textContent = 'Verify & Continue';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    console.error('Verify OTP error:', e);
+    showError('Cannot reach server. Please check your connection.');
+    btn.textContent = 'Verify & Continue';
+    btn.disabled = false;
+  }
+}
+window.handleVerifyOtp = handleVerifyOtp;
+
+// ── Resend the OTP ───────────────────────────────────────────
+async function handleResendOtp() {
+  const email = pendingEmail || document.getElementById('otp-email')?.textContent?.trim();
+  const btn = document.getElementById('otp-resend');
+
+  if (!email) { showError('Session expired. Please sign up again.'); return; }
+
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${API}/api/auth/resend-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      showError('A new code has been sent to your email.');
+    } else {
+      showError(data.message || 'Could not resend the code. Please wait and try again.');
+    }
+  } catch (e) {
+    console.error('Resend OTP error:', e);
+    showError('Cannot reach server. Please check your connection.');
+  } finally {
+    btn.textContent = 'Resend code';
+    btn.disabled = false;
+  }
+}
+window.handleResendOtp = handleResendOtp;
+
+// ── Error Display ───────────────────────────────────────────
+function showError(msg) {
+  if (!msg) return;
+  let el = document.getElementById('auth-error');
+  if (!el) {
+    el = document.createElement('p');
+    el.id = 'auth-error';
+    el.style.cssText = 'color:#f87171;font-size:0.85rem;text-align:center;margin-bottom:10px;';
+    document.querySelector('.auth-submit')?.before(el);
+  }
+  el.style.display = 'block';
+  el.textContent = msg;
+  // Auto-clear after 10 seconds
+  if (el._clearTimer) clearTimeout(el._clearTimer);
+  el._clearTimer = setTimeout(() => {
+    if (el && el.parentNode) {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+  }, 10000);
+}
+window.showError = showError;
+
+// ── Enter key submits the code ──────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('otp-code')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleVerifyOtp();
+  });
+});
+</script>
+</body>
+</html>

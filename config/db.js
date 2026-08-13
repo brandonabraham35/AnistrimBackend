@@ -44,7 +44,7 @@ async function ensureAdminUser() {
     } else {
       // User does not exist, create them
       await connection.query(
-        "INSERT INTO users (name, email, password_hash, is_admin, is_premium, status) VALUES (?, ?, ?, 1, 1, 'active')",
+        "INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, status) VALUES (?, ?, ?, 1, 1, 1, 'active')",
         ['Default Admin', adminEmail, passwordHash]
       );
       console.log(`✅ Admin user '${adminEmail}' created successfully.`);
