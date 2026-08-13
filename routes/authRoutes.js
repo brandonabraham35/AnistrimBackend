@@ -48,9 +48,16 @@ router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 
 // @route   POST /api/auth/google/verify
-// @desc    Verify Google ID Token from GIS popup (no redirect)
+// @desc    Google LOGIN only — verifies the ID token and authenticates an
+//          EXISTING AniStrim account. Never creates or silently links.
 // @access  Public
 router.post('/google/verify', googleVerifyController.verifyGoogleToken);
+
+// @route   POST /api/auth/google/signup
+// @desc    Google SIGNUP only — verifies the ID token and creates a NEW AniStrim
+//          account. Rejects if the email or google_id already exists.
+// @access  Public
+router.post('/google/signup', googleVerifyController.googleSignup);
 
 // @route   GET /api/auth/google/client-id
 // @desc    Expose Google Client ID to frontend for GIS initialization
@@ -64,24 +71,21 @@ router.get('/google/client-id', (req, res) => {
 });
 
 // ── Google OAuth redirect flow (Capacitor / mobile deep-link) ──
-// These routes power the `anistrim://auth` deep-link handoff used by the
-// native app. They were previously unmounted, leaving the mobile flow broken.
+// /google/start accepts ?intent=login|signup and carries it through OAuth state.
 
 // @route   GET /api/auth/google/start
-// @desc    Begin the Google OAuth redirect flow (mobile)
+// @desc    Begin the Google OAuth redirect flow (mobile). ?intent=login|signup
 // @access  Public
 router.get('/google/start', googleAuthController.googleRedirect);
 
 // @route   GET /api/auth/google/callback
-// @desc    Google redirect_uri — exchanges the OAuth code, creates a short-lived
-//          login code, then deep-links back into the app.
+// @desc    Google redirect_uri — applies the login/signup intent, then deep-links
+//          back into the app with a short-lived login code.
 // @access  Public
 router.get('/google/callback', googleAuthController.googleCallback);
 
 // @route   GET /api/auth/google/token
-// @desc    Exchange the short-lived login code for a JWT + user. This is the
-//          endpoint the mobile frontend (google-auth-handler.js) calls after
-//          receiving anistrim://auth?code=...
+// @desc    Exchange the short-lived login code for a JWT + user + intent.
 // @access  Public
 router.get('/google/token', googleAuthController.exchangeLoginCode);
 

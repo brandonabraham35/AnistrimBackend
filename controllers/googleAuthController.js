@@ -1,9 +1,17 @@
 // controllers/googleAuthController.js
 // Google OAuth redirect flow for Capacitor mobile app using deep-link handoff.
+// Supports two intents (identical business rules to the web flows):
+//   /google/start?intent=login   -> existing account only (never creates)
+//   /google/start?intent=signup  -> new account only (never silently reuses/links)
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const { signAuthToken } = require('../utils/token');
-const { upsertGoogleUser } = require('../services/googleUpsert');
+const {
+  findGoogleUser,
+  findUserByEmail,
+  createGoogleUser,
+  authenticateExistingGoogleUser,
+} = require('../services/googleUpsert');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
@@ -27,15 +35,17 @@ function makeUserObj(user) {
     isPremium: !!user.is_premium,
     isAdmin: !!user.is_admin,
     isVerified: !!user.is_verified,
+    authProvider: user.auth_provider || 'local',
     avatar: user.avatar_url,
   };
 }
 
-function createLoginCode(token, user) {
+function createLoginCode(token, user, intent) {
   const code = crypto.randomUUID();
   loginCodeStore.set(code, {
     token,
     user,
+    intent,
     expiresAt: Date.now() + LOGIN_CODE_TTL_MS,
   });
   return code;
@@ -56,18 +66,28 @@ setInterval(() => {
   }
 }, 60 * 1000).unref?.();
 
+// ── Begin the OAuth redirect. intent is carried in OAuth `state` so it
+//    survives the round-trip through Google. Defaults to 'login'.
 exports.googleRedirect = (req, res) => {
+  const intent = req.query.intent === 'signup' ? 'signup' : 'login';
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['openid', 'email', 'profile'],
     prompt: 'select_account',
+    state: JSON.stringify({ intent }),
   });
   res.redirect(url);
 };
 
+// ── Google redirect_uri — apply the SAME login/signup business rules.
 exports.googleCallback = async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
   if (error || !code) return res.send(errorPage('Sign-in cancelled.'));
+
+  let intent = 'login';
+  try {
+    if (state) intent = (JSON.parse(state).intent === 'signup') ? 'signup' : 'login';
+  } catch (e) { /* malformed state -> default login */ }
 
   try {
     const { tokens } = await client.getToken(code);
@@ -81,18 +101,33 @@ exports.googleCallback = async (req, res) => {
       throw new Error(`Failed to fetch Google user info: ${text}`);
     }
 
-    const payload = await userInfoResponse.json();
+    const profile = await userInfoResponse.json();
+    if (!profile?.email) return res.send(errorPage('Could not get your email.'));
+    if (profile.email_verified === false) return res.send(errorPage('Google email is not verified.'));
 
-    if (!payload?.email) return res.send(errorPage('Could not get your email.'));
-    if (payload.email_verified === false) return res.send(errorPage('Google email is not verified.'));
+    let user = await findGoogleUser(profile.sub);
+    if (!user) user = await findUserByEmail(profile.email);
 
-    // Find-or-create / link the user (verified, google provider).
-    const user = await upsertGoogleUser(payload);
+    if (intent === 'login') {
+      // LOGIN: existing Google account only. Never create, never link.
+      if (!user) {
+        return res.send(errorPage('No AniStrim account exists for this Google account. Please create an account first.'));
+      }
+      if (user.auth_provider !== 'google' && !user.google_id) {
+        return res.send(errorPage('An AniStrim account already exists with this email. Please log in using your email and password.'));
+      }
+      user = await authenticateExistingGoogleUser(user, profile);
+    } else {
+      // SIGNUP: existing account (google_id or email) rejected; new allowed.
+      if (user) {
+        return res.send(errorPage('An AniStrim account already exists. Please log in instead.'));
+      }
+      user = await createGoogleUser(profile);
+    }
 
     const token = signAuthToken(user);
     const userObj = makeUserObj(user);
-    const loginCode = createLoginCode(token, userObj);
-
+    const loginCode = createLoginCode(token, userObj, intent);
     return res.send(successPage(loginCode));
   } catch (err) {
     console.error('Google callback error:', err.message);
@@ -109,7 +144,7 @@ exports.exchangeLoginCode = (req, res) => {
     return res.status(400).json({ message: 'Login code is invalid or expired. Please try Google sign-in again.' });
   }
 
-  return res.json({ token: record.token, user: record.user });
+  return res.json({ token: record.token, user: record.user, intent: record.intent });
 };
 
 function successPage(code) {

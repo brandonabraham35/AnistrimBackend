@@ -58,7 +58,7 @@ window.handleLogin = handleLogin;
 
 // ── Google Login (native + web) ─────────────────────────────
 async function loginWithInAppBrowser() {
-  const oauthUrl = `${BACKEND}/api/auth/google/start`;
+  const oauthUrl = `${BACKEND}/api/auth/google/start?intent=login`;
 
   if (isNative && CapBrowser) {
     try {
@@ -96,12 +96,17 @@ async function sendIdTokenToBackend(idToken) {
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
-    } else {
-      showError((data && data.message) || 'Google sign-in failed. Please try again.');
+      return;
     }
+    showError((data && data.message) || 'Google sign-in failed. Please try again.');
   } catch (e) {
     console.error('[Login] Backend verification error:', e);
-    showError(e && e.message ? e.message : 'Cannot reach server. Please check your connection.');
+    // Distinguish the Google login business errors for a clear message.
+    const code = e && e.data && e.data.code;
+    let msg = e && e.message ? e.message : 'Cannot reach server. Please check your connection.';
+    if (code === 'GOOGLE_ACCOUNT_NOT_FOUND') msg = 'No AniStrim account exists for this Google account. Please create an account first.';
+    else if (code === 'GOOGLE_ACCOUNT_NOT_LINKED') msg = 'An AniStrim account already exists with this email. Please log in using your email and password.';
+    showError(msg);
   }
 }
 

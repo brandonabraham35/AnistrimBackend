@@ -69,7 +69,7 @@ window.handleSignUp = handleSignUp;
 
 // ── Google Sign Up (native + web) ─────────────────────────
 async function loginWithInAppBrowser() {
-  const oauthUrl = `${BACKEND}/api/auth/google/start`;
+  const oauthUrl = `${BACKEND}/api/auth/google/start?intent=signup`;
 
   if (isNative && CapBrowser) {
     try {
@@ -98,7 +98,7 @@ window.loginWithInAppBrowser = loginWithInAppBrowser;
 // Send the ID token to POST /api/auth/google/verify (web GIS flow)
 async function sendIdTokenToBackend(idToken) {
   try {
-    const data = await window.apiFetch('/api/auth/google/verify', {
+    const data = await window.apiFetch('/api/auth/google/signup', {
       method: 'POST',
       body: JSON.stringify({ idToken })
     });
@@ -108,12 +108,16 @@ async function sendIdTokenToBackend(idToken) {
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
-    } else {
-      showError((data && data.message) || 'Google sign-in failed. Please try again.');
+      return;
     }
+    showError((data && data.message) || 'Google sign-in failed. Please try again.');
   } catch (e) {
     console.error('[Signup] Backend verification error:', e);
-    showError(e && e.message ? e.message : 'Cannot reach server. Please check your connection.');
+    // Distinguish the Google signup business error for a clear message.
+    const code = e && e.data && e.data.code;
+    let msg = e && e.message ? e.message : 'Cannot reach server. Please check your connection.';
+    if (code === 'ACCOUNT_ALREADY_EXISTS') msg = 'An AniStrim account already exists with this email or Google account. Please log in instead.';
+    showError(msg);
   }
 }
 
