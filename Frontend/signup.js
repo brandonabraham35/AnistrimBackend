@@ -41,7 +41,9 @@ async function handleSignUp() {
     // the OTP funnel. Do NOT store a token (the 201 body carries none).
     if (res.status === 201 && data.requiresVerification) {
       sessionStorage.setItem('pendingEmail', email);
-      window.location.href = 'verify-otp.html';
+      const emailSent = data.emailSent ? '1' : '0';
+      sessionStorage.setItem('otpEmailSent', emailSent);
+      window.location.href = `verify-otp.html?email=${encodeURIComponent(email)}&emailSent=${emailSent}`;
       return;
     }
 

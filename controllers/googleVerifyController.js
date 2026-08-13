@@ -7,18 +7,10 @@
 // for Capacitor/mobile deep-link support and is NOT used by the web app.
 
 const { OAuth2Client } = require('google-auth-library');
-const jwt = require('jsonwebtoken');
 const db  = require('../config/db');
+const { signUserToken } = require('../utils/token');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-function signToken(user) {
-  return jwt.sign(
-    { id: user.id, email: user.email, isAdmin: !!user.is_admin, isPremium: !!user.is_premium, isVerified: true },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-  );
-}
 
 // POST /api/auth/google/verify
 // Frontend sends Google ID token, we verify it and return our JWT
@@ -32,7 +24,7 @@ exports.verifyGoogleToken = function (req, res) {
     if (!idToken) {
       return res.status(400).json({ message: 'Google ID token is required.' });
     }
-                                                                                                 
+                                                                                                  
     if (typeof idToken !== 'string' || idToken.length < 20) {
       return res.status(400).json({ message: 'Invalid Google ID token format.' });
     }
@@ -78,9 +70,10 @@ exports.verifyGoogleToken = function (req, res) {
 
       let user;
       if (rowsById.length > 0) {
-        // Existing Google user — update avatar and login timestamp
+        // Existing Google user — update avatar, login timestamp, and ensure the
+        // row is verified (Google already vouched for this email).
         user = rowsById[0];
-        const updates = ['last_login = NOW()', 'updated_at = NOW()'];
+        const updates = ['is_verified = 1', 'last_login = NOW()', 'updated_at = NOW()'];
         const params = [];
 
         if (googleAvatar && googleAvatar !== user.avatar_url) {
@@ -94,6 +87,7 @@ exports.verifyGoogleToken = function (req, res) {
           params
         );
         user.avatar_url = googleAvatar || user.avatar_url;
+        user.is_verified = 1;
       } else {
         // Step 2: Look up by email (existing email/password user linking Google)
         const [rowsByEmail] = await db.query(
@@ -101,33 +95,62 @@ exports.verifyGoogleToken = function (req, res) {
         );
 
         if (rowsByEmail.length > 0) {
-          // Existing email user — link Google account
+          // Existing email user — link Google account. Google vouching for the
+          // mailbox promotes even a stuck unverified manual account to verified,
+          // and clears any stale OTP state.
           user = rowsByEmail[0];
           await db.query(
-            'UPDATE users SET google_id = ?, avatar_url = COALESCE(?, avatar_url), last_login = NOW(), updated_at = NOW() WHERE id = ?',
+            `UPDATE users SET google_id = ?, is_verified = 1,
+               avatar_url = COALESCE(?, avatar_url),
+               verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
+               last_login = NOW(), updated_at = NOW()
+             WHERE id = ?`,
             [googleId, googleAvatar, user.id]
           );
           user.google_id  = googleId;
+          user.is_verified = 1;
           user.avatar_url = googleAvatar || user.avatar_url;
         } else {
-          // Step 3: Create new user
-          const [result] = await db.query(
-            `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium)
-             VALUES (?, ?, NULL, ?, ?, 0, 0)`,
-            [googleName, googleEmail, googleAvatar, googleId]
-          );
-          const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
-          user = newRows[0];
+          // Step 3: Create new user — verified from the start (is_verified = 1).
+          try {
+            const [result] = await db.query(
+              `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium, is_verified)
+               VALUES (?, ?, NULL, ?, ?, 0, 0, 1)`,
+              [googleName, googleEmail, googleAvatar, googleId]
+            );
+            const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+            user = newRows[0];
+          } catch (insertError) {
+            // Race guard: another request created this row between our SELECTs
+            // (or a manual signup took this email). Re-select by email and treat
+            // it as the account-linking case so the user is never left locked out.
+            if (insertError.code !== 'ER_DUP_ENTRY') throw insertError;
+            const [dupeRows] = await db.query('SELECT * FROM users WHERE email = ?', [googleEmail]);
+            if (!dupeRows.length) throw insertError;
+            user = dupeRows[0];
+            await db.query(
+              `UPDATE users SET google_id = ?, is_verified = 1,
+                 avatar_url = COALESCE(?, avatar_url),
+                 verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
+                 last_login = NOW(), updated_at = NOW()
+               WHERE id = ?`,
+              [googleId, googleAvatar, user.id]
+            );
+            user.google_id  = googleId;
+            user.is_verified = 1;
+            user.avatar_url = googleAvatar || user.avatar_url;
+          }
         }
       }
 
-      const token   = signToken(user);
+      const token   = signUserToken(user);
       const userObj = {
         id:        user.id,
         name:      user.name,
         email:     user.email,
         isPremium: !!user.is_premium,
         isAdmin:   !!user.is_admin,
+        isVerified: !!user.is_verified,
         avatar:    user.avatar_url,
       };
 

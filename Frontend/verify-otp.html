@@ -42,10 +42,22 @@
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
 <script>
-// ── Load the pending email from the signup funnel ─────────────
-const pendingEmail = sessionStorage.getItem('pendingEmail') || '';
+// ── Load the pending email from the signup/login funnel ───────
+const qs = new URLSearchParams(location.search);
+const pendingEmail = qs.get('email') || sessionStorage.getItem('pendingEmail') || localStorage.getItem('pendingEmail') || '';
+if (pendingEmail) { sessionStorage.setItem('pendingEmail', pendingEmail); localStorage.setItem('pendingEmail', pendingEmail); }
 const emailDisplay = document.getElementById('otp-email');
 if (emailDisplay) emailDisplay.textContent = pendingEmail || 'your email';
+
+// Warn when the code could not be delivered so the user taps "Resend code".
+const qsEmailSentOk = qs.get('emailSent') !== null ? qs.get('emailSent') === '1' : (sessionStorage.getItem('otpEmailSent') !== '0');
+if (!qsEmailSentOk && emailDisplay && !document.getElementById('otp-delivery-note')) {
+  const note = document.createElement('p');
+  note.id = 'otp-delivery-note';
+  note.style.cssText = 'color:#fbbf24;font-size:0.8rem;text-align:center;line-height:1.5;margin-top:8px;';
+  note.textContent = 'We could not send the code to this email right now - tap "Resend code" to try again.';
+  emailDisplay.parentNode?.insertBefore(note, emailDisplay.nextSibling);
+}
 
 // ── Verify the OTP ───────────────────────────────────────────
 async function handleVerifyOtp() {

@@ -78,6 +78,12 @@
         State?.clear?.();
         window.location.href = 'login.html';
       }
+      if (res.status === 403 && data?.requiresVerification) {
+        const em = data.email || State?.user?.email || '';
+        if (em) { sessionStorage.setItem('pendingEmail', em); localStorage.setItem('pendingEmail', em); }
+        window.location.href = em ? ('verify-otp.html?email=' + encodeURIComponent(em)) : 'verify-otp.html';
+        return { ok: false, status: 403, data };
+      }
       return { ok: res.ok, status: res.status, data };
     } catch (e) {
       const timedOut = e && (e.name === 'AbortError' || /abort|timeout/i.test(e.message || ''));

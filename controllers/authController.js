@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendEmail } = require('../utils/mailer');
+const { signUserToken } = require('../utils/token');
 
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
@@ -38,32 +39,44 @@ function isDisposableEmail(email) {
   return Boolean(domain && DISPOSABLE_DOMAINS.has(domain));
 }
 
+// Generate a fresh code, persist it, and email it. Returns true if dispatched.
+async function issueVerificationCode(userId, email) {
+  const verificationCode = generateVerificationCode();
+  const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
+  const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
+  await pool.query(
+    `UPDATE users SET verification_code = ?, verification_expires = ?, verification_attempts = 0, verification_last_sent = NOW() WHERE id = ?`,
+    [verificationCode, expiresSql, userId]
+  );
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
+      <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#111827;margin-bottom:8px;">
+        Ani<span style="color:#6c2bd9;">Strim</span>
+      </div>
+      <p style="color:#374151;font-size:0.95rem;text-align:center;">Here is your AniStrim verification code.</p>
+      <div style="text-align:center;margin:24px 0;">
+        <span style="display:inline-block;background:#f3f4f6;color:#111827;font-size:2rem;font-weight:700;letter-spacing:8px;padding:14px 24px;border-radius:8px;">${verificationCode}</span>
+      </div>
+      <p style="color:#6b7280;font-size:0.85rem;text-align:center;">
+        This code expires in ${VERIFICATION_TTL_MINUTES} minutes.
+      </p>
+    </div>`;
+  try {
+    await sendEmail(email, 'Your AniStrim verification code', html);
+    log(`Verification email dispatched to: ${email}`);
+    return true;
+  } catch (mailError) {
+    log(`WARN: verification email failed for ${email}: ${mailError.message}`);
+    return false;
+  }
+}
+
 // Timing-safe comparison of two strings (equal-length buffers)
 function safeEqual(a, b) {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
-}
-
-// Sign a JWT that ALWAYS carries the user's current isVerified status from DB.
-// Emits BOTH `id` and `userId` so every consumer (getMe, watch, download) works
-// during the migration window. The `user` object must include id, email,
-// is_admin, is_premium, is_verified.
-function signUserToken(user) {
-  return jwt.sign(
-    {
-      id: user.id,
-      userId: user.id,
-      name: user.name,
-      email: user.email,
-      isAdmin: !!user.is_admin,
-      isPremium: !!user.is_premium,
-      isVerified: !!user.is_verified,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d', algorithm: 'HS256' }
-  );
 }
 
 // ─── Login (any valid user) ─────────────────────────────────────────
@@ -107,10 +120,32 @@ exports.login = async (req, res) => {
         // Unverified manual account — block login and signal the OTP funnel.
         if (!user.is_verified) {
             log(`Login blocked for unverified user: ${email}`);
+            // Bug 3 — a code set at signup expires after VERIFICATION_TTL_MINUTES,
+            // so a returning user can land here with no valid code. Re-issue one
+            // on the login path (throttled via verification_last_sent) so the OTP
+            // screen always has a fresh code to type.
+            let emailSent = true;
+            try {
+                const [sent] = await pool.query(
+                    'SELECT verification_last_sent FROM users WHERE id = ?', [user.id]
+                );
+                const lastSentVal = sent[0]?.verification_last_sent;
+                const lastSent = new Date(Number(lastSentVal));
+                const throttled = !Number.isNaN(lastSent.getTime()) && (Date.now() - lastSent.getTime()) < RESEND_THROTTLE_SECONDS * 1000;
+                if (lastSentVal && throttled) {
+                    // A live code is already in flight within the throttle window.
+                    emailSent = true;
+                } else {
+                    emailSent = await issueVerificationCode(user.id, user.email);
+                }
+            } catch (reissueError) {
+                log(`WARN: could not re-issue code for ${email}: ${reissueError.message}`);
+            }
             return res.status(403).json({
                 success: false,
                 requiresVerification: true,
                 email: user.email,
+                emailSent,
                 message: 'Verification required.',
             });
         }
@@ -212,9 +247,11 @@ exports.signup = async (req, res) => {
             </p>
           </div>`;
 
+        let emailSent = false;
         try {
             await sendEmail(email, 'Verify your AniStrim account', html);
             await pool.query('UPDATE users SET verification_last_sent = NOW() WHERE id = ?', [userId]);
+            emailSent = true;
             log(`Verification email dispatched to: ${email}`);
         } catch (mailError) {
             // Registration succeeds regardless; email failures surface later.
@@ -226,6 +263,7 @@ exports.signup = async (req, res) => {
         res.status(201).json({
             success: true,
             requiresVerification: true,
+            emailSent,
             message: 'Account created. Please enter the verification code sent to your email.',
         });
 
@@ -369,14 +407,16 @@ exports.resendVerification = async (req, res) => {
             </p>
           </div>`;
 
+        let emailSent = false;
         try {
             await sendEmail(email, 'Your new AniStrim verification code', html);
+            emailSent = true;
             log(`Verification code resent to: ${email}`);
         } catch (mailError) {
             log(`WARN: resend email failed for ${email}: ${mailError.message}`);
         }
 
-        return res.json({ success: true, message: 'If your account needs verification, a new code has been sent.' });
+        return res.json({ success: true, emailSent, message: 'If your account needs verification, a new code has been sent.' });
     } catch (error) {
         log(`CRITICAL ERROR during resendVerification: ${error.message}`);
         console.error(error);

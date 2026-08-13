@@ -2,8 +2,8 @@
 // Google OAuth redirect flow for Capacitor mobile app using deep-link handoff.
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
-const jwt = require('jsonwebtoken');
 const db = require('../config/db');
+const { signUserToken } = require('../utils/token');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
@@ -19,14 +19,6 @@ const client = new OAuth2Client(
   `${BACKEND_URL}/api/auth/google/callback`
 );
 
-function signToken(user) {
-  return jwt.sign(
-    { id: user.id, email: user.email, isAdmin: !!user.is_admin, isPremium: !!user.is_premium, isVerified: true },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-  );
-}
-
 function makeUserObj(user) {
   return {
     id: user.id,
@@ -34,6 +26,7 @@ function makeUserObj(user) {
     email: user.email,
     isPremium: !!user.is_premium,
     isAdmin: !!user.is_admin,
+    isVerified: !!user.is_verified,
     avatar: user.avatar_url,
   };
 }
@@ -110,23 +103,50 @@ exports.googleCallback = async (req, res) => {
     if (existing.length > 0) {
       user = existing[0];
       if (!user.google_id) {
+        // Link the Google identity to the existing email account. Google vouching
+        // for the mailbox promotes a stuck unverified manual account to verified
+        // and clears any stale OTP state.
         await db.query(
-          'UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?',
+          `UPDATE users SET google_id = ?, is_verified = 1,
+             avatar_url = COALESCE(avatar_url, ?),
+             verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
+             last_login = NOW(), updated_at = NOW()
+           WHERE id = ?`,
           [googleId, googleAvatar, user.id]
         );
         const [updatedRows] = await db.query('SELECT * FROM users WHERE id = ?', [user.id]);
         user = updatedRows[0];
       }
     } else {
-      const [result] = await db.query(
-        'INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium) VALUES (?, ?, NULL, ?, ?, 0, 0)',
-        [googleName, googleEmail, googleAvatar, googleId]
-      );
-      const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
-      user = newRows[0];
+      // New user — verified from the start (Google vouched for this email).
+      try {
+        const [result] = await db.query(
+          'INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium, is_verified) VALUES (?, ?, NULL, ?, ?, 0, 0, 1)',
+          [googleName, googleEmail, googleAvatar, googleId]
+        );
+        const [newRows] = await db.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+        user = newRows[0];
+      } catch (insertError) {
+        // Race guard: another request created this row between our SELECT (or a
+        // manual signup took this email). Re-select by email and link instead.
+        if (insertError.code !== 'ER_DUP_ENTRY') throw insertError;
+        const [dupeRows] = await db.query('SELECT * FROM users WHERE email = ?', [googleEmail]);
+        if (!dupeRows.length) throw insertError;
+        user = dupeRows[0];
+        await db.query(
+          `UPDATE users SET google_id = ?, is_verified = 1,
+             avatar_url = COALESCE(avatar_url, ?),
+             verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
+             last_login = NOW(), updated_at = NOW()
+           WHERE id = ?`,
+          [googleId, googleAvatar, user.id]
+        );
+        const [updatedRows] = await db.query('SELECT * FROM users WHERE id = ?', [user.id]);
+        user = updatedRows[0];
+      }
     }
 
-    const token = signToken(user);
+    const token = signUserToken(user);
     const userObj = makeUserObj(user);
     const loginCode = createLoginCode(token, userObj);
 
@@ -197,7 +217,14 @@ function successPage(code) {
 }
 
 function errorPage(message) {
-  const safeMessage = String(message).replace(/[<>&"]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[ch]));
+  // Build HTML entities programmatically so they survive any transport encoding.
+  const amp = String.fromCharCode(38);
+  const safeMessage = String(message).replace(/[<>&"]/g, ch => ({
+    '<': amp + 'lt;',
+    '>': amp + 'gt;',
+    '&': amp + 'amp;',
+    '"': amp + 'quot;',
+  }[ch]));
   return `<!DOCTYPE html>
 <html>
 <head>

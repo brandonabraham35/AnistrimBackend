@@ -37,6 +37,15 @@ async function handleLogin() {
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       window.location.href = data.user.isAdmin ? 'admin.html' : 'index.html';
+    } else if (res.status === 403 && data.requiresVerification) {
+      // Unverified account — route to the OTP screen. The backend already
+      // re-issued a fresh code on this 403 (see authController.login).
+      const pending = data.email || email;
+      const emailSent = data.emailSent ? '1' : '0';
+      sessionStorage.setItem('pendingEmail', pending);
+      sessionStorage.setItem('otpEmailSent', emailSent);
+      window.location.href = `verify-otp.html?email=${encodeURIComponent(pending)}&emailSent=${emailSent}`;
+      return;
     } else {
       showError(data.message || 'Incorrect email or password.');
       btn.textContent = 'Sign In';
