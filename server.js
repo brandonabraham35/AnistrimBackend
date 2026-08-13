@@ -93,6 +93,7 @@ app.get('/health/provider', (req, res) => {
 // ─── Static Files ──────────────────────────────────────────
 // Serve static assets after API routes have been checked
 app.use(express.static(path.join(__dirname, 'Frontend')));
+app.use('/admin', express.static(path.join(__dirname, 'AdminDashboard')));
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -103,18 +104,13 @@ app.use('/uploads', (req, res, next) => {
 // These routes catch client-side paths and serve the correct HTML entry point.
 // They must come after all API and static asset routes.
 
-// Admin dashboard fallback — serves the UNIFIED frontend admin (dual-target).
-// /admin and /admin/* (e.g. /admin/users) deliver Frontend/admin.html, which is
-// also bundled in the Capacitor webDir. It shares the app's session (same
-// localStorage token), so browser and WebView behave identically. The old
-// AdminDashboard/ directory is no longer mounted under /admin.
-// This must come AFTER the Frontend static middleware.
+// Admin dashboard SPA fallback
+// This catches any deep links into the admin panel (e.g., /admin/users) that aren't
+// static files, and serves the main external AdminDashboard HTML. This restores
+// the EXTERNAL admin dashboard app to its original behavior at /admin.
+// This must come AFTER the static middleware for '/admin'.
 app.get(/^\/admin(\/.*)?$/, (req, res) => {
-  // Canonicalize to a single URL. Serving admin.html at /admin AND /admin/x
-  // meant relative links ('login.html') resolved differently per depth, which
-  // fed the redirect loop. One path, one resolution base.
-  if (req.path !== '/admin.html') return res.redirect(302, '/admin.html');
-  res.sendFile(path.join(__dirname, 'Frontend', 'admin.html'));
+  res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
 });
 
 // General Frontend SPA fallback:
