@@ -94,41 +94,67 @@ async function loadHomeContent() {
   // FIX 2: Load Continue Watching first
   loadContinueWatching();
 
-  const seen = new Set();
-  let trending = [];
+  // Helper: coerce a rating to a number (MySQL DECIMAL may come back as a
+  // string; NULL/NaN must not break sorting).
+  const numRating = a => Number(a && a.rating) || 0;
+
+  // Render a row from a section array (slice to 8, guard against non-arrays).
+  const renderSection = (rowId, list) => {
+    if (!Array.isArray(list)) return;
+    renderRow(rowId, list.slice(0, 8));
+  };
 
   try {
-    // Trending / hero feed (also drives Popular + Classics fallback).
-    const { data: all, ok } = await apiFetch('/api/anime/trending');
-    if (ok && Array.isArray(all)) trending = all;
+    // PRIMARY: the backend section engine. One call returns all four ranked
+    // rows (trending/popular/newReleases/classics), each guaranteed >= 10.
+    const { data: sections, ok } = await apiFetch('/api/home/sections');
 
-    heroAnime = (trending.filter(a => a.is_featured).slice(0,5));
-    if (!heroAnime.length) heroAnime = [...trending].sort((a,b) => b.rating - a.rating).slice(0,5);
-    setupHeroSlider();
+    if (ok && sections && Array.isArray(sections.trending)) {
+      // Hero slider from featured (fall back to top-rated trending).
+      heroAnime = (sections.trending.filter(a => a.is_featured).slice(0,5));
+      if (!heroAnime.length) heroAnime = [...sections.trending].sort((a,b) => numRating(b) - numRating(a)).slice(0,5);
+      setupHeroSlider();
 
-    // Popular — highest-rated catalogue, de-duplicated.
-    const popular = dedupeAgainst(seen, [...trending].sort((a,b) => b.rating - a.rating));
-    renderRow('popular-row', popular.slice(0,8));
-
-    // Trending Now — currently airing / high engagement, de-duplicated.
-    const airing = dedupeAgainst(seen, trending.filter(a => a.status === 'airing'));
-    renderRow('trending-row', airing.slice(0,8));
-
-    // New Releases — use the dedicated "latest uploads" endpoint (independent
-    // of rating/status) so this row is truly distinct from trending.
-    try {
-      const { data: latest, ok: latestOk } = await apiFetch('/api/anime/latest?limit=12');
-      if (latestOk && Array.isArray(latest)) {
-        renderRow('new-row', dedupeAgainst(seen, latest).slice(0,8));
-      } else {
-        renderRow('new-row', dedupeAgainst(seen, trending.filter(a => (a.year||0) >= 2020)).slice(0,8));
-      }
-    } catch(e) {
-      renderRow('new-row', dedupeAgainst(seen, trending.filter(a => (a.year||0) >= 2020)).slice(0,8));
+      renderSection('trending-row',  sections.trending);
+      renderSection('popular-row',   sections.popular);
+      renderSection('new-row',       sections.newReleases);
+      renderSection('classics-row',  sections.classics);
+      return;
     }
 
-    // Classics — older titles, de-duplicated.
-    renderRow('classics-row', dedupeAgainst(seen, trending.filter(a => (a.year||9999) < 2015)).slice(0,8));
+    // FALLBACK: only when /api/home/sections fails. Re-partition the raw
+    // catalogue, but WITHOUT cross-row dedupe starvation — each row slices to
+    // 8 before any dedupe, and rows are allowed to overlap (the server does).
+    const { data: all, ok: allOk } = await apiFetch('/api/anime/trending');
+    if (!allOk || !Array.isArray(all)) {
+      showCatalogError('Could not connect to the server. The catalog data is currently unavailable.');
+      return;
+    }
+    const trending = all;
+
+    heroAnime = (trending.filter(a => a.is_featured).slice(0,5));
+    if (!heroAnime.length) heroAnime = [...trending].sort((a,b) => numRating(b) - numRating(a)).slice(0,5);
+    setupHeroSlider();
+
+    // Popular — highest-rated catalogue.
+    renderSection('popular-row', [...trending].sort((a,b) => numRating(b) - numRating(a)));
+
+    // Trending Now — engagement-based: airing OR high view/daily_views.
+    const trendingNow = trending
+      .filter(a => a.status === 'airing' || (Number(a.daily_views) || 0) > 0 || (Number(a.view_count) || 0) > 0)
+      .sort((a,b) => (Number(b.daily_views) || 0) - (Number(a.daily_views) || 0) || (Number(b.view_count) || 0) - (Number(a.view_count) || 0));
+    renderSection('trending-row', trendingNow);
+
+    // New Releases — latest uploads endpoint (independent of rating/status).
+    try {
+      const { data: latest, ok: latestOk } = await apiFetch('/api/anime/latest?limit=12');
+      renderSection('new-row', (latestOk && Array.isArray(latest)) ? latest : trending.filter(a => (a.year||0) >= 2020));
+    } catch(e) {
+      renderSection('new-row', trending.filter(a => (a.year||0) >= 2020));
+    }
+
+    // Classics — original year <= 2010 (matches the backend definition).
+    renderSection('classics-row', trending.filter(a => (a.year||9999) <= 2010));
   } catch(e) {
     console.error('Home load error:', e);
     showCatalogError('Could not connect to the server. The catalog data is currently unavailable.');

@@ -36,6 +36,14 @@ async function main() {
       INDEX idx_expiry (expires_at)
     ) ENGINE=InnoDB`);
   }
+  // Home-shelf columns (category engine). Idempotent; premiere_date is
+  // backfilled from `year` so the New Releases row is never permanently empty.
+  await addColumn('premiere_date', 'DATE DEFAULT NULL');
+  await addColumn('watchlist_count', 'INT NOT NULL DEFAULT 0');
+  await addColumn('daily_views', 'INT NOT NULL DEFAULT 0');
+  if (!await hasColumn('anime', 'media_type')) await addColumn('media_type', "VARCHAR(32) NOT NULL DEFAULT 'TV'");
+  if (!await hasIndex('anime', 'idx_premiere_date')) await db.query('ALTER TABLE anime ADD INDEX idx_premiere_date (premiere_date)');
+  await db.query("UPDATE anime SET premiere_date = MAKEDATE(year, 1) WHERE premiere_date IS NULL AND year IS NOT NULL AND year > 0");
   console.log('Catalogue automation migration complete.');
 }
 

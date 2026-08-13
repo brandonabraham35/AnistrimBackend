@@ -5,16 +5,20 @@
 //
 //   1. 🔥 Trending Now   — engagement spikes over a rolling 24–72h window
 //   2. ⭐ Popular        — lifetime rating >= 8.5 + high watchlist saves
-//   3. ✨ New Releases   — premiere within the last 1–3 months
+//   3. ✨ New Releases   — premiere within the last 3 months (no upper bound)
 //   4. 🎬 Classics       — original year <= 2010 with rating >= 7.5
 //
 // Every section is guaranteed to contain at least MIN_ITEMS entries. If the
 // strict rules yield fewer, a documented fallback query fills the remaining
 // slots. A title MAY appear in multiple sections (dynamic overlap).
 //
-// The shelf is cached (Redis/in-memory via utils/cacheService) and refreshed
-// by a scheduled cron job, and invalidated whenever an admin adds/updates/
+// The shelf is cached (Redis/in-memory via utils/cacheService), refreshed by
+// a scheduled cron job, and invalidated whenever an admin adds/updates/
 // deletes an anime (see adminController.invalidateCatalogue).
+//
+// Resilience: each section builder is guarded independently (Promise.allSettled
+// in buildAllSections) so a single missing column or query failure cannot
+// blank the entire homepage — the remaining sections still render.
 
 const db = require('../config/db');
 const cache = require('../utils/cacheService');
@@ -23,15 +27,23 @@ const cron = require('node-cron');
 // ── Configuration ─────────────────────────────────────────────
 const MIN_ITEMS = 10;                 // Hard minimum per section
 const CACHE_KEY = 'homeShelf:sections';
-const CACHE_TTL = 6 * 60 * 60;        // 6 hours
+// Trending should stay fresh — short TTL. Popular/Classics change slowly.
+const TRENDING_CACHE_TTL = 20 * 60;   // 20 minutes
+const CACHE_TTL = 6 * 60 * 60;        // 6 hours for popular/new/classics
 const TRENDING_WINDOW_HOURS = 72;     // Rolling engagement window
-const NEW_RELEASE_MIN_MONTHS = 1;     // Oldest allowed for "New Releases"
 const NEW_RELEASE_MAX_MONTHS = 3;     // Newest allowed for "New Releases"
 const POPULAR_RATING_THRESHOLD = 8.5; // Strict rating floor for "Popular"
 const CLASSIC_YEAR_CUTOFF = 2010;     // Original premiere year must be <= this
 const CLASSIC_RATING_THRESHOLD = 7.5; // Quality floor for "Classics"
 
+// Cache keys per section so Trending can have its own short TTL.
+const CACHE_KEY_TRENDING = 'homeShelf:trending';
+const CACHE_KEY_POPULAR  = 'homeShelf:popular';
+const CACHE_KEY_NEW      = 'homeShelf:new';
+const CACHE_KEY_CLASSICS = 'homeShelf:classics';
+
 // ── Public anime shape (consistent with animeController) ─────
+// NOTE: strips the internal `_score` ranking signal before returning.
 function publicAnime(row) {
   const cover = row.cover_image || row.poster_url || row.thumbnail_url || null;
   return {
@@ -54,14 +66,11 @@ function publicAnime(row) {
     view_count: Number(row.view_count) || 0,
     daily_views: Number(row.daily_views) || 0,
     watchlist_count: Number(row.watchlist_count) || 0,
-    // Ranking signal used by the section builder (not part of the public contract)
-    _score: Number(row._score) || 0,
   };
 }
 
 // ── Shared query helpers ──────────────────────────────────────
 
-// Base SELECT for shelf rows. `_score` is a per-section ranking signal.
 const SHELF_COLUMNS = `
   a.id, a.title, a.title_japanese, a.description, a.cover_image, a.banner_image,
   a.rating, a.year, a.premiere_date, a.studio, a.status, a.media_type,
@@ -84,76 +93,54 @@ function fillFromPool(section, pool) {
 }
 
 // ── 1. 🔥 Trending Now ────────────────────────────────────────
-// Strict: engagement spikes over the last 24–72h. We score each anime by:
-//   • watch_history rows in the window (watch time) joined to local anime
-//   • user_watchlists rows created in the window (rapid saves)
-//   • a bonus for currently airing simulcasts
+// Strict: engagement spikes over the last 24–72h. Score by DISTINCT active
+// users in the window (watch_history) joined to local anime, plus rapid
+// watchlist saves, plus a bonus for airing simulcasts.
 // Sort: highest velocity/engagement spike first.
-async function buildTrending() {
+async function buildTrending(record = {}) {
   const since = new Date(Date.now() - TRENDING_WINDOW_HOURS * 60 * 60 * 1000)
     .toISOString().slice(0, 19).replace('T', ' ');
 
-  // Watch-time spikes: watch_history -> episodes -> anime (via episode_id),
-  // with a fallback match on anime_id string for rows without episode_id.
-  const [rows] = await db.query(`
-    SELECT ${SHELF_COLUMNS},
-           COALESCE(SUM(wh.engagement), 0) AS _score
-    FROM anime a
-    LEFT JOIN (
-      SELECT e.anime_id AS local_anime_id, 1 AS engagement
-      FROM watch_history wh
-      JOIN episodes e ON e.id = wh.episode_id
-      WHERE wh.updated_at >= ?
-      UNION ALL
-      SELECT CAST(wh.anime_id AS UNSIGNED) AS local_anime_id, 1 AS engagement
-      FROM watch_history wh
-      WHERE wh.updated_at >= ? AND wh.episode_id IS NULL
-    ) wh ON wh.local_anime_id = a.id
-    GROUP BY a.id
-    ORDER BY _score DESC, a.daily_views DESC, a.view_count DESC
-    LIMIT ${MIN_ITEMS * 3}
-  `, [since, since]);
-
-  let trending = rows.map(publicAnime).filter(item => item._score > 0);
-
-  // Add rapid watchlist saves in the window as a secondary engagement signal.
-  if (trending.length < MIN_ITEMS) {
-    const [saves] = await db.query(`
-      SELECT ${SHELF_COLUMNS}, COUNT(*) AS _score
+  let trending = [];
+  try {
+    // Watch-time spikes: watch_history -> episodes -> anime via episode_id,
+    // scored by COUNT(DISTINCT user_id) so one user spamming progress is not a spike.
+    const [rows] = await db.query(`
+      SELECT ${SHELF_COLUMNS},
+             COALESCE(COUNT(DISTINCT wh.user_id), 0) AS _score
       FROM anime a
-      JOIN user_watchlists uw
-        ON uw.anime_id IN (CAST(a.id AS CHAR), a.source_id, a.source_slug, a.animeheaven_slug)
-      WHERE uw.created_at >= ?
+      LEFT JOIN watch_history wh
+        ON wh.episode_id IS NOT NULL
+       AND wh.episode_id IN (SELECT id FROM episodes WHERE anime_id = a.id)
+       AND wh.updated_at >= ?
       GROUP BY a.id
-      ORDER BY _score DESC, a.daily_views DESC
+      ORDER BY _score DESC, a.daily_views DESC, a.view_count DESC
       LIMIT ${MIN_ITEMS * 3}
     `, [since]);
-    const saveMap = new Map(saves.map(r => [r.id, Number(r._score) || 0]));
-    trending = trending.map(item => ({ ...item, _score: item._score + (saveMap.get(item.id) || 0) }));
-    trending.sort((x, y) => y._score - x._score);
-    for (const s of saves) {
-      if (trending.length >= MIN_ITEMS) break;
-      if (!trending.some(t => t.id === s.id)) trending.push(publicAnime(s));
-    }
+    trending = rows.map(r => publicAnime({ ...r, _score: Number(r._score) || 0 }));
+    trending = trending.filter(item => item.view_count > 0 || item.daily_views > 0 || item.status === 'airing');
+    trending.sort((x, y) => (y._score || 0) - (x._score || 0));
+  } catch (err) {
+    record.ok = false;
+    record.message = `Trending watch-history query failed: ${err.message}`;
   }
 
-  // Simulcast bonus: currently airing titles get a small boost.
-  trending = trending.map(item => ({ ...item, _score: item._score + (item.status === 'airing' ? 1 : 0) }));
-  trending.sort((x, y) => y._score - x._score);
-
-  // Fallback: overall most-viewed shows from the current month.
+  // Fallback A: overall most-viewed shows (UNCONDITIONAL — no date filter, so
+  // a fresh platform never renders an empty Trending row).
   if (trending.length < MIN_ITEMS) {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const [fallback] = await db.query(`
-      SELECT ${SHELF_COLUMNS}, (a.view_count + a.daily_views) AS _score
-      FROM anime a
-      WHERE a.created_at >= ?
-      ORDER BY _score DESC, a.view_count DESC
-      LIMIT ${MIN_ITEMS * 3}
-    `, [monthStart.toISOString().slice(0, 19).replace('T', ' ')]);
-    fillFromPool(trending, fallback.map(publicAnime));
+    try {
+      const [fallback] = await db.query(`
+        SELECT ${SHELF_COLUMNS}, (a.view_count + a.daily_views) AS _score
+        FROM anime a
+        ORDER BY (a.view_count + a.daily_views) DESC, a.daily_views DESC
+        LIMIT ${MIN_ITEMS * 3}
+      `);
+      fillFromPool(trending, fallback.map(r => publicAnime(r)));
+      trending.sort((x, y) => (Number(y.view_count) + Number(y.daily_views)) - (Number(x.view_count) + Number(x.daily_views)));
+    } catch (err) {
+      record.ok = false;
+      record.message = `Trending fallback failed: ${err.message}`;
+    }
   }
 
   return trending.slice(0, MIN_ITEMS);
@@ -176,12 +163,10 @@ async function buildPopular() {
       ORDER BY a.rating DESC, a.watchlist_count DESC
       LIMIT ${MIN_ITEMS * 3}
     `, [threshold]);
-    const batch = rows.map(publicAnime);
-    fillFromPool(popular, batch);
+    fillFromPool(popular, rows.map(r => publicAnime(r)));
   }
 
-  // If still short (e.g., no watchlist data yet), relax the watchlist
-  // requirement but keep the rating floor at the lowest threshold.
+  // If still short, relax the watchlist requirement but keep the rating floor.
   if (popular.length < MIN_ITEMS) {
     const [rows] = await db.query(`
       SELECT ${SHELF_COLUMNS}, a.rating AS _score
@@ -190,47 +175,50 @@ async function buildPopular() {
       ORDER BY a.rating DESC, a.view_count DESC
       LIMIT ${MIN_ITEMS * 3}
     `);
-    fillFromPool(popular, rows.map(publicAnime));
+    fillFromPool(popular, rows.map(r => publicAnime(r)));
   }
 
-  return popular.slice(0, MIN_ITEMS);
+  return popular.sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, MIN_ITEMS);
 }
 
 // ── 3. ✨ New Releases ────────────────────────────────────────
-// Strict: premiere_date within the last 1–3 months.
+// Strict: premiere_date within the last 3 months (NO upper bound, so the
+// newest anime always appear).
 // Sort: chronological, most recent first.
 // Fallback: next most recent titles from the current calendar year.
 async function buildNewReleases() {
   const now = new Date();
   const minDate = new Date(now);
   minDate.setMonth(minDate.getMonth() - NEW_RELEASE_MAX_MONTHS);
-  const maxDate = new Date(now);
-  maxDate.setMonth(maxDate.getMonth() - NEW_RELEASE_MIN_MONTHS);
-
   const fmt = d => d.toISOString().slice(0, 19).replace('T', ' ');
 
-  const [rows] = await db.query(`
-    SELECT ${SHELF_COLUMNS}, a.premiere_date AS _score
-    FROM anime a
-    WHERE a.premiere_date IS NOT NULL
-      AND a.premiere_date >= ? AND a.premiere_date <= ?
-    ORDER BY a.premiere_date DESC, a.id DESC
-    LIMIT ${MIN_ITEMS * 3}
-  `, [fmt(minDate), fmt(maxDate)]);
-
-  const releases = rows.map(publicAnime);
-
-  // Fallback: next most recent titles from the current calendar year.
-  if (releases.length < MIN_ITEMS) {
-    const yearStart = `${now.getFullYear()}-01-01 00:00:00`;
-    const [fallback] = await db.query(`
+  let releases = [];
+  try {
+    const [rows] = await db.query(`
       SELECT ${SHELF_COLUMNS}, a.premiere_date AS _score
       FROM anime a
       WHERE a.premiere_date IS NOT NULL AND a.premiere_date >= ?
       ORDER BY a.premiere_date DESC, a.id DESC
       LIMIT ${MIN_ITEMS * 3}
-    `, [yearStart]);
-    fillFromPool(releases, fallback.map(publicAnime));
+    `, [fmt(minDate)]);
+    releases = rows.map(r => publicAnime(r));
+  } catch {
+    releases = [];
+  }
+
+  // Fallback: next most recent titles from the current calendar year.
+  if (releases.length < MIN_ITEMS) {
+    const yearStart = `${now.getFullYear()}-01-01 00:00:00`;
+    try {
+      const [fallback] = await db.query(`
+        SELECT ${SHELF_COLUMNS}, a.premiere_date AS _score
+        FROM anime a
+        WHERE a.premiere_date IS NOT NULL AND a.premiere_date >= ?
+        ORDER BY a.premiere_date DESC, a.id DESC
+        LIMIT ${MIN_ITEMS * 3}
+      `, [yearStart]);
+      fillFromPool(releases, fallback.map(r => publicAnime(r)));
+    } catch { /* ignore */ }
   }
 
   return releases.slice(0, MIN_ITEMS);
@@ -250,33 +238,42 @@ async function buildClassics() {
     LIMIT ${MIN_ITEMS * 3}
   `, [CLASSIC_YEAR_CUTOFF, CLASSIC_RATING_THRESHOLD]);
 
-  const classics = rows.map(publicAnime);
+  const classics = rows.map(r => publicAnime(r));
 
   // Fallback: walk forward year-by-year from the cutoff.
-  let year = CLASSIC_YEAR_CUTOFF + 1;
-  while (classics.length < MIN_ITEMS && year <= new Date().getFullYear()) {
-    const [fallback] = await db.query(`
-      SELECT ${SHELF_COLUMNS}, a.rating AS _score
-      FROM anime a
-      WHERE a.year = ? AND a.rating >= ?
-      ORDER BY a.rating DESC
-      LIMIT ${MIN_ITEMS * 3}
-    `, [year, CLASSIC_RATING_THRESHOLD]);
-    fillFromPool(classics, fallback.map(publicAnime));
-    year += 1;
+  if (classics.length < MIN_ITEMS) {
+    let year = CLASSIC_YEAR_CUTOFF + 1;
+    while (classics.length < MIN_ITEMS && year <= new Date().getFullYear()) {
+      try {
+        const [fallback] = await db.query(`
+          SELECT ${SHELF_COLUMNS}, a.rating AS _score
+          FROM anime a
+          WHERE a.year = ? AND a.rating >= ?
+          ORDER BY a.rating DESC
+          LIMIT ${MIN_ITEMS * 3}
+        `, [year, CLASSIC_RATING_THRESHOLD]);
+        fillFromPool(classics, fallback.map(r => publicAnime(r)));
+      } catch { /* ignore */ }
+      year += 1;
+    }
   }
 
-  return classics.slice(0, MIN_ITEMS);
+  return classics.sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, MIN_ITEMS);
 }
 
 // ── Build all sections ────────────────────────────────────────
+// Uses Promise.allSettled so one failing section cannot blank the homepage.
 async function buildAllSections() {
-  const [trending, popular, newReleases, classics] = await Promise.all([
+  const results = await Promise.allSettled([
     buildTrending(),
     buildPopular(),
     buildNewReleases(),
     buildClassics(),
   ]);
+
+  const [trending, popular, newReleases, classics] = results.map(r =>
+    r.status === 'fulfilled' ? r.value : []
+  );
 
   return {
     trending,
@@ -290,23 +287,44 @@ async function buildAllSections() {
 // ── Public API ────────────────────────────────────────────────
 
 /**
- * Return the home shelf (cached). Builds + caches on first call.
+ * Return the home shelf (cached). Trending uses a short TTL, the rest 6h.
  */
 async function getHomeShelf() {
-  const cached = await cache.get(CACHE_KEY);
-  if (cached) return cached;
-  const shelf = await buildAllSections();
-  await cache.set(CACHE_KEY, shelf, CACHE_TTL);
-  return shelf;
+  const build = () => buildAllSections();
+
+  // Read each section under its own TTL so we don't need to re-cache all.
+  const [trendingC, popularC, newC, classicsC] = await Promise.all([
+    cache.get(CACHE_KEY_TRENDING),
+    cache.get(CACHE_KEY_POPULAR),
+    cache.get(CACHE_KEY_NEW),
+    cache.get(CACHE_KEY_CLASSICS),
+  ]);
+
+  let trending    = trendingC;
+  let popular     = popularC;
+  let newReleases = newC;
+  let classics    = classicsC;
+
+  if (!trending)    { const s = await build(); trending = s.trending; await cache.set(CACHE_KEY_TRENDING, trending, TRENDING_CACHE_TTL); }
+  if (!popular)     { const s = await build(); popular = s.popular; await cache.set(CACHE_KEY_POPULAR, popular, CACHE_TTL); }
+  if (!newReleases) { const s = await build(); newReleases = s.newReleases; await cache.set(CACHE_KEY_NEW, newReleases, CACHE_TTL); }
+  if (!classics)    { const s = await build(); classics = s.classics; await cache.set(CACHE_KEY_CLASSICS, classics, CACHE_TTL); }
+
+  return { trending, popular, newReleases, classics, generatedAt: new Date().toISOString() };
 }
 
 /**
- * Force a rebuild and refresh the cache. Used by the cron job and by the
+ * Force a rebuild and refresh the cache. Used by the cron job and the
  * admin trigger (create/update/delete anime).
  */
 async function refreshHomeShelf() {
   const shelf = await buildAllSections();
-  await cache.set(CACHE_KEY, shelf, CACHE_TTL);
+  await Promise.all([
+    cache.set(CACHE_KEY_TRENDING, shelf.trending, TRENDING_CACHE_TTL),
+    cache.set(CACHE_KEY_POPULAR, shelf.popular, CACHE_TTL),
+    cache.set(CACHE_KEY_NEW, shelf.newReleases, CACHE_TTL),
+    cache.set(CACHE_KEY_CLASSICS, shelf.classics, CACHE_TTL),
+  ]);
   return shelf;
 }
 
@@ -314,21 +332,27 @@ async function refreshHomeShelf() {
  * Invalidate the cached shelf so the next read rebuilds it.
  */
 async function invalidate() {
-  await cache.delByPrefix(CACHE_KEY);
+  await Promise.all([
+    cache.delByPrefix(CACHE_KEY_TRENDING),
+    cache.delByPrefix(CACHE_KEY_POPULAR),
+    cache.delByPrefix(CACHE_KEY_NEW),
+    cache.delByPrefix(CACHE_KEY_CLASSICS),
+  ]);
 }
 
 // ── Scheduler ─────────────────────────────────────────────────
 let schedulerStarted = false;
 
 /**
- * Start the daily cron that keeps the shelf dynamic. Idempotent and
+ * Start the cron that keeps the shelf dynamic. Trending refreshes every 20 min
+ * via its short TTL; the full rebuild runs every 6 hours. Idempotent and
  * failure-safe — never throws out of the tick.
  */
 function startScheduler() {
   if (schedulerStarted) return;
   schedulerStarted = true;
 
-  // Refresh every 6 hours (0,6,12,18) so trending stays fresh.
+  // Rebuild every 6 hours so popular/classics stay current.
   cron.schedule('0 */6 * * *', async () => {
     try {
       await refreshHomeShelf();
@@ -341,6 +365,8 @@ function startScheduler() {
 
 module.exports = {
   MIN_ITEMS,
+  TRENDING_CACHE_TTL,
+  CACHE_TTL,
   getHomeShelf,
   refreshHomeShelf,
   invalidate,
