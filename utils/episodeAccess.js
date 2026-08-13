@@ -1,24 +1,57 @@
 // utils/episodeAccess.js — P2: server-side episode access authority.
 //
-// Effective access is computed by the single SQL function
-// episode_effective_access(episode_id) created in migrations_v28_premium_access.sql
-// (inherit -> anime tier; explicit; premium with premium_until < NOW() -> free).
-// This helper wraps it and decides whether the requester may play a locked
-// episode. MySQL has no Postgres RLS, so enforcement is here: watch/stream/detail
-// endpoints call canPlay() / maskEpisode() before exposing a video source.
+// Effective access is computed HERE (application layer) from the schema added by
+// migrations_v28_premium_access.sql. This avoids a MySQL stored function, which
+// many migration runners can't apply (DELIMITER / CREATE FUNCTION are rejected).
+// The single source of truth for the fallthrough logic is this file, reused by
+// watch/stream/detail endpoints:
+//   • episode INHERIT                       -> anime.access_tier
+//   • episode FREE                          -> free
+//   • episode PREMIUM + premium_until NULL  -> premium (permanent)
+//   • episode PREMIUM + premium_until < NOW -> free (expired => free everywhere)
 const pool = require('../config/db');
 
+// Load the effective tier for a list of episode ids in one query.
+async function loadTiers(episodeIds) {
+  const ids = Array.isArray(episodeIds) ? episodeIds : [episodeIds];
+  if (!ids.length) return {};
+  const [rows] = await pool.query(
+    `SELECT e.id,
+            COALESCE(e.access_tier, 'inherit') AS e_tier,
+            e.premium_until AS e_until,
+            COALESCE(a.access_tier, 'free')   AS a_tier
+     FROM episodes e
+     JOIN anime a ON a.id = e.anime_id
+     WHERE e.id IN (?)`,
+    [ids]
+  );
+  const now = Date.now();
+  const map = {};
+  for (const r of rows) {
+    let tier = 'free';
+    if (r.e_tier === 'premium') {
+      tier = 'premium';
+      if (r.e_until && new Date(r.e_until).getTime() <= now) tier = 'free'; // expired
+    } else if (r.e_tier === 'free') {
+      tier = 'free';
+    } else { // inherit
+      tier = r.a_tier === 'premium' ? 'premium' : 'free';
+    }
+    map[r.id] = tier;
+  }
+  return map;
+}
+
 /**
- * Effective access tier for an episode: 'free' | 'premium'.
- * Uses the DB function so the fallthrough logic lives in exactly one place.
+ * Effective access tier for a single episode: 'free' | 'premium'.
  */
 async function effectiveAccess(episodeId) {
   if (episodeId === undefined || episodeId === null) return 'premium';
   try {
-    const [rows] = await pool.query('SELECT episode_effective_access(?) AS tier', [episodeId]);
-    return (rows[0] && rows[0].tier) || 'free';
+    const map = await loadTiers([episodeId]);
+    return map[episodeId] || 'free';
   } catch (e) {
-    // Function not migrated yet (column missing) — fall back to legacy is_premium.
+    // Columns not migrated yet — fall back to legacy is_premium.
     try {
       const [rows] = await pool.query('SELECT is_premium FROM episodes WHERE id = ?', [episodeId]);
       return (rows.length && rows[0] && rows[0].is_premium) ? 'premium' : 'free';
