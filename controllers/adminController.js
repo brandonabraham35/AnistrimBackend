@@ -339,14 +339,38 @@ const adminController = {
   async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
   async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
   async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); res.json({ ...rows[0], is_premium: toBool(rows[0].is_premium) }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  // P2: server-side premium timing. Maps an admin-chosen duration label to a
+  // premium_until timestamp (server clock, not device clock). 'permanent'/null
+  // means null (permanent).
+  resolvePremiumUntil(accessTier, duration, customUntil) {
+    if (accessTier !== 'premium') return null;
+    if (customUntil) return new Date(customUntil);
+    if (!duration || duration === 'permanent') return null;
+    const hours = { '24h': 24, '48h': 48, '72h': 72, '7d': 7 * 24 }[String(duration)];
+    if (!hours) return null;
+    const d = new Date(Date.now() + hours * 60 * 60 * 1000);
+    return d.toISOString().slice(0, 19).replace('T', ' ');
+  },
   async addEpisode(req, res) {
-    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, thumbnail_public_id, video_url, duration_sec, is_premium = 0, public_id, cloudinary_public_id, intro_start_time, intro_end_time } = req.body;
+    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, thumbnail_public_id, video_url, duration_sec, is_premium = 0, public_id, cloudinary_public_id, intro_start_time, intro_end_time, access_tier, premium_duration, premium_until } = req.body;
     if (!Number.isInteger(animeId) || !Number.isInteger(Number(episode_number))) return res.status(400).json({ message: 'A valid episode number is required.' });
-    try { const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) }); await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); invalidateCatalogue(animeId); res.status(201).json({ id: r.insertId, message: 'Episode created.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+    try {
+      const resolvedTier = ['inherit', 'free', 'premium'].includes(access_tier) ? access_tier : 'inherit';
+      const resolvedUntil = adminController.resolvePremiumUntil(resolvedTier, premium_duration, premium_until);
+      const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, access_tier: resolvedTier, premium_until: resolvedUntil, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) });
+      await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); invalidateCatalogue(animeId);
+      res.status(201).json({ id: r.insertId, message: 'Episode created.' });
+    } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
   async updateEpisode(req, res) {
-    const schema = await getSchema(); const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'thumbnail_public_id', 'video_url', 'duration_sec', 'is_premium', 'cloudinary_public_id', 'intro_start_time', 'intro_end_time']; const updates = []; const values = [];
-    for (const field of fields) if (hasColumn(schema, 'episodes', field) && Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : ['duration_sec', 'episode_number', 'intro_start_time', 'intro_end_time'].includes(field) ? numberOrNull(req.body[field]) : req.body[field] || null); }
+    const schema = await getSchema(); const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'thumbnail_public_id', 'video_url', 'duration_sec', 'is_premium', 'cloudinary_public_id', 'intro_start_time', 'intro_end_time', 'access_tier', 'premium_until']; const updates = []; const values = [];
+    const hasReq = k => Object.prototype.hasOwnProperty.call(req.body, k);
+    if (hasReq('access_tier')) { updates.push('access_tier = ?'); values.push(['inherit','free','premium'].includes(req.body.access_tier) ? req.body.access_tier : 'inherit'); }
+    if (hasReq('premium_duration') || hasReq('premium_until')) {
+      const tier = hasReq('access_tier') ? req.body.access_tier : (req.body.access_tier || 'inherit');
+      updates.push('premium_until = ?'); values.push(adminController.resolvePremiumUntil(tier, req.body.premium_duration, req.body.premium_until));
+    }
+    for (const field of fields) if (!['access_tier','premium_until'].includes(field) && hasColumn(schema, 'episodes', field) && hasReq(field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : ['duration_sec', 'episode_number', 'intro_start_time', 'intro_end_time'].includes(field) ? numberOrNull(req.body[field]) : req.body[field] || null); }
     if (!updates.length) return res.status(400).json({ message: 'No episode fields were supplied.' });
     try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); res.json({ message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
@@ -360,7 +384,31 @@ const adminController = {
       res.json(rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) })));
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
-  async updateUser(req, res) { const allowed = ['name', 'email', 'status', 'is_admin', 'is_premium', 'premium_expires_at']; const updates = []; const values = []; for (const field of allowed) if (Object.prototype.hasOwnProperty.call(req.body, field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' || field === 'is_admin' ? (toBool(req.body[field]) ? 1 : 0) : req.body[field]); } if (!updates.length) return res.status(400).json({ message: 'No editable user fields were supplied.' }); try { const [r] = await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'User not found.' }); await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id); res.json({ message: 'User updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updateUser(req, res) {
+    const allowed = ['name', 'email', 'status', 'is_admin', 'is_premium', 'premium_expires_at'];
+    const updates = [];
+    const values = [];
+    let adminChange = null;
+    for (const field of allowed) if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+      updates.push(`${field} = ?`);
+      const coerced = field === 'is_premium' || field === 'is_admin' ? (toBool(req.body[field]) ? 1 : 0) : req.body[field];
+      values.push(coerced);
+      if (field === 'is_admin') adminChange = coerced === 1;
+    }
+    if (!updates.length) return res.status(400).json({ message: 'No editable user fields were supplied.' });
+    try {
+      const [r] = await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]);
+      if (!r.affectedRows) return res.status(404).json({ message: 'User not found.' });
+      // P1: keep the dedicated user_roles table authoritative for admin.
+      if (adminChange !== null) {
+        const role = require('../utils/hasRole');
+        if (adminChange) await role.grantRole(req.params.id, 'admin');
+        else await role.revokeRole(req.params.id, 'admin');
+      }
+      await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id);
+      res.json({ message: 'User updated.' });
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
 
   async getSettings(req, res) { try { res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
   async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'cloudinary_cloud_name']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },

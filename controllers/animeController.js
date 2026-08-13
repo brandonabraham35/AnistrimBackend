@@ -194,18 +194,28 @@ exports.getById = async (req, res) => {
       [animeId]
     );
 
-    // 4. Map the database columns to safe frontend keys
-    anime.episodes = episodeRows.map(ep => ({
-      id: ep.id,
-      number: ep.episode_number,
-      season: ep.season || 1,
-      title: ep.title,
-      description: ep.description,
-      thumbnail_url: ep.thumbnail_url,
-      video_url: (ep.is_premium && !req.user?.isPremium && !req.user?.isAdmin) ? null : ep.video_url,
-      duration_sec: ep.duration_sec,
-      is_premium: Boolean(ep.is_premium),
-      view_count: ep.view_count,
+    // 4. Map the database columns to safe frontend keys, enforcing the P2
+    //    effective-access model (episode_effective_access + entitlement) so a
+    //    locked premium episode keeps metadata public but never leaks its video
+    //    source. This replaces the legacy is_premium boolean gate.
+    const { canPlay } = require('../utils/episodeAccess');
+    anime.episodes = await Promise.all(episodeRows.map(async ep => {
+      const access = await canPlay(ep.id, req.user);
+      return {
+        id: ep.id,
+        number: ep.episode_number,
+        season: ep.season || 1,
+        title: ep.title,
+        description: ep.description,
+        thumbnail_url: ep.thumbnail_url,
+        video_url: access.allowed ? ep.video_url : null,
+        duration_sec: ep.duration_sec,
+        is_premium: access.tier === 'premium',
+        effective_tier: access.tier,
+        locked: access.locked,
+        access_tier: ep.access_tier || 'inherit',
+        view_count: ep.view_count,
+      };
     }));
 
     // 5. Send the combined payload

@@ -181,6 +181,9 @@
 
     form.reset();
 
+    // P2: ensure the Access + Premium-duration controls exist (added once).
+    _ensureAccessControls(form);
+
     // Populate anime dropdown
     const animeSelect = form.querySelector('#ep-anime-id');
     if (animeSelect) {
@@ -204,6 +207,8 @@
       form.querySelector('#ep-video-url').value = ep.video_url || '';
       form.querySelector('#ep-thumbnail-url').value = ep.thumbnail_url || '';
       form.querySelector('#ep-is-premium').checked = !!ep.is_premium;
+      const tierSel = form.querySelector('#ep-access-tier');
+      if (tierSel && ep.access_tier) tierSel.value = ['inherit','free','premium'].includes(ep.access_tier) ? ep.access_tier : 'inherit';
       if (animeSelect) animeSelect.value = ep.anime_id || _currentAnimeId;
     } else {
       title.textContent = 'Add Episode';
@@ -242,6 +247,8 @@
       video_url: form.querySelector('#ep-video-url').value || null,
       thumbnail_url: form.querySelector('#ep-thumbnail-url').value || null,
       is_premium: form.querySelector('#ep-is-premium').checked ? '1' : '0',
+      access_tier: form.querySelector('#ep-access-tier')?.value || 'inherit',
+      premium_duration: form.querySelector('#ep-premium-duration')?.value || 'permanent',
     };
 
     try {
@@ -257,6 +264,32 @@
     } catch (error) {
       window.showToast?.(`Failed to save episode: ${error.message}`, 'error');
     }
+  }
+
+  // P2: one-step publish access controls (Access + Premium duration). Injected
+  // into the episode form once so the existing modal markup needs no editing.
+  function _ensureAccessControls(form) {
+    if (form.querySelector('#ep-access-tier')) return;
+    const container = form.querySelector('#ep-is-premium')?.closest('.form-group, div') ||
+                      form.querySelector('.modal-body, .modal-content') || form;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:10px 0;';
+    row.innerHTML =
+      '<div><label>Access</label>' +
+      '<select id="ep-access-tier" style="padding:8px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg,#121218);color:#fff;">' +
+      '<option value="inherit">Inherit from Anime</option>' +
+      '<option value="free">Free</option>' +
+      '<option value="premium">Premium</option>' +
+      '</select></div>' +
+      '<div><label>Premium duration</label>' +
+      '<select id="ep-premium-duration" style="padding:8px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg,#121218);color:#fff;">' +
+      '<option value="permanent">Permanent</option>' +
+      '<option value="24h">24 hours</option>' +
+      '<option value="48h">48 hours</option>' +
+      '<option value="72h">72 hours</option>' +
+      '<option value="7d">7 days</option>' +
+      '</select></div>';
+    container.parentNode ? container.parentNode.insertBefore(row, container.nextSibling) : container.appendChild(row);
   }
 
   // ─── Delete Episode ─────────────────────────────────────────────────────
