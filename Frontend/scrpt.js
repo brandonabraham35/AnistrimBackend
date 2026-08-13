@@ -42,8 +42,14 @@ const State = (function () {
     return;
   }
 
-  if (!State.isLoggedIn && !publicPages.includes(page)) { window.location.href = 'login.html'; return; }
-  if (State.isLoggedIn && (page === 'login.html' || page === 'signup.html')) { window.location.href = 'index.html'; }
+  // admin.html owns its own gate (and /admin serves admin.html). Two gates on
+  // one document is how the redirect storm started — this one stands down.
+  const isAdminPage = page === 'admin.html' || /^\/admin(?:\/|$)/.test(window.location.pathname);
+  if (isAdminPage) return;
+
+  const go = (dest) => (window.NavGuard ? window.NavGuard.go(dest) : (window.location.replace(dest), true));
+  if (!State.isLoggedIn && !publicPages.includes(page)) { go('login.html'); return; }
+  if (State.isLoggedIn && (page === 'login.html' || page === 'signup.html')) { go('index.html'); }
 })();
 
 // ===================== API HELPER =====================

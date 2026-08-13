@@ -42,6 +42,46 @@
   // duplicated helper implementation into a single source of truth.
   const shared = window.AniStrimShared || {};
 
+  // ── NavGuard: the single, loop-proof navigation authority ──────────────
+  // Every auth-related redirect in the app goes through this. It (a) refuses to
+  // navigate to the page we are already on, and (b) enforces a budget of 3
+  // auth redirects per 10s window per tab. A stale token, a 401 storm or two
+  // gates disagreeing can therefore never produce an infinite reload loop —
+  // the 4th redirect is dropped and logged instead.
+  var NavGuard = window.NavGuard || (function () {
+    var KEY = '__navBudget';
+    function currentPage() {
+      var last = (window.location.pathname || '').split('/').pop();
+      return last || 'index.html';
+    }
+    return {
+      currentPage: currentPage,
+      // Returns true if the navigation was actually performed.
+      go: function (dest, opts) {
+        opts = opts || {};
+        var target = String(dest).split('/').pop();
+        if (currentPage() === target) return false;      // already here
+        try {
+          var now = Date.now();
+          var st = JSON.parse(sessionStorage.getItem(KEY) || 'null') || { n: 0, t: now };
+          if (now - st.t > 10000) st = { n: 0, t: now };
+          st.n += 1;
+          sessionStorage.setItem(KEY, JSON.stringify(st));
+          if (st.n > 3) {
+            console.error('[NavGuard] redirect loop blocked, staying put. wanted:', dest);
+            return false;
+          }
+        } catch (e) { /* private mode — fall through */ }
+        // Always root-absolute so a sub-path like /admin/users can never
+        // resolve a relative target back onto itself.
+        window.location.replace('/' + target);
+        return true;
+      },
+      reset: function () { try { sessionStorage.removeItem(KEY); } catch (e) {} }
+    };
+  })();
+  window.NavGuard = NavGuard;
+
   shared.apiFetch = shared.apiFetch || async function apiFetch(endpoint, options = {}) {
     // When the body is FormData (e.g. multipart avatar upload), we must NOT set
     // Content-Type: application/json — the browser sets the correct multipart
@@ -74,10 +114,17 @@
       // Background/fire-and-forget requests (e.g. watch progress polling) pass
       // { skipAuthRedirect: true } so a 401 there never kicks the user out of
       // the player mid-watch.
-      if (res.status === 401 && !options.skipAuthRedirect) {
-        State?.clear?.();
-        window.location.href = 'login.html';
-      }
+      if (res.status === 401) {
+        // A 401 is DATA, not a navigation command. We announce it and let the
+        // page decide. Callers that want the old behaviour opt in explicitly.
+        try {
+          window.dispatchEvent(new CustomEvent('auth:expired', { detail: { endpoint: endpoint } }));
+        } catch (e) {}
+        if (!options.skipAuthRedirect && !window.__AUTH_NO_AUTO_REDIRECT) {
+          State?.clear?.();
+          NavGuard.go('login.html');
+        }
+    }
       if (res.status === 403 && data?.requiresVerification) {
         const em = data.email || State?.user?.email || '';
         if (em) { sessionStorage.setItem('pendingEmail', em); localStorage.setItem('pendingEmail', em); }

@@ -50,7 +50,9 @@
     sessionStorage.setItem('__authRedirecting', '1');
     // Resolve destination from the settled user object (server-authoritative
     // isAdmin at login time). admin.html's own gate will re-confirm the role.
-    var dest = (user && user.isAdmin) ? 'admin.html' : 'index.html';
+    var dest = (user && user.isAdmin) ? '/admin.html' : '/index.html';
+    // Fresh session => fresh redirect budget.
+    try { window.NavGuard && window.NavGuard.reset(); } catch (e) {}
     window.location.replace(dest);
   }
   window.redirectAfterAuthentication = redirectAfterAuthentication;

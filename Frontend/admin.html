@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Disable apiFetch's automatic 401->login redirect on this page. A 401 here
+       is DATA: it collapses into the "session expired" panel, never a redirect.
+       This is the first script so it is set before config.js's apiFetch runs. -->
+  <script>window.__AUTH_NO_AUTO_REDIRECT = true;</script>
   <!-- Root-absolute paths: /style.css, /config.js, /scrpt.js resolve from the
        origin root. This is required because admin.html is served at /admin,
        /admin/ and /admin/<section> — relative "config.js" would resolve to
@@ -631,95 +635,58 @@ async function loadDashboard() {
 
 function setText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
 
-// Show a graceful "session expired" notice if an admin API 401s, instead of
-// letting apiFetch auto-redirect to login (which caused the reload loop).
+// ── Session-expired panel (no automatic navigation) ─────────────────────
+// Any 401 from any admin call collapses into this full-screen panel instead of
+// letting apiFetch auto-redirect to login. The role is enforced server-side by
+// `adminOnly`; the browser never redirects off this page on its own.
 function showSessionExpired() {
   if (document.getElementById('admin-session-expired')) return;
+  document.body.classList.add('admin-authorized');
+  document.getElementById('admin-gate')?.remove();
   const el = document.createElement('div');
   el.id = 'admin-session-expired';
-  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100000;background:#3a1f1f;color:#f87171;padding:12px 16px;text-align:center;font:600 0.9rem/1.4 "Outfit",sans-serif;border-bottom:1px solid rgba(239,68,68,0.3);';
-  el.innerHTML = 'Your admin session has expired. <a href="login.html" style="color:#fff;text-decoration:underline;">Sign in again</a>';
+  el.style.cssText = 'position:fixed;inset:0;z-index:100000;background:#0d0d0f;display:flex;align-items:center;justify-content:center;text-align:center;font-family:"Outfit",sans-serif;color:#fff;padding:24px;';
+  el.innerHTML = '<div style="max-width:360px"><div style="font-size:1.15rem;font-weight:800;margin-bottom:8px">Ani<span style="color:#8b5cf6">Strim</span> Admin</div>'
+    + '<p style="color:#9ca3af;font-size:0.92rem;margin:0 0 18px">Your session is no longer valid. Sign in again to manage the catalogue.</p>'
+    + '<button id="admin-signin-again" style="background:#8b5cf6;color:#fff;border:0;border-radius:8px;padding:11px 20px;font:600 0.92rem/1 \'Outfit\',sans-serif;cursor:pointer">Sign in</button></div>';
   document.body.appendChild(el);
+  document.getElementById('admin-signin-again').addEventListener('click', () => {
+    try { window.Auth && window.Auth.clear(); } catch (e) {}
+    if (window.NavGuard) window.NavGuard.reset();
+    window.location.replace('/login.html');
+  });
 }
 window.showSessionExpired = window.showSessionExpired || showSessionExpired;
 
 document.addEventListener('DOMContentLoaded', () => {
-  // ── Tri-state admin gate ─────────────────────────────────
-  // AUTHENTICATING (spinner) → AUTHORIZED (render) → UNAUTHORIZED (redirect).
-  // Never treat "role not yet loaded" as "not an admin", and never block the
-  // UI on a network round-trip. If the cached session already says admin we
-  // render immediately (fail-open on pending) and re-verify the role in the
-  // background — the server-side `adminOnly` middleware is the real guard for
-  // writes. A bounded /api/auth/me refresh is used ONLY when we have no cached
-  // role, with a hard timeout so the spinner can never hang forever.
-  (async () => {
-    const gate = document.getElementById('admin-gate');
-    const debug = true; // diagnosable from logcat/console; toggle off for prod
+  // ── Admin gate: render-first, server-enforced ─────────────────────────
+  // The ONLY client-side condition is "is there a token?". The role is never
+  // gated in the browser — `protect` + `adminOnly` on every /api/admin/* route
+  // is the real (and only trustworthy) enforcement. Consequences:
+  //   • no /api/auth/me round-trip blocks first paint;
+  //   • a stale/expired token shows a "Sign in" panel, never a redirect;
+  //   • a non-admin with a valid token sees the shell and 403 notices, which is
+  //     a UX cost we accept in exchange for a structurally loop-free page.
+  // Nothing on this page navigates automatically except the no-token case,
+  // and that goes through NavGuard's budget.
+  const gate = document.getElementById('admin-gate');
 
-    // Helper: race a promise against a timeout so a hung /api/auth/me can never
-    // leave the gate spinning. Resolves the promise's value or null.
-    const withTimeout = (p, ms) => new Promise(resolve => {
-      const t = setTimeout(() => resolve(null), ms);
-      Promise.resolve(p).then(
-        v => { clearTimeout(t); resolve(v); },
-        () => { clearTimeout(t); resolve(null); }
-      );
-    });
+  if (!State.isLoggedIn) {
+    try { sessionStorage.setItem('adminRedirectAfterLogin', '1'); } catch (e) {}
+    const moved = window.NavGuard ? window.NavGuard.go('login.html') : (window.location.replace('/login.html'), true);
+    if (!moved) showSessionExpired(); // budget exhausted: show the panel instead of looping
+    return;
+  }
 
-    const reveal = (user) => {
-      document.body.classList.add('admin-authorized');
-      if (gate) gate.remove();
-      loadDashboard();
-      loadEpisodeAnimeDropdown();
-      if (debug) console.log('[AdminGate] authorized', { role: user && user.isAdmin });
-    };
+  document.body.classList.add('admin-authorized');
+  if (gate) gate.remove();
+  window.NavGuard && window.NavGuard.reset();
 
-    // 1. No session at all → login. Remember where to return.
-    if (!State.isLoggedIn) {
-      try { sessionStorage.setItem('adminRedirectAfterLogin', '1'); } catch (e) {}
-      window.location.replace('login.html');
-      return;
-    }
+  // Any 401 from any admin call collapses into the sign-in panel exactly once.
+  window.addEventListener('auth:expired', showSessionExpired);
 
-    // 2. Fast path: we already have a cached admin role → render immediately,
-    //    then refresh the role in the background (server-authoritative) so a
-    //    demoted admin can be caught, but never block on it.
-    const cachedUser = State.user;
-    if (cachedUser && cachedUser.isAdmin === true) {
-      reveal(cachedUser);
-      setTimeout(() => {
-        if (typeof Auth !== 'undefined' && Auth.refresh) {
-          withTimeout(Auth.refresh(), 5000).catch(() => {});
-        }
-      }, 0);
-      return;
-    }
-
-    // 3. Slow path (no cached admin role): bounded refresh, fail-open on
-    //    pending/network to the cached user, then decide. Never treat a
-    //    "not loaded" role as "not an admin" — but if after the timeout we
-    //    genuinely have no admin claim, redirect for a normal (non-admin) user.
-    let user = cachedUser;
-    try {
-      const fresh = (typeof Auth !== 'undefined' && Auth.refresh)
-        ? await withTimeout(Auth.refresh(), 5000)
-        : null;
-      if (fresh) user = fresh;
-      if (debug) console.log('[AdminGate] refresh settled', { role: user && user.isAdmin, hasUser: !!user });
-    } catch (e) {
-      if (debug) console.log('[AdminGate] refresh fell back to cache', e && e.message);
-    }
-
-    if (user && user.isAdmin === true) {
-      reveal(user);
-      return;
-    }
-
-    // Not an admin (or no session user resolved) → home, not login (they ARE
-    // signed in; /api/auth/me said they're not an admin).
-    if (debug) console.log('[AdminGate] unauthorized', { hasUser: !!user, isAdmin: !!(user && user.isAdmin) });
-    window.location.replace('index.html');
-  })();
+  loadDashboard();
+  loadEpisodeAnimeDropdown();
 });
 
 // ── Edit Anime ────────────────────────────────────────────────────────

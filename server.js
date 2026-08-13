@@ -110,6 +110,10 @@ app.use('/uploads', (req, res, next) => {
 // AdminDashboard/ directory is no longer mounted under /admin.
 // This must come AFTER the Frontend static middleware.
 app.get(/^\/admin(\/.*)?$/, (req, res) => {
+  // Canonicalize to a single URL. Serving admin.html at /admin AND /admin/x
+  // meant relative links ('login.html') resolved differently per depth, which
+  // fed the redirect loop. One path, one resolution base.
+  if (req.path !== '/admin.html') return res.redirect(302, '/admin.html');
   res.sendFile(path.join(__dirname, 'Frontend', 'admin.html'));
 });
 

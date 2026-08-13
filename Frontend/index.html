@@ -16,8 +16,11 @@
     (function () {
       try {
         var p = window.location.pathname || '';
-        if (/^\/admin(?:\/|$)/.test(p)) {
-          window.location.replace('admin.html');
+        // Root-absolute target + explicit self-check. A relative 'admin.html'
+        // from /admin/anything resolved back onto a path that fell through to
+        // index.html again — an endless reload. This can only ever fire once.
+        if (/^\/admin(?:\/|$)/.test(p) && !/\/admin\.html$/.test(p)) {
+          window.location.replace('/admin.html');
         }
       } catch (e) {}
     })();
