@@ -6,6 +6,22 @@
   <title>AniStrim | Experience Anime</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="mobile-native.css">
+  <script>
+    // WebView deep-link to the admin dashboard.
+    // In the Capacitor WebView there is no Express server to rewrite a client-side
+    // path, so a navigation to /admin (or /admin/...) would otherwise resolve to a
+    // missing asset. index.html is the native entry document for unmatched in-app
+    // paths — forward /admin to the real, bundled admin.html. (In the browser the
+    // Express /admin fallback already serves admin.html, so this never fires there.)
+    (function () {
+      try {
+        var p = window.location.pathname || '';
+        if (/^\/admin(?:\/|$)/.test(p)) {
+          window.location.replace('admin.html');
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 

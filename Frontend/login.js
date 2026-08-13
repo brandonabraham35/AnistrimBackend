@@ -40,7 +40,7 @@ async function handleLogin() {
     if (data && data.token) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user);
+      window.redirectAfterAuthentication(data.user, data.token);
       return;
     }
 
@@ -93,7 +93,7 @@ async function sendIdTokenToBackend(idToken) {
     if (data && data.token && data.user) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user);
+      window.redirectAfterAuthentication(data.user, data.token);
       return;
     }
     showError((data && data.message) || 'Google sign-in failed. Please try again.');
@@ -125,7 +125,7 @@ async function handleAppUrlOpen(data) {
     if (token) {
       localStorage.setItem('session_token', token);
       localStorage.setItem('token', token);
-      window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'));
+      window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'), token);
       return;
     }
 
@@ -138,7 +138,7 @@ async function handleAppUrlOpen(data) {
         localStorage.setItem('token', data2.token);
         if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
         localStorage.setItem('isFirstVisit', 'true');
-        window.redirectAfterAuthentication(data2.user);
+        window.redirectAfterAuthentication(data2.user, data2.token);
       } else {
         showError(data2.message || 'Google sign-in failed. Please try again.');
       }

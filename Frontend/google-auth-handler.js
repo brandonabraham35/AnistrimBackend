@@ -457,7 +457,7 @@
       localStorage.setItem('isFirstVisit', 'true');
       window.history.replaceState({}, document.title, window.location.pathname);
       hideOverlay();
-      window.redirectAfterAuthentication(data.user);
+      window.redirectAfterAuthentication(data.user, data.token);
     } catch(e) {
       hideOverlay();
       console.error('Deep link auth error:', e);

@@ -115,7 +115,7 @@ async function handleVerifyOtp() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
       // Redirect via the centralized helper (also cleans pendingEmail state).
-      window.redirectAfterAuthentication(data.user);
+      window.redirectAfterAuthentication(data.user, data.token);
       return;
     }
 

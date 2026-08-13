@@ -1,6 +1,7 @@
 {
   "scripts": {
     "start": "node server.js",
+    "cap:sync": "node scripts/capacitor-preflight.js && cap copy android && cap sync android",
     "migrate": "node scripts/migrate.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

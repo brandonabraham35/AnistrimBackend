@@ -3,17 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Redirecting to Admin Dashboard | AniStrim</title>
-  <!-- Redirect to unified AdminDashboard CMS -->
+<title>Admin Dashboard | AniStrim</title>
+  <!--
+    Single, dual-target admin dashboard.
+    Served as /admin in the browser (Express) and bundled with webDir (Capacitor WebView).
+    Uses the SAME shared frontend session (localStorage token + user) as the rest of the app —
+    no separate AdminDashboard app, no external redirect, no second auth stack.
+    The body below is a complete dashboard; the gate in the DOMContentLoaded handler
+    (bottom of this file) shows a spinner while the session/role is settled, then
+    renders or redirects. Never a hard redirect to ../AdminDashboard/*.
+  -->
   <script>
     (function() {
-      if (localStorage.getItem('admin_token')) {
-        window.location.replace('../AdminDashboard/dashboard.html');
-      } else {
-        window.location.replace('../AdminDashboard/index.html');
-      }
+      // Hide the dashboard shell until the auth gate authorizes it, so an
+      // unauthorized visitor never sees a flash of admin UI. The loader is
+      // removed (and the layout shown) only by the DOMContentLoaded gate.
+      try {
+        document.documentElement.style.background = '#0d0d0f';
+      } catch (e) {}
     })();
   </script>
+  <style>
+    /* Loading gate — visible immediately, removed after authorization. */
+    #admin-gate { position:fixed; inset:0; background:#0d0d0f; z-index:99999;
+      display:flex; align-items:center; justify-content:center; }
+    #admin-gate .gate-inner { text-align:center; color:#fff; font-family:'Outfit',sans-serif; }
+    #admin-gate .gate-spinner { width:42px; height:42px; margin:0 auto 16px;
+      border:3px solid rgba(139,92,246,0.2); border-top-color:#8b5cf6; border-radius:50%;
+      animation:gate-spin 0.8s linear infinite; }
+    @keyframes gate-spin { to { transform:rotate(360deg); } }
+    #admin-gate .gate-text { font-size:0.95rem; color:#9ca3af; }
+    #admin-gate .gate-logo { font-size:1.1rem; font-weight:800; margin-bottom:10px; }
+    #admin-gate .gate-logo span { color:#8b5cf6; }
+    /* Anything outside the gate is hidden until authorization succeeds. */
+    body:not(.admin-authorized) .admin-layout,
+    body:not(.admin-authorized) .mobile-admin-nav { display:none !important; }
+  </style>
   <style>
     /* ── Admin-specific styles ── */
     .admin-layout { display:flex; min-height:100vh; }
@@ -69,6 +94,15 @@
   </style>
 </head>
 <body>
+<!-- Loading gate — visible until the auth gate authorizes (removed via admin-authorized class). -->
+<div id="admin-gate">
+  <div class="gate-inner">
+    <div class="gate-spinner"></div>
+    <div class="gate-logo">Ani<span>Strim</span> Admin</div>
+    <div class="gate-text">Checking access…</div>
+  </div>
+</div>
+
 <div class="admin-layout">
 
   <!-- Sidebar -->
@@ -581,8 +615,51 @@ async function loadDashboard() {
 function setText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
 
 document.addEventListener('DOMContentLoaded', () => {
-  if (!State.isAdmin) { alert('Admin access required.'); location.href = 'index.html'; return; }
-  loadDashboard();
+  // ── Tri-state admin gate ─────────────────────────────────
+  // AUTHENTICATING (spinner) → AUTHORIZED (render) → UNAUTHORIZED (redirect).
+  // Never treat "role not yet loaded" as "not an admin".
+  (async () => {
+    const gate = document.getElementById('admin-gate');
+
+    // 1. No session at all → login. Remember where to return.
+    if (!State.isLoggedIn) {
+      try { sessionStorage.setItem('adminRedirectAfterLogin', '1'); } catch (e) {}
+      window.location.replace('login.html');
+      return;
+    }
+
+    // 2. Session present → settle the role. The cached localStorage.user may be
+    //    stale or momentarily uncommitted right after login (WebView is slower),
+    //    so re-fetch from /api/auth/me which is server-authoritative for isAdmin.
+    //    Fail-open on pending/network error: fall back to the cached user and let
+    //    the server-side adminOnly middleware be the real authorization gate.
+    let user = State.user;
+    const debug = true; // diagnosable from logcat/console; toggle off for prod
+    try {
+      const fresh = (typeof Auth !== 'undefined' && Auth.refresh)
+        ? await Auth.refresh()
+        : null;
+      if (fresh) user = fresh;
+      if (debug) console.log('[AdminGate] refresh', { hasSession: true, role: user && user.isAdmin, target: 'admin', hasUser: !!user });
+    } catch (e) {
+      if (debug) console.log('[AdminGate] refresh fell back to cache', e && e.message);
+      // fail-open on pending: use cached user
+    }
+
+    // 3. Decide.
+    if (!user || user.isAdmin !== true) {
+      if (debug) console.log('[AdminGate] unauthorized', { hasUser: !!user, isAdmin: !!(user && user.isAdmin) });
+      window.location.replace('index.html');
+      return;
+    }
+
+    // 4. Authorized — reveal the dashboard and hydrate.
+    if (debug) console.log('[AdminGate] authorized');
+    document.body.classList.add('admin-authorized');
+    if (gate) gate.remove();
+    loadDashboard();
+    loadEpisodeAnimeDropdown();
+  })();
 });
 
 // ── Edit Anime ────────────────────────────────────────────────────────

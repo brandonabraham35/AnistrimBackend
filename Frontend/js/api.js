@@ -27,19 +27,29 @@
 
   // ── Centralized post-authentication redirect ─────────────
   // Single source of truth for where the app goes after a successful
-  // login/signup/OTP. Stores the user, clears stale funnel state, routes
-  // admin -> admin.html, everyone else -> index.html. Callers must RETURN
-  // immediately after calling this (never fall into an error handler).
-  function redirectAfterAuthentication(user) {
-    // Persist the authenticated user via the centralized Auth module so every
-    // flow writes the same user object (server-authoritative fields).
-    if (window.Auth && user) window.Auth.setUser(user);
-    else if (user) localStorage.setItem('user', JSON.stringify(user));
+  // login/signup/OTP. Commits token + user atomically through Auth.save so the
+  // session (including the admin role) is fully written to localStorage BEFORE
+  // any navigation — the WebView writes storage slower than the browser, and a
+  // hard redirect before the session is settled is exactly what caused the
+  // "login -> lands nowhere" loop. Admin routes to admin.html (whose gate
+  // re-verifies the role via /api/auth/me), everyone else -> index.html.
+  // Callers must RETURN immediately after calling this.
+  function redirectAfterAuthentication(user, token) {
+    var tok = token || (window.Auth ? window.Auth.token : '') || localStorage.getItem('token') || '';
+    if (window.Auth) {
+      if (tok && user) window.Auth.save(tok, user);
+      else if (user) window.Auth.setUser(user);
+    } else {
+      if (tok) localStorage.setItem('token', tok);
+      if (user) localStorage.setItem('user', JSON.stringify(user));
+    }
     sessionStorage.removeItem('pendingEmail');
     sessionStorage.removeItem('otpEmailSent');
     localStorage.removeItem('pendingEmail');
     // One-shot guard so scrpt.js's "logged in -> index" gate can't stomp this.
     sessionStorage.setItem('__authRedirecting', '1');
+    // Resolve destination from the settled user object (server-authoritative
+    // isAdmin at login time). admin.html's own gate will re-confirm the role.
     var dest = (user && user.isAdmin) ? 'admin.html' : 'index.html';
     window.location.replace(dest);
   }
