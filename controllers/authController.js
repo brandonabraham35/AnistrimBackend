@@ -83,7 +83,8 @@ function safeEqual(a, b) {
 // Used by both frontend login page and admin dashboard login.
 // The admin dashboard checks isAdmin clientside after receiving the token.
 exports.login = async (req, res) => {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
+    email = typeof email === 'string' ? email.trim().toLowerCase() : email;
     log('--- Login Attempt ---');
 
     if (!email || !password) {
@@ -185,7 +186,8 @@ exports.login = async (req, res) => {
 //   4. Email the OTP via SMTP
 //   5. Return 201 so the frontend knows to prompt for the code
 exports.signup = async (req, res) => {
-    const { name, email, password } = req.body;
+    let { name, email, password } = req.body;
+    email = typeof email === 'string' ? email.trim().toLowerCase() : email;
     log('--- Signup Attempt ---');
 
     if (!name || !email || !password) {
@@ -281,7 +283,8 @@ exports.signup = async (req, res) => {
 // Anti-abuse: neutral errors (no account-existence oracle), OTP attempt
 // lockout, and timing-safe code comparison.
 exports.verifyEmailToken = async (req, res) => {
-    const { email, code } = req.body;
+    let { email, code } = req.body;
+    email = typeof email === 'string' ? email.trim().toLowerCase() : email;
 
     if (!email || !code) {
         return res.status(400).json({ success: false, message: 'Email and verification code are required.' });
@@ -359,7 +362,8 @@ exports.verifyEmailToken = async (req, res) => {
 // verification_last_sent (>= 60s). Silently no-ops for unknown/verified emails
 // to avoid an account-existence oracle.
 exports.resendVerification = async (req, res) => {
-    const { email } = req.body;
+    let { email } = req.body;
+    email = typeof email === 'string' ? email.trim().toLowerCase() : email;
 
     if (!email) {
         return res.status(400).json({ success: false, message: 'Email is required.' });
