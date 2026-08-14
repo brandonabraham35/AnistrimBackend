@@ -49,13 +49,17 @@ async function resolveEpisodeAuth(animeTitle, episodeNumber) {
     if (!mediaRows || !mediaRows[0]) return out;
     out.mediaId = mediaRows[0].id;
     const [epRows] = await db.query(
-      'SELECT id, is_premium FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
+      'SELECT id FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
       [mediaRows[0].id, episodeNumber]
     );
     if (epRows && epRows[0]) {
       out.episodeId = epRows[0].id;
-      // is_premium is TINYINT(1) — normalize to boolean.
-      out.isPremiumEpisode = epRows[0].is_premium === 1 || epRows[0].is_premium === true;
+      // Authoritative tier: reads anime.access_tier + episode.access_tier +
+      // premium_until (expired window => free). This is the SAME gate the
+      // stream/authorize + detail endpoints use — never raw is_premium.
+      const { effectiveAccess } = require('../utils/episodeAccess');
+      const tier = await effectiveAccess(out.episodeId);
+      out.isPremiumEpisode = tier === 'premium';
     }
   } catch (err) {
     logger.warn('[StreamController] premium-check lookup failed', { animeTitle, episode: episodeNumber, error: err.message });
@@ -97,8 +101,17 @@ exports.getStream = async (req, res) => {
     return res.status(400).json({ error: 'animeTitle and episode identifier are required.' });
   }
 
-  // Determine user's premium status
-  const isPremium = req.user?.isPremium === true || req.user?.isAdmin === true;
+  // Determine user's premium status — authoritative from the DB entitlement
+  // (never the possibly-stale JWT isPremium claim).
+  let isPremium = req.user?.isAdmin === true;
+  try {
+    const { getEntitlement } = require('../utils/episodeAccess');
+    const ent = await getEntitlement(req.user?.userId ?? req.user?.id);
+    isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
+  } catch (e) {
+    // Fall back to the JWT claim so a DB hiccup doesn't break playback.
+    isPremium = isPremium || req.user?.isPremium === true;
+  }
 
   const startTime = Date.now();
   logger.info('[PLAYBACK]', { event: 'requestStarted', animeTitle, episode: episodeIdentifier, isPremium, ts: startTime });
@@ -309,7 +322,15 @@ exports.listProviders = async (req, res) => {
     return res.status(400).json({ error: 'animeTitle and episodeNumber are required.' });
   }
 
-  const isPremium = req.user?.isPremium === true || req.user?.isAdmin === true;
+  // Authoritative premium status (never the stale JWT claim).
+  let isPremium = req.user?.isAdmin === true;
+  try {
+    const { getEntitlement } = require('../utils/episodeAccess');
+    const ent = await getEntitlement(req.user?.userId ?? req.user?.id);
+    isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
+  } catch (e) {
+    isPremium = isPremium || req.user?.isPremium === true;
+  }
 
   try {
     // ── Server-Side Premium Episode Enforcement ──────────────
@@ -374,8 +395,16 @@ exports.listProviders = async (req, res) => {
  *   { authorized: true, streamUrl, quality, episodeTitle, animeTitle }
  */
 exports.authorizeDownload = async (req, res) => {
-  // Premium/admin only
-  if (!req.user?.isPremium && !req.user?.isAdmin) {
+  // Premium/admin only — authoritative from the DB entitlement.
+  let isPremium = req.user?.isAdmin === true;
+  try {
+    const { getEntitlement } = require('../utils/episodeAccess');
+    const ent = await getEntitlement(req.user?.userId ?? req.user?.id);
+    isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
+  } catch (e) {
+    isPremium = isPremium || req.user?.isPremium === true;
+  }
+  if (!isPremium) {
     return res.status(403).json({
       success: false,
       error: 'Premium subscription required for offline downloads.',

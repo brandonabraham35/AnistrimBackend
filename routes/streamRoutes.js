@@ -13,6 +13,11 @@ const { verifyTokenAndStatus } = require('../middleware/authMiddleware');
 // GET /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
 // MUST be registered BEFORE the /:animeTitle/:episodeNumber catch-all so the
 // literal "proxy" path is not mistaken for an anime title.
+// NOTE: This route is intentionally NOT JWT-gated — the existing player's
+// <video>/HLS element fetches these media URLs directly and cannot send the
+// Authorization header. The hardened, token-gated /api/stream-proxy/:streamId
+// path (Phase 10) is the correct migration target; the frontend must switch to
+// it (via /api/stream/authorize) before this route can be locked down.
 router.options('/proxy', streamProxyQueryController.preflight);
 router.get('/proxy', streamProxyQueryController.streamMedia);
 
