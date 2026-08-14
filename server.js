@@ -16,6 +16,17 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const providerHealthMonitor = require('./services/providerHealthMonitor');
 
+// Phase 10 (Security): fail fast if any required secret is missing. Credentials
+// are server-side only — never logged, never shipped to the client.
+const REQUIRED_ENV = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'STREAM_TOKEN_SECRET'];
+if (process.env.NODE_ENV === 'production') {
+  const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+  if (missing.length) {
+    console.error(`❌ [SECURITY] Missing required env vars: ${missing.join(', ')}. Refusing to start.`);
+    process.exit(1);
+  }
+}
+
 // Phase 4 (Item 5): generous streaming timeouts. The default 5–6 s cutoff is
 // almost certainly a default headersTimeout/requestTimeout. Disable the request
 // body timeout (so long-lived streams are never cut) and give headers 120 s.

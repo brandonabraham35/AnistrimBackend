@@ -16,6 +16,11 @@ const { verifyTokenAndStatus } = require('../middleware/authMiddleware');
 router.options('/proxy', streamProxyQueryController.preflight);
 router.get('/proxy', streamProxyQueryController.streamMedia);
 
+// ── Phase 10 (item 21): stream authorization ────────────────
+// POST /api/stream/authorize { episodeId } → canWatch() → 120 s HMAC token.
+// MUST be registered before the /:animeTitle/:episodeNumber catch-all.
+router.post('/authorize', protect, streamController.authorizeStream);
+
 // ── Protected: Best stream (AnimeHeaven single provider) ───
 // GET /api/stream/:animeTitle/:episodeNumber
 // Optional query param: preferredProvider=animeheaven

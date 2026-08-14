@@ -146,11 +146,32 @@ exports.streamMedia = async (req, res) => {
     range: req.headers.range || 'none',
   });
 
+  // ── Phase 10 (item 21): token gate ───────────────────────
+  // /api/stream-proxy/:streamId accepts ONLY a valid short-lived stream token
+  // (from POST /api/stream/authorize), bound to userId + episodeId + ip.
+  // Child HLS resources (url query) are allowed once the parent token verifies.
+  const authToken = req.query.token || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')
+    ? req.headers.authorization.split(' ')[1] : null);
+  if (!authToken) {
+    return res.status(401).json({ error: 'Stream authorization token required.' });
+  }
+  const { verify } = require('../utils/streamToken');
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  const tokenCheck = verify(authToken, { streamId, ip });
+  if (!tokenCheck.ok) {
+    logger.warn('[streamProxy] token rejected', { streamId: streamId.slice(0, 8), reason: tokenCheck.reason });
+    return res.status(403).json({ error: 'Invalid or expired stream authorization.' });
+  }
+  const authPayload = tokenCheck.payload;
+
   // ── Security: validate the stream context ────────────────
   const ctx = streamProxyStore.get(streamId);
   if (!ctx) {
     return res.status(404).json({ error: 'Stream context not found or expired.' });
   }
+
+  // Bind the authorized user to the stream context (created by rewriteResultToProxy).
+  req.streamAuth = authPayload;
 
   // Determine the target URL.
   const target = requestedUrl || ctx.targetUrl;

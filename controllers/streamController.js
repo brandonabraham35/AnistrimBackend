@@ -412,7 +412,46 @@ const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
       episodeNumber,
     });
 } catch (err) {
-    logger.error('[StreamController] authorizeDownload error', { animeTitle, episodeNumber, error: err.message });
+      logger.error('[StreamController] authorizeDownload error', { animeTitle, episodeNumber, error: err.message });
     res.status(502).json({ error: 'Could not resolve a stream source for download.' });
+  }
+};
+
+/**
+ * POST /api/stream/authorize (Phase 10 / item 21)
+ * Body: { episodeId }
+ * → canWatch() gate → mints a 120 s HMAC token bound to userId + episodeId + ip.
+ * /api/stream-proxy/:streamId accepts ONLY this token.
+ */
+exports.authorizeStream = async (req, res) => {
+  try {
+    const { episodeId } = req.body || {};
+    if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
+
+    const userId = req.userId ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+    // Authoritative canWatch gate (Phase 7.2) — refuse to mint for unauthorized.
+    const { canWatch } = require('../utils/episodeAccess');
+    const isAdmin = req.user?.isAdmin === true || (req.tokenClaims?.roles || []).includes('admin');
+    const access = await canWatch(userId, episodeId, { isAdmin });
+    if (!access.allow) {
+      return res.status(403).json({
+        code: access.reason || 'PREMIUM_REQUIRED',
+        requiredTier: access.requiredTier,
+        availableAt: access.availableAt,
+        message: access.reason === 'PREMIUM_REQUIRED' ? 'Premium subscription required.' : 'Access denied.',
+      });
+    }
+
+    const { mint } = require('../utils/streamToken');
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    const streamId = require('crypto').randomUUID();
+
+    const token = mint({ userId, episodeId, streamId, ip });
+    return res.json({ token, streamId, expiresIn: 120 });
+  } catch (error) {
+    logger.error('[StreamController] authorize error', { error: error.message });
+    return res.status(500).json({ message: 'Stream authorization failed.' });
   }
 };
