@@ -696,55 +696,16 @@ async updateGenre(req, res) {
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
-  // ─── Live Dashboard: Health Check ──────────────────────────────────
+  // ─── Live Dashboard: Health Check (Phase 9 / item 20) ───────────────
+  // Probes API, DB, cache, streaming, payments, email, Google OAuth, storage —
+  // each { status, latencyMs, lastError, checkedAt } — 30 s cached, sampled to
+  // health_samples for sparklines. Admin-only, 30 s cache.
   async getDashboardHealth(req, res) {
     try {
-      const schema = await getSchema();
-      const start = Date.now();
+      const healthService = require('../services/healthService');
+      const snapshot = await healthService.getHealthSnapshot();
 
-      // Database health
-      let dbStatus = 'healthy';
-      let dbLatency = 0;
-      try {
-        const dbStart = Date.now();
-        await db.query('SELECT 1');
-        dbLatency = Date.now() - dbStart;
-      } catch (e) {
-        dbStatus = 'error';
-      }
-
-// Provider health — check consumet or kitsu availability
-      let providerStatus = 'unknown';
-      let providerHealthStats = {};
-      try {
-        const { default: kitsuProvider } = require('../services/kitsuProvider');
-        if (kitsuProvider && typeof kitsuProvider.checkHealth === 'function') {
-          const healthy = await kitsuProvider.checkHealth();
-          providerStatus = healthy ? 'healthy' : 'degraded';
-        } else {
-          providerStatus = 'healthy'; // Assume healthy if no check
-        }
-      } catch (e) {
-        providerStatus = 'degraded';
-      }
-
-      // Append the enriched provider health stats (runtime metrics) from the
-      // streaming pipeline. Observability only — no new endpoint, no behavioural
-      // change. The frontend continues to work unchanged; these fields are purely
-      // additive to the existing dashboard health response.
-      try {
-        const streamingService = require('../services/streamingService');
-        if (typeof streamingService.getProviderHealthStatus === 'function') {
-          providerHealthStats = streamingService.getProviderHealthStatus();
-        }
-      } catch (e) {
-        // Non-fatal — omit provider health stats if the streaming service is unavailable.
-      }
-
-      // API status (self-check)
-      const apiLatency = Date.now() - start;
-
-      // Server uptime
+      // Server uptime (kept alongside the probe grid).
       const uptimeSeconds = Math.floor(process.uptime());
       const uptimeFormatted = uptimeSeconds >= 86400
         ? `${Math.floor(uptimeSeconds / 86400)}d ${Math.floor((uptimeSeconds % 86400) / 3600)}h`
@@ -752,26 +713,24 @@ async updateGenre(req, res) {
         ? `${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m`
         : `${Math.floor(uptimeSeconds / 60)}m ${uptimeSeconds % 60}s`;
 
-      // Storage usage (approximate from episodes table)
-      let storageUsage = null;
-      try {
-        const [storageRows] = await db.query('SELECT COALESCE(SUM(LENGTH(video_url)), 0) AS total_bytes FROM episodes WHERE video_url IS NOT NULL');
-        storageUsage = Math.round((Number(storageRows[0]?.total_bytes || 0) / (1024 * 1024 * 1024)) * 100) / 100;
-      } catch (e) { /* non-critical */ }
+      const overall = Object.values(snapshot)
+        .filter(v => v && typeof v === 'object' && v.status)
+        .some(v => v.status === 'down') ? 'degraded' : 'healthy';
 
-res.json({
-        status: dbStatus === 'healthy' ? 'healthy' : 'degraded',
+      res.json({
+        status: overall,
         timestamp: new Date().toISOString(),
         checks: {
-          database: { status: dbStatus, latency: `${dbLatency}ms` },
-          streaming_providers: { status: providerStatus },
-          api: { status: 'healthy', latency: `${apiLatency}ms` },
-          server_uptime: { status: 'healthy', uptime: uptimeFormatted, seconds: uptimeSeconds },
-          storage: { status: storageUsage !== null ? 'healthy' : 'unknown', usage_gb: storageUsage },
+          api: snapshot.api,
+          database: snapshot.database,
+          cache: snapshot.cache,
+          streaming_providers: snapshot.streaming,
+          payments: snapshot.payments,
+          email: snapshot.email,
+          google_oauth: snapshot.google_oauth,
+          storage: snapshot.storage,
         },
-        // Provider runtime health metrics (additive — observability only).
-        // Appended to the existing response so the frontend is unaffected.
-        provider_health: providerHealthStats,
+        server_uptime: { status: 'up', uptime: uptimeFormatted, seconds: uptimeSeconds },
       });
     } catch (error) {
       res.status(500).json({ status: 'error', message: error.message });
