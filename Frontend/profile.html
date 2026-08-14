@@ -5,7 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Profile | AniStrim</title>
   <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="mobile-native.css">
+  <link rel="stylesheet" href="mobile-native.css">
+  <style>
+    .profile-section{background:var(--card-bg,#1a1a2e);border:1px solid var(--border,#2a2a35);border-radius:14px;padding:20px;margin-bottom:16px;}
+    .profile-section h3{font-size:1.05rem;font-weight:700;margin:0 0 12px;color:#fff;}
+    .profile-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.9rem;}
+    .profile-row:last-child{border-bottom:0;}
+    .profile-row .label{color:var(--text-muted,#9ca3af);}
+    .profile-row .value{color:#e5e7eb;font-weight:500;}
+    .danger-btn{background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:600;font-size:0.85rem;}
+    .danger-btn:hover{background:rgba(239,68,68,0.25);}
+    .pref-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.9rem;}
+    .pref-row .pref-label{color:#d1d5db;}
+    .tonio select,.pref-row select,.pref-row input[type=number]{background:#12121a;color:#fff;border:1px solid #333;border-radius:6px;padding:6px 10px;font-size:0.85rem;}
+    .save-btn{background:var(--purple,#6c2bd9);color:#fff;border:0;border-radius:8px;padding:10px 22px;cursor:pointer;font-weight:700;margin-top:14px;}
+  </style>
 </head>
 <body>
 <div id="side-menu" class="side-nav">
@@ -36,59 +50,82 @@
   </div>
 </nav>
 
-<main class="profile-page">
-  <section class="profile-header">
+<main class="profile-page" style="max-width:720px;margin:0 auto;padding:24px 16px 80px;">
+  <!-- Header -->
+  <section class="profile-header" style="text-align:center;margin-bottom:20px;">
     <div style="position:relative;display:inline-block;cursor:pointer;" onclick="document.getElementById('avatar-upload-input').click()" title="Change profile picture">
-      <div class="profile-avatar" id="profile-avatar">B</div>
-      <img id="profile-avatar-img" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--purple);" src="" alt="avatar">
-      <div style="position:absolute;bottom:0;right:0;background:var(--purple);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;">📷</div>
-      <input type="file" id="avatar-upload-input" accept="image/*" style="display:none" onchange="uploadAvatar(this.files[0])">
+      <img id="profile-avatar-img" data-avatar data-name="U" style="width:92px;height:92px;border-radius:50%;object-fit:cover;border:3px solid var(--purple,#6c2bd9);" src="" alt="avatar">
+      <div style="position:absolute;bottom:0;right:0;background:var(--purple);border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;">📷</div>
+      <input type="file" id="avatar-upload-input" accept="image/*" style="display:none" onchange="uploadAvatarPreview(this)">
     </div>
-    <h2 class="profile-name" id="profile-name">Benard Brandon</h2>
-    <p class="profile-email" id="profile-email">benardbrandon56@gmail.com</p>
+    <h2 class="profile-name" id="profile-name">—</h2>
+    <p class="profile-email" id="profile-email">—</p>
+    <p style="color:var(--purple,#6c2bd9);font-size:0.85rem;" id="profile-username"></p>
     <span class="premium-badge" id="premium-badge" style="display:none;">👑 Premium Member</span>
   </section>
 
-  <section class="profile-stats">
-    <div class="stat-box">
-      <span class="stat-num" id="stat-watching">0</span>
-      <span class="stat-label">Watching</span>
-    </div>
-    <div class="stat-box">
-      <span class="stat-num" id="stat-completed">0</span>
-      <span class="stat-label">Completed</span>
-    </div>
-    <div class="stat-box">
-      <span class="stat-num" id="stat-planned">0</span>
-      <span class="stat-label">Planned</span>
-    </div>
+  <!-- Account -->
+  <section class="profile-section">
+    <h3>Account</h3>
+    <div class="profile-row"><span class="label">Email</span><span class="value" id="profile-email-acct"></span></div>
+    <div class="profile-row"><span class="label">Provider</span><span class="value" id="profile-provider"></span></div>
+    <div class="profile-row"><span class="label">Member since</span><span class="value" id="profile-created"></span></div>
+    <div class="profile-row"><span class="label">Username</span><span class="value" id="profile-username-row"></span></div>
   </section>
 
-  <section class="profile-actions">
-    <div class="action-item" onclick="location.href='watchlist.html'">
-      <div class="action-icon-wrap">🔖</div>
-      <div class="action-text">
-        <h3>My Watchlist</h3>
-        <p id="wl-tracked">0 anime tracked</p>
-      </div>
+  <!-- Subscription -->
+  <section class="profile-section">
+    <h3>Subscription</h3>
+    <div class="profile-row"><span class="label">Plan</span><span class="value" id="sub-plan"></span></div>
+    <div class="profile-row"><span class="label">Expires</span><span class="value" id="sub-expires"></span></div>
+    <div style="margin-top:12px;"><a href="upgrade.html" class="save-btn" id="sub-manage" style="text-decoration:none;display:inline-block;">Manage Subscription</a></div>
+  </section>
+
+  <!-- Devices -->
+  <section class="profile-section">
+    <h3>Devices</h3>
+    <div id="devices-list"><p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">Loading devices...</p></div>
+  </section>
+
+  <!-- Preferences -->
+  <section class="profile-section">
+    <h3>Preferences</h3>
+    <div class="pref-row"><span class="pref-label">Autoplay next episode</span><input type="checkbox" id="pref-autoplay"></div>
+    <div class="pref-row"><span class="pref-label">Autoplay countdown (s)</span><input type="number" id="pref-countdown" min="0" max="60"></div>
+    <div class="pref-row"><span class="pref-label">Default quality</span>
+      <select id="pref-quality"><option value="auto">Auto</option><option value="360">360p</option><option value="480">480p</option><option value="720">720p</option><option value="1080">1080p</option></select>
     </div>
-    <div class="action-item admin-only" id="admin-dashboard-link" style="display:none;" onclick="location.href='admin.html'">
-      <div class="action-icon-wrap">⚙️</div>
-      <div class="action-text"><h3>Admin Dashboard</h3><p>Manage content &amp; users</p></div>
+    <div class="pref-row"><span class="pref-label">Subtitles on</span><input type="checkbox" id="pref-subtitles"></div>
+    <div class="pref-row"><span class="pref-label">Playback rate</span><input type="number" id="pref-rate" min="0.25" max="3" step="0.25"></div>
+    <div class="pref-row"><span class="pref-label">Skip intro automatically</span><input type="checkbox" id="pref-skip-intro"></div>
+    <div class="pref-row"><span class="pref-label">Reduce motion</span><input type="checkbox" id="pref-reduce-motion"></div>
+    <div style="margin-top:8px;">
+      <div class="label" style="color:var(--text-muted,#9ca3af);font-size:0.85rem;margin-bottom:6px;">Preferred genres</div>
+      <div id="pref-genres"></div>
     </div>
-    <div class="action-item" onclick="location.href='upgrade.html'">
-      <div class="action-icon-wrap">👑</div>
-      <div class="action-text">
-        <h3>Upgrade to Premium</h3>
-        <p>$9.99/month · Unlock all content</p>
-      </div>
-    </div>
-    <div class="action-item" onclick="handleSignOut()" style="border-color:rgba(239,68,68,0.2);">
-      <div class="action-icon-wrap">🚪</div>
-      <div class="action-text">
-        <h3>Sign Out</h3>
-        <p>See you next time!</p>
-      </div>
+    <button class="save-btn" onclick="savePreferences()">Save Preferences</button>
+  </section>
+
+  <!-- My List -->
+  <section class="profile-section">
+    <h3>My List</h3>
+    <div id="mylist-list"><p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">Loading...</p></div>
+    <div style="margin-top:10px;"><a href="watchlist.html" style="color:var(--purple,#6c2bd9);font-size:0.85rem;">View full list →</a></div>
+  </section>
+
+  <!-- Watch History -->
+  <section class="profile-section">
+    <h3>Watch History</h3>
+    <div id="history-list"><p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">Loading...</p></div>
+    <button class="danger-btn" style="margin-top:12px;" onclick="clearHistory()">Clear History</button>
+  </section>
+
+  <!-- Danger Zone -->
+  <section class="profile-section" style="border-color:rgba(239,68,68,0.3);">
+    <h3 style="color:#ef4444;">Danger Zone</h3>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <button class="danger-btn" onclick="deactivateAccount()">Deactivate Account</button>
+      <button class="danger-btn" onclick="deleteAccount()">Delete Account</button>
     </div>
   </section>
 </main>
@@ -101,6 +138,9 @@
 </nav>
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
+<script src="js/api.js"></script>
+<script src="js/session.js"></script>
+<script src="js/avatar.js"></script>
 <script src="profile.js"></script>
 </body>
 </html>

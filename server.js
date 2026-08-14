@@ -46,6 +46,8 @@ app.use(express.urlencoded({ extended: true }));
 // ─── Main API Endpoints ────────────────────────────────────
 // API routes must be registered before static file handlers and SPA fallbacks
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/auth', require('./routes/avatarRoutes'));
+app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/anime', require('./routes/animeRoutes'));
 app.use('/api/watchlist', require('./routes/watchlistRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));

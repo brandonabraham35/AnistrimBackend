@@ -5,7 +5,6 @@ const authController = require('../controllers/authController');
 const googleVerifyController = require('../controllers/googleVerifyController');
 const googleAuthController = require('../controllers/googleAuthController');
 const authMiddleware = require('../middleware/auth');
-const { handleImageUpload } = require('../utils/bunnyUpload');
 
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
@@ -150,19 +149,8 @@ router.get('/google/callback', googleAuthController.googleCallback);
 // @access  Public
 router.get('/google/token', googleAuthController.exchangeLoginCode);
 
-// @route   POST /api/auth/avatar
-// @desc    Upload user profile avatar
-// @access  Private
-router.post('/avatar', authMiddleware.protect, async (req, res) => {
-    // The 'avatars' argument specifies the Cloudinary folder.
-    // onUploaded persists the returned avatar URL to users.avatar_url so the
-    // profile survives a refresh (getMe reads avatar_url from the DB).
-    await handleImageUpload(req, res, 'avatars', async (result) => {
-        const avatarUrl = result?.secure_url || result?.url || result?.image_url || null;
-        if (avatarUrl && req.user?.id) {
-            await db.query('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, req.user.id]);
-        }
-    });
-});
+// Note: POST /api/auth/avatar is now handled by routes/avatarRoutes.js
+// (secure magic-byte sniffing + 512×512 webp re-encode), mounted at /api/auth
+// in server.js. The route is intentionally not redefined here.
 
 module.exports = router;

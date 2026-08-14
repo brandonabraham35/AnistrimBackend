@@ -6,6 +6,7 @@
 // never read from a stale JWT claim.
 const pool = require('../config/db');
 const { rolesOf } = require('../utils/hasRole');
+const { getPreferences } = require('./preferencesService');
 
 /**
  * Build the canonical user DTO for a user row.
@@ -36,13 +37,7 @@ async function buildUserDto(user) {
     lastLoginAt: user.last_login_at || user.last_login || null,
     onboarded: !!user.onboarded_at,
     entitlement,
-    preferences: {
-      genres: [],
-      autoplayNext: true,
-      defaultQuality: 'auto',
-      subtitlesOn: true,
-      playbackRate: 1,
-    },
+    preferences: await getPreferences(user.id),
   };
 }
 
