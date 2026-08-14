@@ -196,3 +196,24 @@ try {
 } catch (err) {
   console.error('⚠️ [ANIMEHEAVEN_CATALOG] Daily refresh init failed (non-fatal):', err && err.message);
 }
+
+// Start the nightly recommendation rebuild (Phase 6.3, best-effort).
+// Recomputes user_recommendations + user_genre_vector each night at 03:00 so
+// the homepage is a single indexed read. Idempotent + failure-safe.
+try {
+  const recommendationService = require('./services/recommendationService');
+  recommendationService.startScheduler();
+} catch (err) {
+  console.error('⚠️ [RECOMMENDATIONS] Scheduler init failed (non-fatal):', err && err.message);
+}
+
+// Start the premium release + subscription state scheduler (Phase 7.3).
+// Every 10 min: expire timed-release episodes → free, sweep subscription state
+// (active → grace → expired), and refresh the users.is_premium derived cache.
+// Idempotent + failure-safe. The read path stays correct even if cron misses.
+try {
+  const premiumScheduler = require('./services/premiumScheduler');
+  premiumScheduler.startScheduler();
+} catch (err) {
+  console.error('⚠️ [PREMIUM_SCHEDULER] Scheduler init failed (non-fatal):', err && err.message);
+}

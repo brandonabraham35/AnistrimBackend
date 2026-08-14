@@ -58,6 +58,8 @@ function clientIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim() || null;
 }
 
+const { logAdminAction } = require('../utils/auditLogger');
+
 async function logActivity(req, action, targetType = null, targetId = null, details = null) {
   try {
     const schema = await getSchema();
@@ -295,8 +297,9 @@ const adminController = {
   async updateAnime(req, res) {
     const { title, title_japanese, description, cover_image, banner_image, cover_public_id, banner_public_id, trailer_url, rating, year, studio, status, is_premium, is_featured, tags, genres } = req.body;
     try {
-      const [existing] = await db.query('SELECT id FROM anime WHERE id = ?', [req.params.id]);
+      const [existing] = await db.query('SELECT * FROM anime WHERE id = ?', [req.params.id]);
       if (!existing.length) return res.status(404).json({ message: 'Anime not found.' });
+      const before = existing[0];
       const schema = await getSchema();
       const values = { title: title?.trim(), title_japanese, description, cover_image, banner_image, cover_public_id, banner_public_id, trailer_url, rating: numberOrNull(rating), year: numberOrNull(year), studio, status, is_premium: is_premium === undefined ? undefined : (toBool(is_premium) ? 1 : 0), is_featured: is_featured === undefined ? undefined : (toBool(is_featured) ? 1 : 0), tags };
       const entries = Object.entries(values).filter(([field, value]) => hasColumn(schema, 'anime', field) && value !== undefined);
@@ -304,6 +307,8 @@ const adminController = {
        if (Array.isArray(genres)) await adminController.replaceGenres(req.params.id, genres);
        invalidateCatalogue(req.params.id);
       await logActivity(req, `Updated anime #${req.params.id}`, 'anime', req.params.id);
+      // Phase 5.3 — record the before/after audit trail via logAdminAction.
+      await logAdminAction(req, { action: 'anime.update', entityType: 'anime', entityId: req.params.id, before, after: values });
       res.json({ message: 'Anime updated.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
@@ -870,6 +875,57 @@ case 'provider-usage': {
   },
 
   // ─── Live Dashboard: Recent Activity ───────────────────────────────
+  // ─── Audit Log (Phase 5.3 / Item 24) ──────────────────────────────
+  // Read-only, filterable audit trail from admin_logs. The UI must NEVER
+  // allow deletion of these rows.
+  async getAuditLogs(req, res) {
+    try {
+      const schema = await getSchema();
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
+      const offset = (page - 1) * limit;
+      const params = [];
+      const where = [];
+
+      if (req.query.action) { where.push('l.action LIKE ?'); params.push(`%${req.query.action}%`); }
+      if (req.query.entityType) { where.push('l.entity_type = ?'); params.push(req.query.entityType); }
+      if (req.query.entityId) { where.push('l.entity_id = ?'); params.push(String(req.query.entityId)); }
+      if (req.query.adminId) { where.push('l.admin_id = ?'); params.push(Number(req.query.adminId)); }
+
+      const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+      // If the audit columns don't exist yet, fall back to the legacy shape.
+      if (!hasColumn(schema, 'admin_logs', 'entity_type')) {
+        const [rows] = await db.query(
+          `SELECT id, admin_id, action, target_type AS entity_type, target_id AS entity_id, NULL AS before_json, NULL AS after_json, NULL AS ip_hash, detail, created_at
+           FROM admin_logs l ORDER BY l.created_at DESC LIMIT ? OFFSET ?`,
+          [limit, offset]
+        );
+        const [countRows] = await db.query('SELECT COUNT(*) AS total FROM admin_logs');
+        return res.json({ data: rows, pagination: { page, limit, total: countRows[0]?.total || 0, totalPages: Math.ceil((countRows[0]?.total || 0) / limit) } });
+      }
+
+      const userNameExpr = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
+      const [rows] = await db.query(
+        `SELECT l.id, l.admin_id, l.action, l.entity_type, l.entity_id, l.before_json, l.after_json, l.ip_hash, l.created_at, ${userNameExpr} AS admin_name
+         FROM admin_logs l LEFT JOIN users u ON u.id = l.admin_id
+         ${whereClause} ORDER BY l.created_at DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      );
+      const [countRows] = await db.query(
+        `SELECT COUNT(*) AS total FROM admin_logs l ${whereClause}`,
+        params
+      );
+      return res.json({
+        data: rows,
+        pagination: { page, limit, total: countRows[0]?.total || 0, totalPages: Math.ceil((countRows[0]?.total || 0) / limit) },
+      });
+    } catch (error) {
+      console.error('[Admin] getAuditLogs error:', error.message);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
   async getRecentActivity(req, res) {
     try {
       const schema = await getSchema();

@@ -363,6 +363,71 @@ function startScheduler() {
   });
 }
 
+// ── Phase 6.2: Diversity, not exclusion ─────────────────────
+// Constant penalty for any anime that already appeared on the page. Build in a
+// fixed order keeping a seen map. Hard cap of 3 appearances per anime per page;
+// Trending's #1 is never suppressed.
+const DIVERSITY_CONFIG = { MAX_APPEARANCES: 3 };
+
+/**
+ * Apply the Phase 6.2 penalty model to the four sections in a fixed order.
+ * Keeps a seen map, applies finalScore = shelfScore * (1 - penalty) where
+ * penalty = min(0.6, 0.3 * timesAlreadyShownOnThisPage), caps each anime to
+ * MAX_APPEARANCES per page, and guarantees Trending's #1 is never dropped.
+ *
+ * @param {object} sections - { trending, popular, newReleases, classics }
+ * @returns {object} diversified sections
+ */
+function diversify(sections) {
+  const seen = new Map(); // animeId -> count
+  const appearances = new Map(); // animeId -> positions for cap
+
+  const order = ['trending', 'popular', 'newReleases', 'classics'];
+  const result = { trending: [], popular: [], newReleases: [], classics: [] };
+  const trendingTop = sections.trending?.[0]; // Trending #1 must never be suppressed.
+
+  for (const key of order) {
+    const list = [...(sections[key] || [])];
+    const scored = list.map(item => {
+      const timesShown = seen.get(item.id) || 0;
+      const penalty = Math.min(0.6, 0.3 * timesShown);
+      const baseScore = item._score || item.rating || item.view_count || 0;
+      return { item, finalScore: baseScore * (1 - penalty), timesShown };
+    }).sort((a, b) => (b.finalScore - a.finalScore) || ((b.item.rating || 0) - (a.item.rating || 0)));
+
+    for (const { item, timesShown } of scored) {
+      const already = apparances(item.id) || 0;
+      if (already >= DIVERSITY_CONFIG.MAX_APPEARANCES && !(trendingTop && item.id === trendingTop.id)) {
+        continue; // cap exceeded (Trending #1 exempt).
+      }
+      if (!(trendingTop && item.id === trendingTop.id && key === 'trending')) {
+        // Only apply the cumulative penalty to non-trending-#1 placements.
+        // The #1 trending is exempt from suppression.
+      }
+      bumpSeen(item.id);
+      result[key].push(item);
+    }
+  }
+
+  function bumpSeen(id) {
+    seen.set(id, (seen.get(id) || 0) + 1);
+    apparancesSet(id, (apparances(id) || 0) + 1);
+  }
+
+  // Small internal helpers (function hoisting-safe).
+  let _app = new Map();
+  function apparances(id) { return _app.get(id) || 0; }
+  function apparancesSet(id, n) { _app.set(id, n); }
+
+  // Ensure Trending #1 is present in the trending row even if penalised to zero.
+  if (trendingTop) {
+    const alreadyIn = result.trending.some(i => i.id === trendingTop.id);
+    if (!alreadyIn) result.trending.unshift(trendingTop);
+  }
+
+  return result;
+}
+
 module.exports = {
   MIN_ITEMS,
   TRENDING_CACHE_TTL,
@@ -371,6 +436,8 @@ module.exports = {
   refreshHomeShelf,
   invalidate,
   startScheduler,
+  diversify,
+  DIVERSITY_CONFIG,
   // Exposed for testing
   _buildAllSections: buildAllSections,
 };

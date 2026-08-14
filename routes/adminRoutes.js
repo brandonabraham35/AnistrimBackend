@@ -14,6 +14,9 @@ router.get('/dashboard/health',             admin.getDashboardHealth);
 router.get('/dashboard/charts/:type',       admin.getChartData);
 router.get('/dashboard/activity/recent',    admin.getRecentActivity);
 
+// Audit Log (Phase 5.3, read-only, filterable)
+router.get('/audit',                        admin.getAuditLogs);
+
 // Users
 router.get('/users',                        admin.getAllUsers);
 router.get('/users/:id',                    admin.getUser);
