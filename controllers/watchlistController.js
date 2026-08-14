@@ -71,6 +71,51 @@ exports.addLegacyWatchlist = async (req, res) => {
 };
 
 /**
+ * POST /api/watchlist/:animeId
+ * Optimistic My List toggle — adds (or updates status of) + removes.
+ * Body: { status } optional (defaults to 'PLAN_TO_WATCH')
+ * Returns { inList: bool, status } for optimistic UI rollback.
+ */
+exports.toggleWatchlist = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { animeId } = req.params;
+    const { status } = req.body || {};
+
+    if (!animeId) {
+      return res.status(400).json({ message: 'animeId is required.' });
+    }
+
+    // If it's already in the list, remove it (toggle off).
+    const [existing] = await db.query(
+      'SELECT id FROM user_watchlists WHERE user_id = ? AND anime_id = ?',
+      [userId, animeId]
+    );
+    if (existing.length) {
+      await db.query('DELETE FROM user_watchlists WHERE user_id = ? AND anime_id = ?', [userId, animeId]);
+      return res.json({ inList: false, status: null, message: 'Removed from My List.' });
+    }
+
+    // Not in the list → add it.
+    const [animeRows] = await db.query('SELECT title, cover_image FROM anime WHERE id = ?', [animeId]);
+    const validStatuses = ['WATCHING', 'COMPLETED', 'ON_HOLD', 'DROPPED', 'PLAN_TO_WATCH'];
+    const resolvedStatus = validStatuses.includes(status) ? status : 'PLAN_TO_WATCH';
+
+    await db.query(
+      `INSERT INTO user_watchlists (user_id, anime_id, anime_title, anime_cover, status)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = CURRENT_TIMESTAMP`,
+      [userId, animeId, animeRows[0]?.title || `Anime-${animeId}`, animeRows[0]?.cover_image || null, resolvedStatus]
+    );
+
+    return res.json({ inList: true, status: resolvedStatus, message: 'Added to My List.' });
+  } catch (err) {
+    console.error('[WatchlistController] toggleWatchlist error:', err.message);
+    return res.status(500).json({ message: 'Failed to toggle watchlist.' });
+  }
+};
+
+/**
  * GET /api/watchlist?status=WATCHING
  * Fetches the logged-in user's watchlist.
  * Optional query param: status — filter results by status value.

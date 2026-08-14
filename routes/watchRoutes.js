@@ -1,5 +1,5 @@
 // routes/watchRoutes.js
-// Protected routes for video playback progress tracking
+// Protected routes for the Phase 3 authoritative watch progress model.
 const express   = require('express');
 const router    = express.Router();
 const watchCtrl = require('../controllers/watchController');
@@ -19,16 +19,31 @@ router.get('/skip-times/:malId/:episodeNumber', watchCtrl.getEpisodeSkipTimes);
 router.use(protect);
 
 // Save/update video playback progress
-router.post('/progress', watchCtrl.saveProgress);
+// Body: { episodeId, positionSec, durationSec, event }
+router.put('/progress', watchCtrl.saveProgress);
 
-// Get saved progress for a specific anime episode
-router.get('/progress/:animeId/:episodeNumber', watchCtrl.getProgress);
+// Get saved progress for a specific episode (by episodeId)
+router.get('/progress/:episodeId', watchCtrl.getProgress);
 
-// Get "Continue Watching" list (in-progress episodes)
+// Get progress for all episodes of an anime → map { episodeId: {...} }
+router.get('/anime/:animeId/progress', watchCtrl.getAnimeProgress);
+
+// Get "Continue Watching" list (one card per anime)
 router.get('/continue-watching', watchCtrl.getContinueWatching);
 
-// Get batch progress for all episodes of an anime (for watched/unwatched state in sidebar)
+// Dismiss an anime from the continue-watching rail
+router.delete('/continue-watching/:animeId', watchCtrl.dismissContinueWatching);
+
+// "Start over" — reset progress for an anime
+router.post('/restart/:animeId', watchCtrl.restartAnime);
+
+// Watch history (paginated)
+router.get('/history', watchCtrl.getHistory);
+
+// Clear all watch history
+router.delete('/history', watchCtrl.clearHistory);
+
+// Get batch progress for all episodes of an anime (legacy, for sidebar state)
 router.get('/progress/batch/:animeId', watchCtrl.getBatchProgress);
 
 module.exports = router;
-

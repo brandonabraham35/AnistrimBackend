@@ -33,5 +33,8 @@ router.get('/progress/:epId', wl.getLegacyProgress);
 // Remove an anime from the watchlist
 router.delete('/:animeId', wl.removeFromWatchlist);
 
+// My List optimistic toggle: add (or remove) an anime by id
+router.post('/:animeId', wl.toggleWatchlist);
+
 module.exports = router;
 

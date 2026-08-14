@@ -1,260 +1,456 @@
-// controllers/watchController.js
-// Video playback progress tracking ("Resume Watching" feature)
-// Next episode resolver for auto-play / binge-watching
-// Batch progress for episode sidebar watched/unwatched state
+// controllers/watchController.js — Phase 3 authoritative watch progress model.
+//
+// One API surface over the unified `watch_progress` table (keyed on episode_id).
+//
+//   PUT    /api/watch/progress          { episodeId, positionSec, durationSec, event }
+//   GET    /api/watch/progress/:episodeId
+//   GET    /api/watch/anime/:animeId/progress      → map { episodeId: {position,percent,completed} }
+//   GET    /api/watch/continue-watching?limit=20   → one row PER ANIME
+//   DELETE /api/watch/continue-watching/:animeId   → hide from the rail
+//   POST   /api/watch/restart/:animeId             → "Start over"
+//   GET    /api/watch/history?page=&limit=
+//   DELETE /api/watch/history                      → clear all
+//
+// Server rules:
+//   • clamp position ≤ duration
+//   • mark completed=1 when percent ≥ 95 or duration - position ≤ 60
+//   • ignore writes where position < 5s and no prior row (avoids junk)
+//   • accept out-of-order heartbeats by taking MAX(updated_at) semantics
 const db = require('../config/db');
 const { fetchSkipTimes } = require('../services/aniSkipService');
 const streamingService = require('../services/streamingService');
 
-/**
- * POST /api/watch/progress
- * Body: { animeId, episodeId, episodeNumber, progressSeconds, totalDurationSeconds }
- * Saves/upserts the user's playback progress for a specific anime episode.
- * Persists: anime ID, episode ID, playback position, duration, last watched timestamp.
- */
+// ── Helpers ─────────────────────────────────────────────────
+function clampPosition(position, duration) {
+  const pos = Math.max(0, Math.floor(Number(position) || 0));
+  const dur = Math.max(0, Math.floor(Number(duration) || 0));
+  return dur > 0 ? Math.min(pos, dur) : pos;
+}
+
+function isCompleted(position, duration) {
+  const pos = Number(position) || 0;
+  const dur = Number(duration) || 0;
+  if (dur <= 0) return false;
+  return (pos / dur) >= 0.95 || (dur - pos) <= 60;
+}
+
+// ── PUT /api/watch/progress ─────────────────────────────────
+// Body: { episodeId, positionSec, durationSec, event }
+// event ∈ heartbeat|pause|seek|exit|ended
 exports.saveProgress = async (req, res) => {
   try {
-    const userId = req.user.id; // Set by auth.protect middleware
-    const { animeId, episodeId, episodeNumber, progressSeconds, totalDurationSeconds } = req.body;
+    const userId = req.userId ?? req.user?.id;
+    const { episodeId, positionSec, durationSec, event } = req.body;
 
-    // Validate required fields
-    if (!animeId || episodeNumber === undefined || episodeNumber === null) {
-      return res.status(400).json({ message: 'animeId and episodeNumber are required.' });
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
+
+    // Resolve the episode to get anime_id + episode_number.
+    const [epRows] = await db.query(
+      'SELECT id, anime_id, episode_number, season_number FROM episodes WHERE id = ?',
+      [episodeId]
+    );
+    if (!epRows.length) return res.status(404).json({ message: 'Episode not found.' });
+    const ep = epRows[0];
+
+    const position = clampPosition(positionSec, durationSec);
+    const duration = Math.max(0, Math.floor(Number(durationSec) || 0));
+    const completed = isCompleted(position, duration);
+
+    // Ignore writes where position < 5s and no prior row (avoids junk from
+    // accidental opens).
+    const [existing] = await db.query(
+      'SELECT id, position_sec FROM watch_progress WHERE user_id = ? AND episode_id = ?',
+      [userId, episodeId]
+    );
+    if (!existing.length && position < 5) {
+      return res.json({ success: true, ignored: true, message: 'Progress too small to record.' });
     }
 
+    // Out-of-order heartbeats: only update if the new position is >= existing
+    // (MAX semantics) unless the event is 'seek' or 'ended' (authoritative).
+    const isAuthoritative = event === 'seek' || event === 'ended' || event === 'exit';
+    if (existing.length && !isAuthoritative && position < existing[0].position_sec) {
+      return res.json({ success: true, ignored: true, message: 'Out-of-order heartbeat ignored.' });
+    }
+
+    const device = req.headers?.['user-agent']?.includes('Android') ? 'android'
+      : req.headers?.['user-agent']?.includes('iPhone') ? 'ios' : 'web';
+
     await db.query(
-      `INSERT INTO watch_history
-         (user_id, anime_id, episode_id, episode_number, progress_seconds, total_duration_seconds)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO watch_progress
+         (user_id, anime_id, episode_id, season_number, episode_number, position_sec, duration_sec, completed, completed_at, device)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         progress_seconds         = VALUES(progress_seconds),
-         total_duration_seconds   = VALUES(total_duration_seconds),
-         episode_id               = COALESCE(VALUES(episode_id), episode_id),
-         updated_at               = NOW()`,
-      [userId, animeId, episodeId || null, episodeNumber, progressSeconds || 0, totalDurationSeconds || 0]
+         position_sec = VALUES(position_sec),
+         duration_sec = VALUES(duration_sec),
+         completed    = VALUES(completed),
+         completed_at = IF(VALUES(completed)=1, COALESCE(watch_progress.completed_at, NOW()), watch_progress.completed_at),
+         device       = VALUES(device),
+         updated_at   = NOW()`,
+      [userId, ep.anime_id, ep.id, ep.season_number || 1, ep.episode_number, position, duration, completed ? 1 : 0, completed ? new Date() : null, device]
     );
 
-    res.json({ message: 'Progress saved successfully.' });
+    return res.json({ success: true, positionSec: position, completed });
   } catch (err) {
     console.error('[WatchController] saveProgress error:', err.message);
-    res.status(500).json({ message: 'Failed to save progress.' });
+    return res.status(500).json({ message: 'Failed to save progress.' });
   }
 };
 
-/**
- * GET /api/watch/progress/:animeId/:episodeNumber
- * Returns { progressSeconds, totalDurationSeconds } if a record exists,
- * or defaults to { progressSeconds: 0 } if not found.
- */
+// ── GET /api/watch/progress/:episodeId ──────────────────────
 exports.getProgress = async (req, res) => {
   try {
-    const userId = req.user.id; // Set by auth.protect middleware
-    const { animeId, episodeNumber } = req.params;
+    const userId = req.userId ?? req.user?.id;
+    const { episodeId } = req.params;
 
-    if (!animeId || episodeNumber === undefined || episodeNumber === null) {
-      return res.status(400).json({ message: 'animeId and episodeNumber are required.' });
-    }
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
 
     const [rows] = await db.query(
-      `SELECT progress_seconds, total_duration_seconds
-       FROM watch_history
-       WHERE user_id = ? AND anime_id = ? AND episode_number = ?
+      `SELECT position_sec, duration_sec, percent, completed, updated_at
+       FROM watch_progress
+       WHERE user_id = ? AND episode_id = ?
        LIMIT 1`,
-      [userId, animeId, parseInt(episodeNumber, 10)]
+      [userId, episodeId]
     );
 
-    if (rows.length === 0) {
-      return res.json({ progressSeconds: 0 });
+    if (!rows.length) {
+      return res.json({ positionSec: 0, durationSec: 0, percent: 0, completed: false });
     }
 
-    res.json({
-      progressSeconds: rows[0].progress_seconds,
-      totalDurationSeconds: rows[0].total_duration_seconds,
+    return res.json({
+      positionSec: rows[0].position_sec,
+      durationSec: rows[0].duration_sec,
+      percent: Number(rows[0].percent) || 0,
+      completed: !!rows[0].completed,
+      updatedAt: rows[0].updated_at,
     });
   } catch (err) {
     console.error('[WatchController] getProgress error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch progress.' });
+    return res.status(500).json({ message: 'Failed to fetch progress.' });
   }
 };
 
-/**
- * GET /api/watch/progress/batch/:animeId
- * Returns progress for every episode of an anime in a single query.
- *
- * Response shape (keyed by episode_number):
- *   {
- *     "1": { progressSec: 450, durationSec: 1455, watched: false },
- *     "2": { progressSec: 0,   durationSec: 1380, watched: false },
- *     ...
- *   }
- *
- * `watched` is true when progress >= 95% of the recorded duration.
- * Episodes with no watch_history entry are omitted from the payload;
- * the frontend treats missing keys as unwatched / 0 progress.
- */
-exports.getBatchProgress = async (req, res) => {
+// ── GET /api/watch/anime/:animeId/progress ──────────────────
+// Returns map { episodeId: {position,percent,completed} }
+exports.getAnimeProgress = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId ?? req.user?.id;
     const { animeId } = req.params;
 
-    if (!animeId) {
-      return res.status(400).json({ message: 'animeId is required.' });
-    }
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!animeId) return res.status(400).json({ message: 'animeId is required.' });
 
     const [rows] = await db.query(
-      `SELECT episode_number, progress_seconds, total_duration_seconds
-       FROM watch_history
-       WHERE user_id = ? AND anime_id = ?
-       ORDER BY episode_number ASC`,
+      `SELECT episode_id, position_sec, duration_sec, percent, completed
+       FROM watch_progress
+       WHERE user_id = ? AND anime_id = ?`,
+      [userId, animeId]
+    );
+
+    const map = {};
+    rows.forEach(r => {
+      map[String(r.episode_id)] = {
+        position: r.position_sec,
+        percent: Number(r.percent) || 0,
+        completed: !!r.completed,
+      };
+    });
+
+    return res.json(map);
+  } catch (err) {
+    console.error('[WatchController] getAnimeProgress error:', err.message);
+    return res.status(500).json({ message: 'Failed to fetch anime progress.' });
+  }
+};
+
+// ── GET /api/watch/continue-watching?limit=20 ───────────────
+// One row PER ANIME. If the most recent row is completed → surface the NEXT
+// episode at position 0 ("Up next"). If no next episode → drop the anime.
+// Excludes dismissed anime and percent < 2 or ≥ 95 (unless "next episode").
+exports.getContinueWatching = async (req, res) => {
+  try {
+    const userId = req.userId ?? req.user?.id;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+    // For each (user, anime): take the most recently updated row.
+    const [rows] = await db.query(
+      `SELECT
+         wp.anime_id,
+         wp.episode_id,
+         wp.episode_number,
+         wp.season_number,
+         wp.position_sec,
+         wp.duration_sec,
+         wp.percent,
+         wp.completed,
+         wp.updated_at,
+         a.title       AS anime_title,
+         a.cover_image AS anime_cover_image,
+         e.title       AS episode_title
+       FROM watch_progress wp
+       JOIN (
+         SELECT w.user_id, w.anime_id, MAX(w.updated_at) AS max_updated
+         FROM watch_progress w
+         WHERE w.user_id = ?
+         GROUP BY w.user_id, w.anime_id
+       ) latest ON latest.user_id = wp.user_id
+                AND latest.anime_id  = wp.anime_id
+                AND latest.max_updated = wp.updated_at
+       JOIN anime a ON a.id = wp.anime_id
+       LEFT JOIN episodes e ON e.id = wp.episode_id
+       LEFT JOIN watch_dismissed wd ON wd.user_id = wp.user_id AND wd.anime_id = wp.anime_id
+       WHERE wp.user_id = ?
+         AND wd.user_id IS NULL
+       ORDER BY wp.updated_at DESC
+       LIMIT ?`,
+      [userId, userId, limit]
+    );
+
+    const result = [];
+    for (const row of rows) {
+      const percent = Number(row.percent) || 0;
+
+      // If the most recent row is completed → surface the NEXT episode.
+      if (row.completed || percent >= 95) {
+        const [nextEp] = await db.query(
+          `SELECT id, episode_number, season_number, title
+           FROM episodes
+           WHERE anime_id = ? AND episode_number > ?
+           ORDER BY episode_number ASC
+           LIMIT 1`,
+          [row.anime_id, row.episode_number]
+        );
+        if (!nextEp.length) {
+          // Series finished — drop from the rail.
+          continue;
+        }
+        result.push({
+          animeId: row.anime_id,
+          title: row.anime_title,
+          poster: row.anime_cover_image,
+          seasonNumber: nextEp[0].season_number || 1,
+          episodeId: nextEp[0].id,
+          episodeNumber: nextEp[0].episode_number,
+          episodeTitle: nextEp[0].title || null,
+          positionSec: 0,
+          durationSec: 0,
+          percent: 0,
+          resumeUrl: `watch.html?anime=${row.anime_id}&ep=${nextEp[0].id}&t=0`,
+          state: 'next_episode',
+        });
+        continue;
+      }
+
+      // Exclude percent < 2 (accidental opens).
+      if (percent < 2) continue;
+
+      result.push({
+        animeId: row.anime_id,
+        title: row.anime_title,
+        poster: row.anime_cover_image,
+        seasonNumber: row.season_number || 1,
+        episodeId: row.episode_id,
+        episodeNumber: row.episode_number,
+        episodeTitle: row.episode_title || null,
+        positionSec: row.position_sec,
+        durationSec: row.duration_sec,
+        percent,
+        resumeUrl: `watch.html?anime=${row.anime_id}&ep=${row.episode_id}&t=${row.position_sec}`,
+        state: 'resume',
+      });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[WatchController] getContinueWatching error:', err.message);
+    return res.status(500).json({ message: 'Failed to fetch continue watching list.' });
+  }
+};
+
+// ── DELETE /api/watch/continue-watching/:animeId ────────────
+// Hide an anime from the continue-watching rail.
+exports.dismissContinueWatching = async (req, res) => {
+  try {
+    const userId = req.userId ?? req.user?.id;
+    const { animeId } = req.params;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!animeId) return res.status(400).json({ message: 'animeId is required.' });
+
+    await db.query(
+      'INSERT IGNORE INTO watch_dismissed (user_id, anime_id) VALUES (?, ?)',
+      [userId, animeId]
+    );
+
+    return res.json({ success: true, message: 'Removed from continue watching.' });
+  } catch (err) {
+    console.error('[WatchController] dismissContinueWatching error:', err.message);
+    return res.status(500).json({ message: 'Failed to dismiss.' });
+  }
+};
+
+// ── POST /api/watch/restart/:animeId ────────────────────────
+// "Start over" — reset all progress for the anime.
+exports.restartAnime = async (req, res) => {
+  try {
+    const userId = req.userId ?? req.user?.id;
+    const { animeId } = req.params;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!animeId) return res.status(400).json({ message: 'animeId is required.' });
+
+    await db.query(
+      'DELETE FROM watch_progress WHERE user_id = ? AND anime_id = ?',
+      [userId, animeId]
+    );
+    await db.query(
+      'DELETE FROM watch_dismissed WHERE user_id = ? AND anime_id = ?',
+      [userId, animeId]
+    );
+
+    return res.json({ success: true, message: 'Progress reset. Starting over.' });
+  } catch (err) {
+    console.error('[WatchController] restartAnime error:', err.message);
+    return res.status(500).json({ message: 'Failed to restart.' });
+  }
+};
+
+// ── GET /api/watch/history?page=&limit= ─────────────────────
+exports.getHistory = async (req, res) => {
+  try {
+    const userId = req.userId ?? req.user?.id;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const offset = (page - 1) * limit;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+    const [rows] = await db.query(
+      `SELECT
+         wp.episode_id, wp.anime_id, wp.episode_number, wp.season_number,
+         wp.position_sec, wp.duration_sec, wp.percent, wp.completed, wp.updated_at,
+         a.title AS anime_title, a.cover_image AS anime_cover_image,
+         e.title AS episode_title
+       FROM watch_progress wp
+       JOIN anime a ON a.id = wp.anime_id
+       LEFT JOIN episodes e ON e.id = wp.episode_id
+       WHERE wp.user_id = ?
+       ORDER BY wp.updated_at DESC
+       LIMIT ? OFFSET ?`,
+      [userId, limit, offset]
+    );
+
+    const [countRows] = await db.query(
+      'SELECT COUNT(*) AS total FROM watch_progress WHERE user_id = ?',
+      [userId]
+    );
+
+    return res.json({
+      items: rows.map(r => ({
+        episodeId: r.episode_id,
+        animeId: r.anime_id,
+        animeTitle: r.anime_title,
+        animeCoverImage: r.anime_cover_image,
+        episodeNumber: r.episode_number,
+        episodeTitle: r.episode_title || null,
+        positionSec: r.position_sec,
+        durationSec: r.duration_sec,
+        percent: Number(r.percent) || 0,
+        completed: !!r.completed,
+        updatedAt: r.updated_at,
+      })),
+      page,
+      limit,
+      total: countRows[0]?.total || 0,
+    });
+  } catch (err) {
+    console.error('[WatchController] getHistory error:', err.message);
+    return res.status(500).json({ message: 'Failed to fetch history.' });
+  }
+};
+
+// ── DELETE /api/watch/history ───────────────────────────────
+// Clear all watch history.
+exports.clearHistory = async (req, res) => {
+  try {
+    const userId = req.userId ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+    await db.query('DELETE FROM watch_progress WHERE user_id = ?', [userId]);
+    await db.query('DELETE FROM watch_dismissed WHERE user_id = ?', [userId]);
+
+    return res.json({ success: true, message: 'Watch history cleared.' });
+  } catch (err) {
+    console.error('[WatchController] clearHistory error:', err.message);
+    return res.status(500).json({ message: 'Failed to clear history.' });
+  }
+};
+
+// ── Legacy: batch progress for episode sidebar ──────────────
+// Kept for backward compatibility with the episode sidebar watched state.
+exports.getBatchProgress = async (req, res) => {
+  try {
+    const userId = req.userId ?? req.user?.id;
+    const { animeId } = req.params;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!animeId) return res.status(400).json({ message: 'animeId is required.' });
+
+    const [rows] = await db.query(
+      `SELECT episode_id, episode_number, position_sec, duration_sec, percent, completed
+       FROM watch_progress
+       WHERE user_id = ? AND anime_id = ?`,
       [userId, animeId]
     );
 
     const progressMap = {};
     rows.forEach(r => {
-      const duration = Number(r.total_duration_seconds) || 0;
-      const progress = Number(r.progress_seconds) || 0;
-      const watched = duration > 0 && progress >= duration * 0.95;
       progressMap[String(r.episode_number)] = {
-        progressSec: progress,
-        durationSec: duration,
-        watched: watched,
+        progressSec: r.position_sec,
+        durationSec: r.duration_sec,
+        watched: !!r.completed || (Number(r.percent) || 0) >= 95,
       };
     });
 
-    res.json(progressMap);
+    return res.json(progressMap);
   } catch (err) {
     console.error('[WatchController] getBatchProgress error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch batch progress.' });
+    return res.status(500).json({ message: 'Failed to fetch batch progress.' });
   }
 };
 
-/**
- * GET /api/watch/continue-watching
- * Returns up to 10 in-progress episodes for the authenticated user.
- *
- * Excludes:
- *  - Episodes < 10 seconds watched (accidental clicks)
- *  - Episodes >= 95% complete (practically finished)
- *
- * Ordered by most recently updated first.
- * Returns anime metadata (title, cover_image) for frontend display.
- */
-exports.getContinueWatching = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const [rows] = await db.query(
-      `SELECT
-         wh.anime_id,
-         wh.episode_number,
-         wh.progress_seconds,
-         wh.total_duration_seconds,
-         wh.updated_at,
-         a.title       AS anime_title,
-         a.cover_image AS anime_cover_image
-       FROM watch_history wh
-       JOIN (
-         -- ONE card per anime: pick the most recently updated in-progress
-         -- episode for each anime_id, so episodes 1,2,3 of the same series do
-         -- not produce multiple Continue Watching cards.
-         SELECT w.user_id, w.anime_id, MAX(w.updated_at) AS max_updated
-         FROM watch_history w
-         WHERE w.user_id = ?
-           AND w.progress_seconds > 10
-           AND w.total_duration_seconds > 0
-           AND w.progress_seconds < (w.total_duration_seconds * 0.95)
-         GROUP BY w.user_id, w.anime_id
-       ) latest ON latest.user_id = wh.user_id
-                AND latest.anime_id  = wh.anime_id
-                AND latest.max_updated = wh.updated_at
-       LEFT JOIN anime a ON a.id = CAST(wh.anime_id AS UNSIGNED)
-       WHERE wh.user_id = ?
-         AND wh.progress_seconds > 10
-         AND wh.total_duration_seconds > 0
-         AND wh.progress_seconds < (wh.total_duration_seconds * 0.95)
-       ORDER BY wh.updated_at DESC
-       LIMIT 10`,
-      [userId, userId]
-    );
-
-    // Map to camelCase keys for the frontend
-    const mapped = rows.map(row => ({
-      animeId: row.anime_id,
-      episodeNumber: row.episode_number,
-      progressSeconds: row.progress_seconds,
-      totalDurationSeconds: row.total_duration_seconds,
-      updatedAt: row.updated_at,
-      animeTitle: row.anime_title,
-      animeCoverImage: row.anime_cover_image,
-    }));
-
-    res.json(mapped);
-  } catch (err) {
-    console.error('[WatchController] getContinueWatching error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch continue watching list.' });
-  }
-};
-
-/**
- * GET /api/watch/next/:animeId/:currentEpisodeNumber
- * Resolves the next episode for an anime to enable auto-play / binge-watching.
- *
- * AnimeHeaven-first (Phase 5): autoplay must use the SAME provider as the
- * current playback. The next episode is resolved from the local DB (which was
- * populated by the AnimeHeaven import) and streamed through the standard
- * streaming engine — NO Consumet dependency.
- *
- * Steps:
- *   1. Look up the anime title + next episode from the local DB.
- *   2. Resolve the stream via streamingService.resolveStream (AnimeHeaven-first).
- *   3. Return combined { success, hasNextEpisode, episode, sources, providerUsed }.
- */
+// ── Legacy: next episode resolver (kept for autoplay) ───────
 exports.resolveNextEpisode = async (req, res) => {
   try {
     const { animeId, currentEpisodeNumber } = req.params;
 
     if (!animeId || currentEpisodeNumber === undefined || currentEpisodeNumber === null) {
-      return res.status(400).json({
-        success: false,
-        message: 'animeId and currentEpisodeNumber are required.',
-      });
+      return res.status(400).json({ success: false, message: 'animeId and currentEpisodeNumber are required.' });
     }
 
     const targetEpisodeNumber = parseInt(currentEpisodeNumber, 10) + 1;
 
-    // 1. Look up the anime title from the local DB.
-    const [animeRows] = await db.query(
-      'SELECT id, title FROM anime WHERE id = ? LIMIT 1',
-      [animeId]
-    );
+    const [animeRows] = await db.query('SELECT id, title FROM anime WHERE id = ? LIMIT 1', [animeId]);
     if (!animeRows.length) {
-      return res.json({
-        success: true,
-        hasNextEpisode: false,
-        message: 'Anime not found in catalogue.',
-      });
+      return res.json({ success: true, hasNextEpisode: false, message: 'Anime not found in catalogue.' });
     }
     const animeTitle = animeRows[0].title;
 
-    // 2. Look up the next episode from the local DB.
     const [epRows] = await db.query(
       'SELECT id, episode_number, title, animeheaven_episode_key FROM episodes WHERE anime_id = ? AND episode_number = ? LIMIT 1',
       [animeId, targetEpisodeNumber]
     );
 
     if (!epRows.length) {
-      return res.json({
-        success: true,
-        hasNextEpisode: false,
-        message: `Episode ${targetEpisodeNumber} not found. This may be the final released episode.`,
-      });
+      return res.json({ success: true, hasNextEpisode: false, message: `Episode ${targetEpisodeNumber} not found. This may be the final released episode.` });
     }
 
     const nextEpisode = epRows[0];
 
-    // 3. Resolve the stream through the standard streaming engine
-    //    (AnimeHeaven-first with fallback). This uses the persisted
-    //    animeheaven_slug + animeheaven_episode_key — NO search.
     const result = await streamingService.resolveStream(animeTitle, targetEpisodeNumber, {
       isPremium: req.user?.isPremium === true || req.user?.isAdmin === true,
       episodeId: nextEpisode.id,
@@ -283,70 +479,35 @@ exports.resolveNextEpisode = async (req, res) => {
     });
   } catch (err) {
     console.error('[WatchController] resolveNextEpisode error:', err.message);
-
-    // Gracefully handle upstream provider failures (502/404 etc.)
     if (err.response) {
       const status = err.response.status;
       if (status === 502 || status === 404) {
-        return res.status(status).json({
-          success: false,
-          hasNextEpisode: false,
-          message: `Upstream provider returned ${status}. Unable to resolve next episode.`,
-        });
+        return res.status(status).json({ success: false, hasNextEpisode: false, message: `Upstream provider returned ${status}. Unable to resolve next episode.` });
       }
     }
-
-    return res.status(502).json({
-      success: false,
-      hasNextEpisode: false,
-      message: `Failed to resolve next episode: ${err.message}`,
-    });
+    return res.status(502).json({ success: false, hasNextEpisode: false, message: `Failed to resolve next episode: ${err.message}` });
   }
 };
 
-/**
- * GET /api/watch/skip-times/:malId/:episodeNumber
- * Fetches OP (opening) and ED (ending) skip timestamps from the AniSkip API.
- *
- * Used by the frontend "Skip Intro" / "Skip Outro" buttons during video playback.
- *
- * Response shape:
- *   { found: true,  op: { start, end }, ed: { start, end } }   — timestamps exist
- *   { found: false }                                             — no skip data
- */
+// ── Legacy: skip times (kept) ───────────────────────────────
 exports.getEpisodeSkipTimes = async (req, res) => {
   try {
     const { malId, episodeNumber } = req.params;
 
     if (!malId || !episodeNumber) {
-      return res.status(400).json({
-        success: false,
-        message: 'malId and episodeNumber are required.',
-      });
+      return res.status(400).json({ success: false, message: 'malId and episodeNumber are required.' });
     }
 
-    // The frontend historically sends the INTERNAL database anime id here, but
-    // AniSkip/Anime-Skip require the MyAnimeList (MAL) id. Resolve the internal
-    // id → mal_id from the `anime` table when the provided value is not already
-    // a usable MAL id. Fall back to using the value as-is (backward compatible:
-    // if the client already sends a real MAL id, or no row maps, we still try).
     let effectiveMalId = malId;
     try {
       if (/^\d+$/.test(String(malId))) {
-        const [rows] = await db.query(
-          'SELECT mal_id FROM anime WHERE id = ? AND mal_id IS NOT NULL LIMIT 1',
-          [parseInt(malId, 10)]
-        );
-        if (rows.length && rows[0].mal_id) {
-          effectiveMalId = String(rows[0].mal_id);
-        }
+        const [rows] = await db.query('SELECT mal_id FROM anime WHERE id = ? AND mal_id IS NOT NULL LIMIT 1', [parseInt(malId, 10)]);
+        if (rows.length && rows[0].mal_id) effectiveMalId = String(rows[0].mal_id);
       }
     } catch (mapErr) {
-      // Non-fatal — fall through and attempt with the original value.
       console.warn('[WatchController] skip-times mal_id lookup failed (non-fatal):', mapErr.message);
     }
 
-    // Make AniSkip non-fatal. If it fails, log a warning and return empty.
     try {
       const result = await fetchSkipTimes(effectiveMalId, episodeNumber);
       return res.json(result);
@@ -356,10 +517,6 @@ exports.getEpisodeSkipTimes = async (req, res) => {
     }
   } catch (err) {
     console.error('[WatchController] getEpisodeSkipTimes error (wrapper):', err.message);
-
-    return res.status(502).json({
-      success: false,
-      message: `Failed to fetch skip timestamps: ${err.message}`,
-    });
+    return res.status(502).json({ success: false, message: `Failed to fetch skip timestamps: ${err.message}` });
   }
 };
