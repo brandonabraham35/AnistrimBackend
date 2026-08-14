@@ -25,6 +25,9 @@ router.put('/progress', watchCtrl.saveProgress);
 // Get saved progress for a specific episode (by episodeId)
 router.get('/progress/:episodeId', watchCtrl.getProgress);
 
+// Get resolved skip markers for an episode (Phase 4.4 / Item 11)
+router.get('/markers/:episodeId', watchCtrl.getEpisodeMarkers);
+
 // Get progress for all episodes of an anime → map { episodeId: {...} }
 router.get('/anime/:animeId/progress', watchCtrl.getAnimeProgress);
 

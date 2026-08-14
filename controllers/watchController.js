@@ -489,6 +489,68 @@ exports.resolveNextEpisode = async (req, res) => {
   }
 };
 
+// ── GET /api/watch/markers/:episodeId (Phase 4.4, Item 11) ──
+// Returns the resolved skip markers for an episode, layered by source priority:
+//   admin → aniskip → provider → auto → none.
+// Each kind (intro/outro/recap) resolves independently. admin (hand-entered)
+// always wins; aniskip comes from the AniSkip API; provider/auto come from the
+// episode_markers table with source='provider'/'auto'.
+exports.getEpisodeMarkers = async (req, res) => {
+  try {
+    const { episodeId } = req.params;
+    if (!episodeId) {
+      return res.status(400).json({ success: false, message: 'episodeId is required.' });
+    }
+
+    // Resolve the episode → anime for the AniSkip (MAL-id) fallback.
+    const [epRows] = await db.query(
+      'SELECT e.id, e.anime_id, e.episode_number, e.duration_sec, a.mal_id, a.title FROM episodes e LEFT JOIN anime a ON a.id = e.anime_id WHERE e.id = ?',
+      [episodeId]
+    );
+    if (!epRows.length) return res.status(404).json({ success: false, message: 'Episode not found.' });
+    const ep = epRows[0];
+
+    const markers = {}; // kind -> { start, end, source, confidence }
+
+    // 1. Admin / provider / auto markers from episode_markers (admin wins).
+    const [dbRows] = await db.query(
+      `SELECT kind, start_sec, end_sec, source, confidence
+       FROM episode_markers
+       WHERE episode_id = ?
+       ORDER BY FIELD(source, 'admin', 'aniskip', 'provider', 'auto') ASC`,
+      [episodeId]
+    );
+    for (const row of dbRows) {
+      const kind = row.kind;
+      if (!markers[kind] || (markers[kind].source === 'aniskip' && row.source === 'admin')) {
+        markers[kind] = { start: row.start_sec, end: row.end_sec, source: row.source, confidence: Number(row.confidence) };
+      }
+    }
+
+    // 2. AniSkip fallback for intro/outro if not already admin-resolved.
+    if (!markers.intro || !markers.outro) {
+      try {
+        const skipData = await fetchSkipTimes(ep.mal_id, ep.episode_number);
+        if (skipData && skipData.found) {
+          if (!markers.intro && skipData.op) {
+            markers.intro = { start: skipData.op.start, end: skipData.op.end, source: 'aniskip', confidence: 1 };
+          }
+          if (!markers.outro && skipData.ed) {
+            markers.outro = { start: skipData.ed.start, end: skipData.ed.end, source: 'aniskip', confidence: 1 };
+          }
+        }
+      } catch (e) {
+        // Non-fatal — AniSkip may be unavailable.
+      }
+    }
+
+    return res.json({ success: true, episodeId: Number(episodeId), markers });
+  } catch (err) {
+    console.error('[WatchController] getEpisodeMarkers error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch markers.' });
+  }
+};
+
 // ── Legacy: skip times (kept) ───────────────────────────────
 exports.getEpisodeSkipTimes = async (req, res) => {
   try {

@@ -16,6 +16,17 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const providerHealthMonitor = require('./services/providerHealthMonitor');
 
+// Phase 4 (Item 5): generous streaming timeouts. The default 5–6 s cutoff is
+// almost certainly a default headersTimeout/requestTimeout. Disable the request
+// body timeout (so long-lived streams are never cut) and give headers 120 s.
+if (app.set) {
+  // These are Node http-server options (worked around via server.listen below).
+}
+app.set('requestTimeout', 0);
+app.set('headersTimeout', 120000);
+app.set('keepAliveTimeout', 65000);
+app.set('maxRequestSize', 0);
+
 providerHealthMonitor.initialize();
 
 // ─── CORS Configuration ────────────────────────────────────
@@ -126,11 +137,31 @@ app.get(/.*/, (req, res) => {
 // ─── Start Server ──────────────────────────────────────────
 // Bind to 0.0.0.0 to ensure the server is accessible from outside the container,
 // as required by hosting platforms like Render.
-app.listen(PORT, '0.0.0.0', () => {
+// Phase 4 (Item 5): create the HTTP server explicitly so the streaming timeouts
+// actually apply — express app.set() does not reach the underlying Node http
+// server when using app.listen(). requestTimeout=0 disables the body timeout so
+// long-lived media streams are never cut; headersTimeout=120000 gives the
+// upstream generous time to begin responding.
+const http = require('http');
+const server = http.createServer(
+  {
+    requestTimeout: 0,
+    headersTimeout: 120000,
+    keepAliveTimeout: 65000,
+    connectionsCheckingInterval: 60000,
+  },
+  app
+);
+server.listen(PORT, '0.0.0.0', () => {
   console.log('==================================================');
   console.log(`🚀 AniStrim2 running on port ${PORT}`);
   console.log(`   Listening on: http://0.0.0.0:${PORT}`);
   console.log('==================================================');
+});
+// Detect abnormal server-closing conditions so we can log the cause.
+server.on('clientError', (err, socket) => {
+  console.error('⚠️ [SERVER] clientError:', err.message);
+  if (socket && !socket.destroyed) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
 });
 
 // Start background jobs
