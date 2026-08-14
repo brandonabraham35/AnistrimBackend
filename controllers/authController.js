@@ -3,7 +3,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendEmail } = require('../utils/mailer');
-const { signAuthToken } = require('../utils/token');
+const sessionService = require('../services/sessionService');
+const { buildUserDto } = require('../services/userDtoService');
 
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
@@ -93,13 +94,14 @@ exports.login = async (req, res) => {
 
     try {
         const [rows] = await pool.query(
-            'SELECT id, name, email, password_hash, is_admin, is_premium, is_verified, avatar_url FROM users WHERE email = ?',
+            'SELECT * FROM users WHERE email = ?',
             [email]
         );
 
         if (rows.length === 0) {
             log('User not found.');
-            return res.status(401).json({ message: 'Invalid email or password.' });
+            await sessionService.logEvent(0, 'login_failed', 'password', req).catch(() => {});
+            return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' });
         }
 
         const user = rows[0];
@@ -108,6 +110,7 @@ exports.login = async (req, res) => {
         if (!user.password_hash) {
             log(`User ${email} has no password hash — Google-only account.`);
             return res.status(401).json({
+                code: 'INVALID_CREDENTIALS',
                 message: 'This account uses Google Sign-In. Please click "Continue with Google".'
             });
         }
@@ -115,7 +118,8 @@ exports.login = async (req, res) => {
         const match = await bcrypt.compare(password, user.password_hash);
         if (!match) {
             log('Password mismatch.');
-            return res.status(401).json({ message: 'Invalid email or password.' });
+            await sessionService.logEvent(user.id, 'login_failed', 'password', req).catch(() => {});
+            return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' });
         }
 
         // Unverified manual account — block login and signal the OTP funnel.
@@ -144,6 +148,7 @@ exports.login = async (req, res) => {
             }
             return res.status(403).json({
                 success: false,
+                code: 'EMAIL_NOT_VERIFIED',
                 requiresVerification: true,
                 email: user.email,
                 emailSent,
@@ -151,24 +156,32 @@ exports.login = async (req, res) => {
             });
         }
 
+        // Status gate — reject non-active accounts.
+        if (user.status !== 'active') {
+            const code = user.status === 'suspended' ? 'ACCOUNT_SUSPENDED'
+                : user.status === 'deactivated' ? 'ACCOUNT_DEACTIVATED'
+                : user.status === 'deleted' ? 'ACCOUNT_DELETED'
+                : 'ACCOUNT_NOT_ACTIVE';
+            return res.status(403).json({ code, message: 'Account is not active.' });
+        }
+
         // Update last_login
-        await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+        await pool.query('UPDATE users SET last_login = NOW(), last_login_at = NOW() WHERE id = ?', [user.id]);
 
-        const token = signAuthToken(user);
+        // Create a session (access + refresh tokens).
+        const { accessToken, refreshToken, sessionId } = await sessionService.createSession(user, req);
+        await sessionService.logEvent(user.id, 'login_success', 'password', req);
 
-        log(`Login successful: ${email} (admin: ${!!user.is_admin})`);
+        // Build the canonical user DTO.
+        const dto = await buildUserDto({ ...user, last_login_at: new Date() });
+
+        log(`Login successful: ${email} (admin: ${dto.isAdmin})`);
 
         res.json({
-            token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                isAdmin: !!user.is_admin,
-                isPremium: !!user.is_premium,
-                isVerified: !!user.is_verified,
-                avatar: user.avatar_url || null
-            }
+            token: accessToken,
+            refreshToken,
+            sessionId,
+            user: dto,
         });
 
     } catch (error) {
@@ -218,8 +231,8 @@ exports.signup = async (req, res) => {
         let userId;
         try {
             const [result] = await pool.query(
-                `INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, verification_code, verification_expires)
-                 VALUES (?, ?, ?, 0, 0, 0, ?, ?)`,
+                `INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, verification_code, verification_expires, status, auth_provider)
+                 VALUES (?, ?, ?, 0, 0, 0, ?, ?, 'pending', 'password')`,
                 [name, email, passwordHash, verificationCode, expiresSql]
             );
             userId = result.insertId;
@@ -292,8 +305,7 @@ exports.verifyEmailToken = async (req, res) => {
 
     try {
         const [rows] = await pool.query(
-            `SELECT id, name, email, is_admin, is_premium, is_verified, verification_code, verification_expires, verification_attempts
-             FROM users WHERE email = ?`,
+            `SELECT * FROM users WHERE email = ?`,
             [email]
         );
 
@@ -334,21 +346,30 @@ exports.verifyEmailToken = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid verification code.' });
         }
 
-        // Mark verified and clear the verification fields
+        // Mark verified, set status=active, clear the verification fields
         await pool.query(
-            `UPDATE users SET is_verified = 1, verification_code = NULL, verification_expires = NULL, verification_attempts = 0 WHERE id = ?`,
+            `UPDATE users SET is_verified = 1, status = 'active', email_verified_at = NOW(),
+               verification_code = NULL, verification_expires = NULL, verification_attempts = 0
+             WHERE id = ?`,
             [user.id]
         );
 
-        // Sign a brand-new JWT via the shared helper (id + userId + isVerified: true)
-        const token = signAuthToken({ ...user, is_verified: 1 });
+        // Create a session (access + refresh tokens).
+        const freshUser = { ...user, is_verified: 1, status: 'active', email_verified_at: new Date() };
+        const { accessToken, refreshToken, sessionId } = await sessionService.createSession(freshUser, req);
+        await sessionService.logEvent(user.id, 'login_success', 'password', req);
+
+        // Build the canonical user DTO.
+        const dto = await buildUserDto(freshUser);
 
         log(`Email verified for: ${email}`);
 
         return res.json({
             success: true,
-            token,
-            user: { id: user.id, name: user.name, email: user.email, isVerified: true },
+            token: accessToken,
+            refreshToken,
+            sessionId,
+            user: dto,
         });
     } catch (error) {
         log(`CRITICAL ERROR during verifyEmailToken: ${error.message}`);
@@ -431,38 +452,24 @@ exports.resendVerification = async (req, res) => {
 };
 
 // ─── Compatibility: fetch current user for profile state ────────
+// Now returns the canonical user DTO (1.5).
 exports.getMe = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.userId ?? req.user?.id;
 
         if (!userId) {
             return res.status(401).json({ message: 'Not authenticated. Please log in.' });
         }
 
-        const [rows] = await pool.query(
-            'SELECT id, name, email, avatar_url, is_admin, is_premium, is_verified, premium_expires_at FROM users WHERE id = ?',
-            [userId]
-        );
+        const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
 
         if (!rows.length) {
             return res.status(404).json({ message: 'User not found.' });
         }
 
         const user = rows[0];
-        res.json({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            avatar_url: user.avatar_url || null,
-            avatar: user.avatar_url || null,
-            is_admin: !!user.is_admin,
-            isAdmin: !!user.is_admin,
-            is_premium: !!user.is_premium,
-            isPremium: !!user.is_premium,
-            is_verified: !!user.is_verified,
-            isVerified: !!user.is_verified,
-            premium_expires_at: user.premium_expires_at || null,
-        });
+        const dto = await buildUserDto(user);
+        res.json(dto);
     } catch (error) {
         log(`CRITICAL ERROR during getMe: ${error.message}`);
         console.error(error);
@@ -483,7 +490,7 @@ exports.getMe = async (req, res) => {
 //   • Does NOT expose whether other accounts exist (works only on the
 //     authenticated user's own id from the verified JWT).
 exports.setPassword = async (req, res) => {
-    const userId = req.user?.id || req.user?.userId;
+    const userId = req.userId ?? req.user?.id ?? req.user?.userId;
     const { newPassword } = req.body;
 
     if (!userId) {
@@ -592,9 +599,10 @@ exports.resetPassword = async (req, res) => {
         const passwordHash = await bcrypt.hash(newPassword, salt);
 
         await pool.query(
-            'UPDATE users SET password_hash = ? WHERE id = ?',
+            'UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?',
             [passwordHash, rows[0].id]
         );
+        await sessionService.logEvent(rows[0].id, 'password_reset', 'password', req).catch(() => {});
 
         return res.json({ message: 'Password reset successfully.' });
     } catch (error) {
@@ -604,5 +612,315 @@ exports.resetPassword = async (req, res) => {
         log(`CRITICAL ERROR during resetPassword: ${error.message}`);
         console.error(error);
         res.status(500).json({ message: 'Server error while resetting password.' });
+    }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  PHASE 1 — New endpoints
+// ════════════════════════════════════════════════════════════════
+
+// ─── POST /api/auth/refresh ────────────────────────────────────
+// Rotate refresh token, issue a new access token.
+exports.refresh = async (req, res) => {
+    const { refreshToken } = req.body;
+    try {
+        const result = await sessionService.rotateRefresh(refreshToken, req);
+        const dto = await buildUserDto(result.user);
+        return res.json({
+            token: result.accessToken,
+            refreshToken: result.refreshToken,
+            sessionId: result.sessionId,
+            user: dto,
+        });
+    } catch (err) {
+        const status = err.status || 401;
+        return res.status(status).json({ code: err.code || 'REFRESH_FAILED', message: err.message });
+    }
+};
+
+// ─── POST /api/auth/logout ─────────────────────────────────────
+// Revoke the current session (sid from the access token).
+exports.logout = async (req, res) => {
+    try {
+        const userId = req.userId ?? req.user?.id;
+        const sid = req.tokenClaims?.sid;
+        if (userId && sid) {
+            await sessionService.revokeSession(sid, userId);
+            await sessionService.logEvent(userId, 'logout', null, req).catch(() => {});
+        }
+        return res.json({ success: true, message: 'Logged out.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during logout: ${error.message}`);
+        return res.status(500).json({ message: 'Server error during logout.' });
+    }
+};
+
+// ─── POST /api/auth/logout-all ─────────────────────────────────
+// token_version++, revoke all sessions.
+exports.logoutAll = async (req, res) => {
+    try {
+        const userId = req.userId ?? req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+        await pool.query('UPDATE users SET token_version = token_version + 1 WHERE id = ?', [userId]);
+        await sessionService.revokeAllSessions(userId, 'logout');
+        return res.json({ success: true, message: 'All sessions revoked.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during logoutAll: ${error.message}`);
+        return res.status(500).json({ message: 'Server error during logout-all.' });
+    }
+};
+
+// ─── GET /api/auth/sessions ────────────────────────────────────
+// List active devices (current flagged).
+exports.listSessions = async (req, res) => {
+    try {
+        const userId = req.userId ?? req.user?.id;
+        const currentSid = req.tokenClaims?.sid;
+        if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+        const sessions = await sessionService.listSessions(userId);
+        const mapped = sessions.map(s => ({
+            id: s.id,
+            deviceName: s.device_name,
+            platform: s.platform,
+            userAgent: s.user_agent,
+            createdAt: s.created_at,
+            lastSeenAt: s.last_seen_at,
+            expiresAt: s.expires_at,
+            revokedAt: s.revoked_at,
+            current: s.id === currentSid,
+        }));
+        return res.json({ sessions: mapped });
+    } catch (error) {
+        log(`CRITICAL ERROR during listSessions: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while listing sessions.' });
+    }
+};
+
+// ─── DELETE /api/auth/sessions/:id ─────────────────────────────
+// Revoke one device.
+exports.revokeSession = async (req, res) => {
+    try {
+        const userId = req.userId ?? req.user?.id;
+        const sessionId = req.params.id;
+        if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+        if (!sessionId) return res.status(400).json({ message: 'Session id is required.' });
+
+        await sessionService.revokeSession(sessionId, userId);
+        await sessionService.logEvent(userId, 'session_revoked', null, req).catch(() => {});
+        return res.json({ success: true, message: 'Session revoked.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during revokeSession: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while revoking session.' });
+    }
+};
+
+// ─── POST /api/auth/change-password ────────────────────────────
+// Verify old password, token_version++, keep current session.
+exports.changePassword = async (req, res) => {
+    const userId = req.userId ?? req.user?.id;
+    const { oldPassword, newPassword } = req.body;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!oldPassword || !newPassword) {
+        return res.status(400).json({ message: 'Old and new passwords are required.' });
+    }
+    if (String(newPassword).length < 6) {
+        return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    }
+
+    try {
+        const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
+        if (!rows.length) return res.status(404).json({ message: 'User not found.' });
+        const user = rows[0];
+
+        if (!user.password_hash) {
+            return res.status(400).json({ message: 'This account uses Google Sign-In. Set a password first.' });
+        }
+
+        const match = await bcrypt.compare(oldPassword, user.password_hash);
+        if (!match) {
+            return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect.' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(String(newPassword), salt);
+
+        // token_version++ invalidates all OTHER sessions, but the current one
+        // is re-issued below with the new version so the user stays logged in.
+        await pool.query(
+            'UPDATE users SET password_hash = ?, token_version = token_version + 1, updated_at = NOW() WHERE id = ?',
+            [passwordHash, userId]
+        );
+
+        // Re-issue the current session's access token with the new token_version.
+        const freshUser = { ...user, password_hash: passwordHash, token_version: Number(user.token_version) + 1 };
+        const sid = req.tokenClaims?.sid;
+        const accessToken = await sessionService.signAccessToken(freshUser, sid);
+
+        return res.json({ success: true, token: accessToken, message: 'Password changed successfully.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during changePassword: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while changing password.' });
+    }
+};
+
+// ─── POST /api/auth/change-email ───────────────────────────────
+// Send OTP to the new address.
+exports.changeEmail = async (req, res) => {
+    const userId = req.userId ?? req.user?.id;
+    const { newEmail } = req.body;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!newEmail || !isValidEmail(newEmail)) {
+        return res.status(400).json({ message: 'Please provide a valid email address.' });
+    }
+
+    try {
+        const normalized = newEmail.trim().toLowerCase();
+
+        // Check the new email is not already in use.
+        const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [normalized]);
+        if (existing.length) {
+            return res.status(409).json({ message: 'An account with this email already exists.' });
+        }
+
+        // Generate OTP, store hashed in email_change_requests.
+        const otp = generateVerificationCode();
+        const otpHash = sessionService.sha256(otp);
+        const requestId = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
+        const expiresSql = expiresAt.toISOString().slice(0, 19).replace('T', ' ');
+
+        await pool.query(
+            `INSERT INTO email_change_requests (id, user_id, new_email, otp_hash, expires_at)
+             VALUES (?, ?, ?, ?, ?)`,
+            [requestId, userId, normalized, otpHash, expiresSql]
+        );
+
+        const html = `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
+            <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#111827;margin-bottom:8px;">
+              Ani<span style="color:#6c2bd9;">Strim</span>
+            </div>
+            <p style="color:#374151;font-size:0.95rem;text-align:center;">Confirm your new email address.</p>
+            <div style="text-align:center;margin:24px 0;">
+              <span style="display:inline-block;background:#f3f4f6;color:#111827;font-size:2rem;font-weight:700;letter-spacing:8px;padding:14px 24px;border-radius:8px;">${otp}</span>
+            </div>
+            <p style="color:#6b7280;font-size:0.85rem;text-align:center;">
+              This code expires in ${VERIFICATION_TTL_MINUTES} minutes.
+            </p>
+          </div>`;
+
+        let emailSent = false;
+        try {
+            await sendEmail(normalized, 'Confirm your new AniStrim email', html, otp);
+            emailSent = true;
+        } catch (mailError) {
+            log(`WARN: change-email OTP failed for ${normalized}: ${mailError.message}`);
+        }
+
+        return res.json({ success: true, emailSent, requestId, message: 'Verification code sent to your new email.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during changeEmail: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while changing email.' });
+    }
+};
+
+// ─── POST /api/auth/change-email/confirm ───────────────────────
+// Swap email, log event.
+exports.confirmChangeEmail = async (req, res) => {
+    const userId = req.userId ?? req.user?.id;
+    const { requestId, code } = req.body;
+
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    if (!requestId || !code) {
+        return res.status(400).json({ message: 'Request id and verification code are required.' });
+    }
+
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM email_change_requests WHERE id = ? AND user_id = ?',
+            [requestId, userId]
+        );
+        if (!rows.length) {
+            return res.status(400).json({ message: 'Invalid or expired email change request.' });
+        }
+        const request = rows[0];
+
+        if (request.consumed_at) {
+            return res.status(400).json({ message: 'This email change request has already been used.' });
+        }
+
+        const expires = new Date(request.expires_at);
+        if (Number.isNaN(expires.getTime()) || Date.now() > expires.getTime()) {
+            return res.status(400).json({ message: 'Verification code has expired. Please request a new one.' });
+        }
+
+        if (!safeEqual(request.otp_hash, sessionService.sha256(String(code).trim()))) {
+            return res.status(400).json({ message: 'Invalid verification code.' });
+        }
+
+        // Swap the email.
+        await pool.query(
+            'UPDATE users SET email = ?, updated_at = NOW() WHERE id = ?',
+            [request.new_email, userId]
+        );
+        await pool.query(
+            'UPDATE email_change_requests SET consumed_at = NOW() WHERE id = ?',
+            [requestId]
+        );
+        await sessionService.logEvent(userId, 'email_changed', null, req).catch(() => {});
+
+        return res.json({ success: true, message: 'Email updated successfully.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during confirmChangeEmail: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while confirming email change.' });
+    }
+};
+
+// ─── POST /api/auth/account/deactivate ─────────────────────────
+// status='deactivated', revoke sessions.
+exports.deactivateAccount = async (req, res) => {
+    const userId = req.userId ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+    try {
+        await pool.query(
+            "UPDATE users SET status = 'deactivated', status_reason = 'user_requested', token_version = token_version + 1, updated_at = NOW() WHERE id = ?",
+            [userId]
+        );
+        await sessionService.revokeAllSessions(userId, 'logout');
+        return res.json({ success: true, message: 'Account deactivated.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during deactivateAccount: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while deactivating account.' });
+    }
+};
+
+// ─── POST /api/auth/account/delete ─────────────────────────────
+// Soft-delete: status='deleted', deleted_at=NOW(), anonymise email,
+// purge avatar. Hard purge job after 30 days.
+exports.deleteAccount = async (req, res) => {
+    const userId = req.userId ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+
+    try {
+        const anonymisedEmail = `deleted+${userId}@anistrim.invalid`;
+        await pool.query(
+            `UPDATE users
+             SET status = 'deleted', deleted_at = NOW(), status_reason = 'user_requested',
+                 token_version = token_version + 1, email = ?, username = NULL,
+                 display_name = NULL, avatar_url = NULL, name = 'Deleted User',
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [anonymisedEmail, userId]
+        );
+        await sessionService.revokeAllSessions(userId, 'logout');
+        return res.json({ success: true, message: 'Account deleted. This action is irreversible.' });
+    } catch (error) {
+        log(`CRITICAL ERROR during deleteAccount: ${error.message}`);
+        return res.status(500).json({ message: 'Server error while deleting account.' });
     }
 };

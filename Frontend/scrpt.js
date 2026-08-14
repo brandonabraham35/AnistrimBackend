@@ -48,7 +48,16 @@ const State = (function () {
   if (isAdminPage) return;
 
   const go = (dest) => (window.NavGuard ? window.NavGuard.go(dest) : (window.location.replace(dest), true));
-  if (!State.isLoggedIn && !publicPages.includes(page)) { go('login.html'); return; }
+  if (!State.isLoggedIn && !publicPages.includes(page)) {
+    // Phase 1 (Item 15): guarded pages preserve the current path+search so the
+    // user returns to the exact page after login.
+    if (window.Navigation && window.Navigation.guardPage) {
+      window.Navigation.guardPage();
+    } else {
+      go('login.html');
+    }
+    return;
+  }
   if (State.isLoggedIn && (page === 'login.html' || page === 'signup.html')) { go('index.html'); }
 })();
 

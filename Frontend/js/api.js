@@ -31,8 +31,12 @@
   // session (including the admin role) is fully written to localStorage BEFORE
   // any navigation — the WebView writes storage slower than the browser, and a
   // hard redirect before the session is settled is exactly what caused the
-  // "login -> lands nowhere" loop. Admin routes to admin.html (whose gate
-  // re-verifies the role via /api/auth/me), everyone else -> index.html.
+  // "login -> lands nowhere" loop.
+  //
+  // Phase 1 (Item 15): delegates the destination decision to the canonical
+  // Navigation.afterAuth contract (Frontend/js/navigation.js), which sanitizes
+  // the redirect param, handles emailVerified/onboarded/status, and uses
+  // location.replace() so the back-button can't return to the login page.
   // Callers must RETURN immediately after calling this.
   function redirectAfterAuthentication(user, token) {
     var tok = token || (window.Auth ? window.Auth.token : '') || localStorage.getItem('token') || '';
@@ -48,12 +52,16 @@
     localStorage.removeItem('pendingEmail');
     // One-shot guard so scrpt.js's "logged in -> index" gate can't stomp this.
     sessionStorage.setItem('__authRedirecting', '1');
-    // Resolve destination from the settled user object (server-authoritative
-    // isAdmin at login time). admin.html's own gate will re-confirm the role.
-    var dest = (user && user.isAdmin) ? '/admin.html' : '/index.html';
     // Fresh session => fresh redirect budget.
     try { window.NavGuard && window.NavGuard.reset(); } catch (e) {}
-    window.location.replace(dest);
+    // Delegate to the canonical navigation contract.
+    var redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    if (window.Navigation && window.Navigation.afterAuth) {
+      window.Navigation.afterAuth(user, redirectParam);
+    } else {
+      var dest = (user && user.isAdmin) ? '/admin.html' : '/index.html';
+      window.location.replace(dest);
+    }
   }
   window.redirectAfterAuthentication = redirectAfterAuthentication;
 

@@ -40,7 +40,10 @@ async function handleLogin() {
     if (data && data.token) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user, data.token);
+      // Use the canonical session + navigation contract.
+      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+      const user = data.user || (await window.Session?.refresh?.());
+      window.Navigation?.afterAuth?.(user, redirectParam);
       return;
     }
 
@@ -93,7 +96,8 @@ async function sendIdTokenToBackend(idToken) {
     if (data && data.token && data.user) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user, data.token);
+      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+      window.Navigation?.afterAuth?.(data.user, redirectParam);
       return;
     }
     showError((data && data.message) || 'Google sign-in failed. Please try again.');
@@ -125,7 +129,9 @@ async function handleAppUrlOpen(data) {
     if (token) {
       localStorage.setItem('session_token', token);
       localStorage.setItem('token', token);
-      window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'), token);
+      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      window.Navigation?.afterAuth?.(user, redirectParam);
       return;
     }
 
@@ -138,7 +144,8 @@ async function handleAppUrlOpen(data) {
         localStorage.setItem('token', data2.token);
         if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
         localStorage.setItem('isFirstVisit', 'true');
-        window.redirectAfterAuthentication(data2.user, data2.token);
+        const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+        window.Navigation?.afterAuth?.(data2.user, redirectParam);
       } else {
         showError(data2.message || 'Google sign-in failed. Please try again.');
       }

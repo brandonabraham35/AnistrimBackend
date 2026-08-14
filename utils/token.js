@@ -1,16 +1,14 @@
 // utils/token.js — centralized JWT signing for AniStrim sessions.
 //
-// Every auth path (manual login, signup/verify-otp, Google verify, Google
-// OAuth redirect) mints an IDENTICAL claim shape via signAuthToken, so no
-// session can diverge from another or from the database.
+// Phase 1 (Identity & Account Lifecycle) introduced a NEW access-token contract
+// in services/sessionService.js:
+//   Claims: { uid, sid, tv (token_version), roles[], iat, exp }
+//   TTL: 15 minutes. No isPremium in the token — entitlement is looked up per
+//   request (it goes stale, which is exactly the bug class in item 23).
 //
-// Claim shape: { userId, email, name, isVerified, authProvider }
-//   (plus iat/exp, and id/isAdmin/isPremium kept for backward compatibility
-//   with consumers that read them from the token).
-//
-// isVerified is ALWAYS derived from the DB row (user.is_verified) — never
-// hardcoded — so the JWT and the database stay in agreement, which is what
-// middleware/authMiddleware.verifyTokenAndStatus relies on.
+// This file retains the LEGACY signAuthToken for backward compatibility with
+// consumers that still read the old claim shape (id, userId, isAdmin, isPremium,
+// isVerified). New code should use sessionService.signAccessToken instead.
 const jwt = require('jsonwebtoken');
 
 function signAuthToken(user) {

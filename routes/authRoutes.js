@@ -33,7 +33,7 @@ router.post('/verify-otp', authController.verifyEmailToken);
 router.post('/resend-otp', authController.resendVerification);
 
 // @route   GET /api/auth/me
-// @desc    Fetch the current authenticated user profile
+// @desc    Fetch the current authenticated user profile (canonical DTO)
 // @access  Private
 router.get('/me', authMiddleware.protect, authController.getMe);
 
@@ -52,6 +52,62 @@ router.post('/set-password', authMiddleware.protect, authController.setPassword)
 // @desc    Reset a user password using the reset token
 // @access  Public
 router.post('/reset-password', authController.resetPassword);
+
+// ── Phase 1 — Session lifecycle ──────────────────────────────
+
+// @route   POST /api/auth/refresh
+// @desc    Rotate refresh token, issue a new access token
+// @access  Public (refresh token in body)
+router.post('/refresh', authController.refresh);
+
+// @route   POST /api/auth/logout
+// @desc    Revoke the current session
+// @access  Private
+router.post('/logout', authMiddleware.protect, authController.logout);
+
+// @route   POST /api/auth/logout-all
+// @desc    token_version++, revoke all sessions
+// @access  Private
+router.post('/logout-all', authMiddleware.protect, authController.logoutAll);
+
+// @route   GET /api/auth/sessions
+// @desc    List active devices (current flagged)
+// @access  Private
+router.get('/sessions', authMiddleware.protect, authController.listSessions);
+
+// @route   DELETE /api/auth/sessions/:id
+// @desc    Revoke one device
+// @access  Private
+router.delete('/sessions/:id', authMiddleware.protect, authController.revokeSession);
+
+// ── Phase 1 — Account management ─────────────────────────────
+
+// @route   POST /api/auth/change-password
+// @desc    Verify old password, token_version++, keep current session
+// @access  Private
+router.post('/change-password', authMiddleware.protect, authController.changePassword);
+
+// @route   POST /api/auth/change-email
+// @desc    Send OTP to the new address
+// @access  Private
+router.post('/change-email', authMiddleware.protect, authController.changeEmail);
+
+// @route   POST /api/auth/change-email/confirm
+// @desc    Swap email, log event
+// @access  Private
+router.post('/change-email/confirm', authMiddleware.protect, authController.confirmChangeEmail);
+
+// @route   POST /api/auth/account/deactivate
+// @desc    status='deactivated', revoke sessions
+// @access  Private
+router.post('/account/deactivate', authMiddleware.protect, authController.deactivateAccount);
+
+// @route   POST /api/auth/account/delete
+// @desc    Soft-delete: status='deleted', deleted_at=NOW(), anonymise email
+// @access  Private
+router.post('/account/delete', authMiddleware.protect, authController.deleteAccount);
+
+// ── Google flows ─────────────────────────────────────────────
 
 // @route   POST /api/auth/google/verify
 // @desc    Google LOGIN only — verifies the ID token and authenticates an

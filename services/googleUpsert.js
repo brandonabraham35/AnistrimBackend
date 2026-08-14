@@ -74,8 +74,8 @@ async function createGoogleUser(profile) {
   const googleId = profile.sub;
 
   const [result] = await pool.query(
-    `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium, is_verified, auth_provider)
-     VALUES (?, ?, NULL, ?, ?, 0, 0, 1, 'google')`,
+    `INSERT INTO users (name, email, password_hash, avatar_url, google_id, is_admin, is_premium, is_verified, auth_provider, status, email_verified_at)
+     VALUES (?, ?, NULL, ?, ?, 0, 0, 1, 'google', 'active', NOW())`,
     [googleName, googleEmail, googleAvatar, googleId]
   );
   const [newRows] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
@@ -91,7 +91,7 @@ async function authenticateExistingGoogleUser(user, profile) {
   const googleAvatar = profile.picture || null;
   const googleName = profile.name || null;
 
-  const updates = ['last_login = NOW()', 'updated_at = NOW()'];
+  const updates = ['last_login = NOW()', 'last_login_at = NOW()', 'updated_at = NOW()'];
   const params = [];
   if (googleAvatar && googleAvatar !== user.avatar_url) {
     updates.push('avatar_url = ?');
@@ -119,9 +119,10 @@ async function linkGoogleAccount(user, profile) {
   const googleAvatar = profile.picture || null;
   await pool.query(
     `UPDATE users SET google_id = ?, is_verified = 1, auth_provider = 'google',
+       status = 'active', email_verified_at = COALESCE(email_verified_at, NOW()),
        avatar_url = COALESCE(?, avatar_url),
        verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
-       last_login = NOW(), updated_at = NOW()
+       last_login = NOW(), last_login_at = NOW(), updated_at = NOW()
      WHERE id = ?`,
     [googleId, googleAvatar, user.id]
   );

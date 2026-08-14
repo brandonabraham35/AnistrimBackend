@@ -3,15 +3,15 @@
 // Supports two intents (identical business rules to the web flows):
 //   /google/start?intent=login   -> existing account only (never creates)
 //   /google/start?intent=signup  -> new account only (never silently reuses/links)
+//
+// The login/signup business decision is made in the SHARED
+// resolveGoogleIdentity(profile, intent) helper (services/googleIdentityService.js)
+// so the web GIS and native Capacitor flows apply the IDENTICAL intent rule.
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
-const { signAuthToken } = require('../utils/token');
-const {
-  findGoogleUser,
-  findUserByEmail,
-  createGoogleUser,
-  authenticateExistingGoogleUser,
-} = require('../services/googleUpsert');
+const { resolveGoogleIdentity } = require('../services/googleIdentityService');
+const sessionService = require('../services/sessionService');
+const { buildUserDto } = require('../services/userDtoService');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
@@ -26,19 +26,6 @@ const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_SECRET,
   `${BACKEND_URL}/api/auth/google/callback`
 );
-
-function makeUserObj(user) {
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    isPremium: !!user.is_premium,
-    isAdmin: !!user.is_admin,
-    isVerified: !!user.is_verified,
-    authProvider: user.auth_provider || 'local',
-    avatar: user.avatar_url,
-  };
-}
 
 function createLoginCode(token, user, intent) {
   const code = crypto.randomUUID();
@@ -105,32 +92,29 @@ exports.googleCallback = async (req, res) => {
     if (!profile?.email) return res.send(errorPage('Could not get your email.'));
     if (profile.email_verified === false) return res.send(errorPage('Google email is not verified.'));
 
-    let user = await findGoogleUser(profile.sub);
-    if (!user) user = await findUserByEmail(profile.email);
+    // Apply the IDENTICAL login/signup intent rule via the shared helper.
+    const { user } = await resolveGoogleIdentity(profile, intent);
 
-    if (intent === 'login') {
-      // LOGIN: existing Google account only. Never create, never link.
-      if (!user) {
-        return res.send(errorPage('No AniStrim account exists for this Google account. Please create an account first.'));
-      }
-      if (user.auth_provider !== 'google' && !user.google_id) {
-        return res.send(errorPage('An AniStrim account already exists with this email. Please log in using your email and password.'));
-      }
-      user = await authenticateExistingGoogleUser(user, profile);
-    } else {
-      // SIGNUP: existing account (google_id or email) rejected; new allowed.
-      if (user) {
-        return res.send(errorPage('An AniStrim account already exists. Please log in instead.'));
-      }
-      user = await createGoogleUser(profile);
-    }
+    // Create a session (access + refresh tokens).
+    const { accessToken, refreshToken, sessionId } = await sessionService.createSession(user, req);
+    await sessionService.logEvent(user.id, 'google_login', 'google', req);
 
-    const token = signAuthToken(user);
-    const userObj = makeUserObj(user);
-    const loginCode = createLoginCode(token, userObj, intent);
+    // Build the canonical user DTO.
+    const dto = await buildUserDto(user);
+
+    const loginCode = createLoginCode(accessToken, dto, intent);
     return res.send(successPage(loginCode));
   } catch (err) {
     console.error('Google callback error:', err.message);
+    if (err.code === 'GOOGLE_NO_ACCOUNT') {
+      return res.send(errorPage('No AniStrim account is associated with this Google account. Please create an account first.'));
+    }
+    if (err.code === 'GOOGLE_ACCOUNT_NOT_LINKED') {
+      return res.send(errorPage('An AniStrim account already exists with this email. Please log in using your email and password.'));
+    }
+    if (err.code === 'ACCOUNT_ALREADY_EXISTS') {
+      return res.send(errorPage('An AniStrim account already exists. Please log in instead.'));
+    }
     return res.send(errorPage('Google sign-in failed. Please try again.'));
   }
 };
