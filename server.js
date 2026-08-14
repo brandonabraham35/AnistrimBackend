@@ -18,7 +18,8 @@ const providerHealthMonitor = require('./services/providerHealthMonitor');
 
 // Phase 10 (Security): fail fast if any required secret is missing. Credentials
 // are server-side only — never logged, never shipped to the client.
-const REQUIRED_ENV = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'STREAM_TOKEN_SECRET'];
+// STREAM_TOKEN_SECRET is optional and falls back to JWT_SECRET (utils/streamToken.js).
+const REQUIRED_ENV = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
 if (process.env.NODE_ENV === 'production') {
   const missing = REQUIRED_ENV.filter(k => !process.env[k]);
   if (missing.length) {

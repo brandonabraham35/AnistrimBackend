@@ -12,6 +12,12 @@ function sha256(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
 }
 
+// HMAC key: prefer a dedicated STREAM_TOKEN_SECRET, fall back to JWT_SECRET so
+// the deploy never breaks when the dedicated secret isn't configured yet.
+function secret() {
+  return process.env.STREAM_TOKEN_SECRET || process.env.JWT_SECRET;
+}
+
 function ipHash(ip) {
   if (!ip) return '';
   return sha256(String(ip));
@@ -25,7 +31,7 @@ function ipHash(ip) {
 function mint({ userId, episodeId, streamId, ip }) {
   const body = { userId: String(userId), episodeId: String(episodeId), streamId, ipHash: ipHash(ip), exp: Date.now() + TTL_MS };
   const payload = Buffer.from(JSON.stringify(body)).toString('base64url');
-  const sig = crypto.createHmac('sha256', process.env.STREAM_TOKEN_SECRET).update(payload).digest('base64url');
+  const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
 
@@ -41,7 +47,7 @@ function verify(token, expected = {}) {
   if (parts.length !== 2) return { ok: false, reason: 'TOKEN_MALFORMED' };
   const [payload, sig] = parts;
 
-  const expectedSig = crypto.createHmac('sha256', process.env.STREAM_TOKEN_SECRET).update(payload).digest('base64url');
+  const expectedSig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url');
   const a = Buffer.from(sig);
   const b = Buffer.from(expectedSig);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'TOKEN_INVALID' };
