@@ -49,9 +49,14 @@ async function getPreferences(userId) {
       playbackRate: parseFloat(row.playback_rate) || 1.0,
       skipIntroAuto: !!row.skip_intro_auto,
       reduceMotion: !!row.reduce_motion,
+      updatedAt: row.updated_at || null,
     };
   } catch (e) {
-    // Table may not exist yet — return defaults.
+    // Distinguish "no row" (fine — defaults) from "no table" (a real schema
+    // problem that must not be silently masked). (Bug 9)
+    if (e.code === 'ER_NO_SUCH_TABLE') {
+      console.error('[Preferences] user_preferences table missing — run migrations:', e.message);
+    }
     return defaults;
   }
 }

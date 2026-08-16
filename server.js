@@ -74,6 +74,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/auth', require('./routes/avatarRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
+// Phase 2 (Bug 10): the documented contracts use /api/auth/username-available
+// and /api/auth/set-username. Both are mounted here so either path works.
+const { checkUsername, setUsername } = require('./controllers/profileController');
+const authMiddleware = require('./middleware/auth');
+app.get('/api/auth/username-available', authMiddleware.protect, checkUsername);
+app.post('/api/auth/set-username', authMiddleware.protect, setUsername);
 app.use('/api/anime', require('./routes/animeRoutes'));
 app.use('/api/watchlist', require('./routes/watchlistRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));

@@ -8,6 +8,7 @@
 const pool = require('../config/db');
 const { getPreferences, upsertPreferences } = require('../services/preferencesService');
 const { buildUserDto } = require('../services/userDtoService');
+const watchController = require('./watchController');
 
 // ── Username uniqueness check ──────────────────────────────
 exports.checkUsername = async (req, res) => {
@@ -79,6 +80,12 @@ exports.onboard = async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: 'User not found.' });
     const user = rows[0];
 
+    // Idempotency gate: once onboarded, do NOT let a revisit overwrite the
+    // profile fields (only onboarded_at is COALESCE-protected otherwise).
+    if (user.onboarded_at) {
+      return res.status(400).json({ success: false, message: 'Onboarding already completed.' });
+    }
+
     // Validate username if provided.
     let normalizedUsername = null;
     if (username !== undefined && username !== null && username !== '') {
@@ -92,16 +99,17 @@ exports.onboard = async (req, res) => {
       }
     }
 
-    // Validate genres (min 3).
-    let cleanedGenres = [];
-    if (Array.isArray(genres)) {
-      cleanedGenres = genres
-        .filter(g => g && typeof g === 'string')
-        .slice(0, 20)
-        .map(g => g.trim());
-      if (cleanedGenres.length < 3) {
-        return res.status(400).json({ message: 'Select at least 3 genres to personalise your feed.' });
-      }
+    // Genres are REQUIRED: an array of ≥3 non-empty strings. Omitting them or
+    // sending a non-array must NOT silently complete onboarding with zero genres.
+    if (!Array.isArray(genres)) {
+      return res.status(400).json({ message: 'Select at least 3 genres to personalise your feed.' });
+    }
+    const cleanedGenres = genres
+      .filter(g => g && typeof g === 'string' && g.trim())
+      .slice(0, 20)
+      .map(g => g.trim());
+    if (cleanedGenres.length < 3) {
+      return res.status(400).json({ message: 'Select at least 3 genres to personalise your feed.' });
     }
 
     // Update profile fields + mark onboarded.
@@ -117,10 +125,8 @@ exports.onboard = async (req, res) => {
     );
 
     // Seed preferences (genres used by the recommendation engine).
-    if (cleanedGenres.length) {
-      const current = await getPreferences(userId);
-      await upsertPreferences(userId, { ...current, genres: cleanedGenres });
-    }
+    const current = await getPreferences(userId);
+    await upsertPreferences(userId, { ...current, genres: cleanedGenres });
 
     // Refresh the user row to return the updated DTO.
     const [freshRows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
@@ -155,24 +161,50 @@ exports.updatePreferences = async (req, res) => {
 
   const { genres, autoplayNext, autoplayCountdown, defaultQuality, subtitlesOn, subtitleLang, playbackRate, skipIntroAuto, reduceMotion } = req.body;
 
-  // Validate quality whitelist.
+  // ── Validation (Bug 6) ─────────────────────────────────
+  // Quality whitelist.
   if (defaultQuality !== undefined && !['auto', '360', '480', '720', '1080'].includes(defaultQuality)) {
     return res.status(400).json({ message: 'Invalid default quality.' });
   }
-  // Validate playback rate range.
-  if (playbackRate !== undefined && (Number(playbackRate) < 0.25 || Number(playbackRate) > 3)) {
-    return res.status(400).json({ message: 'Playback rate must be between 0.25 and 3.' });
+  // playbackRate must be a finite number in [0.25, 3] (rejects "banana", NaN).
+  if (playbackRate !== undefined) {
+    const pr = Number(playbackRate);
+    if (!Number.isFinite(pr) || pr < 0.25 || pr > 3) {
+      return res.status(400).json({ message: 'Playback rate must be a number between 0.25 and 3.' });
+    }
+  }
+  // autoplayCountdown must be an integer in [0, 60].
+  if (autoplayCountdown !== undefined) {
+    const ac = Number(autoplayCountdown);
+    if (!Number.isInteger(ac) || ac < 0 || ac > 60) {
+      return res.status(400).json({ message: 'Autoplay countdown must be an integer between 0 and 60 seconds.' });
+    }
+  }
+  // subtitleLang must be a short BCP-47-ish string (e.g. 'en', 'fr', 'es', 'none').
+  if (subtitleLang !== undefined && typeof subtitleLang !== 'string') {
+    return res.status(400).json({ message: 'Subtitle language must be a string.' });
+  }
+  if (typeof subtitleLang === 'string' && subtitleLang.length > 10) {
+    return res.status(400).json({ message: 'Subtitle language is too long.' });
+  }
+  // genres (if provided) must be an array of strings (validate against known
+  // genres is the controller's job; here enforce shape).
+  if (genres !== undefined && !Array.isArray(genres)) {
+    return res.status(400).json({ message: 'Genres must be an array.' });
+  }
+  if (Array.isArray(genres) && genres.some(g => typeof g !== 'string' || !g.trim())) {
+    return res.status(400).json({ message: 'Genres must be an array of non-empty strings.' });
   }
 
   try {
     const prefs = await upsertPreferences(userId, {
       genres,
       autoplayNext,
-      autoplayCountdown,
+      autoplayCountdown: autoplayCountdown !== undefined ? Number(autoplayCountdown) : undefined,
       defaultQuality,
       subtitlesOn,
       subtitleLang,
-      playbackRate,
+      playbackRate: playbackRate !== undefined ? Number(playbackRate) : undefined,
       skipIntroAuto,
       reduceMotion,
     });
@@ -184,12 +216,13 @@ exports.updatePreferences = async (req, res) => {
 };
 
 // ── Clear watch history ────────────────────────────────────
+// v31 renamed watch_history → watch_progress. Delegate to the authoritative
+// watchController.clearHistory which cleans watch_progress + watch_dismissed.
 exports.clearHistory = async (req, res) => {
   const userId = req.userId ?? req.user?.id;
   if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
   try {
-    await pool.query('DELETE FROM watch_history WHERE user_id = ?', [userId]);
-    return res.json({ success: true, message: 'Watch history cleared.' });
+    return await watchController.clearHistory(req, res);
   } catch (error) {
     console.error('[PROFILE] clearHistory error:', error.message);
     return res.status(500).json({ message: 'Server error clearing history.' });

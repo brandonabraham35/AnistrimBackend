@@ -1,7 +1,8 @@
 // Frontend/js/api.js — single API wrapper for all frontend auth calls.
 // Uses the API base URL exposed by config.js (window.getApiBaseUrl).
 // Attaches Authorization (JWT) when present, parses JSON once, and handles
-// 403 (requiresVerification) and 401 globally. Throws ApiError otherwise.
+// 403 (requiresVerification), 401 (auto-refresh), and 429 (rate limited)
+// globally. Throws ApiError otherwise.
 //
 // Must be loaded AFTER config.js/scrpt.js so it overrides window.apiFetch
 // with this canonical version.
@@ -13,6 +14,13 @@
     ? window.getApiBaseUrl()
     : 'https://anistrimbackend.onrender.com';
 
+  var REFRESH_KEY = 'refresh_token';
+  var TOKEN_KEY = 'token';
+  var SESSION_KEY = 'session_token';
+
+  // Single-flight refresh promise so parallel 401s don't double-rotate.
+  var refreshPromise = null;
+
   function ApiError(message, status, data) {
     this.message = message || 'Request failed';
     this.status = status || 0;
@@ -22,7 +30,27 @@
   ApiError.prototype.constructor = ApiError;
 
   function getToken() {
-    return localStorage.getItem('token') || localStorage.getItem('session_token') || '';
+    return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(SESSION_KEY) || '';
+  }
+
+  function getRefreshToken() {
+    return localStorage.getItem(REFRESH_KEY) || '';
+  }
+
+  function setTokens(token, refreshToken) {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(SESSION_KEY, token);
+    }
+    if (refreshToken) {
+      localStorage.setItem(REFRESH_KEY, refreshToken);
+    }
+  }
+
+  function clearTokens() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(REFRESH_KEY);
   }
 
   // ── Centralized post-authentication redirect ─────────────
@@ -38,15 +66,16 @@
   // the redirect param, handles emailVerified/onboarded/status, and uses
   // location.replace() so the back-button can't return to the login page.
   // Callers must RETURN immediately after calling this.
-  function redirectAfterAuthentication(user, token) {
-    var tok = token || (window.Auth ? window.Auth.token : '') || localStorage.getItem('token') || '';
+  function redirectAfterAuthentication(user, token, refreshToken) {
+    var tok = token || (window.Auth ? window.Auth.token : '') || localStorage.getItem(TOKEN_KEY) || '';
     if (window.Auth) {
       if (tok && user) window.Auth.save(tok, user);
       else if (user) window.Auth.setUser(user);
     } else {
-      if (tok) localStorage.setItem('token', tok);
+      if (tok) localStorage.setItem(TOKEN_KEY, tok);
       if (user) localStorage.setItem('user', JSON.stringify(user));
     }
+    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
     sessionStorage.removeItem('pendingEmail');
     sessionStorage.removeItem('otpEmailSent');
     localStorage.removeItem('pendingEmail');
@@ -64,6 +93,34 @@
     }
   }
   window.redirectAfterAuthentication = redirectAfterAuthentication;
+
+  // ── Single-flight refresh ─────────────────────────────────
+  // Calls POST /api/auth/refresh once. Parallel 401s share the same promise.
+  function doRefresh() {
+    var refreshToken = getRefreshToken();
+    if (!refreshToken) return Promise.resolve(null);
+    return fetch(API_BASE + '/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: refreshToken })
+    }).then(function (res) {
+      if (!res.ok) return null;
+      return res.json().catch(function () { return null; });
+    }).then(function (data) {
+      if (!data || !data.token) return null;
+      setTokens(data.token, data.refreshToken || refreshToken);
+      return data;
+    }).catch(function () { return null; });
+  }
+
+  function refreshOnce() {
+    if (!refreshPromise) {
+      refreshPromise = doRefresh().finally(function () {
+        refreshPromise = null;
+      });
+    }
+    return refreshPromise;
+  }
 
   async function apiFetch(path, options) {
     options = options || {};
@@ -97,16 +154,34 @@
       data = {};
     }
 
+    // ── 401: try to refresh once, then replay the request ──
+    if (res.status === 401 && getRefreshToken() && options._retried !== true) {
+      var refreshed = await refreshOnce();
+      if (refreshed && refreshed.token) {
+        // Replay the original request with the new token.
+        var retryOptions = Object.assign({}, options, { _retried: true });
+        retryOptions.headers = Object.assign({}, options.headers || {});
+        retryOptions.headers['Authorization'] = 'Bearer ' + refreshed.token;
+        return apiFetch(path, retryOptions);
+      }
+    }
+
     if (res.status === 401) {
-      // Clear centralized auth state. Only force logout for auth-critical
-      // requests; background calls pass skipAuthRedirect/global401Redirect:false
-      // so a 401 there (watch progress, optional analytics) never logs them out.
+      // Refresh failed or no refresh token — clear centralized auth state.
+      clearTokens();
       if (window.Auth) window.Auth.clear();
-      else { localStorage.removeItem('token'); localStorage.removeItem('session_token'); }
+      else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(SESSION_KEY); }
       if (options.global401Redirect !== false && options.skipAuthRedirect !== true) {
         window.location.href = 'login.html';
       }
       return data;
+    }
+
+    if (res.status === 429 && data && data.code === 'RATE_LIMITED') {
+      // Rate limited — surface the cooldown to the caller.
+      var err = new ApiError(data.message || 'Too many requests.', 429, data);
+      err.retryAfter = data.retryAfter || 60;
+      throw err;
     }
 
     if (res.status === 403 && data && data.requiresVerification === true) {
@@ -140,4 +215,6 @@
 
   window.apiFetch = apiFetch;
   window.ApiError = ApiError;
+  window.setAuthTokens = setTokens;
+  window.clearAuthTokens = clearTokens;
 })();

@@ -5,31 +5,39 @@ const authController = require('../controllers/authController');
 const googleVerifyController = require('../controllers/googleVerifyController');
 const googleAuthController = require('../controllers/googleAuthController');
 const authMiddleware = require('../middleware/auth');
+const {
+  loginLimiter,
+  otpLimiter,
+  signupLimiter,
+  refreshLimiter,
+  sensitiveLimiter,
+  googleLimiter,
+} = require('../middleware/rateLimit');
 
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
 // @access  Public
-router.post('/login', authController.login);
+router.post('/login', loginLimiter, authController.login);
 
 // @route   POST /api/auth/signup
 // @desc    Register a new user account (requires email verification)
 // @access  Public
-router.post('/signup', authController.signup);
+router.post('/signup', signupLimiter, authController.signup);
 
 // @route   POST /api/auth/verify-email
 // @desc    Verify a manual registration using the emailed 6-digit OTP
 // @access  Public
-router.post('/verify-email', authController.verifyEmailToken);
+router.post('/verify-email', otpLimiter, authController.verifyEmailToken);
 
 // @route   POST /api/auth/verify-otp
 // @desc    Alias for /verify-email (spec-canonical route name)
 // @access  Public
-router.post('/verify-otp', authController.verifyEmailToken);
+router.post('/verify-otp', otpLimiter, authController.verifyEmailToken);
 
 // @route   POST /api/auth/resend-otp
 // @desc    Resend a new 6-digit verification code (throttled)
 // @access  Public
-router.post('/resend-otp', authController.resendVerification);
+router.post('/resend-otp', otpLimiter, authController.resendVerification);
 
 // @route   GET /api/auth/me
 // @desc    Fetch the current authenticated user profile (canonical DTO)
@@ -39,7 +47,7 @@ router.get('/me', authMiddleware.protect, authController.getMe);
 // @route   POST /api/auth/forgot-password
 // @desc    Request a password reset token for a user email
 // @access  Public
-router.post('/forgot-password', authController.forgotPassword);
+router.post('/forgot-password', sensitiveLimiter, authController.forgotPassword);
 
 // @route   POST /api/auth/set-password
 // @desc    Set a password for the AUTHENTICATED account (e.g. Google-only
@@ -50,14 +58,14 @@ router.post('/set-password', authMiddleware.protect, authController.setPassword)
 // @route   POST /api/auth/reset-password
 // @desc    Reset a user password using the reset token
 // @access  Public
-router.post('/reset-password', authController.resetPassword);
+router.post('/reset-password', sensitiveLimiter, authController.resetPassword);
 
 // ── Phase 1 — Session lifecycle ──────────────────────────────
 
 // @route   POST /api/auth/refresh
 // @desc    Rotate refresh token, issue a new access token
 // @access  Public (refresh token in body)
-router.post('/refresh', authController.refresh);
+router.post('/refresh', refreshLimiter, authController.refresh);
 
 // @route   POST /api/auth/logout
 // @desc    Revoke the current session
@@ -84,12 +92,12 @@ router.delete('/sessions/:id', authMiddleware.protect, authController.revokeSess
 // @route   POST /api/auth/change-password
 // @desc    Verify old password, token_version++, keep current session
 // @access  Private
-router.post('/change-password', authMiddleware.protect, authController.changePassword);
+router.post('/change-password', sensitiveLimiter, authMiddleware.protect, authController.changePassword);
 
 // @route   POST /api/auth/change-email
 // @desc    Send OTP to the new address
 // @access  Private
-router.post('/change-email', authMiddleware.protect, authController.changeEmail);
+router.post('/change-email', sensitiveLimiter, authMiddleware.protect, authController.changeEmail);
 
 // @route   POST /api/auth/change-email/confirm
 // @desc    Swap email, log event
@@ -112,13 +120,13 @@ router.post('/account/delete', authMiddleware.protect, authController.deleteAcco
 // @desc    Google LOGIN only — verifies the ID token and authenticates an
 //          EXISTING AniStrim account. Never creates or silently links.
 // @access  Public
-router.post('/google/verify', googleVerifyController.verifyGoogleToken);
+router.post('/google/verify', googleLimiter, googleVerifyController.verifyGoogleToken);
 
 // @route   POST /api/auth/google/signup
 // @desc    Google SIGNUP only — verifies the ID token and creates a NEW AniStrim
 //          account. Rejects if the email or google_id already exists.
 // @access  Public
-router.post('/google/signup', googleVerifyController.googleSignup);
+router.post('/google/signup', googleLimiter, googleVerifyController.googleSignup);
 
 // @route   GET /api/auth/google/client-id
 // @desc    Expose Google Client ID to frontend for GIS initialization

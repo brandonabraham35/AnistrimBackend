@@ -1,4 +1,4 @@
-// scripts/migrate.js — applies migrations/*.sql in filename order.
+// scripts/migrate.js — applies migrations from migrations/ AND sql/ in numeric order.
 // Tracks applied files in schema_migrations so each runs once.
 //
 // IMPORTANT: uses its OWN mysql2 connection with multipleStatements enabled so
@@ -11,7 +11,12 @@ const fs = require('fs');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
+// Scan BOTH directories so legacy migrations/ files and the sql/migrations_v*.sql
+// files are all applied. Numeric sort (v5 < v10 < v29) not lexicographic.
+const MIGRATIONS_DIRS = [
+  path.join(__dirname, '..', 'migrations'),
+  path.join(__dirname, '..', 'sql'),
+];
 
 const CREATE_TABLE_SQL =
   'CREATE TABLE IF NOT EXISTS schema_migrations (' +
@@ -20,16 +25,44 @@ const CREATE_TABLE_SQL =
   'applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' +
   ') ENGINE=InnoDB';
 
-async function run() {
-  if (!fs.existsSync(MIGRATIONS_DIR)) {
-    console.error('No migrations directory found at ' + MIGRATIONS_DIR);
-    process.exit(1);
-  }
+// Extract the numeric version from a migration filename:
+//   "002_add_email_verification.sql"  -> 2
+//   "migrations_v29_account_lifecycle.sql" -> 29
+//   "schema.sql" -> Infinity (apply last)
+function versionOf(filename) {
+  const m = filename.match(/v?(\d+)/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  return parseInt(m[1], 10);
+}
 
-  const files = fs.readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort();
+function collectMigrationFiles() {
+  const files = [];
+  for (const dir of MIGRATIONS_DIRS) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (f.endsWith('.sql')) files.push({ name: f, dir });
+    }
+  }
+  // Deduplicate by filename (if the same file exists in both dirs, prefer sql/).
+  const seen = new Map();
+  for (const f of files) {
+    const existing = seen.get(f.name);
+    if (!existing || f.dir.includes('sql')) seen.set(f.name, f);
+  }
+  // Sort by numeric version, then by name for stability.
+  return [...seen.values()].sort((a, b) => {
+    const va = versionOf(a.name);
+    const vb = versionOf(b.name);
+    if (va !== vb) return va - vb;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+async function run() {
+  const files = collectMigrationFiles();
   if (files.length === 0) {
-    console.log('No migration files found.');
-    return;
+    console.error('No migration files found in migrations/ or sql/.');
+    process.exit(1);
   }
 
   const conn = await mysql.createConnection({
@@ -49,16 +82,16 @@ async function run() {
     let ran = 0;
 
     for (const file of files) {
-      if (applied.has(file)) {
-        console.log('skip ' + file + ' (already applied)');
+      if (applied.has(file.name)) {
+        console.log('skip ' + file.name + ' (already applied)');
         continue;
       }
 
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
-      console.log('applying ' + file + ' ...');
+      const sql = fs.readFileSync(path.join(file.dir, file.name), 'utf8');
+      console.log('applying ' + file.name + ' ...');
       await conn.query(sql);
-      await conn.query('INSERT INTO schema_migrations (filename) VALUES (?)', [file]);
-      console.log('applied ' + file);
+      await conn.query('INSERT INTO schema_migrations (filename) VALUES (?)', [file.name]);
+      console.log('applied ' + file.name);
       ran++;
     }
 

@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     try {
-      const res = await apiFetch('/api/auth/username-available?u=' + encodeURIComponent(u), { skipAuthRedirect: true });
+      const res = await apiFetch('/api/profile/username-available?u=' + encodeURIComponent(u), { skipAuthRedirect: true });
       if (res && res.available === true) {
         usernameValid = true;
         if (usernameStatus) usernameStatus.innerHTML = '<div class="ob-valid">✓ Username available</div>';
@@ -84,18 +84,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const img = document.getElementById('ob-avatar-img');
     if (img) img.src = URL.createObjectURL(file);
 
-    // Upload
+    // Upload — apiFetch returns raw data and throws ApiError on failure.
     const fd = new FormData();
     fd.append('avatar', file);
     try {
-      const { ok, data } = await apiFetch('/api/auth/avatar', { method: 'POST', body: fd });
-      if (!ok) throw new Error(data?.message || 'Upload failed');
+      const data = await apiFetch('/api/auth/avatar', { method: 'POST', body: fd });
       avatarUploaded = true;
       await Session.refresh();
-      if (window.Avatar) window.Avatar.renderAvatarEverywhere(data.avatar_url);
+      if (window.Avatar) window.Avatar.renderAvatarEverywhere(data && data.avatar_url);
       showError('');
     } catch (err) {
-      showError(err.message || 'Avatar upload failed.');
+      showError((err && err.message) || 'Avatar upload failed.');
     }
   });
 
@@ -106,10 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadGenres() {
     try {
-      const { ok, data } = await apiFetch('/api/anime/genres');
-      if (ok && Array.isArray(data)) {
+      const data = await apiFetch('/api/anime/genres');
+      if (Array.isArray(data)) {
         renderGenres(data.map(g => (typeof g === 'string' ? g : g.name)).filter(Boolean));
-      } else if (ok && data && Array.isArray(data.genres)) {
+      } else if (data && Array.isArray(data.genres)) {
         renderGenres(data.genres);
       } else {
         // Fallback genres if the endpoint shape differs.
@@ -166,17 +165,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const username = usernameInput?.value?.trim().toLowerCase();
 
     try {
-      const { ok, data } = await apiFetch('/api/profile/onboarding', {
+      await apiFetch('/api/profile/onboarding', {
         method: 'POST',
         body: JSON.stringify({ displayName, username, genres: selectedGenres })
       });
-      if (!ok) throw new Error(data?.message || 'Onboarding failed.');
 
       await Session.refresh();
       if (window.Navigation) window.Navigation.afterAuth(Session.getUser(), 'index.html');
       else window.location.replace('index.html');
     } catch (err) {
-      showError(err.message || 'Onboarding failed. Please try again.');
+      showError((err && err.message) || 'Onboarding failed. Please try again.');
     }
   });
 

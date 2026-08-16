@@ -49,9 +49,10 @@ async function handleSignUp() {
     }
 
     if (data && data.token) {
-      localStorage.setItem('token', data.token);
+      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+      else localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user, data.token);
+      window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
       return;
     }
 
@@ -103,9 +104,10 @@ async function sendIdTokenToBackend(idToken) {
     });
 
     if (data && data.token && data.user) {
-      localStorage.setItem('token', data.token);
+      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+      else localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user, data.token);
+      window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
       return;
     }
     showError((data && data.message) || 'Google sign-in failed. Please try again.');
@@ -134,9 +136,9 @@ async function handleAppUrlOpen(data) {
     const token = url.searchParams.get('token');
 
     if (token) {
-      localStorage.setItem('session_token', token);
-      localStorage.setItem('token', token);
-      window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'), token);
+      if (window.setAuthTokens) window.setAuthTokens(token, null);
+      else { localStorage.setItem('session_token', token); localStorage.setItem('token', token); }
+      window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'), token, null);
       return;
     }
 
@@ -145,11 +147,11 @@ async function handleAppUrlOpen(data) {
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
       const data2 = await res.json();
       if (res.ok && data2.token) {
-        localStorage.setItem('session_token', data2.token);
-        localStorage.setItem('token', data2.token);
+        if (window.setAuthTokens) window.setAuthTokens(data2.token, data2.refreshToken);
+        else { localStorage.setItem('session_token', data2.token); localStorage.setItem('token', data2.token); }
         if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
         localStorage.setItem('isFirstVisit', 'true');
-        window.redirectAfterAuthentication(data2.user, data2.token);
+        window.redirectAfterAuthentication(data2.user, data2.token, data2.refreshToken);
       } else {
         showError(data2.message || 'Google sign-in failed. Please try again.');
       }

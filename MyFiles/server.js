@@ -48,7 +48,10 @@ const allowedOrigins = new Set([
   'http://10.5.50.55:3000',
   ...(process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean),
 ]);
-const localDevOrigin = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
+// Private-LAN origins are only allowed in non-production (dev) environments.
+const localDevOrigin = process.env.NODE_ENV === 'production'
+  ? /^$/
+  : /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
 
 app.use(cors({
   origin(origin, callback) {
@@ -124,6 +127,13 @@ app.use('/uploads', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(path.join(__dirname, 'uploads')));
+
+// ─── API 404 Guard ─────────────────────────────────────────
+// Any unmatched /api/* path returns a JSON 404 instead of being swallowed by
+// the SPA catch-all (which would serve index.html for a typo'd API call).
+app.use('/api', (req, res) => {
+  res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
+});
 
 // ─── SPA Fallback Routes ───────────────────────────────────
 // These routes catch client-side paths and serve the correct HTML entry point.

@@ -43,11 +43,13 @@ function isDisposableEmail(email) {
 // Generate a fresh code, persist it, and email it. Returns true if dispatched.
 async function issueVerificationCode(userId, email) {
   const verificationCode = generateVerificationCode();
+  // Store the SHA-256 hash of the code, never the plaintext.
+  const codeHash = sessionService.sha256(verificationCode);
   const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
   const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
   await pool.query(
     `UPDATE users SET verification_code = ?, verification_expires = ?, verification_attempts = 0, verification_last_sent = NOW() WHERE id = ?`,
-    [verificationCode, expiresSql, userId]
+    [codeHash, expiresSql, userId]
   );
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
@@ -223,8 +225,10 @@ exports.signup = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // Generate a secure 6-digit OTP and set a 15-minute expiry
+        // Generate a secure 6-digit OTP and set a 15-minute expiry.
+        // Store the SHA-256 hash of the code, never the plaintext.
         const verificationCode = generateVerificationCode();
+        const codeHash = sessionService.sha256(verificationCode);
         const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
         const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
 
@@ -233,7 +237,7 @@ exports.signup = async (req, res) => {
             const [result] = await pool.query(
                 `INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, verification_code, verification_expires, status, auth_provider)
                  VALUES (?, ?, ?, 0, 0, 0, ?, ?, 'pending', 'password')`,
-                [name, email, passwordHash, verificationCode, expiresSql]
+                [name, email, passwordHash, codeHash, expiresSql]
             );
             userId = result.insertId;
         } catch (insertError) {
@@ -337,8 +341,9 @@ exports.verifyEmailToken = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new code.' });
         }
 
-        // Timing-safe code comparison
-        if (!safeEqual(user.verification_code, String(code).trim())) {
+        // Timing-safe code comparison — compare the SHA-256 hash of the input
+        // against the stored hash.
+        if (!safeEqual(user.verification_code, sessionService.sha256(String(code).trim()))) {
             await pool.query(
                 'UPDATE users SET verification_attempts = verification_attempts + 1 WHERE id = ?',
                 [user.id]
@@ -412,12 +417,13 @@ exports.resendVerification = async (req, res) => {
         }
 
         const verificationCode = generateVerificationCode();
+        const codeHash = sessionService.sha256(verificationCode);
         const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
         const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
 
         await pool.query(
             `UPDATE users SET verification_code = ?, verification_expires = ?, verification_attempts = 0, verification_last_sent = NOW() WHERE id = ?`,
-            [verificationCode, expiresSql, user.id]
+            [codeHash, expiresSql, user.id]
         );
 
         const html = `
@@ -747,19 +753,27 @@ exports.changePassword = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(String(newPassword), salt);
 
-        // token_version++ invalidates all OTHER sessions, but the current one
-        // is re-issued below with the new version so the user stays logged in.
+        // token_version++ invalidates ALL other sessions' access tokens.
         await pool.query(
             'UPDATE users SET password_hash = ?, token_version = token_version + 1, updated_at = NOW() WHERE id = ?',
             [passwordHash, userId]
         );
 
-        // Re-issue the current session's access token with the new token_version.
+        // Revoke ALL sessions (including the current one) so every other
+        // device's refresh token is dead. Then create a fresh session for the
+        // current device so the user stays logged in.
+        await sessionService.revokeAllSessions(userId, null);
         const freshUser = { ...user, password_hash: passwordHash, token_version: Number(user.token_version) + 1 };
-        const sid = req.tokenClaims?.sid;
-        const accessToken = await sessionService.signAccessToken(freshUser, sid);
+        const { accessToken, refreshToken, sessionId } = await sessionService.createSession(freshUser, req);
+        await sessionService.logEvent(userId, 'password_changed', null, req).catch(() => {});
 
-        return res.json({ success: true, token: accessToken, message: 'Password changed successfully.' });
+        return res.json({
+            success: true,
+            token: accessToken,
+            refreshToken,
+            sessionId,
+            message: 'Password changed successfully. Other devices have been signed out.',
+        });
     } catch (error) {
         log(`CRITICAL ERROR during changePassword: ${error.message}`);
         return res.status(500).json({ message: 'Server error while changing password.' });
@@ -891,7 +905,7 @@ exports.deactivateAccount = async (req, res) => {
             "UPDATE users SET status = 'deactivated', status_reason = 'user_requested', token_version = token_version + 1, updated_at = NOW() WHERE id = ?",
             [userId]
         );
-        await sessionService.revokeAllSessions(userId, 'logout');
+        await sessionService.revokeAllSessions(userId, 'account_deactivated');
         return res.json({ success: true, message: 'Account deactivated.' });
     } catch (error) {
         log(`CRITICAL ERROR during deactivateAccount: ${error.message}`);
@@ -917,7 +931,7 @@ exports.deleteAccount = async (req, res) => {
              WHERE id = ?`,
             [anonymisedEmail, userId]
         );
-        await sessionService.revokeAllSessions(userId, 'logout');
+        await sessionService.revokeAllSessions(userId, 'account_deleted');
         return res.json({ success: true, message: 'Account deleted. This action is irreversible.' });
     } catch (error) {
         log(`CRITICAL ERROR during deleteAccount: ${error.message}`);

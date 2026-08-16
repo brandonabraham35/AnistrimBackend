@@ -31,6 +31,25 @@ async function attachGenres(animeList) {
   return animeList.map(a => publicAnime({ ...a, genres: map[a.id] || [] }));
 }
 
+// GET /api/anime/genres — active genres, ordered (Bug 3).
+// Returns the list of genre names the onboarding genre picker uses. Only
+// genres that are actually attached to catalogue titles are surfaced.
+exports.getGenres = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT g.name
+       FROM genres g
+       JOIN anime_genres ag ON g.id = ag.genre_id
+       ORDER BY g.name ASC`
+    );
+    const names = rows.map(r => r.name).filter(Boolean);
+    return res.json(names);
+  } catch (error) {
+    console.error('[AnimeController] getGenres error:', error.message);
+    return res.status(500).json({ message: 'Failed to fetch genres.' });
+  }
+};
+
 // GET /api/anime/trending  — returns all anime (used as main feed)
 exports.getTrending = async (req, res) => {
   try {

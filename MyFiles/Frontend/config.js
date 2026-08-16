@@ -224,6 +224,7 @@
   var Auth = window.Auth || (function () {
     var TOKEN_KEY = 'token';
     var SESSION_KEY = 'session_token';
+    var REFRESH_KEY = 'refresh_token';
     var USER_KEY = 'user';
 
     function readUser() {
@@ -258,15 +259,19 @@
         if (exp !== null && exp < Date.now()) return false; // expired => not logged in
         return true;
       },
-      save(token, user) {
+      save(token, user, refreshToken) {
         if (token) { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(SESSION_KEY, token); }
+        if (refreshToken) { localStorage.setItem(REFRESH_KEY, refreshToken); }
         if (user) { writeUser(user); }
       },
+      get refreshToken() { return localStorage.getItem(REFRESH_KEY) || ''; },
+      set refreshToken(v) { if (v) localStorage.setItem(REFRESH_KEY, v); else localStorage.removeItem(REFRESH_KEY); },
       setUser(user) { if (user) writeUser(user); },
       getUser() { return readUser(); },
       clear() {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(REFRESH_KEY);
         localStorage.removeItem(USER_KEY);
         localStorage.removeItem('isFirstVisit');
         sessionStorage.removeItem('pendingEmail');
