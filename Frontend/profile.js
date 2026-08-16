@@ -6,6 +6,18 @@ function $(id) { return document.getElementById(id); }
 function setText(id, val) { const el = $(id); if (el) el.textContent = val || ''; }
 function setHtml(id, val) { const el = $(id); if (el) el.innerHTML = val || ''; }
 
+// ── Canonical apiFetch wrapper ─────────────────────────────
+// js/api.js returns raw data and throws ApiError on non-2xx. This pages's
+// code uses the legacy { ok, data } shape, so wrap it here.
+async function apiOk(path, options) {
+  try {
+    const data = await window.apiFetch(path, options);
+    return { ok: true, data: data };
+  } catch (e) {
+    return { ok: false, data: (e && e.data) || { message: (e && e.message) || 'Request failed' } };
+  }
+}
+
 function formatDate(iso) {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
@@ -27,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadProfile() {
   try {
-    const { ok, data } = await apiFetch('/api/auth/me');
+    const { ok, data } = await apiOk('/api/auth/me');
     if (!ok) return;
     const user = data;
 
@@ -80,7 +92,7 @@ async function loadDevices() {
   const container = $('devices-list');
   if (!container) return;
   try {
-    const { ok, data } = await apiFetch('/api/auth/sessions');
+    const { ok, data } = await apiOk('/api/auth/sessions');
     if (!ok || !data?.sessions) return;
     container.innerHTML = data.sessions.map(s => {
       const isCurrent = s.current ? ' <span style="color:var(--purple,#6c2bd9);font-size:0.75rem;">(this device)</span>' : '';
@@ -99,7 +111,7 @@ async function loadDevices() {
 async function revokeDevice(id) {
   if (!confirm('Revoke this device session?')) return;
   try {
-    await apiFetch('/api/auth/sessions/' + id, { method: 'DELETE' });
+    await apiOk('/api/auth/sessions/' + id, { method: 'DELETE' });
     loadDevices();
   } catch (e) { alert('Could not revoke device.'); }
 }
@@ -139,7 +151,7 @@ async function savePreferences() {
     playbackRate: parseFloat($('pref-rate')?.value || '1'),
   };
   try {
-    const { ok, data } = await apiFetch('/api/profile/preferences', { method: 'PUT', body: JSON.stringify(body) });
+    const { ok, data } = await apiOk('/api/profile/preferences', { method: 'PUT', body: JSON.stringify(body) });
     if (ok) { showToast('Preferences saved!'); loadProfile(); }
     else alert(data?.message || 'Could not save preferences.');
   } catch (e) { alert('Could not save preferences.'); }
@@ -151,7 +163,7 @@ async function loadHistory() {
   const container = $('history-list');
   if (!container) return;
   try {
-    const { ok, data } = await apiFetch('/api/watchlist/continue');
+    const { ok, data } = await apiOk('/api/watchlist/continue');
     if (!ok || !Array.isArray(data)) return;
     container.innerHTML = data.slice(0, 10).map(item => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#2a2a35);">
@@ -164,7 +176,7 @@ async function loadHistory() {
 async function clearHistory() {
   if (!confirm('Clear all watch history?')) return;
   try {
-    const { ok } = await apiFetch('/api/profile/history', { method: 'DELETE' });
+    const { ok } = await apiOk('/api/profile/history', { method: 'DELETE' });
     if (ok) { showToast('History cleared.'); loadHistory(); }
   } catch (e) { alert('Could not clear history.'); }
 }
@@ -175,7 +187,7 @@ async function loadMyList() {
   const container = $('mylist-list');
   if (!container) return;
   try {
-    const { ok, data } = await apiFetch('/api/watchlist/stats');
+    const { ok, data } = await apiOk('/api/watchlist/stats');
     if (ok) {
       const list = [];
       if (data.watching) list.push({ label: 'Watching', count: data.watching });
@@ -193,7 +205,7 @@ async function loadMyList() {
 async function deactivateAccount() {
   if (!confirm('Deactivate your account? You can reactivate later by logging in.')) return;
   try {
-    const { ok } = await apiFetch('/api/auth/account/deactivate', { method: 'POST' });
+    const { ok } = await apiOk('/api/auth/account/deactivate', { method: 'POST' });
     if (ok) {
       if (window.Auth) window.Auth.clear();
       window.location.replace('login.html');
@@ -206,7 +218,7 @@ async function deleteAccount() {
   if (!confirm('Permanently delete your account? This action cannot be undone.')) return;
   if (!confirm('Are you absolutely sure? All data will be permanently deleted.')) return;
   try {
-    const { ok } = await apiFetch('/api/auth/account/delete', { method: 'POST' });
+    const { ok } = await apiOk('/api/auth/account/delete', { method: 'POST' });
     if (ok) {
       if (window.Auth) window.Auth.clear();
       window.location.replace('login.html');
@@ -229,7 +241,7 @@ function uploadAvatarPreview(input) {
   const preview = $('profile-avatar-img');
   if (preview) preview.src = URL.createObjectURL(file);
 
-  apiFetch('/api/auth/avatar', { method: 'POST', body: fd, skipAuthRedirect: true })
+  apiOk('/api/auth/avatar', { method: 'POST', body: fd, skipAuthRedirect: true })
     .then(({ ok, data }) => {
       if (!ok) throw new Error(data?.message || 'Upload failed');
       localStorage.setItem('token', State.token); // ensure token persists
