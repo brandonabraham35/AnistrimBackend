@@ -64,6 +64,21 @@ const State = (function () {
 // ===================== API HELPER =====================
 // Runtime helpers are exposed globally by config.js and intentionally
 // resolved through the shared frontend runtime to avoid duplicate bodies.
+// The canonical apiFetch lives in js/api.js (loaded after config.js) and
+// handles 401 auto-refresh, 429 rate limiting, and 403 verification.
+// This delegates so pages that load only config.js+scrpt.js still get the
+// canonical behavior when js/api.js is present.
+if (window.AniStrimShared && !window.AniStrimShared._apiFetchDelegated) {
+  window.AniStrimShared._apiFetchDelegated = true;
+  const original = window.AniStrimShared.apiFetch;
+  window.AniStrimShared.apiFetch = function (endpoint, options) {
+    if (window.apiFetch && window.apiFetch !== original) {
+      return window.apiFetch(endpoint, options);
+    }
+    return original(endpoint, options);
+  };
+  window.apiFetch = window.AniStrimShared.apiFetch;
+}
 
 // ===================== UTILS =====================
 function togglePasswordVisibility(id) {

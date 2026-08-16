@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-08-04T18:33:01.746Z",
+  "summary": {
+    "healthApiReady": true,
+    "loggingReady": true,
+    "snapshotAvailable": true,
+    "snapshotComplete": true,
+    "trackedProviders": 2,
+    "allReady": true
+  },
+  "expectedSnapshotFields": [
+    "successRate",
+    "avgResponseMs",
+    "timeouts",
+    "cloudflareHits",
+    "failures",
+    "streamSuccess"
+  ],
+  "animeHeavenSnapshot": {
+    "provider": "animeheaven",
+    "successRate": 66.67,
+    "avgResponseMs": 6115.73,
+    "timeouts": 0,
+    "cloudflareHits": 0,
+    "streamExtractionSuccess": 10,
+    "failures": 0,
+    "httpFailures": 0,
+    "redirectLoops": 0,
+    "mirrorFailures": 0,
+    "playerFailures": 0,
+    "subtitleSuccess": 0,
+    "streamSuccess": 5
+  },
+  "missingSnapshotFields": [],
+  "trackedProviderKeys": [
+    "animeheaven",
+    "kitsu"
+  ]
+}

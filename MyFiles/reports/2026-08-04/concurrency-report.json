@@ -1,0 +1,92 @@
+{
+  "generatedAt": "2026-08-04T18:47:33.380Z",
+  "concurrencyLevels": [
+    5,
+    10,
+    25,
+    50
+  ],
+  "mockServer": {
+    "5": {
+      "total": 5,
+      "ok": 5,
+      "failed": 0,
+      "successRate": 100,
+      "avgLatencyMs": 81.6,
+      "maxLatencyMs": 99,
+      "errors": []
+    },
+    "10": {
+      "total": 10,
+      "ok": 10,
+      "failed": 0,
+      "successRate": 100,
+      "avgLatencyMs": 65.6,
+      "maxLatencyMs": 90,
+      "errors": []
+    },
+    "25": {
+      "total": 25,
+      "ok": 25,
+      "failed": 0,
+      "successRate": 100,
+      "avgLatencyMs": 79.56,
+      "maxLatencyMs": 108,
+      "errors": []
+    },
+    "50": {
+      "total": 50,
+      "ok": 50,
+      "failed": 0,
+      "successRate": 100,
+      "avgLatencyMs": 81.92,
+      "maxLatencyMs": 106,
+      "errors": []
+    }
+  },
+  "realProvider": {
+    "total": 5,
+    "ok": 5,
+    "failed": 0,
+    "successRate": 100,
+    "avgLatencyMs": 6927.2,
+    "results": [
+      {
+        "ok": true,
+        "latencyMs": 11740,
+        "error": null
+      },
+      {
+        "ok": true,
+        "latencyMs": 3337,
+        "error": null
+      },
+      {
+        "ok": true,
+        "latencyMs": 8652,
+        "error": null
+      },
+      {
+        "ok": true,
+        "latencyMs": 8952,
+        "error": null
+      },
+      {
+        "ok": true,
+        "latencyMs": 1955,
+        "error": null
+      }
+    ]
+  },
+  "resources": {
+    "memDeltaMb": 22.55,
+    "cpuMsDelta": 6313
+  },
+  "summary": {
+    "mockHighestSuccessRate": 100,
+    "mockLowestSuccessRate": 100,
+    "realSuccessRate": 100,
+    "realTotalRequests": 5,
+    "memoryGrowthMb": 22.55
+  }
+}

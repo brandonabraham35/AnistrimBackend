@@ -1,0 +1,117 @@
+{
+  "generatedAt": "2026-08-04T18:45:47.640Z",
+  "summary": {
+    "totalTitles": 5,
+    "overallCompleteness": 100,
+    "missingStream": 0,
+    "missingSubtitles": 5
+  },
+  "coreFields": [
+    "title",
+    "hasStream",
+    "hasSubtitles",
+    "sourceCount"
+  ],
+  "optionalFields": [
+    "description",
+    "synopsis",
+    "genres",
+    "studios",
+    "cover",
+    "banner",
+    "releaseYear",
+    "status",
+    "rating",
+    "duration",
+    "episodeCount"
+  ],
+  "perProvider": {
+    "animeheaven": {
+      "rows": 5,
+      "avgCompleteness": 100,
+      "missingFields": []
+    }
+  },
+  "rows": [
+    {
+      "provider": "animeheaven",
+      "title": "One Piece",
+      "episode": 1,
+      "coreScore": 100,
+      "present": [
+        "title",
+        "hasStream",
+        "hasSubtitles",
+        "sourceCount"
+      ],
+      "missing": [],
+      "sourceCount": 4,
+      "hasStream": true,
+      "hasSubtitles": false
+    },
+    {
+      "provider": "animeheaven",
+      "title": "Naruto",
+      "episode": 1,
+      "coreScore": 100,
+      "present": [
+        "title",
+        "hasStream",
+        "hasSubtitles",
+        "sourceCount"
+      ],
+      "missing": [],
+      "sourceCount": 4,
+      "hasStream": true,
+      "hasSubtitles": false
+    },
+    {
+      "provider": "animeheaven",
+      "title": "Jujutsu Kaisen",
+      "episode": 1,
+      "coreScore": 100,
+      "present": [
+        "title",
+        "hasStream",
+        "hasSubtitles",
+        "sourceCount"
+      ],
+      "missing": [],
+      "sourceCount": 4,
+      "hasStream": true,
+      "hasSubtitles": false
+    },
+    {
+      "provider": "animeheaven",
+      "title": "Demon Slayer",
+      "episode": 1,
+      "coreScore": 100,
+      "present": [
+        "title",
+        "hasStream",
+        "hasSubtitles",
+        "sourceCount"
+      ],
+      "missing": [],
+      "sourceCount": 4,
+      "hasStream": true,
+      "hasSubtitles": false
+    },
+    {
+      "provider": "animeheaven",
+      "title": "Steins Gate",
+      "episode": 1,
+      "coreScore": 100,
+      "present": [
+        "title",
+        "hasStream",
+        "hasSubtitles",
+        "sourceCount"
+      ],
+      "missing": [],
+      "sourceCount": 4,
+      "hasStream": true,
+      "hasSubtitles": false
+    }
+  ]
+}

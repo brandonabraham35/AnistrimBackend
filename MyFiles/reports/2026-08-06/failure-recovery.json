@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-08-06T16:37:56.715Z",
+  "scenarios": [
+    "404",
+    "500",
+    "timeout",
+    "malformed-json",
+    "malformed-html",
+    "missing-iframe",
+    "empty"
+  ],
+  "timeoutMs": 3000,
+  "results": [
+    {
+      "scenario": "404",
+      "status": 404,
+      "latencyMs": 16,
+      "timedOut": false,
+      "hung": false,
+      "error": null,
+      "expectedCategory": "NOT_FOUND",
+      "recovered": true
+    },
+    {
+      "scenario": "500",
+      "status": 500,
+      "latencyMs": 1,
+      "timedOut": false,
+      "hung": false,
+      "error": null,
+      "expectedCategory": "SERVER_ERROR",
+      "recovered": true
+    },
+    {
+      "scenario": "timeout",
+      "status": 0,
+      "latencyMs": 3011,
+      "timedOut": true,
+      "hung": false,
+      "error": "timeout",
+      "expectedCategory": "TIMEOUT",
+      "recovered": true
+    },
+    {
+      "scenario": "malformed-json",
+      "status": 200,
+      "latencyMs": 4,
+      "timedOut": false,
+      "hung": false,
+      "error": null,
+      "expectedCategory": "UNKNOWN",
+      "recovered": true
+    },
+    {
+      "scenario": "malformed-html",
+      "status": 200,
+      "latencyMs": 2,
+      "timedOut": false,
+      "hung": false,
+      "error": null,
+      "expectedCategory": "UNKNOWN",
+      "recovered": true
+    },
+    {
+      "scenario": "missing-iframe",
+      "status": 200,
+      "latencyMs": 2,
+      "timedOut": false,
+      "hung": false,
+      "error": null,
+      "expectedCategory": "UNKNOWN",
+      "recovered": true
+    },
+    {
+      "scenario": "empty",
+      "status": 200,
+      "latencyMs": 1,
+      "timedOut": false,
+      "hung": false,
+      "error": null,
+      "expectedCategory": "UNKNOWN",
+      "recovered": true
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "recovered": 7,
+    "hung": 0,
+    "classifiedCorrectly": 2,
+    "recoveryRate": 100,
+    "memoryGrowthMb": 0.47,
+    "cpuMsDelta": 31
+  },
+  "trend": {
+    "previousRecoveryRate": 100,
+    "deltaRecovery": 0,
+    "previousHungCount": 0,
+    "deltaHung": 0
+  }
+}

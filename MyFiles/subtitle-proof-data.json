@@ -1,0 +1,1239 @@
+{
+  "generatedAt": "2026-08-05T20:51:08.167Z",
+  "method": "runtime-headless-chrome-via-puppeteer-core",
+  "episodesInspected": 24,
+  "episodesPlayed": 24,
+  "summary": {
+    "embedded": 0,
+    "external": 0,
+    "none": 0,
+    "inconclusive": 24,
+    "failed": 0
+  },
+  "results": [
+    {
+      "episode": "A Certain Magical Index III — Ep 1",
+      "title": "A Certain Magical Index III",
+      "identifier": "rk3og",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?329f978e443b2f031c74d9009743d9ef&35b2d9c8bc1a8bbe88f50ee8de15a7df&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?329f978e443b2f031c74d9009743d9ef&35b2d9c8bc1a8bbe88f50ee8de15a7df&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?329f978e443b2f031c74d9009743d9ef&35b2d9c8bc1a8bbe88f50ee8de15a7df&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\A_Certain_Magical_Index_III_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 35845
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "A Condition Called Love — Ep 1",
+      "title": "A Condition Called Love",
+      "identifier": "u95rf",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?564aedce39f746429ad17fa54cb7f691&35b2d9c8bc1a8bbeae97ed3301197479&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?564aedce39f746429ad17fa54cb7f691&35b2d9c8bc1a8bbeae97ed3301197479&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?564aedce39f746429ad17fa54cb7f691&35b2d9c8bc1a8bbeae97ed3301197479&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\A_Condition_Called_Love_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34625
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "A Couple of Cuckoos — Ep 1",
+      "title": "A Couple of Cuckoos",
+      "identifier": "xqjzb",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?4301d48dacdc3a9ab2f82f758a7d4810&35b2d9c8bc1a8bbeb486f93abe23e4e2&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?4301d48dacdc3a9ab2f82f758a7d4810&35b2d9c8bc1a8bbeb486f93abe23e4e2&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?4301d48dacdc3a9ab2f82f758a7d4810&35b2d9c8bc1a8bbeb486f93abe23e4e2&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\A_Couple_of_Cuckoos_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34614
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "A Galaxy Next Door — Ep 1",
+      "title": "A Galaxy Next Door",
+      "identifier": "ryvby",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?937dbe3ba795b1aefbc4a207a278dd12&35b2d9c8bc1a8bbefd3f3bf3ea30ef41&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?937dbe3ba795b1aefbc4a207a278dd12&35b2d9c8bc1a8bbefd3f3bf3ea30ef41&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?937dbe3ba795b1aefbc4a207a278dd12&35b2d9c8bc1a8bbefd3f3bf3ea30ef41&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\A_Galaxy_Next_Door_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34959
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "A Girl & Her Guard Dog — Ep 1",
+      "title": "A Girl & Her Guard Dog",
+      "identifier": "4u7r9",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?f7825de7a8c602c918a78aca4797ff00&35b2d9c8bc1a8bbe12c5e1d7ae25063a&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?f7825de7a8c602c918a78aca4797ff00&35b2d9c8bc1a8bbe12c5e1d7ae25063a&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?f7825de7a8c602c918a78aca4797ff00&35b2d9c8bc1a8bbe12c5e1d7ae25063a&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\A_Girl_Her_Guard_Dog_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 35420
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Babanbabanban Vampire — Ep 1",
+      "title": "Babanbabanban Vampire",
+      "identifier": "rgc1p",
+      "videoUrl": "https://ci.animeheaven.me/video.mp4?675f9c9ce34f131afc8cb9099d278a44&35b2d9c8bc1a8bbe7ff44ec240b5602a",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ci.animeheaven.me/video.mp4?675f9c9ce34f131afc8cb9099d278a44&35b2d9c8bc1a8bbe7ff44ec240b5602a",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ci.animeheaven.me/video.mp4?675f9c9ce34f131afc8cb9099d278a44&35b2d9c8bc1a8bbe7ff44ec240b5602a",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 400
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Babanbabanban_Vampire_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34326
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Babylon — Ep 1",
+      "title": "Babylon",
+      "identifier": "1ne58",
+      "videoUrl": "https://ax.animeheaven.me/video.mp4?2908c0cafcc6254c40a5083f8175da16&35b2d9c8bc1a8bbe935e0c1b816ec569",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ax.animeheaven.me/video.mp4?2908c0cafcc6254c40a5083f8175da16&35b2d9c8bc1a8bbe935e0c1b816ec569",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ax.animeheaven.me/video.mp4?2908c0cafcc6254c40a5083f8175da16&35b2d9c8bc1a8bbe935e0c1b816ec569",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 400
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Babylon_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 31775
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Bad Girl — Ep 1",
+      "title": "Bad Girl",
+      "identifier": "hfrok",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?01e02a0d0f068e9d1530a9d24c04b333&35b2d9c8bc1a8bbe31a228217a0018de&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?01e02a0d0f068e9d1530a9d24c04b333&35b2d9c8bc1a8bbe31a228217a0018de&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?01e02a0d0f068e9d1530a9d24c04b333&35b2d9c8bc1a8bbe31a228217a0018de&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Bad_Girl_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34542
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Baka and Test 2 — Ep 1",
+      "title": "Baka and Test 2",
+      "identifier": "o8tj1",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?829b26bef5ec20d4a2fbf74f8ec2ac34&35b2d9c8bc1a8bbefd97a15def4cc36c&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?829b26bef5ec20d4a2fbf74f8ec2ac34&35b2d9c8bc1a8bbefd97a15def4cc36c&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?829b26bef5ec20d4a2fbf74f8ec2ac34&35b2d9c8bc1a8bbefd97a15def4cc36c&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Baka_and_Test_2_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 37471
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Bakemonogatari — Ep 1",
+      "title": "Bakemonogatari",
+      "identifier": "1j1cc",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?12aeab625c1f285c84c176542f128492&35b2d9c8bc1a8bbeaef6bb4e4a7c0d80&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?12aeab625c1f285c84c176542f128492&35b2d9c8bc1a8bbeaef6bb4e4a7c0d80&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?12aeab625c1f285c84c176542f128492&35b2d9c8bc1a8bbeaef6bb4e4a7c0d80&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Bakemonogatari_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 35661
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Baki — Ep 1",
+      "title": "Baki",
+      "identifier": "tgl3z",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?39738c2cd8b7df1b749c7e0145c50649&35b2d9c8bc1a8bbe42efa72d768a1e38&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?39738c2cd8b7df1b749c7e0145c50649&35b2d9c8bc1a8bbe42efa72d768a1e38&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?39738c2cd8b7df1b749c7e0145c50649&35b2d9c8bc1a8bbe42efa72d768a1e38&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Baki_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 36323
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Call of the Night — Ep 1",
+      "title": "Call of the Night",
+      "identifier": "vjm84",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?91149553213c9b30a55c8c4d89dd2922&35b2d9c8bc1a8bbe6b8e07d480615355&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?91149553213c9b30a55c8c4d89dd2922&35b2d9c8bc1a8bbe6b8e07d480615355&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?91149553213c9b30a55c8c4d89dd2922&35b2d9c8bc1a8bbe6b8e07d480615355&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Call_of_the_Night_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 36318
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Campfire Cooking in Another World — Ep 1",
+      "title": "Campfire Cooking in Another World",
+      "identifier": "xbuk9",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?8c8d7752eedfdc92314d5c6a1119b432&35b2d9c8bc1a8bbe923602a2f2c94323&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?8c8d7752eedfdc92314d5c6a1119b432&35b2d9c8bc1a8bbe923602a2f2c94323&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?8c8d7752eedfdc92314d5c6a1119b432&35b2d9c8bc1a8bbe923602a2f2c94323&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Campfire_Cooking_in_Another_World_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 35560
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Can a Boy-Girl Friendship Survive? — Ep 1",
+      "title": "Can a Boy-Girl Friendship Survive?",
+      "identifier": "pqlwq",
+      "videoUrl": "https://ci.animeheaven.me/video.mp4?f176857f6a0dc6d15dc3aa5e048d34d7&35b2d9c8bc1a8bbe19bd29fdb1ae60d4",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ci.animeheaven.me/video.mp4?f176857f6a0dc6d15dc3aa5e048d34d7&35b2d9c8bc1a8bbe19bd29fdb1ae60d4",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ci.animeheaven.me/video.mp4?f176857f6a0dc6d15dc3aa5e048d34d7&35b2d9c8bc1a8bbe19bd29fdb1ae60d4",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 400
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Can_a_Boy_Girl_Friendship_Survive_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34700
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Cat Planet Cuties — Ep 1",
+      "title": "Cat Planet Cuties",
+      "identifier": "6p1bo",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?0e4ffc934294c1a0e0db90e757feba6e&35b2d9c8bc1a8bbee8dd4adec4d51f0d&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?0e4ffc934294c1a0e0db90e757feba6e&35b2d9c8bc1a8bbee8dd4adec4d51f0d&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?0e4ffc934294c1a0e0db90e757feba6e&35b2d9c8bc1a8bbee8dd4adec4d51f0d&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Cat_Planet_Cuties_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34516
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Cautious Hero — Ep 1",
+      "title": "Cautious Hero",
+      "identifier": "up8au",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?d73691844ced8661cdc94b29a80b40e4&35b2d9c8bc1a8bbe9d27354ad4ab266c&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?d73691844ced8661cdc94b29a80b40e4&35b2d9c8bc1a8bbe9d27354ad4ab266c&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?d73691844ced8661cdc94b29a80b40e4&35b2d9c8bc1a8bbe9d27354ad4ab266c&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Cautious_Hero_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34815
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "D4DJ All Mix — Ep 1",
+      "title": "D4DJ All Mix",
+      "identifier": "u57xa",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?b15a6eee35dc55bb4a5e817537540736&35b2d9c8bc1a8bbe53d63b503fe83a4c&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?b15a6eee35dc55bb4a5e817537540736&35b2d9c8bc1a8bbe53d63b503fe83a4c&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?b15a6eee35dc55bb4a5e817537540736&35b2d9c8bc1a8bbe53d63b503fe83a4c&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\D4DJ_All_Mix_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34496
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Dandadan — Ep 1",
+      "title": "Dandadan",
+      "identifier": "j2np5",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?8660276589730adb6ed5db8f179c8f04&35b2d9c8bc1a8bbea29ce06d443114f0&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?8660276589730adb6ed5db8f179c8f04&35b2d9c8bc1a8bbea29ce06d443114f0&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?8660276589730adb6ed5db8f179c8f04&35b2d9c8bc1a8bbea29ce06d443114f0&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Dandadan_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34672
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Danganronpa — Ep 1",
+      "title": "Danganronpa",
+      "identifier": "q1y3b",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?1db1e8ce78b9e1de146ab7494266ac10&35b2d9c8bc1a8bbebd48815dcebcf9da&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?1db1e8ce78b9e1de146ab7494266ac10&35b2d9c8bc1a8bbebd48815dcebcf9da&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?1db1e8ce78b9e1de146ab7494266ac10&35b2d9c8bc1a8bbebd48815dcebcf9da&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Danganronpa_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 35101
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Dark Gathering — Ep 1",
+      "title": "Dark Gathering",
+      "identifier": "mekup",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?b98c66999736f18242476868b5381f28&35b2d9c8bc1a8bbe2107318db5f9d2be&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?b98c66999736f18242476868b5381f28&35b2d9c8bc1a8bbe2107318db5f9d2be&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?b98c66999736f18242476868b5381f28&35b2d9c8bc1a8bbe2107318db5f9d2be&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Dark_Gathering_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 35419
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Darker than Black — Ep 1",
+      "title": "Darker than Black",
+      "identifier": "qviiw",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?caefd92b884821702f12add93c89d4b7&35b2d9c8bc1a8bbe707c6c946b830ded&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?caefd92b884821702f12add93c89d4b7&35b2d9c8bc1a8bbe707c6c946b830ded&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?caefd92b884821702f12add93c89d4b7&35b2d9c8bc1a8bbe707c6c946b830ded&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Darker_than_Black_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34431
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Edens Zero — Ep 1",
+      "title": "Edens Zero",
+      "identifier": "hertd",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?b131a703e136d43a5486a984f2e961c3&35b2d9c8bc1a8bbe5bfe3e65a7bab241&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?b131a703e136d43a5486a984f2e961c3&35b2d9c8bc1a8bbe5bfe3e65a7bab241&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?b131a703e136d43a5486a984f2e961c3&35b2d9c8bc1a8bbe5bfe3e65a7bab241&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Edens_Zero_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34665
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "Elfen Lied — Ep 1",
+      "title": "Elfen Lied",
+      "identifier": "s43yb",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?9172bf729ffb1b41fbf7053a9f11ea0d&35b2d9c8bc1a8bbe1ba9678b1c1fbac4&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?9172bf729ffb1b41fbf7053a9f11ea0d&35b2d9c8bc1a8bbe1ba9678b1c1fbac4&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?9172bf729ffb1b41fbf7053a9f11ea0d&35b2d9c8bc1a8bbe1ba9678b1c1fbac4&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 403
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\Elfen_Lied_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34583
+      },
+      "ok": true,
+      "error": null
+    },
+    {
+      "episode": "ERASED — Ep 1",
+      "title": "ERASED",
+      "identifier": "zs72q",
+      "videoUrl": "https://ck.animeheaven.me/video.mp4?dfee86053d934f2444334bf37a864811&35b2d9c8bc1a8bbe3d3ea17faabaf6b6&error2",
+      "subtitleUrl": null,
+      "visibleSubtitles": false,
+      "embedded": false,
+      "external": false,
+      "inconclusive": true,
+      "evidence": {
+        "providerSubtitleMode": "embedded",
+        "providerSubtitleCount": 0,
+        "providerSubtitles": [],
+        "videoUrl": "https://ck.animeheaven.me/video.mp4?dfee86053d934f2444334bf37a864811&35b2d9c8bc1a8bbe3d3ea17faabaf6b6&error2",
+        "playback": {
+          "network": [
+            {
+              "url": "https://ck.animeheaven.me/video.mp4?dfee86053d934f2444334bf37a864811&35b2d9c8bc1a8bbe3d3ea17faabaf6b6&error2",
+              "method": "GET",
+              "type": "mp4",
+              "resourceType": "media",
+              "status": 404
+            }
+          ],
+          "networkCount": 1,
+          "subtitleTracksFetched": [],
+          "onScreen": {
+            "detected": false,
+            "brightRatio": 0,
+            "brightClusters": 0,
+            "sampled": 27648
+          },
+          "runtime": {
+            "currentTime": "0.0",
+            "duration": "0.0",
+            "readyState": 0,
+            "paused": true,
+            "error": "4:",
+            "textTracks": [],
+            "childTracks": []
+          },
+          "error": null
+        },
+        "screenshot": "subtitle-proof-screenshots\\ERASED_Ep_1.png",
+        "externalSubtitleTracksFound": [],
+        "durationMs": 34782
+      },
+      "ok": true,
+      "error": null
+    }
+  ]
+}

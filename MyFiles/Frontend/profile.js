@@ -1,0 +1,245 @@
+// profile.js — Phase 2 profile page with sections:
+// Account · Subscription · Devices · Preferences · My List · Watch History · Danger zone
+
+// ── Helpers ────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function setText(id, val) { const el = $(id); if (el) el.textContent = val || ''; }
+function setHtml(id, val) { const el = $(id); if (el) el.innerHTML = val || ''; }
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+  catch (e) { return iso; }
+}
+
+// ── Render avatar everywhere via the shared module ─────────
+function renderAvatars(user) {
+  if (!window.Avatar) return;
+  const url = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || null;
+  const name = (user && (user.displayName || user.name)) || 'U';
+  window.Avatar.renderAvatarEverywhere(url, name);
+}
+
+// ── Main load ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadProfile();
+});
+
+async function loadProfile() {
+  try {
+    const { ok, data } = await apiFetch('/api/auth/me');
+    if (!ok) return;
+    const user = data;
+
+    // Basic info
+    setText('profile-name', user.displayName || user.name || '');
+    setText('profile-email', user.email || '');
+    setText('profile-username', user.username ? '@' + user.username : '');
+    setText('profile-created', formatDate(user.createdAt));
+    setText('profile-provider', (user.authProvider || 'password').charAt(0).toUpperCase() + (user.authProvider || 'password').slice(1));
+
+    // Plan
+    const badge = $('premium-badge');
+    if (badge) badge.style.display = user.entitlement?.isPremium ? 'inline-flex' : 'none';
+
+    // Subscription section
+    loadSubscription(user);
+
+    // Devices
+    loadDevices();
+
+    // Preferences
+    loadPreferences(user);
+
+    // Watch history
+    loadHistory();
+
+    // My List
+    loadMyList();
+
+    renderAvatars(user);
+    if (window.Session) window.Session.refresh();
+  } catch (e) {
+    console.error('[Profile] load error:', e);
+  }
+}
+
+// ── Subscription ───────────────────────────────────────────
+async function loadSubscription(user) {
+  const plan = user.entitlement?.isPremium
+    ? (user.entitlement.plan || 'Standard').toUpperCase()
+    : 'FREE';
+  setText('sub-plan', plan);
+  setText('sub-expires', user.entitlement?.expiresAt ? formatDate(user.entitlement.expiresAt) : 'N/A');
+  const manageBtn = $('sub-manage');
+  if (manageBtn) manageBtn.href = 'upgrade.html';
+}
+
+// ── Devices ────────────────────────────────────────────────
+async function loadDevices() {
+  const container = $('devices-list');
+  if (!container) return;
+  try {
+    const { ok, data } = await apiFetch('/api/auth/sessions');
+    if (!ok || !data?.sessions) return;
+    container.innerHTML = data.sessions.map(s => {
+      const isCurrent = s.current ? ' <span style="color:var(--purple,#6c2bd9);font-size:0.75rem;">(this device)</span>' : '';
+      return `
+        <div class="device-item" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border,#2a2a35);">
+          <div>
+            <strong>${window._escapeHTML(s.deviceName || s.platform || 'Device')}</strong>${isCurrent}
+            <div style="font-size:0.8rem;color:var(--text-muted,#9ca3af);">${s.platform || ''} · Last seen ${formatDate(s.lastSeenAt)}</div>
+          </div>
+          ${!s.current ? `<button class="btn-prev" onclick="revokeDevice('${s.id}')" style="padding:6px 12px;font-size:0.8rem;">Revoke</button>` : ''}
+        </div>`;
+    }).join('') || '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">No sessions found.</p>';
+  } catch (e) {}
+}
+
+async function revokeDevice(id) {
+  if (!confirm('Revoke this device session?')) return;
+  try {
+    await apiFetch('/api/auth/sessions/' + id, { method: 'DELETE' });
+    loadDevices();
+  } catch (e) { alert('Could not revoke device.'); }
+}
+window.revokeDevice = revokeDevice;
+
+// ── Preferences ────────────────────────────────────────────
+async function loadPreferences(user) {
+  const prefs = user.preferences || {};
+  const setCheck = (id, val) => { const el = $(id); if (el) el.checked = !!val; };
+  const setSel = (id, val) => { const el = $(id); if (el && val) el.value = val; };
+
+  setCheck('pref-autoplay', prefs.autoplayNext);
+  setCheck('pref-subtitles', prefs.subtitlesOn);
+  setCheck('pref-skip-intro', prefs.skipIntroAuto);
+  setCheck('pref-reduce-motion', prefs.reduceMotion);
+  setSel('pref-quality', prefs.defaultQuality);
+  if ($('pref-countdown')) $('pref-countdown').value = prefs.autoplayCountdown ?? 10;
+  if ($('pref-rate')) $('pref-rate').value = prefs.playbackRate ?? 1;
+
+  // Render selected genre chips
+  const genreChips = $('pref-genres');
+  if (genreChips) {
+    genreChips.innerHTML = (prefs.genres || []).map(g =>
+      `<span style="background:var(--purple,#6c2bd9);color:#fff;padding:4px 10px;border-radius:12px;font-size:0.8rem;margin:2px;">${window._escapeHTML(g)}</span>`
+    ).join('') || '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">No genres selected.</p>';
+  }
+}
+
+async function savePreferences() {
+  const body = {
+    autoplayNext: $('pref-autoplay')?.checked,
+    subtitlesOn: $('pref-subtitles')?.checked,
+    skipIntroAuto: $('pref-skip-intro')?.checked,
+    reduceMotion: $('pref-reduce-motion')?.checked,
+    defaultQuality: $('pref-quality')?.value,
+    autoplayCountdown: parseInt($('pref-countdown')?.value || '10', 10),
+    playbackRate: parseFloat($('pref-rate')?.value || '1'),
+  };
+  try {
+    const { ok, data } = await apiFetch('/api/profile/preferences', { method: 'PUT', body: JSON.stringify(body) });
+    if (ok) { showToast('Preferences saved!'); loadProfile(); }
+    else alert(data?.message || 'Could not save preferences.');
+  } catch (e) { alert('Could not save preferences.'); }
+}
+window.savePreferences = savePreferences;
+
+// ── Watch History ──────────────────────────────────────────
+async function loadHistory() {
+  const container = $('history-list');
+  if (!container) return;
+  try {
+    const { ok, data } = await apiFetch('/api/watchlist/continue');
+    if (!ok || !Array.isArray(data)) return;
+    container.innerHTML = data.slice(0, 10).map(item => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#2a2a35);">
+        <a href="details.html?id=${item.anime_id}" style="color:var(--text,#fff);text-decoration:none;font-size:0.9rem;">${window._escapeHTML(item.title || '')} — Ep ${item.episode_number || ''}</a>
+        <span style="font-size:0.8rem;color:var(--text-muted,#9ca3af);">${Math.round((item.progress_sec||0)/60)}m watched</span>
+      </div>`).join('') || '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">No watch history.</p>';
+  } catch (e) {}
+}
+
+async function clearHistory() {
+  if (!confirm('Clear all watch history?')) return;
+  try {
+    const { ok } = await apiFetch('/api/profile/history', { method: 'DELETE' });
+    if (ok) { showToast('History cleared.'); loadHistory(); }
+  } catch (e) { alert('Could not clear history.'); }
+}
+window.clearHistory = clearHistory;
+
+// ── My List ────────────────────────────────────────────────
+async function loadMyList() {
+  const container = $('mylist-list');
+  if (!container) return;
+  try {
+    const { ok, data } = await apiFetch('/api/watchlist/stats');
+    if (ok) {
+      const list = [];
+      if (data.watching) list.push({ label: 'Watching', count: data.watching });
+      if (data.completed) list.push({ label: 'Completed', count: data.completed });
+      if (data.plan_to_watch) list.push({ label: 'Planned', count: data.plan_to_watch });
+      container.innerHTML = list.map(x =>
+        `<div style="padding:8px 0;border-bottom:1px solid var(--border,#2a2a35);font-size:0.9rem;">
+           ${x.label}: <strong>${x.count}</strong>
+         </div>`).join('') || '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">Your list is empty.</p>';
+    }
+  } catch (e) {}
+}
+
+// ── Danger Zone ────────────────────────────────────────────
+async function deactivateAccount() {
+  if (!confirm('Deactivate your account? You can reactivate later by logging in.')) return;
+  try {
+    const { ok } = await apiFetch('/api/auth/account/deactivate', { method: 'POST' });
+    if (ok) {
+      if (window.Auth) window.Auth.clear();
+      window.location.replace('login.html');
+    }
+  } catch (e) { alert('Could not deactivate account.'); }
+}
+window.deactivateAccount = deactivateAccount;
+
+async function deleteAccount() {
+  if (!confirm('Permanently delete your account? This action cannot be undone.')) return;
+  if (!confirm('Are you absolutely sure? All data will be permanently deleted.')) return;
+  try {
+    const { ok } = await apiFetch('/api/auth/account/delete', { method: 'POST' });
+    if (ok) {
+      if (window.Auth) window.Auth.clear();
+      window.location.replace('login.html');
+    }
+  } catch (e) { alert('Could not delete account.'); }
+}
+window.deleteAccount = deleteAccount;
+
+// ── Avatar upload live preview ─────────────────────────────
+function uploadAvatarPreview(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) { alert('Only JPG, PNG, or WebP allowed.'); return; }
+  if (file.size > 5 * 1024 * 1024) { alert('Image too large. Max 5 MB.'); return; }
+
+  const fd = new FormData();
+  fd.append('avatar', file);
+  // Instant preview
+  const preview = $('profile-avatar-img');
+  if (preview) preview.src = URL.createObjectURL(file);
+
+  apiFetch('/api/auth/avatar', { method: 'POST', body: fd, skipAuthRedirect: true })
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data?.message || 'Upload failed');
+      localStorage.setItem('token', State.token); // ensure token persists
+      return Session.refresh();
+    })
+    .then((user) => {
+      renderAvatars(user);
+      if (typeof showToast === 'function') showToast('Profile picture updated!');
+      if (typeof showToast === 'function') showToast;
+    })
+    .catch((err) => alert(err.message || 'Upload failed.'));
+}
+window.uploadAvatarPreview = uploadAvatarPreview;

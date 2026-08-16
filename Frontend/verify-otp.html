@@ -44,6 +44,8 @@
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
 <script src="js/api.js"></script>
+<script src="js/session.js"></script>
+<script src="js/navigation.js"></script>
 <script>
 // ── Load the pending email: ?email= is the source of truth, then
 //    sessionStorage, then localStorage (mobile webview fallback). ──
@@ -112,10 +114,11 @@ async function handleVerifyOtp() {
     });
 
     if (data && data.token) {
-      localStorage.setItem('token', data.token);
+      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+      else localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
       // Redirect via the centralized helper (also cleans pendingEmail state).
-      window.redirectAfterAuthentication(data.user, data.token);
+      window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
       return;
     }
 

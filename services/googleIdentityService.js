@@ -73,6 +73,16 @@ async function resolveGoogleIdentity(idTokenOrProfile, intent = 'login') {
       err.status = 403;
       throw err;
     }
+    // Status gate — suspended/deactivated/deleted users cannot log in via Google.
+    if (user.status && user.status !== 'active') {
+      const err = new Error('Account is not active.');
+      err.code = user.status === 'suspended' ? 'ACCOUNT_SUSPENDED'
+        : user.status === 'deactivated' ? 'ACCOUNT_DEACTIVATED'
+        : user.status === 'deleted' ? 'ACCOUNT_DELETED'
+        : 'ACCOUNT_NOT_ACTIVE';
+      err.status = 403;
+      throw err;
+    }
     user = await authenticateExistingGoogleUser(user, profile);
     return { user, profile };
   }

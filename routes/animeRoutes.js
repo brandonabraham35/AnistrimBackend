@@ -123,7 +123,7 @@ router.get('/:id', (req, res, next) => {
   const auth = req.headers.authorization;
   if (auth) {
     const jwt = require('jsonwebtoken');
-    try { req.user = jwt.verify(auth.split(' ')[1], process.env.JWT_SECRET); } catch(_) {}
+    try { req.user = jwt.verify(auth.split(' ')[1], process.env.JWT_SECRET, { algorithms: ['HS256'] }); } catch(_) {}
   }
   next();
 }, anime.getById);

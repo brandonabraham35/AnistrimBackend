@@ -1,0 +1,50 @@
+{
+  "scripts": {
+    "start": "node server.js",
+    "cap:sync": "node scripts/capacitor-preflight.js && cap copy android && cap sync android",
+    "migrate": "node scripts/migrate.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "seed:catalogue": "node scripts/seed-catalogue.js",
+    "validate:nightly": "node validation/index.js",
+    "validate:quick": "node validation/index.js --quick",
+    "validate:concurrency": "node validation/index.js --skipConcurrency",
+    "test:hls": "node --test test/hlsRewriter.test.js",
+    "test:ssrf": "node --test test/ssrfGuard.test.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
+    "@capawesome/capacitor-google-sign-in": "^0.1.2",
+    "@consumet/extensions": "^1.8.8",
+    "axios": "^1.18.1",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "cloudinary": "^2.10.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "form-data": "^4.0.6",
+    "google-auth-library": "^10.9.1",
+    "https-proxy-agent": "^9.1.0",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "mime-types": "^3.0.2",
+    "multer": "^2.2.0",
+    "mysql2": "^3.22.5",
+    "node-cron": "^4.6.0",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^9.0.5",
+    "redis": "^6.1.0",
+    "uuid": "^14.0.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "puppeteer-core": "^25.5.0"
+  }
+}

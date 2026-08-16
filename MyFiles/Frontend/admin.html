@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecting to Admin Dashboard | AniStrim</title>
+  <!--
+    Redirects to the EXTERNAL AdminDashboard app, which Express serves at /admin.
+    This restores the original behavior: admin.html is just an entry point that
+    forwards to the standalone AdminDashboard CMS (its own auth/session).
+  -->
+  <script>
+    (function() {
+      // Root-absolute so this works regardless of how admin.html is reached.
+      // If an admin session token exists, go straight to the dashboard;
+      // otherwise send to the AdminDashboard login (index.html).
+      if (localStorage.getItem('admin_token')) {
+        window.location.replace('/admin/dashboard.html');
+      } else {
+        window.location.replace('/admin/');
+      }
+    })();
+  </script>
+</head>
+<body>
+  <p style="font-family:sans-serif;padding:2rem;color:#888;text-align:center;">Redirecting to Admin Dashboard…</p>
+</body>
+</html>

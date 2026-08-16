@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-08-04T18:47:21.202Z",
+  "enabled": true,
+  "summary": {
+    "gets": 0,
+    "hits": 0,
+    "misses": 0,
+    "sets": 0,
+    "deletes": 0,
+    "hitRatio": 0,
+    "missRatio": 0,
+    "avgLookupMs": 0,
+    "errors": 0,
+    "uniqueKeys": 0
+  },
+  "recentKeys": []
+}

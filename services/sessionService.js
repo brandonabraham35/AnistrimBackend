@@ -60,6 +60,13 @@ async function createSession(user, req) {
     [sessionId, user.id, refreshHash, deviceName(ua), platform, ua.slice(0, 255), ipHash(ip), expiresSql]
   );
 
+  // Record the issued refresh token in the rotation-tracking table.
+  await pool.query(
+    `INSERT INTO session_refresh_tokens (session_id, refresh_hash)
+     VALUES (?, ?)`,
+    [sessionId, refreshHash]
+  );
+
   const accessToken = await signAccessToken(user, sessionId);
   return { accessToken, refreshToken, sessionId };
 }
@@ -93,9 +100,43 @@ async function rotateRefresh(refreshToken, req) {
   }
 
   const presentedHash = sha256(refreshToken);
-  const [rows] = await pool.query(
-    'SELECT * FROM user_sessions WHERE refresh_hash = ?',
+
+  // Look up the presented hash in the rotation-tracking table FIRST.
+  // This is the authoritative source for reuse detection.
+  const [tokenRows] = await pool.query(
+    'SELECT * FROM session_refresh_tokens WHERE refresh_hash = ?',
     [presentedHash]
+  );
+
+  if (tokenRows.length === 0) {
+    const err = new Error('Invalid refresh token.');
+    err.code = 'INVALID_REFRESH_TOKEN';
+    err.status = 401;
+    throw err;
+  }
+
+  const tokenRow = tokenRows[0];
+
+  // REUSE DETECTION: if this hash was already used (rotated), the token was
+  // replayed → revoke the whole session family and log session_revoked.
+  if (tokenRow.used_at) {
+    const [sessRows] = await pool.query(
+      'SELECT user_id FROM user_sessions WHERE id = ?',
+      [tokenRow.session_id]
+    );
+    if (sessRows.length > 0) {
+      await revokeAllSessions(sessRows[0].user_id, 'session_revoked');
+    }
+    const err = new Error('Refresh token reuse detected. All sessions revoked.');
+    err.code = 'REFRESH_REUSE_DETECTED';
+    err.status = 401;
+    throw err;
+  }
+
+  // Load the session row.
+  const [rows] = await pool.query(
+    'SELECT * FROM user_sessions WHERE id = ?',
+    [tokenRow.session_id]
   );
 
   if (rows.length === 0) {
@@ -107,8 +148,7 @@ async function rotateRefresh(refreshToken, req) {
 
   const session = rows[0];
 
-  // Reuse detection: a revoked session that still has a matching hash means the
-  // token was presented after rotation → revoke the whole family.
+  // A revoked session means the token was presented after explicit revocation.
   if (session.revoked_at) {
     await revokeAllSessions(session.user_id, 'session_revoked');
     const err = new Error('Refresh token reuse detected. All sessions revoked.');
@@ -150,17 +190,31 @@ async function rotateRefresh(refreshToken, req) {
     throw err;
   }
 
-  // Rotate: revoke the old hash, insert a new one.
+  // Rotate: mark the presented token as used, insert the new one.
   const newRefreshToken = crypto.randomBytes(32).toString('hex');
   const newRefreshHash = sha256(newRefreshToken);
   const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
   const newExpiresSql = newExpiresAt.toISOString().slice(0, 19).replace('T', ' ');
 
+  // Mark the presented token as used (this is what enables reuse detection).
+  await pool.query(
+    'UPDATE session_refresh_tokens SET used_at = NOW() WHERE id = ?',
+    [tokenRow.id]
+  );
+
+  // Update the session's current hash + expiry.
   await pool.query(
     `UPDATE user_sessions
      SET refresh_hash = ?, expires_at = ?, last_seen_at = NOW()
      WHERE id = ?`,
     [newRefreshHash, newExpiresSql, session.id]
+  );
+
+  // Record the new token in the rotation-tracking table.
+  await pool.query(
+    `INSERT INTO session_refresh_tokens (session_id, refresh_hash)
+     VALUES (?, ?)`,
+    [session.id, newRefreshHash]
   );
 
   const accessToken = await signAccessToken(user, session.id);
@@ -187,6 +241,8 @@ async function revokeAllSessions(userId, event = 'logout') {
 
 // ── Login history ───────────────────────────────────────────
 async function logEvent(userId, event, provider = null, req = null) {
+  // Skip the insert for unknown emails (userId 0/null) — the FK would orphan.
+  if (!userId) return;
   const ua = req?.headers?.['user-agent'] || null;
   const ip = req?.ip || req?.socket?.remoteAddress || null;
   await pool.query(

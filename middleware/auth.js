@@ -30,10 +30,10 @@ exports.protect = async (req, res, next) => {
     return res.status(401).json({ message: 'Invalid token type.' });
   }
 
-  // Backward compatibility: legacy tokens carry { userId, id } but no uid/sid/tv.
-  // Phase-1 tokens carry { uid, sid, tv }. Accept both, but the new checks
-  // (status, token_version, session) only apply to Phase-1 tokens.
-  const userId = decoded.uid ?? decoded.userId ?? decoded.id;
+  // Phase-1 access tokens MUST carry { uid, sid, tv }. Legacy tokens without
+  // `uid` are rejected outright — they skip the tv/session checks and are a
+  // security hole.
+  const userId = decoded.uid;
   if (!userId) {
     return res.status(401).json({ message: 'Invalid token payload.' });
   }
@@ -54,26 +54,23 @@ exports.protect = async (req, res, next) => {
       return res.status(403).json({ code, message: 'Account is not active.' });
     }
 
-    // Phase-1 token: enforce token_version + session revocation.
-    if (decoded.uid !== undefined) {
-      // token_version mismatch → token was issued before a logout-all / password change.
-      if (Number(decoded.tv) !== Number(user.token_version)) {
-        return res.status(401).json({ code: 'TOKEN_VERSION_MISMATCH', message: 'Session invalidated. Please log in again.' });
-      }
+    // token_version mismatch → token was issued before a logout-all / password change.
+    if (Number(decoded.tv) !== Number(user.token_version)) {
+      return res.status(401).json({ code: 'TOKEN_VERSION_MISMATCH', message: 'Session invalidated. Please log in again.' });
+    }
 
-      // Session revocation check.
-      const sid = decoded.sid;
-      if (sid) {
-        const [sessRows] = await pool.query(
-          'SELECT id, revoked_at FROM user_sessions WHERE id = ? AND user_id = ?',
-          [sid, userId]
-        );
-        if (sessRows.length === 0 || sessRows[0].revoked_at) {
-          return res.status(401).json({ code: 'SESSION_REVOKED', message: 'Session revoked. Please log in again.' });
-        }
-        // Touch last_seen_at (best-effort, non-blocking).
-        pool.query('UPDATE user_sessions SET last_seen_at = NOW() WHERE id = ?', [sid]).catch(() => {});
+    // Session revocation check.
+    const sid = decoded.sid;
+    if (sid) {
+      const [sessRows] = await pool.query(
+        'SELECT id, revoked_at FROM user_sessions WHERE id = ? AND user_id = ?',
+        [sid, userId]
+      );
+      if (sessRows.length === 0 || sessRows[0].revoked_at) {
+        return res.status(401).json({ code: 'SESSION_REVOKED', message: 'Session revoked. Please log in again.' });
       }
+      // Touch last_seen_at (best-effort, non-blocking).
+      pool.query('UPDATE user_sessions SET last_seen_at = NOW() WHERE id = ?', [sid]).catch(() => {});
     }
 
     // Attach the full user row + decoded claims to req.
@@ -112,7 +109,10 @@ exports.adminOnly = async (req, res, next) => {
 
 // Must be used AFTER protect
 exports.premiumOnly = (req, res, next) => {
-  if (!req.user || (!req.user.isPremium && !req.user.isAdmin)) {
+  // DB column is `is_premium`; the DTO maps it to `isPremium`. Check both.
+  const isPremium = req.user?.isPremium === true || req.user?.is_premium === true;
+  const isAdmin = req.user?.isAdmin === true || req.user?.is_admin === true;
+  if (!req.user || (!isPremium && !isAdmin)) {
     return res.status(403).json({ message: 'Premium subscription required.' });
   }
   next();

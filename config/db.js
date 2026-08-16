@@ -42,11 +42,26 @@ async function ensureAdminUser() {
       await connection.query('UPDATE users SET password_hash = ?, is_admin = 1 WHERE id = ?', [passwordHash, user.id]);
       console.log(`✅ Admin user '${adminEmail}' verified and password reset.`);
     } else {
-      // User does not exist, create them
-      await connection.query(
-        "INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, status) VALUES (?, ?, ?, 1, 1, 1, 'active')",
-        ['Default Admin', adminEmail, passwordHash]
+      // User does not exist, create them.
+      // Check whether the Phase-1 `status` column exists yet (migrations may not
+      // have run on a fresh DB). If it does, set status='active'; otherwise omit
+      // it so the INSERT does not crash with "Unknown column 'status'".
+      const [colRows] = await connection.query(
+        `SELECT COUNT(*) AS c FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'status'`
       );
+      const hasStatus = Number(colRows[0]?.c) > 0;
+      if (hasStatus) {
+        await connection.query(
+          "INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, status) VALUES (?, ?, ?, 1, 1, 1, 'active')",
+          ['Default Admin', adminEmail, passwordHash]
+        );
+      } else {
+        await connection.query(
+          "INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified) VALUES (?, ?, ?, 1, 1, 1)",
+          ['Default Admin', adminEmail, passwordHash]
+        );
+      }
       console.log(`✅ Admin user '${adminEmail}' created successfully.`);
     }
   } catch (error) {

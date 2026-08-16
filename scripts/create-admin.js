@@ -60,12 +60,20 @@ async function main() {
   const sqlQuery = `
 -- =============================================================================
 --  Run this SQL query in your database client to create/update the admin user.
---  WARNING: This uses REPLACE, which will delete and re-insert the row if
---           a user with the same primary key (email) exists.
+--  Uses INSERT ... ON DUPLICATE KEY UPDATE so existing sessions/history are
+--  NOT cascade-deleted (unlike REPLACE INTO).
 -- =============================================================================
-REPLACE INTO users (name, email, password_hash, is_admin, is_premium, created_at, status)
+INSERT INTO users (name, email, password_hash, is_admin, is_premium, created_at, status, is_verified, auth_provider, token_version)
 VALUES
-(${escapeSql(name)}, ${escapeSql(email)}, '${passwordHash}', 1, 1, NOW(), 'active');
+(${escapeSql(name)}, ${escapeSql(email)}, '${passwordHash}', 1, 1, NOW(), 'active', 1, 'password', 0)
+ON DUPLICATE KEY UPDATE
+  password_hash = VALUES(password_hash),
+  is_admin = 1,
+  is_premium = 1,
+  status = 'active',
+  is_verified = 1,
+  auth_provider = 'password',
+  token_version = token_version + 1;
 -- =============================================================================
 `;
 

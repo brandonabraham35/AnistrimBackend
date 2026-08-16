@@ -38,12 +38,14 @@ async function handleLogin() {
     });
 
     if (data && data.token) {
-      localStorage.setItem('token', data.token);
+      // Store both access + refresh tokens via the canonical helper.
+      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+      else localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
       // Use the canonical session + navigation contract.
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
       const user = data.user || (await window.Session?.refresh?.());
-      window.Navigation?.afterAuth?.(user, redirectParam);
+      window.redirectAfterAuthentication?.(user, data.token, data.refreshToken);
       return;
     }
 
@@ -94,10 +96,11 @@ async function sendIdTokenToBackend(idToken) {
       body: JSON.stringify({ idToken })
     });
     if (data && data.token && data.user) {
-      localStorage.setItem('token', data.token);
+      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+      else localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-      window.Navigation?.afterAuth?.(data.user, redirectParam);
+      window.redirectAfterAuthentication?.(data.user, data.token, data.refreshToken);
       return;
     }
     showError((data && data.message) || 'Google sign-in failed. Please try again.');
@@ -127,11 +130,11 @@ async function handleAppUrlOpen(data) {
     const token = url.searchParams.get('token');
 
     if (token) {
-      localStorage.setItem('session_token', token);
-      localStorage.setItem('token', token);
+      if (window.setAuthTokens) window.setAuthTokens(token, null);
+      else { localStorage.setItem('session_token', token); localStorage.setItem('token', token); }
       const redirectParam = new URLSearchParams(window.location.search).get('redirect');
       const user = JSON.parse(localStorage.getItem('user') || 'null');
-      window.Navigation?.afterAuth?.(user, redirectParam);
+      window.redirectAfterAuthentication?.(user, token, null);
       return;
     }
 
@@ -140,12 +143,12 @@ async function handleAppUrlOpen(data) {
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
       const data2 = await res.json();
       if (res.ok && data2.token) {
-        localStorage.setItem('session_token', data2.token);
-        localStorage.setItem('token', data2.token);
+        if (window.setAuthTokens) window.setAuthTokens(data2.token, data2.refreshToken);
+        else { localStorage.setItem('session_token', data2.token); localStorage.setItem('token', data2.token); }
         if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
         localStorage.setItem('isFirstVisit', 'true');
         const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-        window.Navigation?.afterAuth?.(data2.user, redirectParam);
+        window.redirectAfterAuthentication?.(data2.user, data2.token, data2.refreshToken);
       } else {
         showError(data2.message || 'Google sign-in failed. Please try again.');
       }
