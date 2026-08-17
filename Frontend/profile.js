@@ -164,7 +164,46 @@ async function loadPreferences(user) {
       `<span style="background:var(--purple,#6c2bd9);color:#fff;padding:4px 10px;border-radius:12px;font-size:0.8rem;margin:2px;">${window._escapeHTML(g)}</span>`
     ).join('') || '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">No genres selected.</p>';
   }
+
+  // FIX 8: render genre multi-select for editing
+  loadGenreOptions(prefs.genres || []);
 }
+
+// FIX 8: load all available genres and render a multi-select picker.
+async function loadGenreOptions(selectedGenres) {
+  const container = $('pref-genre-options');
+  if (!container) return;
+  const selected = new Set(selectedGenres || []);
+  try {
+    const data = await window.apiFetch('/api/anime/genres');
+    const list = Array.isArray(data)
+      ? data.map(g => (typeof g === 'string' ? g : g && g.name)).filter(Boolean)
+      : (data && Array.isArray(data.genres) ? data.genres.filter(g => typeof g === 'string') : []);
+    if (!list.length) return;
+    container.innerHTML = list.map(g => {
+      const isSel = selected.has(g);
+      return `<button type="button" class="pref-genre-chip${isSel ? ' selected' : ''}" data-genre="${window._escapeHTML(g)}" onclick="togglePrefGenre(this)">${window._escapeHTML(g)}</button>`;
+    }).join('');
+  } catch (e) {
+    // Non-fatal — genre editing is optional.
+  }
+}
+
+// FIX 8: toggle a genre chip in the profile preferences.
+function togglePrefGenre(btn) {
+  if (!btn) return;
+  btn.classList.toggle('selected');
+}
+
+// FIX 8: collect the currently selected genre chips.
+function getSelectedPrefGenres() {
+  const container = $('pref-genre-options');
+  if (!container) return [];
+  return [...container.querySelectorAll('.pref-genre-chip.selected')]
+    .map(el => el.getAttribute('data-genre'))
+    .filter(Boolean);
+}
+window.togglePrefGenre = togglePrefGenre;
 
 async function savePreferences() {
   const body = {
@@ -175,6 +214,7 @@ async function savePreferences() {
     defaultQuality: $('pref-quality')?.value,
     autoplayCountdown: parseInt($('pref-countdown')?.value || '10', 10),
     playbackRate: parseFloat($('pref-rate')?.value || '1'),
+    genres: getSelectedPrefGenres(),
   };
   try {
     const { ok, data } = await apiOk('/api/profile/preferences', { method: 'PUT', body: JSON.stringify(body) });
@@ -185,18 +225,36 @@ async function savePreferences() {
 window.savePreferences = savePreferences;
 
 // ── Watch History ──────────────────────────────────────────
+// FIX 5: use the canonical /api/watch/history endpoint (returns
+// animeTitle / episodeNumber / positionSec / durationSec) instead of the
+// legacy continue-watching alias whose mapper read non-existent fields.
 async function loadHistory() {
   const container = $('history-list');
   if (!container) return;
   try {
-    const { ok, data } = await apiOk('/api/watchlist/continue');
-    if (!ok || !Array.isArray(data)) return;
-    container.innerHTML = data.slice(0, 10).map(item => `
+    const { ok, data } = await apiOk('/api/watch/history?limit=10');
+    if (!ok) {
+      container.innerHTML = '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">Could not load watch history.</p>';
+      return;
+    }
+    const items = (data && Array.isArray(data.items)) ? data.items : [];
+    if (!items.length) {
+      container.innerHTML = '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">No watch history.</p>';
+      return;
+    }
+    container.innerHTML = items.map(item => {
+      const title = item.animeTitle || 'Unknown';
+      const ep = item.episodeNumber || '';
+      const mins = Math.round((item.positionSec || 0) / 60);
+      return `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#2a2a35);">
-        <a href="details.html?id=${item.anime_id}" style="color:var(--text,#fff);text-decoration:none;font-size:0.9rem;">${window._escapeHTML(item.title || '')} — Ep ${item.episode_number || ''}</a>
-        <span style="font-size:0.8rem;color:var(--text-muted,#9ca3af);">${Math.round((item.progress_sec||0)/60)}m watched</span>
-      </div>`).join('') || '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">No watch history.</p>';
-  } catch (e) {}
+        <a href="details.html?id=${item.animeId}" style="color:var(--text,#fff);text-decoration:none;font-size:0.9rem;">${window._escapeHTML(title)}${ep ? ' — Ep ' + ep : ''}</a>
+        <span style="font-size:0.8rem;color:var(--text-muted,#9ca3af);">${mins}m watched</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<p style="color:var(--text-muted,#9ca3af);font-size:0.85rem;">Could not load watch history.</p>';
+  }
 }
 
 async function clearHistory() {
@@ -240,14 +298,23 @@ async function deactivateAccount() {
 }
 window.deactivateAccount = deactivateAccount;
 
+// FIX 11: require password confirmation before account deletion.
 async function deleteAccount() {
-  if (!confirm('Permanently delete your account? This action cannot be undone.')) return;
-  if (!confirm('Are you absolutely sure? All data will be permanently deleted.')) return;
+  const password = prompt('Enter your password to confirm account deletion. This action cannot be undone.');
+  if (password === null) return; // cancelled
+  if (!password) { alert('Password is required to delete your account.'); return; }
   try {
-    const { ok } = await apiOk('/api/auth/account/delete', { method: 'POST' });
+    const { ok, status, data } = await apiOk('/api/auth/account/delete', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
     if (ok) {
       if (window.Auth) window.Auth.clear();
       window.location.replace('login.html');
+    } else if (status === 401) {
+      alert(data?.message || 'Incorrect password. Account deletion cancelled.');
+    } else {
+      alert(data?.message || 'Could not delete account.');
     }
   } catch (e) { alert('Could not delete account.'); }
 }

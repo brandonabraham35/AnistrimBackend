@@ -113,6 +113,7 @@ router.get('/recent',   anime.getLatest);
 router.get('/popular',  anime.getTrending);
 router.get('/featured', anime.getFeatured);
 router.get('/search',           anime.search);
+router.get('/genres',           anime.getGenres);
 router.get('/search/advanced',  catalogue.advancedSearch);
 router.get('/recommendations/:id', anime.getRecommendations);
 router.get('/resolve/stream', anime.resolveStream);

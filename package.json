@@ -9,6 +9,7 @@
     "validate:nightly": "node validation/index.js",
     "validate:quick": "node validation/index.js --quick",
     "validate:concurrency": "node validation/index.js --skipConcurrency",
+    "test": "node --test test/**/*.test.js",
     "test:hls": "node --test test/hlsRewriter.test.js",
     "test:ssrf": "node --test test/ssrfGuard.test.js"
   },
@@ -42,6 +43,7 @@
     "node-fetch": "^2.7.0",
     "nodemailer": "^9.0.5",
     "redis": "^6.1.0",
+    "sharp": "^0.33.5",
     "uuid": "^14.0.1"
   },
   "devDependencies": {

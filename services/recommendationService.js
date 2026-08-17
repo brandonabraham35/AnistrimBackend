@@ -14,6 +14,7 @@
 // score, reason, computed_at) so the homepage is a single indexed read.
 const db = require('../config/db');
 const cron = require('node-cron');
+const { getPreferences } = require('./preferencesService');
 
 // Scoring weights.
 const W = { genre: 0.35, popularity: 0.20, studio: 0.15, collaborative: 0.15, recency: 0.10, completion: 0.05 };
@@ -46,9 +47,16 @@ async function buildGenreVector(userId) {
   );
 
   // Seed from onboarding preferences (cold start).
-  const [prefs] = await db.query('SELECT genres FROM user_preferences WHERE user_id = ?', [userId]);
+  // FIX 4: mysql2 already deserialises JSON columns into JS values, so
+  // JSON.parse() on the result throws. Reuse preferencesService.getPreferences
+  // which already handles both array and string forms via normalizeGenres.
   let onboardingGenres = [];
-  try { onboardingGenres = prefs[0]?.genres ? JSON.parse(prefs[0].genres) : []; } catch (e) {}
+  try {
+    const prefs = await getPreferences(userId);
+    onboardingGenres = prefs.genres || [];
+  } catch (e) {
+    console.warn('[Recommendations] Could not read onboarding genres:', e.message);
+  }
 
   const vector = {};
   for (const r of rows || []) {

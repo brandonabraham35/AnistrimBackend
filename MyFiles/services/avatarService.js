@@ -8,10 +8,14 @@
 //          → UPDATE users.avatar_url, delete previous object
 //          → return new URL → session.refresh() → every mounted <img data-avatar> updates
 const crypto = require('crypto');
+const { cloudinary, isConfigured } = require('../utils/cloudinary');
 const { uploadBufferToCloudinary, deleteImage } = require('../utils/bunnyUpload');
 
 const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const MIN_AVATAR_DIMENSION = 200;
+// Decompression-bomb guard (Bug 8): reject absurdly large images before decode.
+const MAX_AVATAR_DIMENSION = 8000;
+const MAX_AVATAR_PIXELS = 40 * 1000 * 1000; // ~40 MP
 const TARGET_SIZE = 512;
 
 // Sniff the actual image type from magic bytes (never trust client mimetype).
@@ -97,24 +101,35 @@ function validateAvatar(buffer) {
   if (dims.width < MIN_AVATAR_DIMENSION || dims.height < MIN_AVATAR_DIMENSION) {
     return { ok: false, error: `Image must be at least ${MIN_AVATAR_DIMENSION}×${MIN_AVATAR_DIMENSION}px.` };
   }
+  // Max-dimension + pixel-count guard (decompression-bomb protection).
+  if (dims.width > MAX_AVATAR_DIMENSION || dims.height > MAX_AVATAR_DIMENSION) {
+    return { ok: false, error: `Image dimensions too large (max ${MAX_AVATAR_DIMENSION}×${MAX_AVATAR_DIMENSION}px).` };
+  }
+  if (dims.width * dims.height > MAX_AVATAR_PIXELS) {
+    return { ok: false, error: 'Image has too many pixels. Please use a smaller image.' };
+  }
 
   return { ok: true, type, dims };
 }
 
-// Re-encode/resize to 512×512 webp using sharp if available, otherwise upload
-// the original buffer (already validated). Falls back gracefully.
+// Re-encode/resize to 512×512 webp using sharp. sharp is REQUIRED for the
+// avatar contract (Bug 7): without it we'd store mislabeled bytes. Hard-fail
+// with a clear marker so the route can return 503.
 async function processToSquareWebp(buffer) {
   let sharp = null;
   try { sharp = require('sharp'); } catch (e) { sharp = null; }
 
-  if (sharp) {
-    return await sharp(buffer)
-      .resize(TARGET_SIZE, TARGET_SIZE, { fit: 'cover', position: 'centre' })
-      .webp({ quality: 85 })
-      .toBuffer();
+  if (!sharp) {
+    const err = new Error('Image processing library (sharp) is not installed.');
+    err.code = 'SHARP_MISSING';
+    err.status = 503;
+    throw err;
   }
-  // No sharp — return the original (already validated as a supported image).
-  return buffer;
+
+  return await sharp(buffer)
+    .resize(TARGET_SIZE, TARGET_SIZE, { fit: 'cover', position: 'centre' })
+    .webp({ quality: 85 })
+    .toBuffer();
 }
 
 // Full pipeline: validate + process + upload + persist + delete old.
@@ -128,27 +143,35 @@ async function uploadAvatarForUser(userId, buffer, prevAvatarUrl) {
 
   const processed = await processToSquareWebp(buffer);
 
+  // Upload under a deterministic per-user storage key so the returned URL
+  // points at the object ACTUALLY written (Bug 2 — no fabricated pathname).
   const filename = `${crypto.randomUUID()}.webp`;
-  const result = await uploadBufferToCloudinary(processed, 'avatars');
+  const key = `${userId}/${filename}`;
 
-  // Upload under a per-user filename. bunnyUpload returns secure_url; we
-  // rewrite the path portion to include userId/uuid for clean organisation.
-  const rawUrl = result.secure_url || result.url || result.image_url;
-  let finalUrl = rawUrl;
-  try {
-    const u = new URL(rawUrl);
-    u.pathname = `/avatars/${userId}/${filename}`;
-    finalUrl = u.toString();
-  } catch (e) {
-    // Non-URL upload path — keep as-is.
+  if (!isConfigured()) {
+    const err = new Error('Cloudinary is not configured.');
+    err.status = 503;
+    throw err;
   }
 
-  // Delete the previous avatar object (if it's one of ours under avatars/).
+  // Upload with an explicit public_id under the avatars/ folder so the URL we
+  // return is the real location of the stored object.
+  const result = await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: 'image', folder: 'avatars', public_id: key.slice(0, key.lastIndexOf('.')), overwrite: false },
+      (error, uploadResult) => error ? reject(error) : resolve(uploadResult)
+    );
+    stream.end(processed);
+  });
+
+  const finalUrl = result.secure_url || result.url;
+
+  // Delete the previous avatar object (key stored as avatars/<userId>/<uuid>).
   if (prevAvatarUrl) {
     try {
-      const match = prevAvatarUrl.match(/avatars\/([^/]+)\/([^/?#]+)/);
-      if (match && match[2]) {
-        await deleteImage(`avatars/${match[1]}/${match[2].replace(/\.webp$/, '')}`);
+      const match = prevAvatarUrl.match(/\/avatars\/([^/]+\/[^/?#]+)/);
+      if (match && match[1]) {
+        await deleteImage(`avatars/${match[1].replace(/\.webp$/, '')}`);
       }
     } catch (e) { /* best-effort delete */ }
   }
@@ -164,5 +187,7 @@ module.exports = {
   sniffDimensions,
   MAX_AVATAR_FILE_SIZE,
   MIN_AVATAR_DIMENSION,
+  MAX_AVATAR_DIMENSION,
+  MAX_AVATAR_PIXELS,
   TARGET_SIZE,
 };

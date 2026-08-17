@@ -87,7 +87,11 @@ async function run() {
         continue;
       }
 
-      const sql = fs.readFileSync(path.join(file.dir, file.name), 'utf8');
+      let sql = fs.readFileSync(path.join(file.dir, file.name), 'utf8');
+      // Strip hard-coded `USE <db>;` statements — the runner connects to the
+      // correct DB via DB_NAME already. A hard-coded USE would switch to a
+      // possibly non-existent database (e.g. anistrim2) on a custom DB_NAME.
+      sql = sql.replace(/^\s*USE\s+[`\w]+\s*;\s*$/gim, '');
       console.log('applying ' + file.name + ' ...');
       await conn.query(sql);
       await conn.query('INSERT INTO schema_migrations (filename) VALUES (?)', [file.name]);

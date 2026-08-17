@@ -225,12 +225,12 @@ exports.getLegacyContinueWatching = async (req, res) => {
     for (const item of canonicalResponse || []) {
       legacyRows.push({
         anime_id: item.animeId,
-        title: item.animeTitle,
-        cover_image: item.animeCoverImage,
+        title: item.title || item.animeTitle,
+        cover_image: item.poster || item.animeCoverImage,
         rating: 0,
         episode_number: item.episodeNumber,
-        progress_sec: item.progressSeconds || 0,
-        duration_sec: item.totalDurationSeconds || 1440,
+        progress_sec: item.positionSec || item.progressSeconds || 0,
+        duration_sec: item.durationSec || item.totalDurationSeconds || 1440,
       });
     }
 

@@ -7,14 +7,19 @@ function setText(id, val) { const el = $(id); if (el) el.textContent = val || ''
 function setHtml(id, val) { const el = $(id); if (el) el.innerHTML = val || ''; }
 
 // ── Canonical apiFetch wrapper ─────────────────────────────
-// js/api.js returns raw data and throws ApiError on non-2xx. This pages's
-// code uses the legacy { ok, data } shape, so wrap it here.
+// js/api.js returns raw data and throws ApiError on non-2xx. This page's
+// code uses the legacy { ok, data } shape, so wrap it here (Bug 11: surface
+// the status code so the UI can distinguish 401/403/409/422/429/5xx).
 async function apiOk(path, options) {
   try {
     const data = await window.apiFetch(path, options);
-    return { ok: true, data: data };
+    return { ok: true, status: 200, data: data };
   } catch (e) {
-    return { ok: false, data: (e && e.data) || { message: (e && e.message) || 'Request failed' } };
+    return {
+      ok: false,
+      status: (e && e.status) || 0,
+      data: (e && e.data) || { message: (e && e.message) || 'Request failed' },
+    };
   }
 }
 
@@ -39,8 +44,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadProfile() {
   try {
-    const { ok, data } = await apiOk('/api/auth/me');
-    if (!ok) return;
+    const { ok, status, data } = await apiOk('/api/auth/me');
+    if (!ok) {
+      // Surface auth/API failures instead of silently rendering a blank page.
+      if (status === 401) { window.location.replace('login.html'); return; }
+      const msg = (data && data.message) || 'Failed to load profile.';
+      console.error('[Profile] /me failed:', status, msg);
+      showProfileError(msg);
+      return;
+    }
     const user = data;
 
     // Basic info
@@ -73,7 +85,21 @@ async function loadProfile() {
     if (window.Session) window.Session.refresh();
   } catch (e) {
     console.error('[Profile] load error:', e);
+    showProfileError('Failed to load profile data.');
   }
+}
+
+// ── Profile error banner (Bug 11) ──────────────────────────
+function showProfileError(msg) {
+  let el = document.getElementById('profile-error-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'profile-error-banner';
+    el.style.cssText = 'background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 16px;font-size:0.85rem;margin-bottom:16px;text-align:center;';
+    const main = document.querySelector('main.profile-page') || document.body;
+    main.prepend(el);
+  }
+  el.textContent = msg || 'Something went wrong. Please try again.';
 }
 
 // ── Subscription ───────────────────────────────────────────
@@ -244,7 +270,6 @@ function uploadAvatarPreview(input) {
   apiOk('/api/auth/avatar', { method: 'POST', body: fd, skipAuthRedirect: true })
     .then(({ ok, data }) => {
       if (!ok) throw new Error(data?.message || 'Upload failed');
-      localStorage.setItem('token', State.token); // ensure token persists
       return Session.refresh();
     })
     .then((user) => {

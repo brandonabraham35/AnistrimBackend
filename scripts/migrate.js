@@ -28,8 +28,15 @@ const CREATE_TABLE_SQL =
 // Extract the numeric version from a migration filename:
 //   "002_add_email_verification.sql"  -> 2
 //   "migrations_v29_account_lifecycle.sql" -> 29
-//   "schema.sql" -> Infinity (apply last)
+//   "schema.sql" -> -1 (apply FIRST — the base schema must exist before any
+//                     versioned migration that references users/episodes/etc.)
+//   "updates.sql" -> MAX_SAFE_INTEGER (apply LAST — post-schema updates)
+//   anything else without a number -> MAX_SAFE_INTEGER (apply last)
 function versionOf(filename) {
+  // Base schema must run first so FK targets (users, episodes, anime) exist.
+  if (filename === 'schema.sql') return -1;
+  // Post-schema updates run last.
+  if (filename === 'updates.sql') return Number.MAX_SAFE_INTEGER;
   const m = filename.match(/v?(\d+)/);
   if (!m) return Number.MAX_SAFE_INTEGER;
   return parseInt(m[1], 10);
@@ -92,8 +99,21 @@ async function run() {
       // correct DB via DB_NAME already. A hard-coded USE would switch to a
       // possibly non-existent database (e.g. anistrim2) on a custom DB_NAME.
       sql = sql.replace(/^\s*USE\s+[`\w]+\s*;\s*$/gim, '');
+      // Replace hard-coded schema names in information_schema guards with
+      // DATABASE() so migrations work on any DB_NAME (FIX 2). The runner
+      // connects to the correct database via DB_NAME already.
+      sql = sql.replace(/TABLE_SCHEMA\s*=\s*'anistrim2'/gi, "TABLE_SCHEMA = DATABASE()");
       console.log('applying ' + file.name + ' ...');
-      await conn.query(sql);
+      try {
+        await conn.query(sql);
+      } catch (err) {
+        console.error(`Migration FAILED: ${file.name}`);
+        console.error('  Reason:', err.message);
+        console.error('  This migration was NOT recorded in schema_migrations.');
+        console.error('  Fix the SQL and re-run `npm run migrate`.');
+        process.exitCode = 1;
+        return;
+      }
       await conn.query('INSERT INTO schema_migrations (filename) VALUES (?)', [file.name]);
       console.log('applied ' + file.name);
       ran++;

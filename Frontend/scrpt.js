@@ -13,8 +13,19 @@ const State = (function () {
   return {
     get token()      { const a = getAuth(); return a ? a.token : (localStorage.getItem('token') || ''); },
     get user()       { const a = getAuth(); return a ? a.user : (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } })(); },
-    get isPremium()  { return this.user?.isPremium === true; },
-    get isAdmin()    { return this.user?.isAdmin   === true; },
+    // FIX 9: prefer the canonical Session DTO entitlement (server-authoritative)
+    // over the cached localStorage user. The cached copy is only a first-paint
+    // hint that is replaced once /api/auth/me resolves.
+    get isPremium()  {
+      const s = window.Session && window.Session.getUser();
+      if (s && s.entitlement) return s.entitlement.isPremium === true;
+      return this.user?.isPremium === true;
+    },
+    get isAdmin()    {
+      const s = window.Session && window.Session.getUser();
+      if (s) return s.isAdmin === true || s.role === 'admin';
+      return this.user?.isAdmin === true;
+    },
     // token present AND not expired — used only for UX gating (not authz).
     get isLoggedIn() { const a = getAuth(); return a ? a.isLoggedIn : !!this.token; },
     save(token, user) { const a = getAuth(); if (a) a.save(token, user); else { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(user)); } },

@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showError('');
   }
 
-  // ── Step 1: username live check ─────────────────────────
+// ── Step 1: username live check ─────────────────────────
   const usernameInput = document.getElementById('ob-username');
   const usernameStatus = document.getElementById('ob-username-status');
 
@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (usernameStatus) usernameStatus.innerHTML = '<div class="ob-invalid">Could not check username.</div>';
     }
   }
+  window.__checkOnboardUsername = checkUsername;
 
   let debounceTimer;
   usernameInput?.addEventListener('input', () => {
@@ -103,19 +104,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const genreCount = document.getElementById('ob-genre-count');
   const finishBtn = document.getElementById('ob-finish');
 
+  // Primary source is the /api/anime/genres endpoint (Bug 3). The hard-coded
+  // list is ONLY a last-resort offline fallback, never the primary source.
+  const FALLBACK_GENRES = ['Action','Adventure','Comedy','Drama','Fantasy','Horror','Mystery','Romance','Sci-Fi','Slice of Life','Sports','Supernatural','Thriller','Psychological'];
+
   async function loadGenres() {
     try {
       const data = await apiFetch('/api/anime/genres');
-      if (Array.isArray(data)) {
-        renderGenres(data.map(g => (typeof g === 'string' ? g : g.name)).filter(Boolean));
-      } else if (data && Array.isArray(data.genres)) {
-        renderGenres(data.genres);
-      } else {
-        // Fallback genres if the endpoint shape differs.
-        renderGenres(['Action','Adventure','Comedy','Drama','Fantasy','Horror','Mystery','Romance','Sci-Fi','Slice of Life','Sports','Supernatural','Thriller','Psychological']);
-      }
+      const list = Array.isArray(data)
+        ? data.map(g => (typeof g === 'string' ? g : g && g.name)).filter(Boolean)
+        : (data && Array.isArray(data.genres) ? data.genres.filter(g => typeof g === 'string') : null);
+      renderGenres(list && list.length ? list : FALLBACK_GENRES);
     } catch (e) {
-      renderGenres(['Action','Adventure','Comedy','Drama','Fantasy','Horror','Mystery','Romance','Sci-Fi','Slice of Life','Sports','Supernatural','Thriller','Psychological']);
+      renderGenres(FALLBACK_GENRES);
     }
   }
 
@@ -161,9 +162,19 @@ document.addEventListener('DOMContentLoaded', () => {
   finishBtn?.addEventListener('click', async () => {
     if (selectedGenres.length < 3) { showError('Select at least 3 genres.'); return; }
 
+    // Re-check username server-side just before submit to close the TOCTOU race.
+    if (usernameInput?.value?.trim()) {
+      await checkUsername();
+      if (!usernameValid) { showError('Please choose an available username.'); return; }
+    }
+
     const displayName = document.getElementById('ob-display')?.value?.trim();
     const username = usernameInput?.value?.trim().toLowerCase();
 
+    // Disable the button while the request is in flight (prevents double-submit).
+    const originalText = finishBtn.textContent;
+    finishBtn.disabled = true;
+    finishBtn.textContent = 'Saving...';
     try {
       await apiFetch('/api/profile/onboarding', {
         method: 'POST',
@@ -174,6 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window.Navigation) window.Navigation.afterAuth(Session.getUser(), 'index.html');
       else window.location.replace('index.html');
     } catch (err) {
+      finishBtn.disabled = false;
+      finishBtn.textContent = originalText;
       showError((err && err.message) || 'Onboarding failed. Please try again.');
     }
   });
