@@ -24,7 +24,10 @@ const hasColumn = (schema, table, column) => Boolean(schema[table]?.has(column))
 const invalidateCatalogue = animeId => {
   const jobs = [cache.delByPrefix('catalogue:')];
   // Keep the automatic home-shelf sections in sync whenever an admin
-  // creates/updates/deletes anime. Failure is non-fatal.
+  // creates/updates/deletes anime OR an episode (publish/unpublish,
+  // availability-window changes). Every episode mutation handler below
+  // (createEpisode, updateEpisode, deleteEpisode, bulk delete) calls this
+  // function so new content is never invisible for 6 hours. Failure is non-fatal.
   try {
     const homeShelf = require('../services/homeShelfService');
     jobs.push(homeShelf.invalidate());
@@ -394,11 +397,15 @@ const adminController = {
     const updates = [];
     const values = [];
     let adminChange = null;
+    let premiumChange = null;
+    let premiumExpiresAt = null;
     for (const field of allowed) if (Object.prototype.hasOwnProperty.call(req.body, field)) {
       updates.push(`${field} = ?`);
       const coerced = field === 'is_premium' || field === 'is_admin' ? (toBool(req.body[field]) ? 1 : 0) : req.body[field];
       values.push(coerced);
       if (field === 'is_admin') adminChange = coerced === 1;
+      if (field === 'is_premium') premiumChange = coerced === 1;
+      if (field === 'premium_expires_at') premiumExpiresAt = coerced;
     }
     if (!updates.length) return res.status(400).json({ message: 'No editable user fields were supplied.' });
     try {
@@ -409,6 +416,51 @@ const adminController = {
         const role = require('../utils/hasRole');
         if (adminChange) await role.grantRole(req.params.id, 'admin');
         else await role.revokeRole(req.params.id, 'admin');
+      }
+      // Prompt 5: Admin premium grant/revoke must create/terminate a real
+      // subscription row with source='admin_grant', state='active', an explicit
+      // ends_at, and a payment_events audit entry. This prevents
+      // premiumScheduler.sweepSubscriptions() from wiping the grant every 10 min.
+      if (premiumChange !== null) {
+        const userId = req.params.id;
+        if (premiumChange) {
+          // Grant: create an admin_grant subscription.
+          const endsAt = premiumExpiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // default 1 year
+          const [subResult] = await db.query(
+            `INSERT INTO subscriptions
+              (user_id, reference, amount, currency, status, plan, plan_id, starts_at, ends_at, state, source)
+             VALUES (?, ?, 0, 'UGX', 'COMPLETED', 'admin_grant', NULL, NOW(), ?, 'active', 'admin_grant')`,
+            [userId, `ADMIN-GRANT-${userId}-${Date.now()}`, endsAt]
+          );
+          // Audit entry.
+          try {
+            await db.query(
+              `INSERT INTO payment_events (subscription_id, reference, event, payload)
+               VALUES (?, ?, 'admin_grant', ?)`,
+              [subResult.insertId, `ADMIN-GRANT-${userId}-${Date.now()}`, JSON.stringify({ by: req.user?.id || null, ends_at: endsAt })]
+            );
+          } catch (e) { console.warn('[Admin] payment_events write failed:', e.message); }
+        } else {
+          // Revoke: terminate all active admin_grant subscriptions.
+          await db.query(
+            `UPDATE subscriptions SET state = 'cancelled', status = 'CANCELLED'
+             WHERE user_id = ? AND source = 'admin_grant' AND state IN ('active','grace','trialing')`,
+            [userId]
+          );
+          // Audit entry.
+          try {
+            await db.query(
+              `INSERT INTO payment_events (subscription_id, reference, event, payload)
+               VALUES (NULL, ?, 'admin_revoke', ?)`,
+              [`ADMIN-REVOKE-${userId}-${Date.now()}`, JSON.stringify({ by: req.user?.id || null })]
+            );
+          } catch (e) { console.warn('[Admin] payment_events write failed:', e.message); }
+        }
+        // Refresh the derived users.is_premium cache from subscriptions.
+        try {
+          const { refreshUserPremiumCache } = require('../controllers/paymentController');
+          await refreshUserPremiumCache(userId);
+        } catch (e) { console.warn('[Admin] premium cache refresh failed:', e.message); }
       }
       await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id);
       res.json({ message: 'User updated.' });

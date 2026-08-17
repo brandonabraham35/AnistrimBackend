@@ -41,7 +41,7 @@ SET @alter_sql := IF(@col_exists = 0,
        ADD COLUMN plan_id INT DEFAULT NULL,
        ADD COLUMN starts_at DATETIME DEFAULT NULL,
        ADD COLUMN ends_at DATETIME DEFAULT NULL,
-       ADD COLUMN state ENUM(''trialing'',''active'',''grace'',''expired'',''cancelled'',''refunded'') NOT NULL DEFAULT ''active'',
+       ADD COLUMN state ENUM(''pending'',''trialing'',''active'',''grace'',''expired'',''cancelled'',''refunded'') NOT NULL DEFAULT ''active'',
        ADD COLUMN source ENUM(''payment'',''admin_grant'',''promo'',''trial'') NOT NULL DEFAULT ''payment'',
        ADD COLUMN auto_renew TINYINT(1) NOT NULL DEFAULT 0',
     'SELECT "subscriptions enrichment columns exist" AS info'

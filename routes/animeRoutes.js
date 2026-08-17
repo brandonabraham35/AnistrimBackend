@@ -90,27 +90,30 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
             [animeId]
         );
 
-        // Map + mask each episode. maskEpisode nulls video_url/cloudinary_public_id
+        // Map + mask each episode. maskEpisodes nulls video_url/cloudinary_public_id
         // for non-entitled callers and sets locked/premium flags.
-        const mapped = [];
-        for (const ep of episodes) {
-            const masked = await episodeAccess.maskEpisode(ep, req.user);
-            const tier = await episodeAccess.effectiveAccess(ep.id);
-            mapped.push({
-                id: masked.id,
-                number: masked.episode_number,
-                season: masked.season || 1,
-                title: masked.title,
-                description: masked.description,
-                thumbnail_url: masked.thumbnail_url,
-                video_url: masked.video_url || null,
-                duration_sec: masked.duration_sec,
-                is_premium: masked.premium || Boolean(masked.is_premium),
-                view_count: masked.view_count,
-                locked: masked.locked,
-                effectiveTier: tier,
-            });
-        }
+        // Prompt 6: emit effectiveTier, locked, availableAt, AND accessState so
+        // the frontend can distinguish free / premium-required / subscription-
+        // expired / in-grace / scheduled-release. The frontend reads ONLY these
+        // fields — never is_premium, never localStorage, never a JWT claim.
+        const masked = await episodeAccess.maskEpisodes(episodes, req.user);
+
+        const mapped = masked.map(m => ({
+            id: m.id,
+            number: m.episode_number,
+            season: m.season || 1,
+            title: m.title,
+            description: m.description,
+            thumbnail_url: m.thumbnail_url,
+            video_url: m.video_url || null,
+            duration_sec: m.duration_sec,
+            is_premium: m.premium || Boolean(m.is_premium),
+            view_count: m.view_count,
+            locked: m.locked,
+            effectiveTier: m.effectiveTier,
+            availableAt: m.availableAt,
+            accessState: m.accessState,
+        }));
 
         return res.json(mapped);
     } catch (error) {

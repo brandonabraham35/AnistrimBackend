@@ -36,8 +36,16 @@ exports.getAdConfig = async (req, res) => {
   try {
     const config = await fetchConfig();
 
-    // Determine if the user is premium — auth.protect sets req.user
-    const isPremium = req.user?.isPremium === true;
+    // Prompt 4: Determine premium from the authoritative entitlement read path,
+    // not the stale req.user.isPremium JWT claim.
+    let isPremium = false;
+    try {
+      const { getEntitlement } = require('../utils/episodeAccess');
+      const ent = await getEntitlement(req.userId ?? req.user?.id);
+      isPremium = !!(ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
+    } catch (e) {
+      console.warn('[Ads] Entitlement check failed (treat as free):', e.message);
+    }
 
     // If no config row exists at all, return a hard-coded disabled config for premium
     // or a 503 for free users (admin should initialize it)

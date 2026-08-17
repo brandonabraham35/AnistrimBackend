@@ -218,24 +218,28 @@ exports.getById = async (req, res) => {
     //    effective-access model (episode_effective_access + entitlement) so a
     //    locked premium episode keeps metadata public but never leaks its video
     //    source. This replaces the legacy is_premium boolean gate.
-    const { canPlay } = require('../utils/episodeAccess');
-    anime.episodes = await Promise.all(episodeRows.map(async ep => {
-      const access = await canPlay(ep.id, req.user);
-      return {
-        id: ep.id,
-        number: ep.episode_number,
-        season: ep.season || 1,
-        title: ep.title,
-        description: ep.description,
-        thumbnail_url: ep.thumbnail_url,
-        video_url: access.allowed ? ep.video_url : null,
-        duration_sec: ep.duration_sec,
-        is_premium: access.tier === 'premium',
-        effective_tier: access.tier,
-        locked: access.locked,
-        access_tier: ep.access_tier || 'inherit',
-        view_count: ep.view_count,
-      };
+    // Prompt 6: emit effectiveTier, locked, availableAt, AND accessState so the
+    // frontend reads ONLY these fields — never is_premium, never localStorage,
+    // never a JWT claim. Frontend gating is cosmetic only; the server is the boundary.
+    const { maskEpisodes } = require('../utils/episodeAccess');
+    const masked = await maskEpisodes(episodeRows, req.user);
+    anime.episodes = masked.map(ep => ({
+      id: ep.id,
+      number: ep.episode_number,
+      season: ep.season || 1,
+      title: ep.title,
+      description: ep.description,
+      thumbnail_url: ep.thumbnail_url,
+      video_url: ep.video_url || null,
+      duration_sec: ep.duration_sec,
+      is_premium: ep.premium || Boolean(ep.is_premium),
+      effective_tier: ep.effectiveTier,
+      effectiveTier: ep.effectiveTier,
+      locked: ep.locked,
+      availableAt: ep.availableAt,
+      accessState: ep.accessState,
+      access_tier: ep.access_tier || 'inherit',
+      view_count: ep.view_count,
     }));
 
     // 5. Send the combined payload

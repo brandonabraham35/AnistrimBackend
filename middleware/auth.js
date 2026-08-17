@@ -108,12 +108,30 @@ exports.adminOnly = async (req, res, next) => {
 };
 
 // Must be used AFTER protect
-exports.premiumOnly = (req, res, next) => {
-  // DB column is `is_premium`; the DTO maps it to `isPremium`. Check both.
-  const isPremium = req.user?.isPremium === true || req.user?.is_premium === true;
-  const isAdmin = req.user?.isAdmin === true || req.user?.is_admin === true;
-  if (!req.user || (!isPremium && !isAdmin)) {
-    return res.status(403).json({ message: 'Premium subscription required.' });
+// Prompt 4: premiumOnly now awaits getEntitlement() — the authoritative
+// subscriptions+plans read path — instead of reading the stale req.user.is_premium
+// derived cache. Returns the standard 403 { code:'PREMIUM_REQUIRED', ... } shape.
+exports.premiumOnly = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(403).json({ code: 'PREMIUM_REQUIRED', requiredTier: 'premium', availableAt: null, message: 'Premium subscription required.' });
   }
-  next();
+  const isAdmin = req.user?.isAdmin === true || req.user?.is_admin === true;
+  if (isAdmin) return next();
+
+  try {
+    const { getEntitlement } = require('../utils/episodeAccess');
+    const ent = await getEntitlement(req.userId ?? req.user.id);
+    if (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state)) {
+      return next();
+    }
+    return res.status(403).json({
+      code: 'PREMIUM_REQUIRED',
+      requiredTier: ent?.tier || 'premium',
+      availableAt: null,
+      message: 'Premium subscription required.',
+    });
+  } catch (e) {
+    console.error('[AUTH] premiumOnly entitlement check failed (deny):', e.message);
+    return res.status(403).json({ code: 'PREMIUM_REQUIRED', requiredTier: 'premium', availableAt: null, message: 'Premium subscription required.' });
+  }
 };

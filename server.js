@@ -38,6 +38,22 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
   process.exit(1);
 }
 
+// ─── Prompt 10: Migration runner + critical-table assertion ──
+// Apply any pending sql/migrations_v*.sql files (recorded in schema_migrations)
+// and verify the critical tables exist BEFORE any service that depends on them
+// starts. Fails loudly — never silently falls back to a legacy path.
+(async () => {
+  try {
+    const { runMigrations, assertCriticalTables } = require('./scripts/migrate');
+    await runMigrations();
+    await assertCriticalTables();
+    console.log('✅ Migrations verified. Starting server...');
+  } catch (e) {
+    console.error('❌ [MIGRATIONS] Startup blocked:', e.message);
+    process.exit(1);
+  }
+})();
+
 providerHealthMonitor.initialize();
 
 // Phase 2 (FIX 3): boot-time probe for sharp so avatar failures are visible

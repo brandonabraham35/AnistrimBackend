@@ -1,131 +1,187 @@
-// scripts/migrate.js — applies migrations from migrations/ AND sql/ in numeric order.
-// Tracks applied files in schema_migrations so each runs once.
+// scripts/migrate.js — ordered, idempotent, recorded migration runner.
 //
-// IMPORTANT: uses its OWN mysql2 connection with multipleStatements enabled so
-// a migration file containing many SET/PREPARE/EXECUTE statements (the
-// information_schema-guarded pattern used by 002_add_email_verification.sql)
-// executes correctly. The runtime pool (config/db.js) is left untouched.
-// Usage: npm run migrate
-const path = require('path');
+// Creates a `schema_migrations` table, discovers every sql/migrations_v*.sql
+// file in version order, and applies any that are not yet recorded. Each
+// applied migration is recorded with its filename + applied_at so re-runs are
+// no-ops. Run on boot (server.js) or explicitly via `npm run migrate`.
+//
+// Usage:
+//   node scripts/migrate.js            # apply all pending migrations
+//   node scripts/migrate.js --check    # verify all migrations are applied
 const fs = require('fs');
-const mysql = require('mysql2/promise');
-require('dotenv').config();
+const path = require('path');
+const pool = require('../config/db');
 
-// Scan BOTH directories so legacy migrations/ files and the sql/migrations_v*.sql
-// files are all applied. Numeric sort (v5 < v10 < v29) not lexicographic.
-const MIGRATIONS_DIRS = [
-  path.join(__dirname, '..', 'migrations'),
-  path.join(__dirname, '..', 'sql'),
+const MIGRATIONS_DIR = path.join(__dirname, '..', 'sql');
+const MIGRATIONS_TABLE = 'schema_migrations';
+
+// Critical tables that MUST exist before services that depend on them start.
+// Prompt 10: fail loudly — never silently fall back to a legacy path.
+const CRITICAL_TABLES = [
+  'subscriptions',      // v35 — plans + subscriptions entitlement
+  'plans',              // v35 — plan tiers
+  'user_recommendations', // v34 — recommendation engine
+  'user_genre_vector',  // v34 — genre affinity
 ];
 
-const CREATE_TABLE_SQL =
-  'CREATE TABLE IF NOT EXISTS schema_migrations (' +
-  'id INT AUTO_INCREMENT PRIMARY KEY, ' +
-  'filename VARCHAR(255) NOT NULL UNIQUE, ' +
-  'applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' +
-  ') ENGINE=InnoDB';
-
-// Extract the numeric version from a migration filename:
-//   "002_add_email_verification.sql"  -> 2
-//   "migrations_v29_account_lifecycle.sql" -> 29
-//   "schema.sql" -> -1 (apply FIRST — the base schema must exist before any
-//                     versioned migration that references users/episodes/etc.)
-//   "updates.sql" -> MAX_SAFE_INTEGER (apply LAST — post-schema updates)
-//   anything else without a number -> MAX_SAFE_INTEGER (apply last)
-function versionOf(filename) {
-  // Base schema must run first so FK targets (users, episodes, anime) exist.
-  if (filename === 'schema.sql') return -1;
-  // Post-schema updates run last.
-  if (filename === 'updates.sql') return Number.MAX_SAFE_INTEGER;
-  const m = filename.match(/v?(\d+)/);
-  if (!m) return Number.MAX_SAFE_INTEGER;
-  return parseInt(m[1], 10);
+/**
+ * Ensure the schema_migrations table exists.
+ */
+async function ensureMigrationsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      filename VARCHAR(255) NOT NULL UNIQUE,
+      applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
 }
 
-function collectMigrationFiles() {
-  const files = [];
-  for (const dir of MIGRATIONS_DIRS) {
-    if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) {
-      if (f.endsWith('.sql')) files.push({ name: f, dir });
-    }
-  }
-  // Deduplicate by filename (if the same file exists in both dirs, prefer sql/).
-  const seen = new Map();
-  for (const f of files) {
-    const existing = seen.get(f.name);
-    if (!existing || f.dir.includes('sql')) seen.set(f.name, f);
-  }
-  // Sort by numeric version, then by name for stability.
-  return [...seen.values()].sort((a, b) => {
-    const va = versionOf(a.name);
-    const vb = versionOf(b.name);
-    if (va !== vb) return va - vb;
-    return a.name.localeCompare(b.name);
-  });
+/**
+ * Discover all migration files in version order.
+ * Matches sql/migrations_vNN_*.sql (e.g. migrations_v34_recommendations.sql).
+ */
+function discoverMigrations() {
+  const files = fs.readdirSync(MIGRATIONS_DIR)
+    .filter(f => /^migrations_v\d+_.*\.sql$/.test(f))
+    .sort((a, b) => {
+      const va = parseInt(a.match(/^migrations_v(\d+)_/)[1], 10);
+      const vb = parseInt(b.match(/^migrations_v(\d+)_/)[1], 10);
+      return va - vb;
+    });
+  return files;
 }
 
-async function run() {
-  const files = collectMigrationFiles();
-  if (files.length === 0) {
-    console.error('No migration files found in migrations/ or sql/.');
-    process.exit(1);
-  }
+/**
+ * Get the set of already-applied migration filenames.
+ */
+async function getAppliedMigrations() {
+  const [rows] = await pool.query(`SELECT filename FROM ${MIGRATIONS_TABLE}`);
+  return new Set(rows.map(r => r.filename));
+}
 
-  const conn = await mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT) || 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'anistrim2',
-    multipleStatements: true,
-    charset: 'utf8mb4',
-  });
+/**
+ * Apply a single migration file. Each file may contain multiple statements
+ * (CREATE TABLE, ALTER, INSERT, etc.) — mysql2's multipleStatements is not
+ * enabled by default, so we split on `;` at line boundaries and execute each
+ * statement separately. This is safe for our migration files which use
+ * `;` as the statement terminator and never embed semicolons in strings.
+ */
+async function applyMigration(filename) {
+  const filePath = path.join(MIGRATIONS_DIR, filename);
+  const sql = fs.readFileSync(filePath, 'utf8');
 
-  try {
-    await conn.query(CREATE_TABLE_SQL);
-    const [rows] = await conn.query('SELECT filename FROM schema_migrations');
-    const applied = new Set(rows.map(r => r.filename));
-    let ran = 0;
+  // Split into statements. Skip empty/comment-only chunks.
+  const statements = sql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s && !/^--/.test(s) && !/^USE\s/i.test(s));
 
-    for (const file of files) {
-      if (applied.has(file.name)) {
-        console.log('skip ' + file.name + ' (already applied)');
+  for (const stmt of statements) {
+    try {
+      await pool.query(stmt);
+    } catch (e) {
+      // Idempotent: if the object already exists, treat as applied.
+      if (e.code === 'ER_TABLE_EXISTS_ERROR' || e.code === 'ER_DUP_KEYNAME' ||
+          e.code === 'ER_DUP_FIELDNAME' || (e.message && /already exists/i.test(e.message))) {
+        console.log(`  ↪ ${filename}: object already exists (idempotent skip)`);
         continue;
       }
-
-      let sql = fs.readFileSync(path.join(file.dir, file.name), 'utf8');
-      // Strip hard-coded `USE <db>;` statements — the runner connects to the
-      // correct DB via DB_NAME already. A hard-coded USE would switch to a
-      // possibly non-existent database (e.g. anistrim2) on a custom DB_NAME.
-      sql = sql.replace(/^\s*USE\s+[`\w]+\s*;\s*$/gim, '');
-      // Replace hard-coded schema names in information_schema guards with
-      // DATABASE() so migrations work on any DB_NAME (FIX 2). The runner
-      // connects to the correct database via DB_NAME already.
-      sql = sql.replace(/TABLE_SCHEMA\s*=\s*'anistrim2'/gi, "TABLE_SCHEMA = DATABASE()");
-      console.log('applying ' + file.name + ' ...');
-      try {
-        await conn.query(sql);
-      } catch (err) {
-        console.error(`Migration FAILED: ${file.name}`);
-        console.error('  Reason:', err.message);
-        console.error('  This migration was NOT recorded in schema_migrations.');
-        console.error('  Fix the SQL and re-run `npm run migrate`.');
-        process.exitCode = 1;
-        return;
-      }
-      await conn.query('INSERT INTO schema_migrations (filename) VALUES (?)', [file.name]);
-      console.log('applied ' + file.name);
-      ran++;
+      throw e;
     }
+  }
 
-    console.log('Done. ' + ran + ' migration(s) applied, ' + (files.length - ran) + ' already applied.');
-  } catch (err) {
-    console.error('Migration failed:', err.message);
-    process.exitCode = 1;
-  } finally {
-    await conn.end();
+  // Record the migration.
+  await pool.query(
+    `INSERT INTO ${MIGRATIONS_TABLE} (filename) VALUES (?)`,
+    [filename]
+  );
+  console.log(`  ✓ ${filename} applied`);
+}
+
+/**
+ * Run all pending migrations.
+ */
+async function runMigrations() {
+  await ensureMigrationsTable();
+  const applied = await getAppliedMigrations();
+  const files = discoverMigrations();
+
+  let pending = 0;
+  for (const file of files) {
+    if (applied.has(file)) {
+      console.log(`  = ${file} (already applied)`);
+      continue;
+    }
+    pending++;
+    await applyMigration(file);
+  }
+
+  if (pending === 0) {
+    console.log('✅ No pending migrations.');
+  } else {
+    console.log(`✅ Applied ${pending} migration(s).`);
   }
 }
 
-run();
+/**
+ * Verify all critical tables exist. Fails loudly (throws) if any are missing.
+ * Prompt 10: never silently fall back to a legacy path.
+ */
+async function assertCriticalTables() {
+  const missing = [];
+  for (const table of CRITICAL_TABLES) {
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS c FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [table]
+    );
+    if (!rows[0]?.c) missing.push(table);
+  }
+  if (missing.length) {
+    const err = new Error(
+      `❌ [MIGRATIONS] Critical tables missing: ${missing.join(', ')}. ` +
+      `Run \`npm run migrate\` to apply migrations. Refusing to start.`
+    );
+    console.error(err.message);
+    throw err;
+  }
+  console.log('✅ Critical tables verified:', CRITICAL_TABLES.join(', '));
+}
+
+/**
+ * Check-only mode: verify all migrations are applied without applying.
+ */
+async function checkMigrations() {
+  await ensureMigrationsTable();
+  const applied = await getAppliedMigrations();
+  const files = discoverMigrations();
+  const missing = files.filter(f => !applied.has(f));
+  if (missing.length) {
+    console.error(`❌ [MIGRATIONS] ${missing.length} migration(s) not applied: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  console.log('✅ All migrations applied.');
+  await assertCriticalTables();
+}
+
+// ── CLI entry ─────────────────────────────────────────────────
+if (require.main === module) {
+  const isCheck = process.argv.includes('--check');
+  (async () => {
+    try {
+      if (isCheck) {
+        await checkMigrations();
+      } else {
+        await runMigrations();
+        await assertCriticalTables();
+      }
+      process.exit(0);
+    } catch (e) {
+      console.error('❌ Migration failed:', e.message);
+      process.exit(1);
+    }
+  })();
+}
+
+module.exports = { runMigrations, assertCriticalTables, checkMigrations, CRITICAL_TABLES };

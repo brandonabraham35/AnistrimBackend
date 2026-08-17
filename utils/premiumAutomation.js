@@ -1,12 +1,17 @@
 const cron = require('node-cron');
 const pool = require('../config/db');
 
+// Prompt 5: This legacy job previously wiped anime.is_premium nightly and
+// re-locked anything with ≥50 daily views. Authorization reads anime.access_tier,
+// so writing is_premium only desynchronised the UI padlocks from real access.
+// Converted to write access_tier instead — the field the authorization layer
+// actually reads.
 const runPremiumAutomation = async () => {
     try {
-        console.log('🤖 Running Threshold Premium Automation...');
+        console.log('🤖 Running Threshold Premium Automation (access_tier)...');
 
-        // Step 1: Reset ALL anime to Free (is_premium = 0)
-        await pool.query('UPDATE anime SET is_premium = 0');
+        // Step 1: Reset ALL anime to Free (access_tier = 'free')
+        await pool.query(`UPDATE anime SET access_tier = 'free'`);
 
         // Step 2: Find all anime that crossed the 50 daily views threshold
         const [viralAnime] = await pool.query(`
@@ -14,12 +19,12 @@ const runPremiumAutomation = async () => {
             WHERE daily_views >= 50
         `);
 
-        // Step 3: Lock viral anime behind the paywall
+        // Step 3: Lock viral anime behind the paywall (access_tier = 'premium')
         if (viralAnime.length > 0) {
             const viralIds = viralAnime.map(anime => anime.id);
             await pool.query(`
                 UPDATE anime 
-                SET is_premium = 1 
+                SET access_tier = 'premium' 
                 WHERE id IN (?)
             `, [viralIds]);
             console.log(`✅ Locked ${viralIds.length} viral anime behind Premium.`);
@@ -42,4 +47,3 @@ cron.schedule('0 0 * * *', () => {
 });
 
 module.exports = runPremiumAutomation;
-

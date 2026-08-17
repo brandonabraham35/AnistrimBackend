@@ -55,16 +55,24 @@ async function sweepSubscriptions() {
     console.log(`[PremiumScheduler] Subscription sweep: ${toGrace.affectedRows} → grace, ${toExpired.affectedRows} → expired`);
   }
 
-  // Refresh users.is_premium derived cache (NEVER read for authorization).
+  // Prompt 5: Scope the derived-cache refresh to CHANGED rows only.
+  // The first UPDATE only touches users whose is_premium value would actually
+  // change (avoids rewriting the whole users table every 10 minutes).
   await db.query(
     `UPDATE users u
      SET u.is_premium = IF(
          EXISTS (SELECT 1 FROM subscriptions s
                  WHERE s.user_id = u.id AND s.state IN ('trialing','active','grace')
                    AND (s.ends_at IS NULL OR s.ends_at > NOW())),
+         1, 0)
+     WHERE u.is_premium <> IF(
+         EXISTS (SELECT 1 FROM subscriptions s
+                 WHERE s.user_id = u.id AND s.state IN ('trialing','active','grace')
+                   AND (s.ends_at IS NULL OR s.ends_at > NOW())),
          1, 0)`
   );
   // Also expire the legacy is_premium flag when no active subscription remains.
+  // Prompt 5: scope to changed rows only (is_premium=1 → 0).
   await db.query(
     `UPDATE users u
      SET u.is_premium = 0, u.premium_expires_at = NULL

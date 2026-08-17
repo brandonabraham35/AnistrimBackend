@@ -103,14 +103,14 @@ exports.getStream = async (req, res) => {
 
   // Determine user's premium status — authoritative from the DB entitlement
   // (never the possibly-stale JWT isPremium claim).
+  // Prompt 4: NO fallback to req.user.isPremium. A query failure denies.
   let isPremium = req.user?.isAdmin === true;
   try {
     const { getEntitlement } = require('../utils/episodeAccess');
     const ent = await getEntitlement(req.user?.userId ?? req.user?.id);
     isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
   } catch (e) {
-    // Fall back to the JWT claim so a DB hiccup doesn't break playback.
-    isPremium = isPremium || req.user?.isPremium === true;
+    logger.warn('[StreamController] Entitlement check failed (deny premium):', { error: e.message });
   }
 
   const startTime = Date.now();
@@ -323,13 +323,14 @@ exports.listProviders = async (req, res) => {
   }
 
   // Authoritative premium status (never the stale JWT claim).
+  // Prompt 4: NO fallback to req.user.isPremium. A query failure denies.
   let isPremium = req.user?.isAdmin === true;
   try {
     const { getEntitlement } = require('../utils/episodeAccess');
     const ent = await getEntitlement(req.user?.userId ?? req.user?.id);
     isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
   } catch (e) {
-    isPremium = isPremium || req.user?.isPremium === true;
+    logger.warn('[StreamController] listProviders entitlement check failed (deny premium):', { error: e.message });
   }
 
   try {
@@ -396,13 +397,14 @@ exports.listProviders = async (req, res) => {
  */
 exports.authorizeDownload = async (req, res) => {
   // Premium/admin only — authoritative from the DB entitlement.
+  // Prompt 4: NO fallback to req.user.isPremium. A query failure denies.
   let isPremium = req.user?.isAdmin === true;
   try {
     const { getEntitlement } = require('../utils/episodeAccess');
     const ent = await getEntitlement(req.user?.userId ?? req.user?.id);
     isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
   } catch (e) {
-    isPremium = isPremium || req.user?.isPremium === true;
+    logger.warn('[StreamController] authorizeDownload entitlement check failed (deny premium):', { error: e.message });
   }
   if (!isPremium) {
     return res.status(403).json({

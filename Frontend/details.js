@@ -1,4 +1,8 @@
 // details.js — AniStrim (Updated: episodes now fetched from separate endpoint)
+// Prompt 6: frontend gating is COSMETIC ONLY. The server is the boundary.
+// The frontend reads ONLY the server-emitted fields effectiveTier / locked /
+// availableAt / accessState — never is_premium, never localStorage, never a
+// JWT claim.
 let currentAnime = null;
 
 // ── Robust image helper ──────────────────────────────────
@@ -11,6 +15,39 @@ function imgError(el, title) {
   return window.AniStrimShared.cardImgError(el, title || '?');
 }
 window.imgError = imgError;
+
+// ── Access-state helpers (server-authoritative) ──────────
+// The server emits accessState per episode. The frontend maps it to a label
+// and a lock decision. These helpers are the ONLY place the UI reads access.
+function episodeIsLocked(ep) {
+  // Server says locked — trust it. Fall back to effectiveTier for safety.
+  if (ep && typeof ep.locked === 'boolean') return ep.locked;
+  return !!(ep && ep.effectiveTier === 'premium');
+}
+
+function episodeAccessLabel(ep) {
+  const state = (ep && ep.accessState) || (ep && ep.effectiveTier === 'premium' ? 'premium_required' : 'free');
+  switch (state) {
+    case 'free':            return 'Free';
+    case 'premium':         return 'Premium';
+    case 'in_grace':        return 'In grace period';
+    case 'subscription_expired': return 'Subscription expired';
+    case 'scheduled': {
+      const d = ep && ep.availableAt ? new Date(ep.availableAt) : null;
+      if (d && !isNaN(d.getTime())) {
+        return 'Free on ' + d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+      return 'Scheduled release';
+    }
+    case 'premium_required':
+    default:                return 'Premium required';
+  }
+}
+
+function episodeAccessClass(ep) {
+  const state = (ep && ep.accessState) || (ep && ep.effectiveTier === 'premium' ? 'premium_required' : 'free');
+  return 'access-' + state;
+}
 
 // ── Main loader ──────────────────────────────────────────
 async function loadDetails() {
@@ -139,16 +176,17 @@ async function fetchAndRenderEpisodes(animeId) {
 
     // ── Set "Start Watching" button to first unlocked episode ──
     // CANONICAL URL: watch.html?id=<animeId>&ep=<episodeNumber>
+    // Prompt 6: unlocked = server says NOT locked. Never read is_premium.
     const watchBtn = document.getElementById('start-watching-btn');
     if (watchBtn) {
-      const firstUnlocked = episodes.find(ep => !ep.is_premium || State.isPremium || State.isAdmin);
+      const firstUnlocked = episodes.find(ep => !episodeIsLocked(ep));
       if (firstUnlocked) {
         const epNum = firstUnlocked.episode_number || firstUnlocked.number;
         watchBtn.onclick = () => {
           location.href = `watch.html?id=${animeId}&ep=${epNum}`;
         };
       } else {
-        // All episodes are premium-locked for this user
+        // All episodes are locked for this user
         watchBtn.onclick = () => { location.href = 'upgrade.html'; };
         watchBtn.textContent = '👑 Upgrade to Watch';
       }
@@ -156,16 +194,20 @@ async function fetchAndRenderEpisodes(animeId) {
 
     // ── Build episode rows ──
     container.innerHTML = episodes.map(ep => {
-      const locked = ep.is_premium && !State.isPremium && !State.isAdmin;
+      const locked = episodeIsLocked(ep);
       const epNum = ep.number || ep.episode_number;
+      const label = episodeAccessLabel(ep);
+      const accessClass = episodeAccessClass(ep);
+      const isPremiumTier = ep.effectiveTier === 'premium';
       return `
-        <div class="episode-row ${locked ? 'episode-locked' : ''}" 
+        <div class="episode-row ${locked ? 'episode-locked' : ''} ${accessClass}" 
              data-locked="${locked}" data-anime-id="${animeId}" data-ep-id="${ep.id}">
           <span class="ep-num-badge">${epNum}</span>
           <span class="ep-row-title">
             ${window._escapeHTML(ep.title || 'Episode ' + epNum)}
-            ${ep.is_premium ? ' <span style="color:var(--orange);font-size:0.75rem;">👑</span>' : ''}
+            ${isPremiumTier ? ' <span style="color:var(--orange);font-size:0.75rem;">👑</span>' : ''}
           </span>
+          <span class="ep-access-label">${window._escapeHTML(label)}</span>
           ${locked ? '<span class="ep-lock-badge">🔒</span>' : '<span class="ep-play-arrow">▶</span>'}
         </div>`;
     }).join('');

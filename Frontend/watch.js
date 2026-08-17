@@ -44,6 +44,41 @@ function setLoadingStatus(text) {
   if (el) el.textContent = text;
 }
 
+// ── Access-state helpers (server-authoritative) ──────────
+// Prompt 6: frontend gating is COSMETIC ONLY. The server is the boundary.
+// The frontend reads ONLY the server-emitted fields effectiveTier / locked /
+// availableAt / accessState — never is_premium, never localStorage, never a
+// JWT claim.
+function episodeIsLocked(ep) {
+  // Server says locked — trust it. Fall back to effectiveTier for safety.
+  if (ep && typeof ep.locked === 'boolean') return ep.locked;
+  return !!(ep && ep.effectiveTier === 'premium');
+}
+
+function episodeAccessLabel(ep) {
+  const state = (ep && ep.accessState) || (ep && ep.effectiveTier === 'premium' ? 'premium_required' : 'free');
+  switch (state) {
+    case 'free':            return 'Free';
+    case 'premium':         return 'Premium';
+    case 'in_grace':        return 'In grace period';
+    case 'subscription_expired': return 'Subscription expired';
+    case 'scheduled': {
+      const d = ep && ep.availableAt ? new Date(ep.availableAt) : null;
+      if (d && !isNaN(d.getTime())) {
+        return 'Free on ' + d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+      return 'Scheduled release';
+    }
+    case 'premium_required':
+    default:                return 'Premium required';
+  }
+}
+
+function episodeAccessClass(ep) {
+  const state = (ep && ep.accessState) || (ep && ep.effectiveTier === 'premium' ? 'premium_required' : 'free');
+  return 'access-' + state;
+}
+
 // ── Core player state ────────────────────────────────────────
 let currentAnime = null;
 let currentAnimeId = null;
@@ -404,13 +439,13 @@ async function loadWatch() {
     if (errorOverlay) errorOverlay.style.display = 'none';
 
     // ── PREMIUM GATE (frontend, before stream resolution) ──
-    // If this episode requires Premium and the user is not authorized, show
-    // the subscription gate immediately instead of wasting a stream request.
-    // The backend ALSO enforces this server-side (403), so this is a UX
-    // improvement, not the authority.
-    if (ep && ep.is_premium && !State.isPremium && !State.isAdmin) {
+    // Prompt 6: gate on the server-emitted `locked` / `accessState` fields —
+    // NEVER is_premium, NEVER localStorage, NEVER a JWT claim. The backend
+    // ALSO enforces this server-side (403), so this is a UX improvement, not
+    // the authority. Frontend gating is cosmetic only; the server is the boundary.
+    if (ep && episodeIsLocked(ep)) {
       clearTimeout(playbackTimeout);
-      showPremiumGate(ep.title || ('Episode ' + epNum));
+      showPremiumGate(ep.title || ('Episode ' + epNum), ep.effectiveTier, ep.availableAt, ep.accessState);
       return;
     }
 
@@ -1250,6 +1285,14 @@ async function switchToEpisode(epNum) {
     return;
   }
 
+  // Prompt 6: gate on the server-emitted `locked` field — NEVER is_premium,
+  // NEVER localStorage, NEVER a JWT claim. Frontend gating is cosmetic only;
+  // the server is the boundary.
+  if (episodeIsLocked(ep)) {
+    showPremiumGate(ep.title || ('Episode ' + epNumber), ep.effectiveTier, ep.availableAt, ep.accessState);
+    return;
+  }
+
   // Update current episode state
   currentEp = epNumber;
   currentEpId = ep.id || null;
@@ -1435,12 +1478,17 @@ function renderSeasonEpisodes() {
   }
 
   container.innerHTML = eps.map(function(e) {
-    var isLocked = e.is_premium && !State.isPremium && !State.isAdmin;
+    // Prompt 6: gate on the server-emitted `locked` / `accessState` fields —
+    // NEVER is_premium, NEVER localStorage, NEVER a JWT claim.
+    var isLocked = episodeIsLocked(e);
     var displayNum = e.number || e.episode_number;
     var epTitle = e.title && e.title !== 'undefined' ? e.title : 'Episode ' + displayNum;
     var thumbSrc = e.thumbnail_url && e.thumbnail_url.trim() && e.thumbnail_url !== 'undefined' ? e.thumbnail_url : makeFallbackImg(epTitle);
     var lockIcon = isLocked ? '🔒' : '▶';
-    var premiumTag = e.is_premium ? '<span class="ep-premium-badge">👑</span>' : '';
+    var premiumTag = e.effectiveTier === 'premium' ? '<span class="ep-premium-badge">👑</span>' : '';
+    var accessLabel = episodeAccessLabel(e);
+    var accessClass = episodeAccessClass(e);
+    var accessBadge = isLocked ? '<span class="ep-access-badge ' + accessClass + '">' + window._escapeHTML(accessLabel) + '</span>' : '';
 
     // Progress data
     var prog = episodeProgressMap[String(displayNum)];
@@ -1480,6 +1528,7 @@ function renderSeasonEpisodes() {
                   <span class="ep-duration">${durationText}</span>
                   <span class="ep-watched-state">${isWatched ? 'Watched' : (progressPct > 0 ? progressPct + '% watched' : 'Unwatched')}</span>
                 </div>
+                ${accessBadge}
               </div>
             </div>`;
   }).join('');
@@ -2650,9 +2699,9 @@ function cardImgError(img, title) {
 // the user is not authorized. The backend enforces this server-side too
 // (returns 403), but we gate on the frontend first for a better UX and to
 // avoid wasting a stream request.
-function showPremiumGate(epTitle, requiredTier, availableAt) {
-  watchLog('premium gate shown', { episode: epTitle, requiredTier, availableAt });
-  setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, { episode: epTitle, requiredTier, availableAt });
+function showPremiumGate(epTitle, requiredTier, availableAt, accessState) {
+  watchLog('premium gate shown', { episode: epTitle, requiredTier, availableAt, accessState });
+  setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, { episode: epTitle, requiredTier, availableAt, accessState });
   const loadingOverlay = document.getElementById('loading-overlay');
   const premiumOverlay = document.getElementById('premium-overlay');
   const errorOverlay = document.getElementById('error-overlay');
@@ -2670,9 +2719,21 @@ function showPremiumGate(epTitle, requiredTier, availableAt) {
   if (titleEl) titleEl.textContent = 'Premium Episode';
   const msgEl = document.getElementById('premium-gate-message');
   if (msgEl) {
-    msgEl.textContent = State.isLoggedIn
-      ? 'This episode requires a Premium subscription. Upgrade to watch.'
-      : 'This episode requires a Premium subscription. Sign in and upgrade to watch.';
+    // Prompt 6: distinguish the access states the server emitted.
+    if (accessState === 'subscription_expired') {
+      msgEl.textContent = 'Your subscription has expired. Renew to keep watching premium episodes.';
+    } else if (accessState === 'scheduled' && availableAt) {
+      const d = new Date(availableAt);
+      if (!isNaN(d.getTime())) {
+        msgEl.textContent = 'This episode becomes free on ' + d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) + '.';
+      } else {
+        msgEl.textContent = 'This episode is scheduled for a future free release.';
+      }
+    } else {
+      msgEl.textContent = State.isLoggedIn
+        ? 'This episode requires a Premium subscription. Upgrade to watch.'
+        : 'This episode requires a Premium subscription. Sign in and upgrade to watch.';
+    }
   }
 
   const upgradeBtn = document.getElementById('premium-gate-upgrade-btn');
