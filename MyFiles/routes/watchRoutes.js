@@ -5,7 +5,10 @@ const router    = express.Router();
 const watchCtrl = require('../controllers/watchController');
 const { protect } = require('../middleware/auth');
 
-// ─── Public Routes (no auth required) ──────────────────────
+// ─── Protected Routes (auth required) ──────────────────────
+// FIX 10 (Phase 3): /next and /skip-times moved behind protect so
+// unauthenticated callers cannot burn provider-resolution resources.
+router.use(protect);
 
 // GET /api/watch/next/:animeId/:currentEpisodeNumber
 // Resolves the next episode for auto-play / binge-watching
@@ -14,9 +17,6 @@ router.get('/next/:animeId/:currentEpisodeNumber', watchCtrl.resolveNextEpisode)
 // GET /api/watch/skip-times/:malId/:episodeNumber
 // Fetches OP/ED skip timestamps from AniSkip for "Skip Intro" button
 router.get('/skip-times/:malId/:episodeNumber', watchCtrl.getEpisodeSkipTimes);
-
-// ─── Protected Routes (auth required) ──────────────────────
-router.use(protect);
 
 // Save/update video playback progress
 // Body: { episodeId, positionSec, durationSec, event }

@@ -127,9 +127,23 @@ async function processToSquareWebp(buffer) {
   }
 
   return await sharp(buffer)
+    .rotate() // Honour EXIF orientation before resizing (FIX 3)
     .resize(TARGET_SIZE, TARGET_SIZE, { fit: 'cover', position: 'centre' })
     .webp({ quality: 85 })
     .toBuffer();
+}
+
+// Boot-time probe: log whether sharp is available so avatar failures are
+// visible in server logs instead of silently returning 502/503 at runtime.
+function probeSharp() {
+  try {
+    require('sharp');
+    console.log('✅ [AVATAR] sharp is available — avatar uploads enabled.');
+    return true;
+  } catch (e) {
+    console.warn('⚠️ [AVATAR] sharp is NOT installed — avatar uploads disabled. Run `npm install sharp`.');
+    return false;
+  }
 }
 
 // Full pipeline: validate + process + upload + persist + delete old.
@@ -185,6 +199,7 @@ module.exports = {
   uploadAvatarForUser,
   sniffImageType,
   sniffDimensions,
+  probeSharp,
   MAX_AVATAR_FILE_SIZE,
   MIN_AVATAR_DIMENSION,
   MAX_AVATAR_DIMENSION,

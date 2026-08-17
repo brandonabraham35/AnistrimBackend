@@ -41,6 +41,15 @@ app.set('maxRequestSize', 0);
 
 providerHealthMonitor.initialize();
 
+// Phase 2 (FIX 3): boot-time probe for sharp so avatar failures are visible
+// in server logs instead of silently returning 502/503 at runtime.
+try {
+  const { probeSharp } = require('./services/avatarService');
+  probeSharp();
+} catch (e) {
+  console.warn('⚠️ [AVATAR] Could not probe sharp:', e.message);
+}
+
 // ─── CORS Configuration ────────────────────────────────────
 const allowedOrigins = new Set([
   'http://localhost:3000',
@@ -74,12 +83,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/auth', require('./routes/avatarRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
-// Phase 2 (Bug 10): the documented contracts use /api/auth/username-available
-// and /api/auth/set-username. Both are mounted here so either path works.
-const { checkUsername, setUsername } = require('./controllers/profileController');
-const authMiddleware = require('./middleware/auth');
-app.get('/api/auth/username-available', authMiddleware.protect, checkUsername);
-app.post('/api/auth/set-username', authMiddleware.protect, setUsername);
+// FIX 10: profileRoutes already declares /username-available and /set-username
+// under /api/profile. The inline /api/auth duplicates are removed — one handler,
+// one declaration site. The frontend uses /api/profile/username-available.
 app.use('/api/anime', require('./routes/animeRoutes'));
 app.use('/api/watchlist', require('./routes/watchlistRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));

@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS watch_dismissed (
 -- Only run if the legacy watch_history table exists.
 SET @has_wh := (
     SELECT COUNT(*) FROM information_schema.TABLES
-    WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'watch_history'
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'watch_history'
 );
 
 SET @migrate_sql := IF(@has_wh > 0,
@@ -94,7 +94,7 @@ DEALLOCATE PREPARE stmt;
 -- ── 4. Rename legacy table to _legacy_ (two-week retention) ──
 SET @has_wh2 := (
     SELECT COUNT(*) FROM information_schema.TABLES
-    WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'watch_history'
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'watch_history'
 );
 SET @rename_sql := IF(@has_wh2 > 0,
     'RENAME TABLE watch_history TO watch_history_legacy_',
@@ -106,4 +106,4 @@ DEALLOCATE PREPARE stmt2;
 
 -- ── Verify ─────────────────────────────────────────────────
 SELECT TABLE_NAME FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME IN ('watch_progress','watch_dismissed') ORDER BY TABLE_NAME;
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('watch_progress','watch_dismissed') ORDER BY TABLE_NAME;

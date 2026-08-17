@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Verify
+-- Verify (schema-agnostic — uses the connected database, not a hard-coded name)
 SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'user_preferences'
 ORDER BY ORDINAL_POSITION;

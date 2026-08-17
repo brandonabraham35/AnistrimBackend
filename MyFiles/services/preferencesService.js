@@ -56,8 +56,11 @@ async function getPreferences(userId) {
     // problem that must not be silently masked). (Bug 9)
     if (e.code === 'ER_NO_SUCH_TABLE') {
       console.error('[Preferences] user_preferences table missing — run migrations:', e.message);
+      return defaults;
     }
-    return defaults;
+    // FIX 8: rethrow any other DB error so real failures surface as 500
+    // instead of being silently masked as "everything is fine, defaults".
+    throw e;
   }
 }
 

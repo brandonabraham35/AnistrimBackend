@@ -83,7 +83,8 @@ exports.saveProgress = async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          position_sec = VALUES(position_sec),
-         duration_sec = VALUES(duration_sec),
+         -- FIX 7 (Phase 3): never overwrite a known duration with 0
+         duration_sec = GREATEST(VALUES(duration_sec), watch_progress.duration_sec),
          completed    = VALUES(completed),
          completed_at = IF(VALUES(completed)=1, COALESCE(watch_progress.completed_at, NOW()), watch_progress.completed_at),
          device       = VALUES(device),
@@ -176,38 +177,35 @@ exports.getContinueWatching = async (req, res) => {
 
     if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
 
-    // For each (user, anime): take the most recently updated row.
+    // FIX 6 (Phase 3): use ROW_NUMBER() to guarantee exactly one row per anime,
+    // even when two episodes share the same updated_at timestamp.
     const [rows] = await db.query(
-      `SELECT
-         wp.anime_id,
-         wp.episode_id,
-         wp.episode_number,
-         wp.season_number,
-         wp.position_sec,
-         wp.duration_sec,
-         wp.percent,
-         wp.completed,
-         wp.updated_at,
-         a.title       AS anime_title,
-         a.cover_image AS anime_cover_image,
-         e.title       AS episode_title
-       FROM watch_progress wp
-       JOIN (
-         SELECT w.user_id, w.anime_id, MAX(w.updated_at) AS max_updated
-         FROM watch_progress w
-         WHERE w.user_id = ?
-         GROUP BY w.user_id, w.anime_id
-       ) latest ON latest.user_id = wp.user_id
-                AND latest.anime_id  = wp.anime_id
-                AND latest.max_updated = wp.updated_at
-       JOIN anime a ON a.id = wp.anime_id
-       LEFT JOIN episodes e ON e.id = wp.episode_id
-       LEFT JOIN watch_dismissed wd ON wd.user_id = wp.user_id AND wd.anime_id = wp.anime_id
-       WHERE wp.user_id = ?
-         AND wd.user_id IS NULL
-       ORDER BY wp.updated_at DESC
+      `SELECT * FROM (
+         SELECT
+           wp.anime_id,
+           wp.episode_id,
+           wp.episode_number,
+           wp.season_number,
+           wp.position_sec,
+           wp.duration_sec,
+           wp.percent,
+           wp.completed,
+           wp.updated_at,
+           a.title       AS anime_title,
+           a.cover_image AS anime_cover_image,
+           e.title       AS episode_title,
+           ROW_NUMBER() OVER (PARTITION BY wp.anime_id ORDER BY wp.updated_at DESC, wp.episode_id DESC) AS rn
+         FROM watch_progress wp
+         JOIN anime a ON a.id = wp.anime_id
+         LEFT JOIN episodes e ON e.id = wp.episode_id
+         LEFT JOIN watch_dismissed wd ON wd.user_id = wp.user_id AND wd.anime_id = wp.anime_id
+         WHERE wp.user_id = ?
+           AND wd.user_id IS NULL
+       ) ranked
+       WHERE rn = 1
+       ORDER BY updated_at DESC
        LIMIT ?`,
-      [userId, userId, limit]
+      [userId, limit]
     );
 
     const result = [];
@@ -239,7 +237,9 @@ exports.getContinueWatching = async (req, res) => {
           positionSec: 0,
           durationSec: 0,
           percent: 0,
-          resumeUrl: `watch.html?anime=${row.anime_id}&ep=${nextEp[0].id}&t=0`,
+          // FIX 5 (Phase 3): resumeUrl must use watch.html?id=<animeId>&ep=<episodeId>
+          // to match what watch.js actually reads.
+          resumeUrl: `watch.html?id=${row.anime_id}&ep=${nextEp[0].id}`,
           state: 'next_episode',
         });
         continue;
@@ -259,7 +259,9 @@ exports.getContinueWatching = async (req, res) => {
         positionSec: row.position_sec,
         durationSec: row.duration_sec,
         percent,
-        resumeUrl: `watch.html?anime=${row.anime_id}&ep=${row.episode_id}&t=${row.position_sec}`,
+        // FIX 5 (Phase 3): resumeUrl must use watch.html?id=<animeId>&ep=<episodeId>
+        // to match what watch.js actually reads.
+        resumeUrl: `watch.html?id=${row.anime_id}&ep=${row.episode_id}`,
         state: 'resume',
       });
     }

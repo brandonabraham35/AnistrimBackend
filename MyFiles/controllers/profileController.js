@@ -180,12 +180,12 @@ exports.updatePreferences = async (req, res) => {
       return res.status(400).json({ message: 'Autoplay countdown must be an integer between 0 and 60 seconds.' });
     }
   }
-  // subtitleLang must be a short BCP-47-ish string (e.g. 'en', 'fr', 'es', 'none').
-  if (subtitleLang !== undefined && typeof subtitleLang !== 'string') {
-    return res.status(400).json({ message: 'Subtitle language must be a string.' });
-  }
-  if (typeof subtitleLang === 'string' && subtitleLang.length > 10) {
-    return res.status(400).json({ message: 'Subtitle language is too long.' });
+  // subtitleLang must be whitelisted (FIX 8): en, es, fr, de, pt, ja, ar, none.
+  const ALLOWED_SUBTITLE_LANGS = new Set(['en', 'es', 'fr', 'de', 'pt', 'ja', 'ar', 'none']);
+  if (subtitleLang !== undefined) {
+    if (typeof subtitleLang !== 'string' || !ALLOWED_SUBTITLE_LANGS.has(subtitleLang)) {
+      return res.status(400).json({ message: 'Invalid subtitle language. Allowed: en, es, fr, de, pt, ja, ar, none.' });
+    }
   }
   // genres (if provided) must be an array of strings (validate against known
   // genres is the controller's job; here enforce shape).
@@ -197,7 +197,24 @@ exports.updatePreferences = async (req, res) => {
   }
 
   try {
-    const prefs = await upsertPreferences(userId, {
+    // Validate genres against the genres table (FIX 8).
+    if (Array.isArray(genres) && genres.length) {
+      const cleaned = [...new Set(genres.map(g => String(g).trim()).filter(Boolean))];
+      if (cleaned.length) {
+        const placeholders = cleaned.map(() => '?').join(',');
+        const [genreRows] = await pool.query(
+          `SELECT name FROM genres WHERE name IN (${placeholders})`,
+          cleaned
+        );
+        const validNames = new Set(genreRows.map(r => r.name));
+        const invalid = cleaned.filter(g => !validNames.has(g));
+        if (invalid.length) {
+          return res.status(400).json({ message: `Unknown genres: ${invalid.join(', ')}` });
+        }
+      }
+    }
+
+    await upsertPreferences(userId, {
       genres,
       autoplayNext,
       autoplayCountdown: autoplayCountdown !== undefined ? Number(autoplayCountdown) : undefined,
@@ -208,7 +225,11 @@ exports.updatePreferences = async (req, res) => {
       skipIntroAuto,
       reduceMotion,
     });
-    return res.json({ success: true, preferences: prefs });
+
+    // FIX 8: re-read from the DB so the response reflects server state,
+    // not the merged in-memory object.
+    const freshPrefs = await getPreferences(userId);
+    return res.json({ success: true, preferences: freshPrefs });
   } catch (error) {
     console.error('[PROFILE] updatePreferences error:', error.message);
     return res.status(500).json({ message: 'Server error updating preferences.' });

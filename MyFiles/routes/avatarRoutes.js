@@ -55,7 +55,8 @@ router.post('/avatar', authMiddleware.protect, (req, res) => {
     } catch (e) {
       console.error('[AVATAR] Upload error:', e.message);
       const status = e.status || 502;
-      return res.status(status).json({ success: false, message: e.message || 'Avatar upload failed.' });
+      const code = e.code === 'SHARP_MISSING' ? 'AVATAR_UNAVAILABLE' : undefined;
+      return res.status(status).json({ success: false, code, message: e.message || 'Avatar upload failed.' });
     }
   });
 });

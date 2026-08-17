@@ -19,6 +19,8 @@
     .pref-row .pref-label{color:#d1d5db;}
     .tonio select,.pref-row select,.pref-row input[type=number]{background:#12121a;color:#fff;border:1px solid #333;border-radius:6px;padding:6px 10px;font-size:0.85rem;}
     .save-btn{background:var(--purple,#6c2bd9);color:#fff;border:0;border-radius:8px;padding:10px 22px;cursor:pointer;font-weight:700;margin-top:14px;}
+    .pref-genre-chip{background:#12121a;color:#d1d5db;border:1px solid #333;border-radius:12px;padding:6px 12px;font-size:0.8rem;cursor:pointer;transition:all .2s;}
+    .pref-genre-chip.selected{background:var(--purple,#6c2bd9);border-color:var(--purple,#6c2bd9);color:#fff;}
   </style>
 </head>
 <body>
@@ -102,6 +104,7 @@
     <div style="margin-top:8px;">
       <div class="label" style="color:var(--text-muted,#9ca3af);font-size:0.85rem;margin-bottom:6px;">Preferred genres</div>
       <div id="pref-genres"></div>
+      <div id="pref-genre-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
     </div>
     <button class="save-btn" onclick="savePreferences()">Save Preferences</button>
   </section>

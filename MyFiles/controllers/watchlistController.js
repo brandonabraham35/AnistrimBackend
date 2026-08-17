@@ -143,7 +143,31 @@ exports.getWatchlist = async (req, res) => {
     sql += ` ORDER BY updated_at DESC`;
 
     const [rows] = await db.query(sql, params);
-    res.json(rows);
+
+    // FIX 8 (Phase 3): return canonical camelCase field names that the
+    // frontend actually reads: animeId, title, poster, status, episodesWatched,
+    // totalEpisodes. Join watch_progress for real episode counts.
+    const result = [];
+    for (const row of rows) {
+      const [countRows] = await db.query(
+        `SELECT
+           (SELECT COUNT(*) FROM episodes e WHERE e.anime_id = ?) AS total_episodes,
+           (SELECT COUNT(*) FROM watch_progress wp WHERE wp.user_id = ? AND wp.anime_id = ? AND wp.completed = 1) AS episodes_watched`,
+        [row.anime_id, userId, row.anime_id]
+      );
+      result.push({
+        id: row.id,
+        animeId: row.anime_id,
+        title: row.anime_title,
+        poster: row.anime_cover,
+        status: row.status,
+        episodesWatched: Number(countRows[0]?.episodes_watched || 0),
+        totalEpisodes: Number(countRows[0]?.total_episodes || 0),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      });
+    }
+    res.json(result);
   } catch (err) {
     console.error('[WatchlistController] getWatchlist error:', err.message);
     res.status(500).json({ message: 'Failed to fetch watchlist.' });
@@ -225,12 +249,12 @@ exports.getLegacyContinueWatching = async (req, res) => {
     for (const item of canonicalResponse || []) {
       legacyRows.push({
         anime_id: item.animeId,
-        title: item.animeTitle,
-        cover_image: item.animeCoverImage,
+        title: item.title || item.animeTitle,
+        cover_image: item.poster || item.animeCoverImage,
         rating: 0,
         episode_number: item.episodeNumber,
-        progress_sec: item.progressSeconds || 0,
-        duration_sec: item.totalDurationSeconds || 1440,
+        progress_sec: item.positionSec || item.progressSeconds || 0,
+        duration_sec: item.durationSec || item.totalDurationSeconds || 1440,
       });
     }
 
@@ -291,7 +315,7 @@ exports.getLegacyProgress = async (req, res) => {
  */
 exports.saveLegacyProgress = async (req, res) => {
   try {
-    const { episodeId, progressSec, completed, durationSec } = req.body || {};
+    const { episodeId, progressSec, progressSeconds, completed, durationSec, totalDurationSeconds } = req.body || {};
 
     if (!episodeId) {
       return res.status(400).json({ message: 'episodeId is required.' });
@@ -306,15 +330,19 @@ exports.saveLegacyProgress = async (req, res) => {
       return res.status(404).json({ message: 'Episode not found.' });
     }
 
-    const progressSeconds = Number(progressSec || 0);
-    const totalDurationSeconds = Number(durationSec || episodeRows[0].duration_sec || 0);
+    // FIX 1 (Phase 3): translate legacy field names to the canonical
+    // positionSec / durationSec that watchController.saveProgress reads.
+    // Without this, progressSeconds → positionSec = undefined → 0 → ignored.
+    const positionSec = Number(progressSec ?? progressSeconds ?? 0);
+    const durationSecFinal = Number(durationSec ?? totalDurationSeconds ?? episodeRows[0].duration_sec ?? 0);
 
     req.body = {
       animeId: episodeRows[0].anime_id,
       episodeNumber: episodeRows[0].episode_number,
       episodeId: Number(episodeId),
-      progressSeconds,
-      totalDurationSeconds,
+      positionSec,
+      durationSec: durationSecFinal,
+      event: 'heartbeat',
     };
 
     return watchCtrl.saveProgress(req, res);

@@ -916,11 +916,41 @@ exports.deactivateAccount = async (req, res) => {
 // ─── POST /api/auth/account/delete ─────────────────────────────
 // Soft-delete: status='deleted', deleted_at=NOW(), anonymise email,
 // purge avatar. Hard purge job after 30 days.
+// FIX 11: requires { password } (or a fresh OTP for Google accounts) to
+// re-authenticate before the destructive action.
 exports.deleteAccount = async (req, res) => {
     const userId = req.userId ?? req.user?.id;
     if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
 
+    const { password } = req.body || {};
+
     try {
+        // Load the user to verify the password (or detect Google-only account).
+        const [rows] = await pool.query(
+            'SELECT id, password_hash, auth_provider FROM users WHERE id = ?',
+            [userId]
+        );
+        if (!rows.length) return res.status(404).json({ message: 'User not found.' });
+        const user = rows[0];
+
+        // Password accounts: require the current password.
+        if (user.password_hash) {
+            if (!password || typeof password !== 'string') {
+                return res.status(400).json({ message: 'Please enter your password to confirm account deletion.' });
+            }
+            const match = await bcrypt.compare(password, user.password_hash);
+            if (!match) {
+                return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect password. Account deletion cancelled.' });
+            }
+        }
+        // Google-only accounts (no password_hash): require a fresh OTP.
+        // For now, require the user to set a password first (simpler + safer).
+        else {
+            return res.status(400).json({
+                message: 'This account uses Google Sign-In. Please set a password first, then confirm deletion with your password.',
+            });
+        }
+
         const anonymisedEmail = `deleted+${userId}@anistrim.invalid`;
         await pool.query(
             `UPDATE users

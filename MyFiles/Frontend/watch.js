@@ -1418,13 +1418,17 @@ function showResumePrompt(progressData) {
   var video = document.getElementById('animePlayer');
   if (!video || !video.paused) return;
 
-  const pct = progressData.totalDurationSeconds > 0
-    ? Math.round((progressData.progressSeconds / progressData.totalDurationSeconds) * 100)
+  // FIX 2 (Phase 3): canonical field names are positionSec/durationSec
+  const pos = progressData.positionSec ?? progressData.progressSeconds ?? 0;
+  const dur = progressData.durationSec ?? progressData.totalDurationSeconds ?? 0;
+
+  const pct = dur > 0
+    ? Math.round((pos / dur) * 100)
     : 0;
 
   document.getElementById('resume-progress-pct').textContent = pct + '%';
   document.getElementById('resume-saved-time').textContent =
-    ' at ' + fmtTime(progressData.progressSeconds);
+    ' at ' + fmtTime(pos);
 
   document.getElementById('resume-continue-btn').onclick = function() {
     hideResumePrompt();
@@ -1484,17 +1488,21 @@ window.cancelAutoplay = cancelAutoplay;
 // ════════════════════════════════════════════════════════════
 //  PROGRESS SAVE / LOAD
 // ════════════════════════════════════════════════════════════
+// FIX 2 (Phase 3): loadProgress must call GET /api/watch/progress/:episodeId
+// (the real route) with the episode's database ID, not the legacy
+// /:animeId/:episodeNumber path which 404s.
 async function loadProgress(video, animeId, episodeNumber) {
+  if (!currentEpId) return;
   try {
-    var { data } = await apiFetch('/api/watch/progress/' + animeId + '/' + episodeNumber, { timeout: API_TIMEOUT_MS });
-    if (data && data.progressSeconds > 10) {
+    var data = await apiFetch('/api/watch/progress/' + currentEpId, { timeout: API_TIMEOUT_MS });
+    if (data && data.positionSec > 10) {
       // Near-end detection: if 90%+ watched, offer Resume/Restart
-      if (data.totalDurationSeconds > 0 && data.progressSeconds >= data.totalDurationSeconds * 0.9) {
+      if (data.durationSec > 0 && data.positionSec >= data.durationSec * 0.9) {
         showResumePrompt(data);
       }
       video.addEventListener('loadedmetadata', function() {
-        if (data.progressSeconds < (video.duration || Infinity)) {
-          video.currentTime = data.progressSeconds;
+        if (data.positionSec < (video.duration || Infinity)) {
+          video.currentTime = data.positionSec;
         }
         // If near-end and user didn't choose, just resume from saved position
       }, { once: true });
@@ -1502,15 +1510,19 @@ async function loadProgress(video, animeId, episodeNumber) {
   } catch(e) {}
 }
 
+// FIX 1 + FIX 3 (Phase 3): saveProgress must call PUT /api/watch/progress
+// with positionSec/durationSec (the canonical field names). The legacy
+// POST /api/watchlist/progress alias is kept server-side for compatibility
+// but the frontend now uses the canonical route directly.
 async function saveProgress(epId, sec, completed, durationSec) {
   try {
-    await apiFetch('/api/watchlist/progress', {
-      method: 'POST',
+    await apiFetch('/api/watch/progress', {
+      method: 'PUT',
       body: JSON.stringify({
         episodeId: epId,
-        progressSec: sec,
-        completed: completed,
-        durationSec: durationSec || 0
+        positionSec: sec,
+        durationSec: durationSec || 0,
+        event: completed ? 'ended' : 'heartbeat'
       })
     });
   } catch(e) {}
@@ -2944,21 +2956,20 @@ function toggleEpisodeSidebar(force) {
  * Exit the player and return to browse/details page.
  */
 function exitPlayer() {
-  // Save progress before leaving
+  // Save progress before leaving (FIX 2 Phase 3: use PUT + canonical fields)
   var video = document.getElementById('animePlayer');
-  if (video && currentAnimeTitle && currentEp) {
+  if (video && currentEpId) {
     var progressSec = Math.floor(video.currentTime || 0);
     var durationSec = Math.floor(video.duration || 0);
     if (progressSec > 0 && durationSec > 0) {
-      // Fire-and-forget save
+      // Fire-and-forget save via the canonical PUT route
       apiFetch('/api/watch/progress', {
-        method: 'POST',
+        method: 'PUT',
         body: JSON.stringify({
-          animeTitle: currentAnimeTitle,
-          episodeNumber: currentEp,
-          progressSec: progressSec,
+          episodeId: currentEpId,
+          positionSec: progressSec,
           durationSec: durationSec,
-          episodeId: currentEpisodeId || null
+          event: 'exit'
         })
       }).catch(function() {});
     }

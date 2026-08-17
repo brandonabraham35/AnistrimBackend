@@ -13,8 +13,19 @@ const State = (function () {
   return {
     get token()      { const a = getAuth(); return a ? a.token : (localStorage.getItem('token') || ''); },
     get user()       { const a = getAuth(); return a ? a.user : (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } })(); },
-    get isPremium()  { return this.user?.isPremium === true; },
-    get isAdmin()    { return this.user?.isAdmin   === true; },
+    // FIX 9: prefer the canonical Session DTO entitlement (server-authoritative)
+    // over the cached localStorage user. The cached copy is only a first-paint
+    // hint that is replaced once /api/auth/me resolves.
+    get isPremium()  {
+      const s = window.Session && window.Session.getUser();
+      if (s && s.entitlement) return s.entitlement.isPremium === true;
+      return this.user?.isPremium === true;
+    },
+    get isAdmin()    {
+      const s = window.Session && window.Session.getUser();
+      if (s) return s.isAdmin === true || s.role === 'admin';
+      return this.user?.isAdmin === true;
+    },
     // token present AND not expired — used only for UX gating (not authz).
     get isLoggedIn() { const a = getAuth(); return a ? a.isLoggedIn : !!this.token; },
     save(token, user) { const a = getAuth(); if (a) a.save(token, user); else { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(user)); } },
@@ -192,7 +203,9 @@ async function loadHomeContent() {
   }
 }
 
-// FIX 2: Continue Watching
+// FIX 2 + FIX 4 (Phase 3): Continue Watching rail
+// Uses canonical field names: animeId, title, poster, episodeNumber,
+// positionSec, durationSec, percent, resumeUrl.
 async function loadContinueWatching() {
   try {
     // apiFetch resolves to the body directly. Real route is /api/watch/continue-watching.
@@ -205,21 +218,26 @@ async function loadContinueWatching() {
 
     section.style.display = 'block';
     row.innerHTML = data.map(item => {
-      const imgSrc = item.cover_image && item.cover_image.trim()
-        ? item.cover_image
-        : makeFallbackImg(item.title);
+      const title = item.title || 'Unknown';
+      const imgSrc = (item.poster && item.poster.trim())
+        ? item.poster
+        : makeFallbackImg(title);
+      const pct = item.durationSec > 0
+        ? Math.min(100, Math.max(2, ((item.positionSec || 0) / item.durationSec) * 100)).toFixed(0)
+        : 0;
+      const resumeUrl = item.resumeUrl || ('watch.html?id=' + item.animeId + '&ep=' + (item.episodeNumber || 1));
       return `
-      <div class="card" onclick="location.href='watch.html?id=${item.anime_id}&ep=${item.episode_number}'">
+      <div class="card" onclick="location.href='${resumeUrl}'">
         <div class="card-img-wrap">
-          <img src="${imgSrc}" alt="${window._escapeHTML(item.title)}" loading="lazy"
-               onerror="cardImgError(this,'${_escapeHTML((item.title||'').replace(/'/g,"\\'"))}')">
-          <span class="card-badge">⭐ ${item.rating}</span>
+          <img src="${imgSrc}" alt="${window._escapeHTML(title)}" loading="lazy"
+               onerror="cardImgError(this,'${_escapeHTML((title||'').replace(/'/g,"\\'"))}')">
+          <span class="card-badge">▶ ${item.episodeNumber ? 'Ep ' + item.episodeNumber : ''}</span>
           <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,0.2);">
-            <div style="height:100%;background:var(--purple);width:${Math.min((item.progress_sec/(item.duration_sec||1440))*100,100).toFixed(0)}%"></div>
+            <div style="height:100%;background:var(--purple);width:${pct}%"></div>
           </div>
         </div>
-        <div class="card-title">${_escapeHTML(item.title)}</div>
-        <div class="card-sub">Ep ${item.episode_number} · Resume</div>
+        <div class="card-title">${_escapeHTML(title)}</div>
+        <div class="card-sub">${pct}% · Resume</div>
       </div>`;
     }).join('');
   } catch(e) {}
