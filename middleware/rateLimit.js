@@ -2,6 +2,7 @@
 // Uses express-rate-limit with in-memory store (single-instance deployment).
 // For multi-instance, swap in rate-limit-redis.
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 
 // Standard 429 response shape: { code: 'RATE_LIMITED', retryAfter }
 function handler(req, res) {
@@ -13,16 +14,24 @@ function handler(req, res) {
   });
 }
 
+// Build a per-IP+email key. The official ipKeyGenerator helper normalizes the
+// request IP (applying the IPv6 subnet so users cannot bypass limits by cycling
+// addresses within their /56), satisfying express-rate-limit's ERR_ERL_KEY_GEN_IPV6
+// validation while keeping the composite key: <normalized-ip>:<email>.
+function ipEmailKeyGenerator(extraField) {
+  return (req) => {
+    const value = (req.body && req.body[extraField]) ? String(req.body[extraField]).toLowerCase() : 'unknown';
+    return ipKeyGenerator(req.ip) + ':' + value;
+  };
+}
+
 // Login: 10 attempts / 15 min per IP+email
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email = (req.body && req.body.email) ? String(req.body.email).toLowerCase() : 'unknown';
-    return (req.ip || 'unknown') + ':' + email;
-  },
+  keyGenerator: ipEmailKeyGenerator('email'),
   handler,
 });
 
@@ -32,10 +41,7 @@ const otpLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email = (req.body && req.body.email) ? String(req.body.email).toLowerCase() : 'unknown';
-    return (req.ip || 'unknown') + ':' + email;
-  },
+  keyGenerator: ipEmailKeyGenerator('email'),
   handler,
 });
 

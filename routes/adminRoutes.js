@@ -36,10 +36,10 @@ router.put('/anime/bulk',                   admin.bulkUpdateAnime);
 router.post('/anime/bulk-delete',           admin.bulkDeleteAnime);
 router.get('/anime/import/search',          imports.searchConsumet);
 router.post('/anime/import',                imports.importConsumetAnime);
-router.get('/anime/:id(\\d+)',              admin.getAnimeById);
-router.put('/anime/:id(\\d+)',              admin.updateAnime);
-router.delete('/anime/:id(\\d+)',           admin.deleteAnime);
-router.put('/anime/:id(\\d+)/sync',         imports.syncConsumetAnime);
+router.get('/anime/:id',                    admin.getAnimeById);
+router.put('/anime/:id',                    admin.updateAnime);
+router.delete('/anime/:id',                 admin.deleteAnime);
+router.put('/anime/:id/sync',               imports.syncConsumetAnime);
 router.post('/import-anime',                imports.importAnime);
 
 // ── AnimeHeaven Import & Sync (Phase 6 & 7) ────────────────

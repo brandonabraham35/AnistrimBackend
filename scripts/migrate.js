@@ -61,21 +61,99 @@ async function getAppliedMigrations() {
 }
 
 /**
+ * Strip SQL comments so a `;` inside a `--` line comment or a `/* ... *​/`
+ * block comment can never be mistaken for a statement terminator.
+ * Handles:
+ *   - `--` line comments (to end of line)
+ *   - `/* ... *​/` block comments (may span multiple lines)
+ *   - single-quoted string literals (so `--` or `;` inside a string is kept)
+ *   - backtick-quoted identifiers (so `;` inside a backtick name is kept)
+ */
+function stripSqlComments(sql) {
+  let out = '';
+  let i = 0;
+  const n = sql.length;
+  while (i < n) {
+    const c = sql[i];
+    const next = sql[i + 1];
+
+    // Line comment: -- to end of line
+    if (c === '-' && next === '-') {
+      while (i < n && sql[i] !== '\n') i++;
+      continue;
+    }
+
+    // Block comment: /* ... */
+    if (c === '/' && next === '*') {
+      i += 2;
+      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) i++;
+      i += 2; // skip closing */
+      continue;
+    }
+
+    // Single-quoted string literal
+    if (c === "'") {
+      out += c;
+      i++;
+      while (i < n) {
+        out += sql[i];
+        if (sql[i] === "'") {
+          // Handle escaped '' inside the string
+          if (sql[i + 1] === "'") {
+            out += sql[i + 1];
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // Backtick-quoted identifier
+    if (c === '`') {
+      out += c;
+      i++;
+      while (i < n) {
+        out += sql[i];
+        if (sql[i] === '`') {
+          if (sql[i + 1] === '`') {
+            out += sql[i + 1];
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
  * Apply a single migration file. Each file may contain multiple statements
  * (CREATE TABLE, ALTER, INSERT, etc.) — mysql2's multipleStatements is not
  * enabled by default, so we split on `;` at line boundaries and execute each
- * statement separately. This is safe for our migration files which use
- * `;` as the statement terminator and never embed semicolons in strings.
+ * statement separately. Comments are stripped first so a `;` inside a comment
+ * can never be mistaken for a statement terminator.
  */
 async function applyMigration(filename) {
   const filePath = path.join(MIGRATIONS_DIR, filename);
-  const sql = fs.readFileSync(filePath, 'utf8');
+  const rawSql = fs.readFileSync(filePath, 'utf8');
 
-  // Split into statements. Skip empty/comment-only chunks.
-  const statements = sql
+  // Strip comments, then split into statements. Skip empty/comment-only chunks.
+  const statements = stripSqlComments(rawSql)
     .split(';')
     .map(s => s.trim())
-    .filter(s => s && !/^--/.test(s) && !/^USE\s/i.test(s));
+    .filter(s => s && !/^USE\s/i.test(s));
 
   for (const stmt of statements) {
     try {
