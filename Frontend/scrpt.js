@@ -137,9 +137,11 @@ async function loadHomeContent() {
   try {
     // PRIMARY: the backend section engine. One call returns all four ranked
     // rows (trending/popular/newReleases/classics), each guaranteed >= 10.
-    const { data: sections, ok } = await apiFetch('/api/home/sections');
+    // NOTE: apiFetch (js/api.js) resolves to the response BODY directly — do
+    // NOT destructure { data, ok }.
+    const sections = await apiFetch('/api/home/sections');
 
-    if (ok && sections && Array.isArray(sections.trending)) {
+    if (sections && Array.isArray(sections.trending)) {
       // Hero slider from featured (fall back to top-rated trending).
       heroAnime = (sections.trending.filter(a => a.is_featured).slice(0,5));
       if (!heroAnime.length) heroAnime = [...sections.trending].sort((a,b) => numRating(b) - numRating(a)).slice(0,5);
@@ -155,12 +157,11 @@ async function loadHomeContent() {
     // FALLBACK: only when /api/home/sections fails. Re-partition the raw
     // catalogue, but WITHOUT cross-row dedupe starvation — each row slices to
     // 8 before any dedupe, and rows are allowed to overlap (the server does).
-    const { data: all, ok: allOk } = await apiFetch('/api/anime/trending');
-    if (!allOk || !Array.isArray(all)) {
+    const trending = await apiFetch('/api/anime/trending');
+    if (!Array.isArray(trending)) {
       showCatalogError('Could not connect to the server. The catalog data is currently unavailable.');
       return;
     }
-    const trending = all;
 
     heroAnime = (trending.filter(a => a.is_featured).slice(0,5));
     if (!heroAnime.length) heroAnime = [...trending].sort((a,b) => numRating(b) - numRating(a)).slice(0,5);
@@ -177,8 +178,8 @@ async function loadHomeContent() {
 
     // New Releases — latest uploads endpoint (independent of rating/status).
     try {
-      const { data: latest, ok: latestOk } = await apiFetch('/api/anime/latest?limit=12');
-      renderSection('new-row', (latestOk && Array.isArray(latest)) ? latest : trending.filter(a => (a.year||0) >= 2020));
+      const latest = await apiFetch('/api/anime/latest?limit=12');
+      renderSection('new-row', Array.isArray(latest) ? latest : trending.filter(a => (a.year||0) >= 2020));
     } catch(e) {
       renderSection('new-row', trending.filter(a => (a.year||0) >= 2020));
     }
@@ -194,8 +195,9 @@ async function loadHomeContent() {
 // FIX 2: Continue Watching
 async function loadContinueWatching() {
   try {
-    const { ok, data } = await apiFetch('/api/watchlist/continue');
-    if (!ok || !data.length) return;
+    // apiFetch resolves to the body directly. Real route is /api/watch/continue-watching.
+    const data = await apiFetch('/api/watch/continue-watching');
+    if (!data || !Array.isArray(data) || !data.length) return;
 
     const section = document.getElementById('continue-section');
     const row     = document.getElementById('continue-row');
@@ -436,11 +438,13 @@ window.reloadCatalog = reloadCatalog;
 // ===================== WATCHLIST =====================
 async function addToWatchlist(animeId) {
   if (!State.isLoggedIn) { alert('Please log in first!'); return; }
-  const { data } = await apiFetch('/api/watchlist/add', {
+  // apiFetch (js/api.js) resolves to the body directly and throws on failure.
+  // Real route is POST /api/watchlist (there is no /api/watchlist/add).
+  const data = await apiFetch('/api/watchlist', {
     method: 'POST', body: JSON.stringify({ animeId })
   });
   // Toast notification instead of alert
-  showToast(data.message || 'Added to watchlist!');
+  showToast((data && data.message) || 'Added to watchlist!');
 }
 window.addToWatchlist = addToWatchlist;
 
