@@ -139,6 +139,33 @@ function stripSqlComments(sql) {
 }
 
 /**
+ * Translate MariaDB-only `IF NOT EXISTS` clauses into MySQL-compatible form.
+ *
+ * MySQL supports `IF NOT EXISTS` for CREATE TABLE / CREATE DATABASE, but NOT for
+ * ALTER TABLE ... ADD COLUMN / ADD [UNIQUE|FULLTEXT|SPATIAL] INDEX, nor for
+ * CREATE INDEX. Several migration files were written for MariaDB and use these
+ * non-MySQL forms (e.g. `ADD COLUMN IF NOT EXISTS intro_start_time INT DEFAULT NULL`),
+ * which cause a MySQL parse error and block startup.
+ *
+ * We strip `IF NOT EXISTS` from exactly those statements and rely on the existing
+ * idempotent handling in applyMigration (ER_DUP_FIELDNAME / ER_DUP_KEYNAME /
+ * "already exists") to skip objects that already exist. CREATE TABLE IF NOT EXISTS
+ * and CREATE DATABASE IF NOT EXISTS are left untouched because MySQL accepts them.
+ */
+function normalizeMariaDB(sql) {
+  // ADD COLUMN IF NOT EXISTS col def  →  ADD COLUMN col def
+  let out = sql.replace(/\bADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/gi, 'ADD COLUMN');
+
+  // ADD [UNIQUE|FULLTEXT|SPATIAL] INDEX IF NOT EXISTS ...  →  ADD ... INDEX ...
+  out = out.replace(/\bADD\s+(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b/gi, 'ADD $1INDEX');
+
+  // CREATE [UNIQUE|FULLTEXT|SPATIAL] INDEX IF NOT EXISTS ...  →  CREATE ... INDEX ...
+  out = out.replace(/\bCREATE\s+(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b/gi, 'CREATE $1INDEX');
+
+  return out;
+}
+
+/**
  * Apply a single migration file. Each file may contain multiple statements
  * (CREATE TABLE, ALTER, INSERT, etc.) — mysql2's multipleStatements is not
  * enabled by default, so we split on `;` at line boundaries and execute each
@@ -149,8 +176,10 @@ async function applyMigration(filename) {
   const filePath = path.join(MIGRATIONS_DIR, filename);
   const rawSql = fs.readFileSync(filePath, 'utf8');
 
-  // Strip comments, then split into statements. Skip empty/comment-only chunks.
-  const statements = stripSqlComments(rawSql)
+  // Strip comments, translate MariaDB-only syntax (ADD COLUMN IF NOT EXISTS,
+  // ADD INDEX IF NOT EXISTS, CREATE INDEX IF NOT EXISTS) into MySQL-compatible
+  // form, then split into statements. Skip empty/comment-only chunks and USE.
+  const statements = normalizeMariaDB(stripSqlComments(rawSql))
     .split(';')
     .map(s => s.trim())
     .filter(s => s && !/^USE\s/i.test(s));
