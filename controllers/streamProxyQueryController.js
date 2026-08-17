@@ -63,6 +63,10 @@ const DEFAULT_UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024; // 2MB cap for HLS manifests
 const PROXY_PROVIDER_TAG = 'animeheaven-proxy';
 const ALLOWED_PROVIDER = 'animeheaven';
+// P0-4: HMAC stream token gate. The token is minted by POST /api/stream/authorize
+// (utils/streamToken.js) and is bound to userId + episodeId + streamId + ip.
+// This route rejects any request without a valid, unexpired, IP-bound token.
+const { verify: verifyStreamToken } = require('../utils/streamToken');
 
 /**
  * Perform the upstream fetch as a stream and pipe it to the client.
@@ -122,6 +126,26 @@ exports.streamMedia = async (req, res) => {
   const provider = String(req.query.provider || '').toLowerCase();
   const target = String(req.query.url || '').trim();
   const referer = req.query.referer ? String(req.query.referer).trim() : null;
+
+  // ── P0-4: HMAC stream-token gate ────────────────────────
+  // Require a valid token minted by POST /api/stream/authorize. The token is
+  // bound to userId + episodeId + streamId + ip. We verify the signature,
+  // expiry, and IP binding. The token may arrive via ?token= or
+  // Authorization: Bearer.
+  const token = String(req.query.token || '') ||
+    (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')
+      ? req.headers.authorization.slice(7).trim()
+      : '');
+  if (!token) {
+    logger.warn('[streamProxyQuery] Missing stream token', { provider: provider || '(missing)' });
+    return res.status(403).json({ code: 'TOKEN_MISSING', message: 'A valid stream token is required.' });
+  }
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  const tokenCheck = verifyStreamToken(token, { ip: clientIp });
+  if (!tokenCheck.ok) {
+    logger.warn('[streamProxyQuery] Invalid stream token', { reason: tokenCheck.reason });
+    return res.status(403).json({ code: tokenCheck.reason || 'TOKEN_INVALID', message: 'Invalid or expired stream token.' });
+  }
 
   // ── Only AnimeHeaven uses proxy mode ────────────────────
   if (provider !== ALLOWED_PROVIDER) {

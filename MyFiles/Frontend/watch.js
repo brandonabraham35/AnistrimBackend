@@ -371,30 +371,11 @@ async function loadWatch() {
         console.log('[PLAYBACK] Player initialization');
       }
     } catch (err) {
-      console.error('[PLAYBACK] Stream resolution failed (first attempt)', { episode: currentEp, error: err.message });
-      // ── AUTO-RETRY (Silent, Change-Server path) ──────────
-      // The user should NEVER see the error / Change-Server page on the normal
-      // first-load path. If the first attempt fails (e.g. cold cache timeout),
-      // automatically retry using the EXACT same call the "Change Server"
-      // button uses — which is proven to reach the player. Only if THIS also
-      // fails do we surface the error overlay.
-      try {
-        setLoadingStatus('Retrying connection...');
-        console.log('[PLAYBACK] Auto-retrying stream resolution (Change-Server path)');
-        await resolveAndPlayStream(currentAnimeTitle, currentEp, video, 'animeheaven');
-        setPlayerState(PLAYER_STATES.SOURCE_READY, { episode: currentEp, viaRetry: true });
-        watchLog('stream resolution completed after retry', { episode: currentEp });
-        console.log('[PLAYBACK] Player initialization (after retry)');
-      } catch (retryErr) {
-        console.error('[PLAYBACK] Stream resolution failed (retry)', { episode: currentEp, error: retryErr.message });
-        clearTimeout(playbackTimeout);
-        setPlayerState(PLAYER_STATES.PLAYBACK_ERROR, { message: retryErr.message });
-        showWatchError(retryErr.message || 'Stream resolution failed.');
-      }
+      console.error('[PLAYBACK] Stream resolution failed', { episode: currentEp, error: err.message });
+      clearTimeout(playbackTimeout);
+      setPlayerState(PLAYER_STATES.PLAYBACK_ERROR, { message: err.message });
+      showWatchError(err.message || 'Stream resolution failed.');
     }
-
-    loadSkipTimes(animeId, epNum);
-    loadSkipTimesForNext(nextEpData, animeId);
 
     if (!(State.isPremium || State.isAdmin)) {
       startMidRollAdTracker(video);
@@ -907,7 +888,93 @@ function setupPlayer(video) {
     initProgressBar(video);
     initControlsAutoHide(wrap);
     initKeyboardShortcuts();
-    initTouchControls(wrap, video);
+
+    // ── Phase 4: Player module bootstrap (single init order) ──
+    // PlayerCore → Progress → PlayerGestures → PlayerResilience → PlayerMarkers
+    // Each init() receives the PlayerCore instance/event bus rather than globals.
+    // A second call tears down the previous instance (episode changes must not
+    // stack listeners or HLS instances).
+    if (window.PlayerCore) {
+      if (window.__playerCore) { try { window.__playerCore.destroy(); } catch(e) {} }
+      window.__playerCore = window.PlayerCore.init({
+        video: video,
+        sourceUrl: currentStreamUrl,
+        episodeId: currentEpId,
+        onSourceLoaded: function() {},
+        onError: function(err) {
+          if (window.__playerResilience && window.__playerResilience.onError) {
+            window.__playerResilience.onError(null, { type: 'mediaError', fatal: true, data: err });
+          }
+        },
+        onLevels: function(levels) {
+          if (levels && levels.length) {
+            hlsQualityOptions = [{ label: 'Auto', value: -1 }];
+            levels.forEach(function(l, i) { hlsQualityOptions.push({ label: l.height + 'p', value: i }); });
+            refreshHlsQualityOptions();
+          }
+        },
+        errorBus: window
+      });
+      window.__hls = window.__playerCore ? window.__playerCore.getHls() : null;
+      if (window.__hls) hlsInstance = window.__hls;
+    }
+
+    // Progress.init() — already wired above via window.Progress.init()
+
+    // PlayerGestures — single Pointer Events pipeline.
+    if (window.PlayerGestures) {
+      if (window.__playerGestures) { try { window.__playerGestures.destroy(); } catch(e) {} }
+      window.__playerGestures = window.PlayerGestures.init({
+        surface: wrap,
+        controlsEl: document.querySelector('.controls-overlay'),
+        onShowControls: showControls,
+        onHideControls: hideControls,
+        onSeek: function(delta) {
+          if (delta < 0) skipBack(); else skipForward();
+        },
+        onTap: function() {}
+      });
+    }
+
+    // PlayerResilience — the only recovery ladder.
+    if (window.PlayerResilience) {
+      if (window.__playerResilience) { try { window.__playerResilience.reset(); } catch(e) {} }
+      window.__playerResilience = window.PlayerResilience.init({
+        video: video,
+        hls: window.__hls || null,
+        getCurrentTime: function() { return video.currentTime; },
+        getEpisodeId: function() { return currentEpId; },
+        resolveStreamUrl: function(episodeId, force) {
+          var base = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : '';
+          return base + '/api/stream/resolve?episodeId=' + encodeURIComponent(episodeId) + (force ? '&force=1' : '');
+        },
+        onReconnect: function(level) {
+          setLoadingStatus(level >= 4 ? 'Playback failed' : 'Reconnecting…');
+        },
+        onErrorCard: function() {
+          showWatchError('Playback could not be recovered. Please try again.');
+        },
+        logEscalation: function(payload) {
+          apiFetch('/api/reports/stream-escalation', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          }).catch(function() {});
+        }
+      });
+    }
+
+    // PlayerMarkers — skip intro/outro from /api/watch/markers/:episodeId.
+    if (window.PlayerMarkers && currentEpId) {
+      if (window.__playerMarkers) { try { window.__playerMarkers.refresh(); } catch(e) {} }
+      window.__playerMarkers = window.PlayerMarkers.init({
+        video: video,
+        episodeId: currentEpId,
+        getToken: function() { return State.token || localStorage.getItem('token') || ''; },
+        skipButtonEl: skipBtn,
+        onSkip: function(marker) { watchLog('skip marker used', { kind: marker.kind }); },
+        skipIntroAuto: !!(playerPrefs && playerPrefs.autoSkipIntro)
+      });
+    }
 
     // Restore saved playback speed / volume
     video.playbackRate = speedValue;
@@ -1007,7 +1074,6 @@ function hideControls() {
 function initControlsAutoHide(wrap) {
   wrap.addEventListener('mousemove', showControls);
   wrap.addEventListener('mouseenter', showControls);
-  wrap.addEventListener('touchstart', showControls, { passive: true });
   // Keyboard interaction reveals controls
   document.addEventListener('keydown', function() {
     const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
@@ -1020,32 +1086,7 @@ function initControlsAutoHide(wrap) {
   document.addEventListener('MSFullscreenChange', showControls);
   // Re-show controls when the window regains focus.
   window.addEventListener('focus', showControls);
-  wrap.addEventListener('pointerdown', showControls);
   wrap.addEventListener('dblclick', showControls);
-
-  // Click on video area toggles play/pause (desktop) or controls (touch)
-  wrap.addEventListener('click', function(e) {
-    if (suppressNextClick) { suppressNextClick = false; return; }
-    if (e.target.closest('.controls-overlay') ||
-        e.target.closest('.settings-menu') ||
-        e.target.closest('.skip-btn') ||
-        e.target.closest('.next-ep') ||
-        e.target.closest('.resume-prompt') ||
-        e.target.closest('.progress-bar-container') ||
-        e.target.closest('.player-sidebar') ||
-        e.target.closest('.buffering-spinner')) return;
-    var video = document.getElementById('animePlayer');
-    if (!video) return;
-    if (isTouchDevice()) {
-      if (!wrap.classList.contains('controls-visible-mobile') && !wrap.classList.contains('controls-visible')) {
-        showControls();
-      } else {
-        togglePlay();
-      }
-    } else {
-      togglePlay();
-    }
-  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1186,8 +1227,7 @@ async function switchToEpisode(epNum) {
       if (wasPlaying) {
         video.play()['catch'](function(){});
       }
-      // Re-fetch skip times for the new episode
-      loadSkipTimes(currentAnimeId, epNumber);
+      // PlayerMarkers re-initializes on setupPlayer() with the new episodeId
     }, { once: true });
 
     // Update sidebar current-episode highlight
@@ -1575,7 +1615,6 @@ window.saveProgress = saveProgress;
 //  SKIP INTRO / OUTRO  (preserved backend behaviour)
 // ════════════════════════════════════════════════════════════
 function skipIntro() {
-  if (!State.isPremium && !State.isAdmin) return;
   var video = document.getElementById('animePlayer');
   if (introRange) video.currentTime = introRange.end;
   document.getElementById('skip-intro-btn').style.display = 'none';
@@ -1583,18 +1622,11 @@ function skipIntro() {
 window.skipIntro = skipIntro;
 
 function skipOutro() {
-  if (!State.isPremium && !State.isAdmin) return;
   var video = document.getElementById('animePlayer');
   if (outroRange) video.currentTime = outroRange.end;
   document.getElementById('skip-outro-btn').style.display = 'none';
 }
 window.skipOutro = skipOutro;
-
-function loadSkipTimesForNext(nextEp, animeId) {
-  if (!nextEp || !animeId) return;
-  // Pre-fetch skip times for the next episode in the background
-  loadSkipTimes(animeId, nextEp.number || nextEp.episode_number);
-}
 
 // ════════════════════════════════════════════════════════════
 //  EPISODE NAVIGATION (in-player)
@@ -2454,87 +2486,11 @@ function initKeyboardShortcuts() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  TOUCH CONTROLS
+//  AUTOPLAY NEXT + SKIP INTRO  (Phase 4 — PlayerMarkers handles this)
 // ════════════════════════════════════════════════════════════
-function initTouchControls(wrap, video) {
-  if (!isTouchDevice()) return;
-  wrap.classList.add('touch-active');
-
-  // IMPORTANT: The `touchstart` handler in initControlsAutoHide() calls
-  // showControls(), which adds the controls-visible(-mobile) class BEFORE
-  // touchend fires. So at touchend we can no longer tell whether the tap was
-  // meant to REVEAL the controls. We must capture the visibility at
-  // touchstart time (before showControls runs).
-  var tapStartedWithControlsHidden = false;
-
-  wrap.addEventListener('touchstart', function() {
-    tapStartedWithControlsHidden =
-      !wrap.classList.contains('controls-visible') &&
-      !wrap.classList.contains('controls-visible-mobile');
-  }, { passive: true });
-
-  wrap.addEventListener('touchend', function(e) {
-    const touch = e.changedTouches && e.changedTouches[0];
-    if (!touch) return;
-    const now = Date.now();
-    const dx = Math.abs(touch.clientX - lastTapX);
-
-    // Double-tap zone: within 300ms and < 40px of the previous tap.
-    if (now - lastTapTime < 300 && dx < 40) {
-      // Double-tap seek on left/right edges.
-      const rect = wrap.getBoundingClientRect();
-      const rel = (touch.clientX - rect.left) / rect.width;
-      if (rel < 0.33) {
-        suppressNextClick = true;
-        skipBack();
-        e.preventDefault();
-      } else if (rel > 0.66) {
-        suppressNextClick = true;
-        skipForward();
-        e.preventDefault();
-      }
-      lastTapTime = now;
-      lastTapX = touch.clientX;
-      tapStartedWithControlsHidden = false;
-      return;
-    }
-
-    // SINGLE TAP: If the controls were hidden at touchstart, this tap is
-    // intended to REVEAL them — not to pause/play. The browser will still
-    // synthesize a `click` after touchend, which would otherwise togglePlay()
-    // and pause the video. Suppress that synthetic click so a single tap only
-    // reveals the controls. The SECOND tap (controls now visible) will toggle
-    // play/pause.
-    if (tapStartedWithControlsHidden) {
-      suppressNextClick = true;
-    }
-
-    lastTapTime = now;
-    lastTapX = touch.clientX;
-    tapStartedWithControlsHidden = false;
-  }, { passive: false });
-}
-
-// ════════════════════════════════════════════════════════════
-//  AUTOPLAY NEXT + SKIP INTRO  (preserved backend behaviour)
-// ════════════════════════════════════════════════════════════
-async function loadSkipTimes(animeId, episodeNumber) {
-  introRange = null;
-  outroRange = null;
-  try {
-    var { data } = await apiFetch('/api/watch/skip-times/' + encodeURIComponent(animeId) + '/' + encodeURIComponent(episodeNumber), { timeout: API_TIMEOUT_MS });
-    if (data) {
-      if (data.op && Number.isFinite(Number(data.op.start)) && Number.isFinite(Number(data.op.end))) {
-        introRange = { start: Number(data.op.start), end: Number(data.op.end) };
-      }
-      if (data.ed && Number.isFinite(Number(data.ed.start)) && Number.isFinite(Number(data.ed.end))) {
-        outroRange = { start: Number(data.ed.start), end: Number(data.ed.end) };
-      }
-    }
-  } catch (error) {
-    console.debug('No skip-intro marker available:', error.message);
-  }
-}
+// The legacy loadSkipTimes/loadSkipTimesForNext and initTouchControls are
+// removed — PlayerMarkers fetches /api/watch/markers/:episodeId and
+// PlayerGestures owns the single Pointer Events pipeline.
 
 // ════════════════════════════════════════════════════════════
 //  EPISODE SIDEBAR COMPATIBILITY
@@ -2641,7 +2597,20 @@ function showWatchError(msg) {
   const prevEpBtn = document.getElementById('prev-ep-btn-error');
   const nextEpBtn = document.getElementById('next-ep-btn-error');
 
-  if (retryBtn) retryBtn.onclick = () => location.reload();
+  if (retryBtn) {
+    retryBtn.onclick = () => {
+      const errorOverlay = document.getElementById('error-overlay');
+      if (errorOverlay) errorOverlay.style.display = 'none';
+      const loadingOverlay = document.getElementById('loading-overlay');
+      if (loadingOverlay) loadingOverlay.style.display = 'flex';
+      setLoadingStatus('Reconnecting…');
+      if (window.__playerResilience && typeof window.__playerResilience.restart === 'function') {
+        window.__playerResilience.restart();
+      } else {
+        location.reload();
+      }
+    };
+  }
   if (reloadBtn) reloadBtn.onclick = () => location.reload();
   if (changeSourceBtn) {
     changeSourceBtn.onclick = () => {
@@ -2727,57 +2696,13 @@ function attachStreamSource(video, source) {
         }
       });
       // ── HLS ERROR RECOVERY ───────────────────────────────
-      // Fatal errors are recovered where possible instead of giving up.
-      //   • networkError / bufferStallError / bufferAppendError / bufferNudgeError
-      //     → recover by startLoad() (retries live segment/fragment fetches).
-      //   • mediaError → recoverMediaError() (reloads the media element).
-      //   • If a recovery is already in progress or we exhaust our attempts,
-      //     fall back to destroying + reloading the source once.
-      var hlsRecoveryAttempts = 0;
-      var hlsReloaded = false;
+      // Phase 4: PlayerResilience owns the ONLY recovery ladder. The legacy
+      // inline recovery (startLoad/recoverMediaError/destroy+reload) is removed
+      // so two engines never fight over the same <video>.
       hlsInstance.on(window.Hls.Events.ERROR, function(_event, data) {
-        if (!data || !data.fatal) return;
-        var type = data.type;
-        var canRetry =
-          type === 'networkError' ||
-          type === 'bufferStallError' ||
-          type === 'bufferAppendError' ||
-          type === 'bufferNudgeError';
-
-        // Recoverable via startLoad() — retry up to 4 times.
-        if (canRetry && hlsRecoveryAttempts < 4) {
-          hlsRecoveryAttempts++;
-          console.warn('[WATCH PLAYER] HLS fatal error (' + type + ') — recovering via startLoad() (attempt ' + hlsRecoveryAttempts + ')');
-          hlsInstance.startLoad();
-          return;
+        if (window.__playerResilience && window.__playerResilience.onError) {
+          window.__playerResilience.onError(_event, data);
         }
-
-        // Recoverable media error — reload the media element.
-        if (type === 'mediaError' && !hlsReloaded) {
-          hlsReloaded = true;
-          console.warn('[WATCH PLAYER] HLS mediaError — recovering via recoverMediaError()');
-          hlsInstance.recoverMediaError();
-          return;
-        }
-
-        // Last resort: destroy + reload the source once.
-        if (!hlsReloaded) {
-          hlsReloaded = true;
-          console.warn('[WATCH PLAYER] HLS fatal error (' + type + ') — reloading source');
-          try {
-            hlsInstance.destroy();
-            hlsInstance = new window.Hls();
-            hlsInstance.loadSource(source);
-            hlsInstance.attachMedia(video);
-            return;
-          } catch (e) {
-            console.error('[WATCH PLAYER] HLS reload failed:', e.message);
-          }
-        }
-
-        // All recovery attempts exhausted — surface the error.
-        cleanup();
-        reject(new Error('HLS playback could not start.'));
       });
       return;
     }

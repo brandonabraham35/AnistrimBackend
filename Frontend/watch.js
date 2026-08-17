@@ -65,6 +65,82 @@ let currentAnimeTitle = '';
 let currentStreamSources = [];
 let currentStreamQuality = 'auto';
 
+// ── Phase 10 / Prompt 2: Stream authorization state ─────────
+// The hardened playback path requires a short-lived HMAC token minted by
+// POST /api/stream/authorize (120s TTL). We cache the token + streamId and
+// refresh it before expiry so long episodes never break mid-playback.
+let streamAuth = { token: null, streamId: null, expiresAt: 0, episodeId: null };
+let streamAuthRefreshTimer = null;
+const STREAM_TOKEN_TTL_MS = 120 * 1000; // must match utils/streamToken.js
+const STREAM_TOKEN_REFRESH_MS = 100 * 1000; // refresh 20s before expiry
+
+/**
+ * Authorize playback for an episode via POST /api/stream/authorize.
+ * Returns { token, streamId, expiresIn } or throws on denial.
+ * Handles 403 PREMIUM_REQUIRED by rendering the premium-required state.
+ */
+async function authorizeStream(episodeId) {
+  if (!episodeId) throw new Error('episodeId is required for stream authorization.');
+  // Reuse a still-valid token for the same episode.
+  if (streamAuth.token && streamAuth.episodeId === String(episodeId) && Date.now() < streamAuth.expiresAt) {
+    return streamAuth;
+  }
+  const { data, status } = await apiFetch('/api/stream/authorize', {
+    method: 'POST',
+    body: JSON.stringify({ episodeId: String(episodeId) }),
+  });
+  if (status === 403 || (data && data.code === 'PREMIUM_REQUIRED')) {
+    setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, {
+      requiredTier: data.requiredTier,
+      availableAt: data.availableAt,
+    });
+    showPremiumGate(currentEp ? ('Episode ' + currentEp) : 'This episode', data.requiredTier, data.availableAt);
+    const err = new Error('Premium subscription required.');
+    err.premiumRequired = true;
+    throw err;
+  }
+  if (!data || !data.token || !data.streamId) {
+    throw new Error('Stream authorization failed: no token returned.');
+  }
+  streamAuth = {
+    token: data.token,
+    streamId: data.streamId,
+    expiresAt: Date.now() + (data.expiresIn || 120) * 1000,
+    episodeId: String(episodeId),
+  };
+  scheduleStreamTokenRefresh(episodeId);
+  return streamAuth;
+}
+
+/**
+ * Schedule a token refresh before the current token expires.
+ * Long episodes (>120s) need a fresh token to keep the proxy playable.
+ */
+function scheduleStreamTokenRefresh(episodeId) {
+  if (streamAuthRefreshTimer) clearTimeout(streamAuthRefreshTimer);
+  const delay = Math.max(1000, streamAuth.expiresAt - Date.now() - STREAM_TOKEN_REFRESH_MS);
+  streamAuthRefreshTimer = setTimeout(function() {
+    authorizeStream(episodeId).catch(function(err) {
+      if (!err || !err.premiumRequired) {
+        console.warn('[WATCH] Stream token refresh failed (non-fatal):', err && err.message);
+      }
+    });
+  }, delay);
+}
+
+/**
+ * Append the current stream token to a proxy URL.
+ * Both /api/stream-proxy/:streamId and /api/stream/proxy require the token.
+ */
+function appendStreamToken(url) {
+  if (!url || !streamAuth.token) return url;
+  if (url.includes('/api/stream-proxy/') || url.includes('/api/stream/proxy')) {
+    const sep = url.includes('?') ? '&' : '?';
+    return url + sep + 'token=' + encodeURIComponent(streamAuth.token);
+  }
+  return url;
+}
+
 // ── Premium player state ────────────────────────────────────
 let isScrubbing = false;
 let autoplayEnabled = localStorage.getItem('anistrim_autoplay') !== 'off';
@@ -455,6 +531,19 @@ function initializePlayerWithSource(video, source, metadata) {
 // Requests the stream from the backend, then uses
 // initializePlayerWithSource() to attach and play it.
 async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredProvider) {
+  // ── Prompt 2: Authorize playback BEFORE resolving any source ──
+  // The hardened path requires a valid HMAC token from POST /api/stream/authorize.
+  // This also serves as the authoritative premium gate — a 403 PREMIUM_REQUIRED
+  // renders the premium-required state and aborts stream resolution.
+  if (currentEpId) {
+    try {
+      await authorizeStream(currentEpId);
+    } catch (err) {
+      if (err && err.premiumRequired) throw err; // premium gate already shown
+      console.warn('[WATCH] Stream authorization failed (non-fatal, continuing):', err.message);
+    }
+  }
+
   var url = '/api/stream/' + encodeURIComponent(animeTitle) + '/' + episodeNumber;
   if (preferredProvider) {
     url += '?preferredProvider=' + preferredProvider;
@@ -482,7 +571,9 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     const sourcesToTry = data.sources
       .map(source => ({
         ...source,
-        url: source.url.startsWith('http') ? source.url : API_BASE_URL + source.url
+        // Prompt 2: Append the stream token to proxy URLs so the hardened
+        // /api/stream-proxy/:streamId and /api/stream/proxy paths accept them.
+        url: appendStreamToken(source.url.startsWith('http') ? source.url : API_BASE_URL + source.url)
       }))
       // ── SOURCE SELECTION ─────────────────────────────────
       // Prefer sources that are actually suitable for browser playback and
@@ -945,8 +1036,24 @@ function setupPlayer(video) {
         getCurrentTime: function() { return video.currentTime; },
         getEpisodeId: function() { return currentEpId; },
         resolveStreamUrl: function(episodeId, force) {
+          // Prompt 2: The old /api/stream/resolve route does not exist.
+          // Re-authorize to mint a fresh token, then return the current
+          // stream URL with the token appended. If authorization fails,
+          // return null so the resilience ladder can escalate.
           var base = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : '';
-          return base + '/api/stream/resolve?episodeId=' + encodeURIComponent(episodeId) + (force ? '&force=1' : '');
+          if (episodeId) {
+            authorizeStream(episodeId).then(function() {
+              if (currentStreamUrl) {
+                return appendStreamToken(currentStreamUrl);
+              }
+              return null;
+            }).catch(function() {
+              return null;
+            });
+            // Return the current URL immediately (token refresh happens async).
+            return currentStreamUrl ? appendStreamToken(currentStreamUrl) : null;
+          }
+          return currentStreamUrl ? appendStreamToken(currentStreamUrl) : null;
         },
         onReconnect: function(level) {
           setLoadingStatus(level >= 4 ? 'Playback failed' : 'Reconnecting…');
@@ -1677,16 +1784,27 @@ async function playNextEp() {
       // Update sidebar highlight
       updateSidebarHighlight(nextEpNum);
 
+      // Prompt 2: Authorize the next episode before playing pre-resolved sources.
+      if (currentEpId) {
+        try {
+          await authorizeStream(currentEpId);
+        } catch (err) {
+          if (err && err.premiumRequired) throw err;
+          console.warn('[WATCH] Next-episode authorization failed (non-fatal):', err.message);
+        }
+      }
+
       // Load the first source
       const API_BASE_URL = window.getApiBaseUrl();
       const sources = window.__nextEpisodeSources.sources.sources || [];
       let sourceUrl = null;
       if (sources.length > 0) {
         const src = sources[0];
-        sourceUrl = src.url.startsWith('http') ? src.url : API_BASE_URL + src.url;
+        // Prompt 2: Append the stream token to proxy URLs.
+        sourceUrl = appendStreamToken(src.url.startsWith('http') ? src.url : API_BASE_URL + src.url);
         currentStreamSources = sources.map(s => ({
           ...s,
-          url: s.url.startsWith('http') ? s.url : API_BASE_URL + s.url
+          url: appendStreamToken(s.url.startsWith('http') ? s.url : API_BASE_URL + s.url)
         }));
         currentProvider = 'animeheaven';
         currentStreamQuality = src.quality || 'auto';
@@ -2532,9 +2650,9 @@ function cardImgError(img, title) {
 // the user is not authorized. The backend enforces this server-side too
 // (returns 403), but we gate on the frontend first for a better UX and to
 // avoid wasting a stream request.
-function showPremiumGate(epTitle) {
-  watchLog('premium gate shown', { episode: epTitle });
-  setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, { episode: epTitle });
+function showPremiumGate(epTitle, requiredTier, availableAt) {
+  watchLog('premium gate shown', { episode: epTitle, requiredTier, availableAt });
+  setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, { episode: epTitle, requiredTier, availableAt });
   const loadingOverlay = document.getElementById('loading-overlay');
   const premiumOverlay = document.getElementById('premium-overlay');
   const errorOverlay = document.getElementById('error-overlay');

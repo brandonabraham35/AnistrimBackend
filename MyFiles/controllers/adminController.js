@@ -433,35 +433,59 @@ const adminController = {
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'No anime IDs provided.' });
     if (!action) return res.status(400).json({ message: 'No action specified.' });
 
+    // Validate all ids are integers — reject anything else.
+    if (!ids.every(id => Number.isInteger(Number(id)) && Number(id) > 0)) {
+      return res.status(400).json({ message: 'All anime IDs must be positive integers.' });
+    }
+    const cleanIds = ids.map(id => Number(id));
+
     const validActions = {
       mark_premium: { is_premium: 1 },
       remove_premium: { is_premium: 0 },
       feature: { is_featured: 1 },
       unfeature: { is_featured: 0 },
-      publish: { status: 'completed' },
-      unpublish: { status: 'upcoming' },
+      publish: { is_published: 1 },
+      unpublish: { is_published: 0 },
     };
 
     const updates = validActions[action];
     if (!updates) return res.status(400).json({ message: `Invalid action: ${action}` });
 
+    const conn = await db.getConnection();
     try {
+      await conn.beginTransaction();
+
       const setClauses = Object.keys(updates).map(key => `\`${key}\` = ?`).join(', ');
       const values = Object.values(updates);
-      values.push(ids);
+      values.push(cleanIds);
 
-      const [result] = await db.query(
+      const [result] = await conn.query(
         `UPDATE anime SET ${setClauses} WHERE id IN (?)`,
         values
       );
 
-      await logActivity(req, `Bulk ${action} on ${result.affectedRows} anime`, 'anime', null, JSON.stringify(ids));
+      await conn.commit();
+
+      // Audit via logAdminAction (entity_type/entity_id/before/after).
+      const { logAdminAction } = require('../utils/auditLogger');
+      await logAdminAction({
+        action: `bulk_${action}`,
+        entityType: 'anime',
+        entityId: cleanIds.join(','),
+        before: null,
+        after: updates,
+        req,
+      });
+
       invalidateCatalogue();
 
       res.json({ success: true, message: `Updated ${result.affectedRows} anime.`, affectedRows: result.affectedRows });
     } catch (error) {
+      try { await conn.rollback(); } catch (e) {}
       console.error('Bulk update anime error:', error);
       res.status(500).json({ message: error.message });
+    } finally {
+      conn.release();
     }
   },
 

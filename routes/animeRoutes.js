@@ -6,8 +6,34 @@ const anime   = require('../controllers/animeController');
 const catalogue = require('../controllers/catalogueController');
 const { ConsumetProvider } = require('../services/consumetProvider');
 const { protect } = require('../middleware/auth');
+const { PUBLIC_EPISODE_FILTER } = require('../utils/contentVisibility');
+const episodeAccess = require('../utils/episodeAccess');
 
 const consumet = new ConsumetProvider();
+
+// Optional auth — attaches user context if a valid token is present, but never
+// rejects unauthenticated callers. Used for public-but-masked endpoints.
+// Handles both new-format tokens (uid/sid/tv/roles) and legacy tokens (id).
+function optionalAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    try {
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.verify(auth.split(' ')[1], process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      req.user = decoded;
+      // Map uid → userId/id for new-format tokens.
+      if (decoded.uid) {
+        req.user.userId = decoded.uid;
+        req.user.id = decoded.uid;
+      }
+      // New-format tokens carry roles[]; map admin role to isAdmin.
+      if (Array.isArray(decoded.roles) && decoded.roles.includes('admin')) {
+        req.user.isAdmin = true;
+      }
+    } catch(_) {}
+  }
+  next();
+}
 
 /**
  * GET /api/anime/kitsu/:kitsuId/episodes
@@ -46,56 +72,45 @@ router.get('/kitsu/:kitsuId/episodes', async (req, res) => {
 });
 
 /**
- * GET /api/anime/stream/:episodeId
- * Fetches the raw .m3u8 streaming links for the video player (in-memory, no HTTP call)
- */
-router.get('/stream/:episodeId', async (req, res) => {
-    try {
-        const { episodeId } = req.params;
-
-        // Fetch streaming links directly from Consumet (in-memory)
-        const sources = await consumet.getSources(episodeId);
-
-        return res.json({
-            success: true,
-            sources: sources?.sources || []
-        });
-
-    } catch (error) {
-        console.error('[Stream Fetch Error]:', error.message);
-        return res.status(500).json({ error: 'Failed to fetch streaming links' });
-    }
-});
-
-/**
  * GET /api/anime/:animeId/episodes
- * Fetches the episode list instantly from our local database.
- * This is the "Fast Lane" — no external Consumet calls.
- * Returns a plain array so the frontend can consume it directly.
+ * Fetches the episode list from our local database.
+ * P0-3: Applies PUBLIC_EPISODE_FILTER, masks video_url/cloudinary_public_id for
+ * non-entitled callers, and returns effectiveTier + locked for UI gating.
  */
-router.get('/:animeId/episodes', async (req, res) => {
+router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
     try {
         const { animeId } = req.params;
 
-        // Fetch directly from MySQL, sorted Episode 1 upward
+        // Fetch only published + available episodes (Phase 5 publication filter).
         const [episodes] = await pool.query(
-            'SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number ASC',
+            `SELECT e.* FROM episodes e
+             JOIN anime a ON a.id = e.anime_id
+             WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER}
+             ORDER BY e.episode_number ASC`,
             [animeId]
         );
 
-        // Map database columns to frontend-friendly keys
-        const mapped = episodes.map(ep => ({
-            id: ep.id,
-            number: ep.episode_number,
-            season: ep.season || 1,
-            title: ep.title,
-            description: ep.description,
-            thumbnail_url: ep.thumbnail_url,
-            video_url: ep.video_url,
-            duration_sec: ep.duration_sec,
-            is_premium: Boolean(ep.is_premium),
-            view_count: ep.view_count,
-        }));
+        // Map + mask each episode. maskEpisode nulls video_url/cloudinary_public_id
+        // for non-entitled callers and sets locked/premium flags.
+        const mapped = [];
+        for (const ep of episodes) {
+            const masked = await episodeAccess.maskEpisode(ep, req.user);
+            const tier = await episodeAccess.effectiveAccess(ep.id);
+            mapped.push({
+                id: masked.id,
+                number: masked.episode_number,
+                season: masked.season || 1,
+                title: masked.title,
+                description: masked.description,
+                thumbnail_url: masked.thumbnail_url,
+                video_url: masked.video_url || null,
+                duration_sec: masked.duration_sec,
+                is_premium: masked.premium || Boolean(masked.is_premium),
+                view_count: masked.view_count,
+                locked: masked.locked,
+                effectiveTier: tier,
+            });
+        }
 
         return res.json(mapped);
     } catch (error) {
@@ -117,7 +132,11 @@ router.get('/genres',           anime.getGenres);
 router.get('/search/advanced',  catalogue.advancedSearch);
 router.get('/recommendations/:id', anime.getRecommendations);
 router.get('/resolve/stream', anime.resolveStream);
-router.get('/:id/stream/:episode', catalogue.getStream);
+
+// P0-2: Gate the stream endpoint behind protect + canWatch.
+// The frontend does not use this route (it uses /api/stream/:animeTitle/:ep),
+// but it must not remain an unauthenticated video_url leak.
+router.get('/:id/stream/:episode', protect, catalogue.getStream);
 
 // Optional auth — episodes show video_url only for premium users
 router.get('/:id', (req, res, next) => {

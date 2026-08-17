@@ -185,4 +185,42 @@ exports.getPopularAnime = async (req, res) => {
 };
 
 exports.getEpisodes = async (req, res) => { try { res.json(await catalogue.getEpisodes(Number(req.params.id))); } catch (error) { console.error('Episode lookup failed:', error.message); res.status(502).json({ message: 'Episodes are temporarily unavailable.' }); } };
-exports.getStream = async (req, res) => { try { const stream = await catalogue.getStream(Number(req.params.id), req.params.episode); if (!stream?.video_url) return res.status(404).json({ message: 'No stream is currently available for this episode.' }); res.json(stream); } catch (error) { console.error('Stream lookup failed:', error.message); res.status(502).json({ message: 'Streaming source is temporarily unavailable.' }); } };
+exports.getStream = async (req, res) => {
+  try {
+    const animeId = Number(req.params.id);
+    const episodeParam = req.params.episode;
+
+    // P0-2: Resolve the episode id first so we can gate on canWatch().
+    const db = require('../config/db');
+    const [epRows] = await db.query(
+      'SELECT id FROM episodes WHERE anime_id = ? AND (id = ? OR episode_number = ?) LIMIT 1',
+      [animeId, episodeParam, episodeParam]
+    );
+    if (!epRows.length) {
+      return res.status(404).json({ message: 'Episode not found.' });
+    }
+    const episodeId = epRows[0].id;
+
+    // P0-2: Authoritative canWatch gate — refuse to return video_url for
+    // non-entitled callers. protect middleware has already attached req.user.
+    const { canWatch } = require('../utils/episodeAccess');
+    const userId = req.user?.userId ?? req.user?.id;
+    const isAdmin = req.user?.isAdmin === true;
+    const access = await canWatch(userId, episodeId, { isAdmin });
+    if (!access.allow) {
+      return res.status(403).json({
+        code: access.reason || 'PREMIUM_REQUIRED',
+        requiredTier: access.requiredTier,
+        availableAt: access.availableAt,
+        message: access.reason === 'PREMIUM_REQUIRED' ? 'Premium subscription required.' : 'Access denied.',
+      });
+    }
+
+    const stream = await catalogue.getStream(animeId, episodeParam);
+    if (!stream?.video_url) return res.status(404).json({ message: 'No stream is currently available for this episode.' });
+    res.json(stream);
+  } catch (error) {
+    console.error('Stream lookup failed:', error.message);
+    res.status(502).json({ message: 'Streaming source is temporarily unavailable.' });
+  }
+};

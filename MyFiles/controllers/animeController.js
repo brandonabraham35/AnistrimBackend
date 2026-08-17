@@ -1,5 +1,6 @@
 // controllers/animeController.js
 const db = require('../config/db');
+const { PUBLIC_ANIME_FILTER, PUBLIC_EPISODE_FILTER } = require('../utils/contentVisibility');
 
 // Keep the public catalogue contract stable for both the current client
 // (cover_image) and older React clients (poster_url/thumbnail_url).
@@ -56,7 +57,7 @@ exports.getTrending = async (req, res) => {
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
               rating, year, studio, status, is_premium, is_featured, view_count, created_at
-       FROM anime ORDER BY rating DESC, view_count DESC, created_at DESC`
+       FROM anime a WHERE ${PUBLIC_ANIME_FILTER} ORDER BY rating DESC, view_count DESC, created_at DESC`
     );
     const result = await attachGenres(rows);
     res.json(result);
@@ -75,7 +76,7 @@ exports.getLatest = async (req, res) => {
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
               rating, year, studio, status, is_premium, is_featured, view_count, created_at
-       FROM anime ORDER BY created_at DESC, id DESC LIMIT ?`,
+       FROM anime a WHERE ${PUBLIC_ANIME_FILTER} ORDER BY created_at DESC, id DESC LIMIT ?`,
       [limit]
     );
     res.json(await attachGenres(rows));
@@ -97,7 +98,7 @@ exports.getRecommendations = async (req, res) => {
               COUNT(ag2.genre_id) AS matching_genres
        FROM anime a
        LEFT JOIN anime_genres ag2 ON ag2.anime_id = a.id
-       WHERE a.id <> ? AND (NOT EXISTS (SELECT 1 FROM anime_genres WHERE anime_id = ?) OR ag2.genre_id IN (SELECT genre_id FROM anime_genres WHERE anime_id = ?))
+       WHERE a.id <> ? AND ${PUBLIC_ANIME_FILTER} AND (NOT EXISTS (SELECT 1 FROM anime_genres WHERE anime_id = ?) OR ag2.genre_id IN (SELECT genre_id FROM anime_genres WHERE anime_id = ?))
        GROUP BY a.id
        ORDER BY matching_genres DESC, a.rating DESC, a.view_count DESC, a.created_at DESC
        LIMIT 12`,
@@ -116,7 +117,7 @@ exports.getFeatured = async (req, res) => {
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
               rating, year, studio, status, is_premium, is_featured
-       FROM anime WHERE is_featured = 1 ORDER BY rating DESC LIMIT 6`
+       FROM anime a WHERE is_featured = 1 AND ${PUBLIC_ANIME_FILTER} ORDER BY rating DESC LIMIT 6`
     );
     const result = await attachGenres(rows);
     res.json(result);
@@ -138,7 +139,7 @@ exports.search = async (req, res) => {
                JOIN genres g ON ag.genre_id = g.id AND g.name = ?`;
       params.push(genre);
     }
-    sql += ` WHERE 1=1`;
+    sql += ` WHERE ${PUBLIC_ANIME_FILTER}`;
     // LIKE works on every supported MySQL schema. MATCH requires a FULLTEXT
     // index which is not present in older production databases.
     if (q) {
@@ -200,7 +201,7 @@ exports.getById = async (req, res) => {
     if (!Number.isInteger(animeId)) return res.status(400).json({ error: 'Invalid anime ID' });
 
     // 1. Fetch the anime details
-    const [animeRows] = await db.query('SELECT * FROM anime WHERE id = ?', [animeId]);
+    const [animeRows] = await db.query(`SELECT * FROM anime a WHERE a.id = ? AND ${PUBLIC_ANIME_FILTER}`, [animeId]);
     if (animeRows.length === 0) return res.status(404).json({ error: 'Anime not found' });
     const [anime] = await attachGenres(animeRows);
 
@@ -209,7 +210,7 @@ exports.getById = async (req, res) => {
 
     // 3. FETCH THE EPISODES from the local database
     const [episodeRows] = await db.query(
-      'SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number ASC',
+      `SELECT * FROM episodes e WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER} ORDER BY e.episode_number ASC`,
       [animeId]
     );
 
