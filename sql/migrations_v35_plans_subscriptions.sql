@@ -5,6 +5,17 @@
 --  users.is_premium / premium_expires_at become derived cache columns only —
 --  refreshed by the subscription service, never written by hand, never read
 --  for authorization (authorization uses the plans + subscriptions read path).
+--
+--  NOTE: This file uses plain, idempotent-aware ALTER statements instead of
+--  PREPARE/EXECUTE + session variables. Session variables do not survive across
+--  mysql2 pool queries (each pool.query() may use a different connection), which
+--  made the earlier dynamic-SQL guards unreliable. The migration runner treats
+--  ER_DUP_FIELDNAME / ER_DUP_KEYNAME / "already exists" as idempotent skips, so
+--  plain ALTERs are safe to re-run.
+--
+--  It also guarantees the subscriptions.order_tracking_id column exists BEFORE
+--  the uniq_order_tracking key is created on it (v15 uses CREATE TABLE IF NOT
+--  EXISTS, so a pre-existing table may be missing that column).
 -- ============================================================
 USE anistrim2;
 
@@ -31,37 +42,32 @@ INSERT IGNORE INTO plans (code, name, tier, period, amount, currency, max_device
   ('premium-monthly',  'Premium Monthly',  'premium',  'monthly', 14.99, 'UGX', 3, '4k',    0, 0, 1),
   ('premium-annual',   'Premium Annual',   'premium',  'annual',  149.99, 'UGX', 3, '4k',    0, 14, 1);
 
--- ── 7.1 subscriptions enriched columns (idempotent) ─────────
-SET @col_exists := (
-    SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'subscriptions' AND COLUMN_NAME = 'plan_id'
-);
-SET @alter_sql := IF(@col_exists = 0,
-    'ALTER TABLE subscriptions
-       ADD COLUMN plan_id INT DEFAULT NULL,
-       ADD COLUMN starts_at DATETIME DEFAULT NULL,
-       ADD COLUMN ends_at DATETIME DEFAULT NULL,
-       ADD COLUMN state ENUM(''pending'',''trialing'',''active'',''grace'',''expired'',''cancelled'',''refunded'') NOT NULL DEFAULT ''active'',
-       ADD COLUMN source ENUM(''payment'',''admin_grant'',''promo'',''trial'') NOT NULL DEFAULT ''payment'',
-       ADD COLUMN auto_renew TINYINT(1) NOT NULL DEFAULT 0',
-    'SELECT "subscriptions enrichment columns exist" AS info'
-);
-PREPARE stmt FROM @alter_sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- ── 7.1 subscriptions: guarantee order_tracking_id exists FIRST ──
+-- (v15's CREATE TABLE IF NOT EXISTS did not add this column to a pre-existing
+--  subscriptions table. The uniq_order_tracking key below requires it.)
+-- Each column is added in its own ALTER so re-runs are individually idempotent
+-- (ER_DUP_FIELDNAME is skipped per-statement by the runner).
+ALTER TABLE subscriptions
+  ADD COLUMN order_tracking_id VARCHAR(191) DEFAULT NULL;
 
--- Index on order_tracking_id for idempotent IPN / reconciliation.
-SET @idx_exists := (
-    SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'subscriptions' AND INDEX_NAME = 'uniq_order_tracking'
-);
-SET @idx_sql := IF(@idx_exists = 0,
-    'ALTER TABLE subscriptions ADD UNIQUE KEY uniq_order_tracking (order_tracking_id)',
-    'SELECT "uniq_order_tracking exists" AS info'
-);
-PREPARE stmt2 FROM @idx_sql;
-EXECUTE stmt2;
-DEALLOCATE PREPARE stmt2;
+-- ── 7.1 subscriptions enriched columns (idempotent) ─────────
+ALTER TABLE subscriptions
+  ADD COLUMN plan_id INT DEFAULT NULL;
+ALTER TABLE subscriptions
+  ADD COLUMN starts_at DATETIME DEFAULT NULL;
+ALTER TABLE subscriptions
+  ADD COLUMN ends_at DATETIME DEFAULT NULL;
+ALTER TABLE subscriptions
+  ADD COLUMN state ENUM('pending','trialing','active','grace','expired','cancelled','refunded') NOT NULL DEFAULT 'active';
+ALTER TABLE subscriptions
+  ADD COLUMN source ENUM('payment','admin_grant','promo','trial') NOT NULL DEFAULT 'payment';
+ALTER TABLE subscriptions
+  ADD COLUMN auto_renew TINYINT(1) NOT NULL DEFAULT 0;
+
+-- ── 7.2 Index for idempotent IPN / reconciliation ──────────
+-- Relies on ER_DUP_KEYNAME idempotent skip if already present.
+ALTER TABLE subscriptions
+  ADD UNIQUE KEY uniq_order_tracking (order_tracking_id);
 
 -- ── 7.4 payment_events table (state transition log) ─────────
 CREATE TABLE IF NOT EXISTS payment_events (
@@ -78,4 +84,4 @@ CREATE TABLE IF NOT EXISTS payment_events (
 -- Verify
 SELECT COLUMN_NAME FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'subscriptions'
-  AND COLUMN_NAME IN ('plan_id','starts_at','ends_at','state','source','auto_renew') ORDER BY COLUMN_NAME;
+  AND COLUMN_NAME IN ('order_tracking_id','plan_id','starts_at','ends_at','state','source','auto_renew') ORDER BY COLUMN_NAME;

@@ -184,26 +184,36 @@ async function applyMigration(filename) {
     .map(s => s.trim())
     .filter(s => s && !/^USE\s/i.test(s));
 
-  for (const stmt of statements) {
-    try {
-      await pool.query(stmt);
-    } catch (e) {
-      // Idempotent: if the object already exists, treat as applied.
-      if (e.code === 'ER_TABLE_EXISTS_ERROR' || e.code === 'ER_DUP_KEYNAME' ||
-          e.code === 'ER_DUP_FIELDNAME' || (e.message && /already exists/i.test(e.message))) {
-        console.log(`  ↪ ${filename}: object already exists (idempotent skip)`);
-        continue;
+  // Run ALL statements on a SINGLE dedicated connection so that session
+  // variables (@var) and PREPARE/EXECUTE/DEALLOCATE blocks work correctly.
+  // Using pool.query() for each statement round-robins across connections in
+  // the pool, so session state set by one statement would not be visible to the
+  // next — silently breaking migrations that rely on PREPARE + session vars.
+  const conn = await pool.getConnection();
+  try {
+    for (const stmt of statements) {
+      try {
+        await conn.query(stmt);
+      } catch (e) {
+        // Idempotent: if the object already exists, treat as applied.
+        if (e.code === 'ER_TABLE_EXISTS_ERROR' || e.code === 'ER_DUP_KEYNAME' ||
+            e.code === 'ER_DUP_FIELDNAME' || (e.message && /already exists/i.test(e.message))) {
+          console.log(`  ↪ ${filename}: object already exists (idempotent skip)`);
+          continue;
+        }
+        throw e;
       }
-      throw e;
     }
-  }
 
-  // Record the migration.
-  await pool.query(
-    `INSERT INTO ${MIGRATIONS_TABLE} (filename) VALUES (?)`,
-    [filename]
-  );
-  console.log(`  ✓ ${filename} applied`);
+    // Record the migration on the same connection.
+    await conn.query(
+      `INSERT INTO ${MIGRATIONS_TABLE} (filename) VALUES (?)`,
+      [filename]
+    );
+    console.log(`  ✓ ${filename} applied`);
+  } finally {
+    conn.release();
+  }
 }
 
 /**
