@@ -4,15 +4,18 @@ let currentFilter = 'All';
 
 async function loadWatchlist() {
   try {
-    const { ok, data } = await apiFetch('/api/watchlist');
-    if (!ok) { renderEmpty(); return; }
+    // FIX 8 (Phase 3): apiFetch returns raw data (canonical client).
+    // The server now returns camelCase: animeId, title, poster, status,
+    // episodesWatched, totalEpisodes.
+    const data = await window.apiFetch('/api/watchlist');
+    if (!Array.isArray(data)) { renderEmpty(); return; }
 
     watchlistData = data.map(a => ({
       ...a,
-      id: a.anime_id,
-      watchStatus: a.watch_status,
-      watchedEps:  a.episodes_watched,
-      episodes:    a.total_episodes
+      id: a.animeId,
+      watchStatus: a.status,
+      watchedEps:  a.episodesWatched,
+      episodes:    a.totalEpisodes
     }));
     renderWatchlist(watchlistData);
   } catch(e) { renderEmpty(); }
@@ -22,8 +25,8 @@ function filterWL(status, el) {
   currentFilter = status;
   document.querySelectorAll('.wl-tab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
-  const map = { 'Watching':'watching', 'Plan to Watch':'plan_to_watch', 'Completed':'completed', 'Dropped':'dropped' };
-  const filtered = currentFilter === 'All' ? watchlistData : watchlistData.filter(a => a.watch_status === map[currentFilter]);
+  const map = { 'Watching':'WATCHING', 'Plan to Watch':'PLAN_TO_WATCH', 'Completed':'COMPLETED', 'Dropped':'DROPPED' };
+  const filtered = currentFilter === 'All' ? watchlistData : watchlistData.filter(a => a.watchStatus === map[currentFilter]);
   renderWatchlist(filtered);
 }
 window.filterWL = filterWL;
@@ -35,16 +38,16 @@ function renderWatchlist(list) {
   if (countEl) countEl.textContent = `${watchlistData.length} anime in your collection`;
   if (!list.length) { renderEmpty(); return; }
 
-  const statusLabel = { watching:'Watching', plan_to_watch:'Plan to Watch', completed:'Completed', dropped:'Dropped' };
+  const statusLabel = { WATCHING:'Watching', PLAN_TO_WATCH:'Plan to Watch', COMPLETED:'Completed', DROPPED:'Dropped', ON_HOLD:'On Hold' };
   container.innerHTML = list.map(a => `
     <div class="wl-item" onclick="location.href='details.html?id=${a.id}'">
       <div class="wl-thumb">
-        <img src="${window._escapeHTML(a.cover_image)}" alt="${window._escapeHTML(a.title)}" onerror="this.style.opacity='0'">
+        <img src="${window._escapeHTML(a.poster || '')}" alt="${window._escapeHTML(a.title || '')}" onerror="this.style.opacity='0'">
       </div>
       <div class="wl-info">
-        <div class="wl-title">${window._escapeHTML(a.title)}</div>
-        <span class="wl-status-badge">${window._escapeHTML(statusLabel[a.watch_status] || 'Plan to Watch')}</span>
-        <div class="wl-progress">Ep ${a.episodes_watched || 0} / ${a.total_episodes || '?'}</div>
+        <div class="wl-title">${window._escapeHTML(a.title || '')}</div>
+        <span class="wl-status-badge">${window._escapeHTML(statusLabel[a.watchStatus] || 'Plan to Watch')}</span>
+        <div class="wl-progress">Ep ${a.watchedEps || 0} / ${a.episodes || '?'}</div>
       </div>
       <span class="wl-play">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
