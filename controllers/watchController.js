@@ -517,17 +517,25 @@ exports.getEpisodeMarkers = async (req, res) => {
 
     const markers = {}; // kind -> { start, end, source, confidence }
 
-    // 1. Admin / provider / auto markers from episode_markers (admin wins).
+    // Explicit priority rank map — self-documenting and order-independent.
+    // admin:0 (hand-entered always wins), aniskip:1, provider:2, auto:3.
+    const SOURCE_RANK = { admin: 0, aniskip: 1, provider: 2, auto: 3 };
+    const rankOf = source => (SOURCE_RANK[source] !== undefined ? SOURCE_RANK[source] : 99);
+
+    // 1. Admin / provider / auto markers from episode_markers.
     const [dbRows] = await db.query(
       `SELECT kind, start_sec, end_sec, source, confidence
        FROM episode_markers
-       WHERE episode_id = ?
-       ORDER BY FIELD(source, 'admin', 'aniskip', 'provider', 'auto') ASC`,
+       WHERE episode_id = ?`,
       [episodeId]
     );
     for (const row of dbRows) {
-      const kind = row.kind;
-      if (!markers[kind] || (markers[kind].source === 'aniskip' && row.source === 'admin')) {
+      // Normalize kind casing at the API boundary (accept either case).
+      const kind = String(row.kind || '').toLowerCase();
+      if (!kind) continue;
+      const existing = markers[kind];
+      // Keep a marker only if its rank is lower than the stored one.
+      if (!existing || rankOf(row.source) < rankOf(existing.source)) {
         markers[kind] = { start: row.start_sec, end: row.end_sec, source: row.source, confidence: Number(row.confidence) };
       }
     }

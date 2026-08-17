@@ -411,7 +411,10 @@ exports.getBatchProgress = async (req, res) => {
 
     const progressMap = {};
     rows.forEach(r => {
+      // OPTIONAL (Phase 3): return both positionSec (canonical) and the
+      // legacy progressSec so existing callers keep working.
       progressMap[String(r.episode_number)] = {
+        positionSec: r.position_sec,
         progressSec: r.position_sec,
         durationSec: r.duration_sec,
         watched: !!r.completed || (Number(r.percent) || 0) >= 95,

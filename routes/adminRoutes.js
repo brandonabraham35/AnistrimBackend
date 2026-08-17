@@ -27,18 +27,20 @@ router.put('/users/:id',                    admin.updateUser);
 router.put('/users/:id/premium',            admin.updateUser);
 router.post('/users/bulk-delete',           admin.bulkDeleteUsers);
 
-// Anime CMS
+// Anime CMS — literal-segment routes MUST be registered before :id routes
+// so /anime/bulk, /anime/bulk-delete, /anime/import/search, /anime/import
+// are never captured by /anime/:id. All :id params are constrained to digits.
 router.get('/anime',                        admin.getAllAnime);
-router.get('/anime/:id',                    admin.getAnimeById);
 router.post('/anime',                       admin.createAnime);
-router.put('/anime/:id',                    admin.updateAnime);
-router.delete('/anime/:id',                 admin.deleteAnime);
 router.put('/anime/bulk',                   admin.bulkUpdateAnime);
 router.post('/anime/bulk-delete',           admin.bulkDeleteAnime);
-router.post('/import-anime',                imports.importAnime);
 router.get('/anime/import/search',          imports.searchConsumet);
 router.post('/anime/import',                imports.importConsumetAnime);
-router.put('/anime/:id/sync',               imports.syncConsumetAnime);
+router.get('/anime/:id(\\d+)',              admin.getAnimeById);
+router.put('/anime/:id(\\d+)',              admin.updateAnime);
+router.delete('/anime/:id(\\d+)',           admin.deleteAnime);
+router.put('/anime/:id(\\d+)/sync',         imports.syncConsumetAnime);
+router.post('/import-anime',                imports.importAnime);
 
 // ── AnimeHeaven Import & Sync (Phase 6 & 7) ────────────────
 router.get('/animeheaven/search',           imports.searchAnimeHeaven);

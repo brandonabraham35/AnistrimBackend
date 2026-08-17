@@ -28,16 +28,15 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
-// Phase 4 (Item 5): generous streaming timeouts. The default 5–6 s cutoff is
-// almost certainly a default headersTimeout/requestTimeout. Disable the request
-// body timeout (so long-lived streams are never cut) and give headers 120 s.
-if (app.set) {
-  // These are Node http-server options (worked around via server.listen below).
+// Phase 4 (Item 5): generous streaming timeouts. The effective configuration
+// is the explicit http.createServer({...}) options below — app.set() is a no-op
+// for these Node http-server options. This covers Node-level request/header
+// timeouts only. It does NOT prevent upstream provider timeouts, CDN/reverse-proxy
+// timeouts (Render/Cloudflare), or client-side aborts.
+if (Number(process.versions.node.split('.')[0]) < 18) {
+  console.error('❌ [SERVER] Node >= 18 is required (http.createServer options-object timeouts are ignored on older Node). Refusing to start.');
+  process.exit(1);
 }
-app.set('requestTimeout', 0);
-app.set('headersTimeout', 120000);
-app.set('keepAliveTimeout', 65000);
-app.set('maxRequestSize', 0);
 
 providerHealthMonitor.initialize();
 

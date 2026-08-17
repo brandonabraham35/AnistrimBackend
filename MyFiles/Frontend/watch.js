@@ -675,6 +675,20 @@ function setupPlayer(video) {
 
   if (currentEpId) loadProgress(video, currentAnimeId, currentEp);
 
+  // ── FIX A: Wire js/progress.js (offline queue, visibility/pagehide flush) ──
+  // The module is loaded but was never initialized. Initialize it here with a
+  // getState callback so IndexedDB offline queuing, visibilitychange→hidden
+  // flush, and online-reconnect flush actually work.
+  if (window.Progress) {
+    const getProgressState = () => ({
+      episodeId:   currentEpId,
+      positionSec: Math.floor(video.currentTime || 0),
+      durationSec: Math.floor(video.duration || 0)
+    });
+    window.Progress.init(getProgressState);
+    window.Progress.startAutoSave(getProgressState);
+  }
+
   // ── Time / Progress updates ──────────────────────────────
   video.addEventListener('timeupdate', function() {
     updateProgressBarUI(video);
@@ -723,7 +737,14 @@ function setupPlayer(video) {
   });
 
   video.addEventListener('ended', function() {
-    if (currentEpId) saveProgress(currentEpId, Math.floor(video.duration || 0), true, Math.floor(video.duration || 0));
+    // FIX A: route through Progress.ended() when available
+    if (currentEpId) {
+      if (window.Progress && typeof window.Progress.ended === 'function') {
+        window.Progress.ended(currentEpId, Math.floor(video.duration || 0), Math.floor(video.duration || 0));
+      } else {
+        saveProgress(currentEpId, Math.floor(video.duration || 0), true, Math.floor(video.duration || 0));
+      }
+    }
     wrap.classList.add('ended');
     cancelledNext = false;
     if (isPremium && nextEpData) {
@@ -765,6 +786,10 @@ function setupPlayer(video) {
     showControls();
   });
   video.addEventListener('pause', function() {
+    // FIX A: route through Progress.pause() when available
+    if (currentEpId && window.Progress && typeof window.Progress.pause === 'function') {
+      window.Progress.pause(currentEpId, Math.floor(video.currentTime || 0), Math.floor(video.duration || 0));
+    }
     wrap.classList.add('paused');
     setPlayIcon(false);
     showControls();
@@ -1080,6 +1105,11 @@ async function switchToEpisode(epNum) {
   // Update current episode state
   currentEp = epNumber;
   currentEpId = ep.id || null;
+
+  // FIX A: stop auto-save for the old episode so episodeId is never stale.
+  if (window.Progress && typeof window.Progress.stopAutoSave === 'function') {
+    window.Progress.stopAutoSave();
+  }
 
   // Update top bar title
   const epTitleEl = document.getElementById('watch-ep-title');
@@ -1514,7 +1544,19 @@ async function loadProgress(video, animeId, episodeNumber) {
 // with positionSec/durationSec (the canonical field names). The legacy
 // POST /api/watchlist/progress alias is kept server-side for compatibility
 // but the frontend now uses the canonical route directly.
+// FIX A: delegate to window.Progress.save() when available (offline queue,
+// visibility/pagehide flush, online-reconnect flush). Keep the inline PUT as
+// the fallback when progress.js is not loaded.
 async function saveProgress(epId, sec, completed, durationSec) {
+  if (window.Progress && typeof window.Progress.save === 'function') {
+    window.Progress.save({
+      episodeId: epId,
+      positionSec: sec,
+      durationSec: durationSec || 0,
+      event: completed ? 'ended' : 'heartbeat'
+    });
+    return;
+  }
   try {
     await apiFetch('/api/watch/progress', {
       method: 'PUT',
@@ -2956,6 +2998,10 @@ function toggleEpisodeSidebar(force) {
  * Exit the player and return to browse/details page.
  */
 function exitPlayer() {
+  // FIX A: stop auto-save before leaving so no stale episodeId is saved.
+  if (window.Progress && typeof window.Progress.stopAutoSave === 'function') {
+    window.Progress.stopAutoSave();
+  }
   // Save progress before leaving (FIX 2 Phase 3: use PUT + canonical fields)
   var video = document.getElementById('animePlayer');
   if (video && currentEpId) {
