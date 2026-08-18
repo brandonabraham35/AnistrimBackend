@@ -38,6 +38,19 @@ const logger = require('./logger');
 const { getPlaybackContext } = require('../services/animeHeavenProvider');
 
 /**
+ * Normalize the requesting user's identity across all call sites. Guarantees
+ * getStream / authorizeStream / rewriteResultToProxy all use the SAME user id
+ * so the ctxUserId↔tokUserId comparison in streamProxyController can't mismatch.
+ * @param {number|string|null} reqUser - req.user
+ * @param {number|string|null} userId - explicit userId override
+ * @returns {string|null} normalized user id or null
+ */
+function resolveUserId(reqUser, userId) {
+  const id = userId ?? reqUser?.userId ?? reqUser?.id ?? reqUser ?? null;
+  return id === null || id === undefined || id === '' ? null : String(id);
+}
+
+/**
  * The mount point of the proxy route (must match routes/streamProxyRoutes.js).
  */
 const PROXY_BASE = '/api/stream-proxy';
@@ -67,7 +80,7 @@ function isAnimeHeavenSource(src) {
  * @returns {{ url: string, quality: string, sourceType: string|null }|null}
  *   A sanitized source object whose url is the proxy endpoint, or null on failure.
  */
-function rewriteSource(src, userId = null, episodeId = null) {
+function rewriteSource(src, userId = null, episodeId = null, ipHash = '') {
   // Resolve the authoritative playback context (referer/origin/cookies/
   // userAgent) from the provider so the stored context always carries the
   // exact headers the CDN expects — reusing the provider's cookie jar.
@@ -79,8 +92,11 @@ function rewriteSource(src, userId = null, episodeId = null) {
     cookies: src.cookies || playback.cookies || null,
     userAgent: src.userAgent || playback.userAgent || null,
     headers: src.headers || null,
-    userId,
-    episodeId,
+    userId: userId ?? src.userId ?? null,
+    episodeId: episodeId != null ? String(episodeId) : (src.episodeId != null ? String(src.episodeId) : null),
+    // ipHash makes the deterministic streamId per-IP for guests (no userId),
+    // so a guest on one IP can't reuse another guest's streamId.
+    ipHash: ipHash || src.ipHash || '',
   });
   if (!streamId) {
     logger.warn('[streamProxy] Failed to register source context', { url: src.url });
@@ -109,13 +125,13 @@ function rewriteSource(src, userId = null, episodeId = null) {
  * @param {number|string|null} userId - optional id of the requesting user
  * @returns {object|null} A public-safe result, or null if all proxied sources failed.
  */
-function rewriteResultToProxy(result, userId = null, episodeId = null) {
+function rewriteResultToProxy(result, userId = null, episodeId = null, ipHash = '') {
   if (!result || !Array.isArray(result.sources)) return result;
 
   const rewritten = [];
   for (const src of result.sources) {
     if (isAnimeHeavenSource(src)) {
-      const safe = rewriteSource(src, userId, episodeId);
+      const safe = rewriteSource(src, userId, episodeId, ipHash);
       if (safe) rewritten.push(safe);
       // If a single source fails to register, we skip it (fail-soft) rather
       // than dropping the whole result.

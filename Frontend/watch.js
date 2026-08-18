@@ -209,17 +209,21 @@ function appendStreamToken(url) {
 function preferAuthorizedProxyUrl(url) {
   if (!url) return url;
   // Only rewrite proxy-relative URLs (not absolute external CDN links).
-  if (url.includes('/api/stream-proxy/') && streamAuth.proxyUrl) {
+  if (url.includes('/api/stream-proxy/')) {
     // Extract the path streamId from the resolved source to find its token.
     const m = url.match(/\/api\/stream-proxy\/([^/?]+)/);
-    if (m && m[1] && Array.isArray(streamAuth.streams)) {
-      const match = streamAuth.streams.find(s => s.streamId === m[1]);
+    const streamId = m && m[1] ? m[1] : null;
+    // ── FIX: NEVER fall back to streams[0].url for a streamId not in the
+    // authorized list. That would attach a token minted for a DIFFERENT
+    // source, which the proxy rejects with STREAM_MISMATCH. Only replace the
+    // URL when we have an exact match in streamAuth.streams.
+    if (streamId && Array.isArray(streamAuth.streams)) {
+      const match = streamAuth.streams.find(s => String(s.streamId) === String(streamId));
       if (match && match.url) return match.url;
+      // No exact match → the resolved streamId is not authorized. Do NOT guess.
+      console.warn('[WATCH] Resolved streamId not in authorized streams — returning token-less URL (will 401/403):', streamId);
+      return appendStreamToken(url);
     }
-    // Fall back to the primary stream's concrete URL.
-    return streamAuth.streams && streamAuth.streams[0] && streamAuth.streams[0].url
-      ? streamAuth.streams[0].url
-      : appendStreamToken(url);
   }
   return appendStreamToken(url);
 }
@@ -671,7 +675,12 @@ function initializePlayerWithSource(video, source, metadata) {
     } catch (err) {
       if (err && err.premiumRequired) throw err; // premium gate already shown
       if (err && err.deviceLimit) throw err;     // device limit gate already shown (FIX 8)
-      console.warn('[WATCH] Stream authorization failed (non-fatal, continuing):', err.message);
+      // ── FIX: do NOT swallow authorize failures ─────────────
+      // A token-less /api/stream-proxy/... URL can only 401/403 at the proxy —
+      // the <video> never plays. Surface a real player error and abort.
+      console.error('[WATCH] Stream authorization failed — aborting to avoid token-less playback:', err && err.message);
+      setPlayerState(PLAYER_STATES.PLAYBACK_ERROR, { message: err && err.message });
+      throw new Error((err && err.message) || 'Stream authorization failed. Please try again.');
     }
   }
 
@@ -3093,6 +3102,14 @@ window.showWatchError = showWatchError;
 // next-ep, quality-switch), resolve the pre-roll ad. It NEVER blocks content —
 // if it times out, fails, or no ad is configured, content attaches anyway.
 function attachStreamSource(video, source) {
+  // ── FIX: log the exact URL type being attached so a 401/403 at the proxy is
+  // visible in the same log stream as sourceReturned.
+  console.log('[WATCH] attachStreamSource', {
+    hasToken: typeof source === 'string' && !!streamAuth && !!streamAuth.token,
+    isProxy: typeof source === 'string' && /\/api\/stream-proxy\//.test(source),
+    url: typeof source === 'string' ? String(source).slice(0, 120) : String(source),
+  });
+
   return Promise.resolve().then(function() {
     // Resolve pre-roll BEFORE setting the source. Never throws.
     if (adsInstance && typeof adsInstance.preRoll === 'function') {

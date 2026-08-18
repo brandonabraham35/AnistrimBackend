@@ -139,6 +139,7 @@ function safeHost(url) {
 exports.streamMedia = async (req, res) => {
   const { streamId } = req.params;
   const requestedUrl = req.query.url || null;
+  const startedProxyTime = Date.now();
 
   logger.info('[StreamProxy] Incoming request', {
     streamId: streamId.slice(0, 8) + '...',
@@ -153,6 +154,7 @@ exports.streamMedia = async (req, res) => {
   const authToken = req.query.token || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')
     ? req.headers.authorization.split(' ')[1] : null);
   if (!authToken) {
+    logger.warn('[streamProxy] token missing', { streamId: streamId.slice(0, 8) });
     return res.status(401).json({ error: 'Stream authorization token required.' });
   }
   const { verify } = require('../utils/streamToken');
@@ -163,8 +165,18 @@ exports.streamMedia = async (req, res) => {
   // sid/tv are checked below against the live DB session + user token_version.
   const tokenCheck = verify(authToken, { streamId, ip });
   if (!tokenCheck.ok) {
-    logger.warn('[streamProxy] token rejected', { streamId: streamId.slice(0, 8), reason: tokenCheck.reason });
-    return res.status(403).json({ error: 'Invalid or expired stream authorization.' });
+    // ── Log the EXACT rejection reason in the same stream as sourceReturned ──
+    logger.warn('[streamProxy] token rejected', { streamId: streamId.slice(0, 8), reason: tokenCheck.reason, ip: ip.slice(0, 12) });
+    logger.streamAttempt({
+      provider: PROXY_PROVIDER_TAG,
+      result: 'failure',
+      httpStatus: 403,
+      streamType: 'mp4',
+      error: `token rejected (${tokenCheck.reason})`,
+      latencyMs: Date.now() - startedProxyTime,
+      streamId: streamId.slice(0, 8),
+    });
+    return res.status(403).json({ error: `Invalid or expired stream authorization (${tokenCheck.reason}).` });
   }
   const authPayload = tokenCheck.payload;
 

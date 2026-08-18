@@ -96,6 +96,12 @@ exports.getStream = async (req, res) => {
   });
 
   const { preferredProvider, ep: queryEp } = req.query;
+  // Consistent identity key across getStream / authorizeStream / rewriteResultToProxy.
+  const requestUserId = streamProxy.resolveUserId(req.user, null);
+  // ipHash lets the deterministic streamId be per-IP for guests (no userId).
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  const { ipHash } = require('../utils/streamToken');
+  const requestIpHash = ipHash(ip);
 
   if (!animeTitle || !episodeIdentifier) {
     return res.status(400).json({ error: 'animeTitle and episode identifier are required.' });
@@ -253,15 +259,16 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     // URLs. Context (cookies/referer/origin) is stored server-side in the
     // streamProxyStore and NEVER returned to the browser. Anonymous
     // providers (Consumet, etc.) are returned unchanged.
-    const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null, episodeId || null) || result;
+    const publicResult = streamProxy.rewriteResultToProxy(result, requestUserId, episodeId != null ? String(episodeId) : null, requestIpHash) || result;
     // Expose download-only sources (for the premium Download button) as
     // proxy-rewritten, server-context-safe URLs. These are never used for
     // in-browser playback — only downloads.
     if (Array.isArray(result.downloadSources) && result.downloadSources.length) {
       publicResult.downloadSources = streamProxy.rewriteResultToProxy(
         { ...result, sources: result.downloadSources },
-        req.user?.id || null,
-        episodeId || null
+        requestUserId,
+        episodeId != null ? String(episodeId) : null,
+        requestIpHash
       )?.sources || result.downloadSources;
     }
 
@@ -481,20 +488,50 @@ exports.authorizeStream = async (req, res) => {
     const { episodeId } = req.body || {};
     if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
 
-    const userId = req.userId ?? req.user?.id;
-    if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
+    // ── FIX: consistent identity keys everywhere ─────────────────
+    // Use the SAME userId normalization as getStream/rewriteResultToProxy so
+    // the ctxUserId↔tokUserId comparisons in streamProxyController can't mismatch.
+    const userId = streamProxy.resolveUserId(req.user, req.userId ?? null);
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    const { ipHash, mint, TTL_MS } = require('../utils/streamToken');
+    const userIpHash = ipHash(ip);
 
-    // Authoritative canWatch gate (Phase 7.2) — refuse to mint for unauthorized.
+    // ── Guest handling (FREE episodes) ──────────────────────────
+    // Unauthenticated users may watch FREE episodes. We mint a short-lived
+    // anonymous token bound to (ipHash, episodeId, streamId) so the hardened
+    // proxy can authorize it. Premium episodes require an authenticated,
+    // entitled user (enforced below via canWatch).
+    let isGuessingAllowed = false;
+    if (!userId) {
+      try {
+        const { effectiveAccess } = require('../utils/episodeAccess');
+        const tier = await effectiveAccess(episodeId);
+        // Anonymous token minting is only allowed for FREE episodes.
+        isGuessingAllowed = tier === 'free';
+      } catch (_) {
+        isGuessingAllowed = false;
+      }
+      if (!isGuessingAllowed) {
+        return res.status(403).json({
+          code: 'AUTH_REQUIRED',
+          message: 'Sign in to watch this episode.',
+        });
+      }
+    }
+
+    // ── Authoritative canWatch gate (authenticated only) ────────
     const { canWatch, getEntitlement } = require('../utils/episodeAccess');
     const isAdmin = req.user?.isAdmin === true || (req.tokenClaims?.roles || []).includes('admin');
-    const access = await canWatch(userId, episodeId, { isAdmin });
-    if (!access.allow) {
-      return res.status(403).json({
-        code: access.reason || 'PREMIUM_REQUIRED',
-        requiredTier: access.requiredTier,
-        availableAt: access.availableAt,
-        message: access.reason === 'PREMIUM_REQUIRED' ? 'Premium subscription required.' : 'Access denied.',
-      });
+    if (userId) {
+      const access = await canWatch(userId, episodeId, { isAdmin });
+      if (!access.allow) {
+        return res.status(403).json({
+          code: access.reason || 'PREMIUM_REQUIRED',
+          requiredTier: access.requiredTier,
+          availableAt: access.availableAt,
+          message: access.reason === 'PREMIUM_REQUIRED' ? 'Premium subscription required.' : 'Access denied.',
+        });
+      }
     }
 
     // ── FIX 8 (P1): enforce plans.max_devices ─────────────────
@@ -520,8 +557,17 @@ exports.authorizeStream = async (req, res) => {
       logger.warn('[StreamController] device limit check failed (deny)', { userId, error: deviceErr.message });
     }
 
+    // Normalize episodeId as string (always) so the deterministic streamId and
+    // the proxy's ctxEpId↔tokEpId comparison never mismatch.
+    const epIdStr = String(episodeId);
+
+    const streamProxyStore = require('../utils/streamProxyStore');
+
     // ── Resolve (animeTitle, episodeNumber) from the episodeId ──
-    // Both are needed to resolve the stream if no context is registered yet.
+    // Only used to fall back to resolving the stream here if the frontend
+    // hasn't already resolved it (i.e. contexts are empty). For guests we key
+    // on ipHash, not userId, so getByUserEpisode won't match — so we MUST
+    // derive the deterministic streamId instead (see below).
     let animeTitle = '', episodeNumber = null;
     try {
       const [epRows] = await db.query(
@@ -535,16 +581,18 @@ exports.authorizeStream = async (req, res) => {
         episodeNumber = epRows[0].episode_number;
       }
     } catch (epErr) {
-      logger.warn('[StreamController] authorize episode lookup failed', { episodeId, error: epErr.message });
+      logger.warn('[StreamController] authorize episode lookup failed', { episodeId: epIdStr, error: epErr.message });
     }
 
-    const streamProxyStore = require('../utils/streamProxyStore');
-
-    // ── Ensure contexts exist for this user+episode ─────────
+    // ── Ensure contexts exist (NO second resolution when already registered) ──
     // If the frontend already resolved /api/stream/:title/:ep, the contexts
-    // are registered and we reuse their REAL streamIds. Otherwise, resolve the
-    // stream here (same path as getStream) to register them.
-    let registered = streamProxyStore.getByUserEpisode(userId, episodeId);
+    // are registered and we reuse their REAL (deterministic) streamIds — we do
+    // NOT call streamingService.resolveStream() again. If empty, we resolve the
+    // stream here once to register the deterministic contexts.
+    let registered = userId
+      ? streamProxyStore.getByUserEpisode(userId, epIdStr)
+      : []; // guests key on ipHash (no userId) — see deterministic lookup below
+
     if (!registered.length && animeTitle && episodeNumber) {
       let isPremium = isAdmin;
       try {
@@ -557,31 +605,50 @@ exports.authorizeStream = async (req, res) => {
           isPremium,
           episodeId: Number(episodeId) || episodeId,
         });
-        const proxy = require('../utils/streamProxy');
-        proxy.rewriteResultToProxy(result, userId, episodeId);
+        // Register the deterministic contexts using the SAME ipHash + episodeId
+        // string the GET /api/stream path used, so the streamId matches.
+        streamProxy.rewriteResultToProxy(result, userId, epIdStr, userIpHash);
       } catch (resolveErr) {
-        logger.warn('[StreamController] authorize resolveStream failed (no contexts)', { episodeId, error: resolveErr.message });
+        logger.warn('[StreamController] authorize resolveStream failed (no contexts)', { episodeId: epIdStr, error: resolveErr.message });
       }
-      registered = streamProxyStore.getByUserEpisode(userId, episodeId);
+      registered = userId
+        ? streamProxyStore.getByUserEpisode(userId, epIdStr)
+        : [];
     }
 
-    if (!registered.length) {
-      logger.warn('[StreamController] authorize: no registered stream contexts', { userId, episodeId });
+    // ── For guests, derive the deterministic streamIds directly ──
+    // Guests have no userId, so getByUserEpisode can't find them. Instead we
+    // reconstruct the exact deterministic streamId each source would have
+    // (same formula as streamProxyStore.deterministicStreamId) and verify each
+    // one exists in the store. If none exist, we have nothing to authorize.
+    let finalStreams = registered.map(r => r.streamId);
+    if (!userId) {
+      // Guests key on ipHash (no userId). Use the dedicated helper to find the
+      // deterministic streamIds registered for (episodeId, ipHash) when the
+      // frontend resolved /api/stream first (the normal flow).
+      finalStreams = streamProxyStore.getByIpEpisode(epIdStr, userIpHash);
+      logger.debug('[StreamController] authorize guest contexts', {
+        episodeId: epIdStr,
+        count: finalStreams.length,
+      });
+    }
+
+    if (!finalStreams.length) {
+      logger.warn('[StreamController] authorize: no registered stream contexts', { userId, episodeId: epIdStr, guest: !userId });
       return res.status(404).json({ message: 'No playable stream registered for this episode. Resolve the stream first.' });
     }
 
     // ── Mint one token per concrete streamId ────────────────
-    const { mint, TTL_MS } = require('../utils/streamToken');
     const { PROXY_BASE } = require('../utils/streamProxy');
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
     const apiBase = req.protocol + '://' + req.get('host');
     // FIX 5: bind the stream token to the session (sid) + token_version (tv)
     // from the authenticated access JWT so logout/suspend can revoke it.
-    const sid = req.tokenClaims?.sid || req.tokenClaims?.sessionId || null;
-    const tv = (req.tokenClaims && req.tokenClaims.tv !== undefined) ? Number(req.tokenClaims.tv) : null;
+    const sid = userId ? (req.tokenClaims?.sid || req.tokenClaims?.sessionId || null) : null;
+    const tv = userId ? ((req.tokenClaims && req.tokenClaims.tv !== undefined) ? Number(req.tokenClaims.tv) : null) : undefined;
 
-    const streams = registered.map(({ streamId }) => {
-      const token = mint({ userId, episodeId, streamId, ip, sid, tv });
+    const streams = finalStreams.map((streamId) => {
+      // Guests mint an anonymous token bound to ipHash + episodeId + streamId.
+      const token = mint({ userId: userId || null, episodeId: epIdStr, streamId, ip, sid, tv });
       const url = `${apiBase}${PROXY_BASE}/${streamId}?token=${encodeURIComponent(token)}`;
       return { streamId, token, url, expiresIn: Math.round(TTL_MS / 1000) };
     });

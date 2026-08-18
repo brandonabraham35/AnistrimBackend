@@ -40,6 +40,31 @@ function generateStreamId() {
 }
 
 /**
+ * Derive a DETERMINISTIC stream id for the same (targetUrl, userId, episodeId).
+ * This is the key fix for the token/streamId binding race: POST /api/stream/
+ * authorize and GET /api/stream/:title/:ep both call store(), and both MUST
+ * produce the SAME streamId for the same source so a token minted by authorize
+ * matches the streamId the /api/stream response carries.
+ *
+ * When userId is absent (guest/anonymous), we key on (targetUrl, episodeId,
+ * ipHash) so a guest on one IP is still deterministic per source+episode, but
+ * another device/IP cannot reuse the same streamId.
+ *
+ * @param {object} entry - { targetUrl, userId, episodeId, ipHash }
+ * @returns {string} hex sha256 (64 chars) prefixed with 's' to stay url-safe
+ */
+function deterministicStreamId({ targetUrl, userId, episodeId, ipHash }) {
+  const key = [
+    'stream',
+    String(targetUrl || ''),
+    String(userId ?? ''),
+    String(episodeId ?? ''),
+    String(ipHash || ''),
+  ].join('|');
+  return 's' + crypto.createHash('sha256').update(key).digest('hex');
+}
+
+/**
  * Internal sweep: remove expired contexts and enforce the max-size cap.
  * Called periodically and opportunistically on writes.
  */
@@ -81,8 +106,38 @@ function store(entry = {}) {
     }
   }
 
-const streamId = generateStreamId();
+  // ── DETERMINISTIC streamId + idempotent registration ──────────
+  // Reuse an existing context for the same (targetUrl, userId, episodeId)
+  // instead of minting a brand-new streamId on every call. This guarantees
+  // authorize and /api/stream produce the SAME streamId for the same source,
+  // so the token bound to that streamId verifies at the proxy.
+  const streamId = deterministicStreamId({
+    targetUrl,
+    userId: entry.userId ?? null,
+    episodeId: entry.episodeId ?? null,
+    ipHash: entry.ipHash || '',
+  });
+
   const now = Date.now();
+  const existing = contexts.get(streamId);
+  if (existing) {
+    // Refresh lastAccessAt + hits, and update the live playback context
+    // (cookies/referer/origin can rotate) so we always proxy with fresh data.
+    existing.targetUrl = targetUrl;
+    existing.host = host || existing.host;
+    existing.referer = entry.referer || existing.referer;
+    existing.origin = entry.origin || existing.origin;
+    if (entry.cookies) existing.cookies = entry.cookies;
+    if (entry.userAgent) existing.userAgent = entry.userAgent;
+    if (entry.headers) existing.headers = entry.headers;
+    existing.userId = entry.userId || existing.userId;
+    existing.episodeId = entry.episodeId || existing.episodeId;
+    if (entry.ipHash) existing.ipHash = String(entry.ipHash);
+    existing.lastAccessAt = now;
+    existing.hits += 1;
+    return streamId;
+  }
+
   contexts.set(streamId, {
     targetUrl,
     host,
@@ -93,6 +148,7 @@ const streamId = generateStreamId();
     headers: entry.headers || null,
     userId: entry.userId || null,
     episodeId: entry.episodeId || null,
+    ipHash: entry.ipHash ? String(entry.ipHash) : undefined,
     createdAt: now,
     lastAccessAt: now,
     hits: 0,
@@ -176,6 +232,32 @@ function getByUserEpisode(userId, episodeId) {
 }
 
 /**
+ * Return all active context streamIds registered for a GUEST (no userId) with
+ * the given episodeId + ipHash. Because guest streamIds are deterministic
+ * (targetUrl + '' + episodeId + ipHash) but we can't backward-derive them from
+ * a URL, we scan the store and match on (episodeId, ipHash, no userId).
+ *
+ * @param {number|string} episodeId - the episode id (string-normalized)
+ * @param {string} ipHash - the anonymous user's ipHash
+ * @returns {string[]} matching streamIds
+ */
+function getByIpEpisode(episodeId, ipHash) {
+  const wantEp = String(episodeId ?? '');
+  const wantIp = String(ipHash || '');
+  if (!wantEp || !wantIp) return [];
+  const out = [];
+  const now = Date.now();
+  for (const [streamId, ctx] of contexts) {
+    if (!ctx) continue;
+    if (now - ctx.lastAccessAt > DEFAULT_TTL_MS || now - ctx.createdAt > DEFAULT_TTL_MS) continue; // expired
+    if (!ctx.userId && String(ctx.episodeId ?? '') === wantEp && String(ctx.ipHash || '') === wantIp) {
+      out.push(streamId);
+    }
+  }
+  return out;
+}
+
+/**
  * Get the number of currently stored contexts (observability).
  * @returns {number}
  */
@@ -201,6 +283,8 @@ module.exports = {
   remove,
   isHostAllowed,
   getByUserEpisode,
+  getByIpEpisode,
+  deterministicStreamId,
   size,
   clear,
   DEFAULT_TTL_MS,
