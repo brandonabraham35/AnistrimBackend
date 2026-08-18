@@ -89,13 +89,59 @@ const ANIME_HEAVEN_TAG = PROVIDER_IDS.ANIME_HEAVEN; // 'animeheaven'
 // ── Helpers ─────────────────────────────────────────────────
 
 /**
- * Parse quality number from string like "1080p", "1080", "4K", "2160p"
+ * Parse quality number from string like "1080p", "1080", "4K", "2160p".
+ *
+ * IMPORTANT: Strings that are NOT quality labels (e.g. AnimeHeaven's
+ * "Download Episode 1", "Unknown", "auto", "default") must NEVER be ranked as a
+ * numeric quality. The old implementation stripped non-digits then
+ * parseInt()'d, so "Download Episode 1" → "1" → ranked above real "auto"
+ * (720p) sources and caused the Download link to be selected as the playback
+ * streamUrl/bestQuality. Non-quality labels now resolve to 0.
  */
 function parseQualityNumber(qualityStr) {
   if (!qualityStr || typeof qualityStr !== 'string') return 0;
-  const cleaned = qualityStr.toLowerCase().replace(/[^0-9k]/g, '');
+  const lower = qualityStr.toLowerCase();
+  // Explicitly exclude non-quality labels.
+  if (/download|unknown|auto|default|n\/a|upcoming/i.test(lower)) return 0;
+  const cleaned = lower.replace(/[^0-9k]/g, '');
   if (cleaned === '4k' || cleaned === '2160') return 2160;
   return parseInt(cleaned, 10) || 0;
+}
+
+/**
+ * True when a source is a DOWNLOAD-ONLY link (never used for in-browser
+ * playback). Mirrors the provider's classification (sourceType link/download
+ * or a quality starting with "Download"). Used everywhere "best" is picked so
+ * the Download link is never selected as streamUrl/bestQuality.
+ */
+function isDownloadSource(src) {
+  if (!src) return false;
+  const type = String(src.sourceType || '').toLowerCase();
+  const quality = String(src.quality || '').toLowerCase();
+  return (
+    type === 'link' ||
+    type === 'download' ||
+    type === 'download-link' ||
+    quality.startsWith('download')
+  );
+}
+
+/**
+ * Pick the best playback source, preferring genuine video/stream sources over
+ * download-only links. Used at every "best = ...reduce(...)" site so the
+ * Download link is never selected as streamUrl.
+ *
+ * @param {Array} sources - filtered source candidates
+ * @returns {object|null} the best playable source (or null if none)
+ */
+function pickBestSource(sources) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+  // Prefer genuine playback sources (exclude download-only).
+  const playable = sources.filter(s => !isDownloadSource(s));
+  const pool = playable.length ? playable : sources;
+  return pool.reduce((a, b) =>
+    parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
+  , pool[0]);
 }
 
 /**
@@ -164,10 +210,26 @@ function normalizeProviderResult(result) {
 
   if (normalizedSources.length === 0) return null;
 
+  // Preserve the provider's separately-split download-only sources (tagged
+  // forDownload:true). These are for the premium Download button and must never
+  // be mistaken for in-browser playback sources.
+  const downloadSources = Array.isArray(result.downloadSources)
+    ? result.downloadSources
+      .filter(s => s && (s.url || s.file))
+      .map(s => ({
+        url: s.url || s.file,
+        quality: s.quality || s.qualityLabel || 'auto',
+        sourceType: s.sourceType || 'link',
+        forDownload: true,
+      }))
+    : [];
+
   return {
     provider: result.provider || result.source || ANIME_HEAVEN_TAG,
     streamUrl: result.streamUrl || (normalizedSources[0] ? normalizedSources[0].url : null),
     sources: normalizedSources,
+    // Download-only sources (for the premium Download button).
+    downloadSources,
     subtitles: Array.isArray(result.subtitles) ? result.subtitles : [],
   };
 }
@@ -555,14 +617,13 @@ async function continueWithFreshResolution(animeTitle, episodeNumber, episodeId,
       throw new Error(`No stream provider returned a source matching tier "${tier}" for "${animeTitle}" Episode ${episodeNumber}.`);
     }
 
-    const best = filteredSources.reduce((a, b) =>
-      parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-    , filteredSources[0]);
+    const best = pickBestSource(filteredSources);
 
     const payload = {
       provider: winner.provider || winnerProvider || ANIME_HEAVEN_TAG,
       streamUrl: best.url,
       sources: filteredSources,
+      downloadSources: Array.isArray(winner.downloadSources) ? winner.downloadSources : [],
       subtitles: winner.subtitles || [],
       bestQuality: best.quality || 'auto',
       tier,
@@ -723,9 +784,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
         const cachedSources = Array.isArray(cached.sources) ? cached.sources : [];
         const tierSources = filterSourcesByTier(cachedSources, isPremium);
         if (tierSources.length > 0) {
-          const best = tierSources.reduce((a, b) =>
-            parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-          , tierSources[0]);
+          const best = pickBestSource(tierSources);
           logger.streamAttempt({
             provider: cached.provider || ANIME_HEAVEN_TAG,
             anime: animeTitle,
@@ -746,6 +805,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
             provider: cached.provider || ANIME_HEAVEN_TAG,
             streamUrl: best.url,
             sources: tierSources,
+            downloadSources: Array.isArray(cached.downloadSources) ? cached.downloadSources : [],
             subtitles: Array.isArray(cached.subtitles) ? cached.subtitles : [],
             bestQuality: best.quality || 'auto',
             tier,
@@ -788,9 +848,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       const cachedWinner = cachedLookup.result;
       const filteredSources = filterSourcesByTier(cachedWinner.sources, isPremium);
       if (filteredSources.length > 0) {
-        const best = filteredSources.reduce((a, b) =>
-          parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-        , filteredSources[0]);
+        const best = pickBestSource(filteredSources);
 
         // ── CACHE-SOURCE LIVENESS PROBE ─────────────────────
         const bestSource = best || {};
@@ -815,6 +873,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
           provider: cachedWinner.provider || STREAM_CACHE_PROVIDER,
           streamUrl: best.url,
           sources: filteredSources,
+          downloadSources: Array.isArray(cachedWinner.downloadSources) ? cachedWinner.downloadSources : [],
           subtitles: Array.isArray(cachedWinner.subtitles) ? cachedWinner.subtitles : [],
           bestQuality: best.quality || 'auto',
           tier,
@@ -945,15 +1004,14 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       throw new Error(msg);
     }
 
-    // Pick best quality for tier.
-    const best = filteredSources.reduce((a, b) =>
-      parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-    , filteredSources[0]);
+    // Pick best quality for tier (prefer genuine playback, never a download link).
+    const best = pickBestSource(filteredSources);
 
     const payload = {
       provider: winner.provider || winnerProvider || ANIME_HEAVEN_TAG,
       streamUrl: best.url,
       sources: filteredSources,
+      downloadSources: Array.isArray(winner.downloadSources) ? winner.downloadSources : [],
       subtitles: winner.subtitles || [],
       bestQuality: best.quality || 'auto',
       tier,
@@ -1050,9 +1108,7 @@ async function prefetchNextEpisode(animeTitle, currentEpisodeNumber, isPremium) 
       // Also cache in the in-memory stream cache for instant warm hits.
       const cacheKey = buildCacheKey(animeTitle, nextEp);
       const filtered = filterSourcesByTier(outcome.result.sources, isPremium);
-      const best = filtered.reduce((a, b) =>
-        parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-      , filtered[0]);
+      const best = pickBestSource(filtered);
       if (best) {
         await cache.set(cacheKey, {
           provider: outcome.result.provider || ANIME_HEAVEN_TAG,
@@ -1094,9 +1150,7 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
 
   if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
     const filteredSources = filterSourcesByTier(outcome.result.sources, isPremium);
-    const best = filteredSources.reduce((a, b) =>
-      parseQualityNumber(b.quality) > parseQualityNumber(a.quality) ? b : a
-    , filteredSources[0]);
+    const best = pickBestSource(filteredSources);
 
     results.push({
       provider: outcome.result.provider || ANIME_HEAVEN_TAG,

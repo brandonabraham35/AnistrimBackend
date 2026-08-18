@@ -704,7 +704,38 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
         const bProxy = (b.url || '').includes('/api/stream-proxy/') || /\.m3u8/i.test(b.url);
         return (bProxy ? 1 : 0) - (aProxy ? 1 : 0);
       });
-    currentStreamSources = sourcesToTry;
+        currentStreamSources = sourcesToTry;
+
+        // ── DOWNLOAD-BUTTON SOURCES ──────────────────────────
+        // The backend separates genuine playback sources from "Download
+        // Episode N" links (downloadSources, tagged forDownload:true). Keep
+        // those for the premium Download button so they're never treated as
+        // in-browser playable sources.
+        let downloadSourcesForButton = [];
+        if (Array.isArray(data.downloadSources) && data.downloadSources.length) {
+          downloadSourcesForButton = data.downloadSources
+            .map(s => ({
+              ...s,
+              url: preferAuthorizedProxyUrl(s.url.startsWith('http') ? s.url : API_BASE_URL + s.url)
+            }))
+            .filter(s => s && s.url);
+        }
+        // Fallback: if the backend didn't split them out, detect download-only
+        // sources among the raw response sources (legacy/anonymous providers).
+        if (!downloadSourcesForButton.length) {
+          downloadSourcesForButton = (data.sources || [])
+            .filter(s => {
+              const st = ((s && s.sourceType) || '').toLowerCase();
+              const quality = ((s && s.quality) || '').toLowerCase();
+              return st === 'link' || st === 'download' || st === 'download-link' || quality.startsWith('download');
+            })
+            .map(s => ({ ...s, forDownload: true, url: preferAuthorizedProxyUrl(s.url.startsWith('http') ? s.url : API_BASE_URL + s.url) }))
+            .filter(s => s && s.url);
+        }
+        window.__aniStrimDownloadSources = downloadSourcesForButton;
+        if (downloadSourcesForButton.length) {
+          console.log('[WATCH] Download-only sources captured for Download button', { count: downloadSourcesForButton.length });
+        }
 
     // Log the response structure for debugging (safe fields only).
     console.log('[WATCH PLAYER] Stream response received', {

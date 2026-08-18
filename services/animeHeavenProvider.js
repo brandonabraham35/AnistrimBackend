@@ -1078,6 +1078,30 @@ function isPlayableMediaUrl(url) {
   return /\.(m3u8|mp4|mpd)(\?|$)/i.test(value) || /video\.mp4\?/i.test(value);
 }
 
+/**
+ * Identify a source that is a DOWNLOAD-ONLY link (e.g. AnimeHeaven's
+ * "Download Episode N" gate link — a valid video.mp4?...&d, but intended for
+ * the Download button, not in-browser playback).
+ *
+ * Download sources are classified by their sourceType (`link`, `download`,
+ * `download-link`) or a quality label that starts with "Download". They are
+ * NEVER selected as the playback streamUrl, but are exposed separately
+ * (`forDownload: true`) so the premium Download button can still fetch them.
+ *
+ * @param {object} src - source candidate
+ * @returns {boolean}
+ */
+function isDownloadSource(src) {
+  const type = String((src && src.sourceType) || '').toLowerCase();
+  const quality = String((src && src.quality) || '').toLowerCase();
+  return (
+    type === 'link' ||
+    type === 'download' ||
+    type === 'download-link' ||
+    quality.startsWith('download')
+  );
+}
+
 function isStaticAssetUrl(url) {
   const value = String(url || '').toLowerCase();
   return /\.(png|jpe?g|gif|webp|svg|css|js|woff2?|ttf|ico)(\?|$)/i.test(value);
@@ -2763,7 +2787,16 @@ sources = sortSourcesByQuality(sources)
         // markup placeholders resolve to HTTP 404.
         .filter(src => !isConfirmedDeadOnErrorSource(src.url));
 
-      logger.info('[PLAYBACK]', { event: 'sourceValidated', title, episode, sourceCount: sources.length });
+      // ── PLAYBACK vs DOWNLOAD separation ─────────────────────
+      // AnimeHeaven's "Download Episode N" link is a valid video.mp4?...&d,
+      // intended for the Download button (premium), NOT in-browser playback.
+      // Split it out so streamUrl/best always come from genuine playback
+      // sources, while the download URL is exposed separately (forDownload).
+      const downloadSources = sources.filter(src => isDownloadSource(src))
+        .map(src => Object.assign({}, src, { forDownload: true }));
+      sources = sources.filter(src => !isDownloadSource(src));
+
+      logger.info('[PLAYBACK]', { event: 'sourceValidated', title, episode, sourceCount: sources.length, downloadSourceCount: downloadSources.length });
 
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });
@@ -2825,7 +2858,8 @@ sources = sortSourcesByQuality(sources)
       // embeds an expiring CDN token; caching the raw target + context lets us
       // re-register the source and mint a NEW proxy URL on every playback.
       const rawSubtitles = (subtitles || []).map(track => Object.assign({}, track));
-      const streamUrl = sources[0]?.url || null;
+      // streamUrl must be a genuine playback source (never a download link).
+      const streamUrl = sources[0]?.url || downloadSources[0]?.url || null;
 
       logger.info('[AnimeHeaven] Stream extracted', {
         title,
@@ -2873,6 +2907,10 @@ sources = sortSourcesByQuality(sources)
         streamUrl,
         // Raw CDN source (video.mp4?...token) WITH context — never proxied.
         sources,
+        // Download-only sources (for the premium Download button), tagged
+        // forDownload:true so the frontend can surface them separately without
+        // treating them as in-browser playback sources.
+        downloadSources,
         subtitles: rawSubtitles,
         subtitleMode,
         externalTracks,
@@ -3009,7 +3047,14 @@ sources = sortSourcesByQuality(sources)
         .filter(src => isPlayableMediaUrl(src.url))
         .filter(src => !isConfirmedDeadOnErrorSource(src.url));
 
-      if (!sources.length) {
+      // ── PLAYBACK vs DOWNLOAD separation ─────────────────────
+      // Keep the "Download Episode N" link for the Download button (premium),
+      // but never let it become the playback source.
+      const downloadSources = sources.filter(src => isDownloadSource(src))
+        .map(src => Object.assign({}, src, { forDownload: true }));
+      sources = sources.filter(src => !isDownloadSource(src));
+
+      if (!sources.length && !downloadSources.length) {
         logger.info('[AnimeHeaven] Stream missing (by key)', { slug, episodeKey });
         recordProviderMetric('failure', Date.now() - started);
         return normalizeEmptyStream(playerOrStreamReason(merged));
@@ -3043,7 +3088,8 @@ sources = sortSourcesByQuality(sources)
       }
 
       const rawSubtitles = (subtitles || []).map(track => Object.assign({}, track));
-      const streamUrl = sources[0]?.url || null;
+      // streamUrl must be a genuine playback source (never a download link).
+      const streamUrl = sources[0]?.url || downloadSources[0]?.url || null;
 
       timings.total = Date.now() - started;
       timings.totalTime = timings.total;
@@ -3064,6 +3110,8 @@ sources = sortSourcesByQuality(sources)
         provider: PROVIDER_NAME,
         streamUrl,
         sources,
+        // Download-only sources (for the premium Download button).
+        downloadSources,
         subtitles: rawSubtitles,
         subtitleMode: rawSubtitles.length ? 'external' : 'missing',
         externalTracks: rawSubtitles.length > 0,

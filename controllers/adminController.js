@@ -106,7 +106,7 @@ const adminController = {
         dashboardQuery('users', usersSql),
         dashboardQuery('anime totals', 'SELECT COUNT(*) totalAnime, COALESCE(SUM(view_count), 0) totalViews, COALESCE(AVG(rating), 0) avgRating FROM anime'),
         dashboardQuery('episode totals', episodeSql),
-        dashboardQuery('daily activity', 'SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_history WHERE DATE(watched_at) = CURDATE()'),
+        dashboardQuery('daily activity', 'SELECT COUNT(DISTINCT user_id) activeToday, COUNT(*) dailyViews FROM watch_progress WHERE DATE(updated_at) = CURDATE()'),
         dashboardQuery('recent anime', 'SELECT id, title, cover_image, status, year AS release_year, created_at FROM anime ORDER BY created_at DESC LIMIT 5'),
         dashboardQuery('recent episodes', recentEpisodesSql),
         dashboardQuery('activity logs', logsSql),
@@ -788,17 +788,17 @@ async updateGenre(req, res) {
   async getUserWatchHistory(req, res) {
     try {
       const schema = await getSchema();
-      if (!hasColumn(schema, 'watch_history', 'user_id')) {
+      if (!hasColumn(schema, 'watch_progress', 'user_id')) {
         return res.json([]);
       }
       const [rows] = await db.query(
-        `SELECT wh.id, wh.episode_id, wh.progress_sec, wh.completed, wh.watched_at,
+        `SELECT wh.id, wh.episode_id, wh.position_sec AS progress_sec, wh.completed, wh.updated_at AS watched_at,
                 e.episode_number, e.title AS episode_title, a.title AS anime_title, a.id AS anime_id
-         FROM watch_history wh
+         FROM watch_progress wh
          JOIN episodes e ON e.id = wh.episode_id
          JOIN anime a ON a.id = e.anime_id
          WHERE wh.user_id = ?
-         ORDER BY wh.watched_at DESC
+         ORDER BY wh.updated_at DESC
          LIMIT 50`,
         [req.params.id]
       );
@@ -902,10 +902,10 @@ async updateGenre(req, res) {
       switch (type) {
         case 'daily-users': {
           const [rows] = await db.query(`
-            SELECT DATE(watched_at) AS date, COUNT(DISTINCT user_id) AS count
-            FROM watch_history
-            WHERE watched_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-            GROUP BY DATE(watched_at)
+            SELECT DATE(updated_at) AS date, COUNT(DISTINCT user_id) AS count
+            FROM watch_progress
+            WHERE updated_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            GROUP BY DATE(updated_at)
             ORDER BY date ASC
           `, [days]);
           res.json({ labels: rows.map(r => r.date), values: rows.map(r => r.count) });
@@ -940,10 +940,10 @@ async updateGenre(req, res) {
 
         case 'episode-views': {
           const [rows] = await db.query(`
-            SELECT DATE(watched_at) AS date, COUNT(*) AS views
-            FROM watch_history
-            WHERE watched_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-            GROUP BY DATE(watched_at)
+            SELECT DATE(updated_at) AS date, COUNT(*) AS views
+            FROM watch_progress
+            WHERE updated_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            GROUP BY DATE(updated_at)
             ORDER BY date ASC
           `, [days]);
           res.json({ labels: rows.map(r => r.date), values: rows.map(r => r.views) });

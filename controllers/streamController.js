@@ -254,6 +254,16 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     // streamProxyStore and NEVER returned to the browser. Anonymous
     // providers (Consumet, etc.) are returned unchanged.
     const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null, episodeId || null) || result;
+    // Expose download-only sources (for the premium Download button) as
+    // proxy-rewritten, server-context-safe URLs. These are never used for
+    // in-browser playback — only downloads.
+    if (Array.isArray(result.downloadSources) && result.downloadSources.length) {
+      publicResult.downloadSources = streamProxy.rewriteResultToProxy(
+        { ...result, sources: result.downloadSources },
+        req.user?.id || null,
+        episodeId || null
+      )?.sources || result.downloadSources;
+    }
 
     const elapsed = Date.now() - startTime;
     logger.streamAttempt({

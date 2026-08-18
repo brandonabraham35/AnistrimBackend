@@ -132,7 +132,7 @@ async function buildTrending(record = {}) {
       SELECT ${SHELF_COLUMNS},
              COALESCE(COUNT(DISTINCT wh.user_id), 0) AS _score
       FROM anime a
-      LEFT JOIN watch_history wh
+      LEFT JOIN watch_progress wh
         ON wh.episode_id IS NOT NULL
        AND wh.episode_id IN (
          SELECT e.id FROM episodes e
