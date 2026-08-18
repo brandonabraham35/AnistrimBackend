@@ -5,20 +5,24 @@
 const express = require('express');
 const router = express.Router();
 const streamController = require('../controllers/streamController');
-const streamProxyQueryController = require('../controllers/streamProxyQueryController');
 const { protect } = require('../middleware/auth');
 
-// ── Stateless Query-Based Playback Proxy (AnimeHeaven only) ─
-// GET /api/stream/proxy?provider=animeheaven&url=<encoded>&referer=<encoded>
-// MUST be registered BEFORE the /:animeTitle/:episodeNumber catch-all so the
-// literal "proxy" path is not mistaken for an anime title.
-// NOTE: This route is intentionally NOT JWT-gated — the existing player's
-// <video>/HLS element fetches these media URLs directly and cannot send the
-// Authorization header. The hardened, token-gated /api/stream-proxy/:streamId
-// path (Phase 10) is the correct migration target; the frontend must switch to
-// it (via /api/stream/authorize) before this route can be locked down.
-router.options('/proxy', streamProxyQueryController.preflight);
-router.get('/proxy', streamProxyQueryController.streamMedia);
+// ── FIX 4 (P0): /api/stream/proxy QUERY ROUTE DELETED ────────
+// The stateless query proxy was the security bypass: it accepted an arbitrary
+// url= within the allow-list and only verified { ip } — never userId /
+// episodeId / streamId, so a token minted for episode A (or user X) could
+// fetch episode B (or be used by user Y from the same IP).
+//
+// The hardened, token-gated /api/stream-proxy/:streamId path is now the ONLY
+// proxy. It verifies { userId, episodeId, streamId, ip } AND checks the store
+// context's userId/episodeId match the token (FIX 3). The player (watch.js)
+// was migrated to it in FIX 3, so this legacy route is no longer needed.
+//
+// If a phased removal was preferred, this route could have first gained a
+// per-user rate limiter + per-request logging to confirm zero traffic; given
+// the migration is complete, it is removed outright. The module
+// controllers/streamProxyQueryController.js remains on disk but is now
+// unreachable (only this file referenced it).
 
 // ── Phase 10 (item 21): stream authorization ────────────────
 // POST /api/stream/authorize { episodeId } → canWatch() → 120 s HMAC token.

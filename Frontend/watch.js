@@ -173,12 +173,15 @@ function scheduleStreamTokenRefresh(episodeId) {
 }
 
 /**
- * Append the current stream token to a proxy URL.
- * Both /api/stream-proxy/:streamId and /api/stream/proxy require the token.
+ * Append the current stream token to a hardened proxy URL.
+ * FIX 4: /api/stream/proxy (the un-gated query route) is DELETED. The ONLY
+ * proxy is /api/stream-proxy/:streamId, which verifies { userId, episodeId,
+ * streamId, ip } against the store context. So we only ever token-realize
+ * /api/stream-proxy/ URLs here.
  */
 function appendStreamToken(url) {
   if (!url || !streamAuth.token) return url;
-  if (url.includes('/api/stream-proxy/') || url.includes('/api/stream/proxy')) {
+  if (url.includes('/api/stream-proxy/')) {
     const sep = url.includes('?') ? '&' : '?';
     return url + sep + 'token=' + encodeURIComponent(streamAuth.token);
   }
