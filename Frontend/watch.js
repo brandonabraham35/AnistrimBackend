@@ -608,24 +608,29 @@ function initializePlayerWithSource(video, source, metadata) {
   const loadingOverlay = document.getElementById('loading-overlay');
   if (loadingOverlay) loadingOverlay.style.display = 'none';
 
+  // Set playback metadata BEFORE source attachment (needed by setupPlayer).
+  currentStreamUrl = source.url;
+  currentProvider = metadata.provider || 'unknown';
+  currentStreamQuality = source.quality || 'auto';
+  if (metadata.sources) currentStreamSources = metadata.sources;
+
+  // Attach subtitles if returned.
+  if (metadata.subtitles && metadata.subtitles.length) {
+    attachSubtitles(video, metadata.subtitles);
+  }
+
+  // Update quality display.
+  const qualityValue = document.getElementById('quality-value');
+  if (qualityValue) qualityValue.textContent = currentStreamQuality;
+
+  // ── Initialize PlayerCore ONCE before source attachment ──
+  // PlayerCore is the SINGLE HLS owner. It must be initialized before
+  // attachStreamSource() which delegates HLS loading to it.
+  ensurePlayerCoreInitialized(video);
+
   // Attach the source to the video element (HLS or MP4).
   return attachStreamSource(video, source.url).then(function() {
     console.log('[WATCH PLAYER] Player initialized');
-
-    // Set playback metadata.
-    currentStreamUrl = source.url;
-    currentProvider = metadata.provider || 'unknown';
-    currentStreamQuality = source.quality || 'auto';
-    if (metadata.sources) currentStreamSources = metadata.sources;
-
-    // Attach subtitles if returned.
-    if (metadata.subtitles && metadata.subtitles.length) {
-      attachSubtitles(video, metadata.subtitles);
-    }
-
-    // Update quality display.
-    const qualityValue = document.getElementById('quality-value');
-    if (qualityValue) qualityValue.textContent = currentStreamQuality;
 
     // Set up the player controls (idempotent).
     setupPlayer(video);
@@ -633,6 +638,67 @@ function initializePlayerWithSource(video, source, metadata) {
     console.log('[PLAYBACK] Stream resolved', { provider: currentProvider, quality: currentStreamQuality });
     return true;
   });
+}
+
+// ── Ensure PlayerCore is initialized (once per session) ─────
+// Called before any source attachment. Re-initializes if the video
+// element changed or if switching episodes.
+function ensurePlayerCoreInitialized(video) {
+  if (window.__playerCore) {
+    // Re-initialize for episode switches — destroy old, create new.
+    try { window.__playerCore.destroy(); } catch (e) {}
+    window.__playerCore = null;
+    window.__hls = null;
+    hlsInstance = null;
+  }
+
+  if (!window.PlayerCore) {
+    console.warn('[WATCH] PlayerCore module not loaded — HLS playback will use native only');
+    return;
+  }
+
+  window.__playerCore = window.PlayerCore.init({
+    video: video,
+    onSourceLoaded: function () {},
+    onError: function (err) {
+      if (window.__playerResilience && window.__playerResilience.onError) {
+        window.__playerResilience.onError(null, { type: 'mediaError', fatal: true, data: err });
+      }
+    },
+    onLevels: function (levels) {
+      if (levels && levels.length) {
+        hlsQualityOptions = [{ label: 'Auto', value: -1 }];
+        levels.forEach(function (l, i) { hlsQualityOptions.push({ label: l.height + 'p', value: i }); });
+        refreshHlsQualityOptions();
+      }
+    },
+    onManifestParsed: function () {
+      watchLog('loadedmetadata', { hls: true, via: 'PlayerCore' });
+      // Populate adaptive quality selector from HLS levels.
+      hlsQualityOptions = [{ label: 'Auto', value: -1 }];
+      currentQualityIndex = -1;
+      var qv = document.getElementById('quality-value');
+      if (qv) qv.textContent = 'Auto';
+      refreshHlsQualityOptions();
+      refreshAudioTracks();
+      populateAudioOptions();
+      refreshSubtitleTracks();
+      populateSubtitleOptions();
+    },
+    onLevelSwitched: function (level) {
+      if (level >= 0) {
+        var qv = document.getElementById('quality-value');
+        if (qv && currentQualityIndex === -1) {
+          var hls = window.__playerCore ? window.__playerCore.getHls() : null;
+          var lvl = hls && hls.levels ? hls.levels[level] : null;
+          if (lvl && lvl.height) qv.textContent = lvl.height + 'p';
+        }
+      }
+    }
+  });
+
+  window.__hls = window.__playerCore ? window.__playerCore.getHls() : null;
+  if (window.__hls) hlsInstance = window.__hls;
 }
 
 // ── Multi-API: Resolve and play stream ──────────────────────
@@ -1207,34 +1273,13 @@ function setupPlayer(video) {
     initKeyboardShortcuts();
 
     // ── Phase 4: Player module bootstrap (single init order) ──
-    // PlayerCore → Progress → PlayerGestures → PlayerResilience → PlayerMarkers
+    // PlayerCore is already initialized by ensurePlayerCoreInitialized()
+    // (called in initializePlayerWithSource before source attachment).
+    // DO NOT re-initialize PlayerCore here — it is the SINGLE HLS owner.
+    // Progress → PlayerGestures → PlayerResilience → PlayerMarkers
     // Each init() receives the PlayerCore instance/event bus rather than globals.
     // A second call tears down the previous instance (episode changes must not
     // stack listeners or HLS instances).
-    if (window.PlayerCore) {
-      if (window.__playerCore) { try { window.__playerCore.destroy(); } catch(e) {} }
-      window.__playerCore = window.PlayerCore.init({
-        video: video,
-        sourceUrl: currentStreamUrl,
-        episodeId: currentEpId,
-        onSourceLoaded: function() {},
-        onError: function(err) {
-          if (window.__playerResilience && window.__playerResilience.onError) {
-            window.__playerResilience.onError(null, { type: 'mediaError', fatal: true, data: err });
-          }
-        },
-        onLevels: function(levels) {
-          if (levels && levels.length) {
-            hlsQualityOptions = [{ label: 'Auto', value: -1 }];
-            levels.forEach(function(l, i) { hlsQualityOptions.push({ label: l.height + 'p', value: i }); });
-            refreshHlsQualityOptions();
-          }
-        },
-        errorBus: window
-      });
-      window.__hls = window.__playerCore ? window.__playerCore.getHls() : null;
-      if (window.__hls) hlsInstance = window.__hls;
-    }
 
     // Progress.init() — already wired above via window.Progress.init()
 
@@ -2062,6 +2107,9 @@ async function playNextEp() {
       const loadingOverlay = document.getElementById('loading-overlay');
       if (loadingOverlay) loadingOverlay.style.display = 'flex';
       setLoadingStatus('Loading video...');
+
+      // Ensure PlayerCore is initialized before source attachment.
+      ensurePlayerCoreInitialized(video);
 
       await attachStreamSource(video, sourceUrl);
       if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -3098,12 +3146,12 @@ window.showWatchError = showWatchError;
 // ════════════════════════════════════════════════════════════
 //  HLS / Stream Source Attacher
 // ════════════════════════════════════════════════════════════
-// Phase 8: Before attaching ANY source (initial load, direct, change-server,
-// next-ep, quality-switch), resolve the pre-roll ad. It NEVER blocks content —
-// if it times out, fails, or no ad is configured, content attaches anyway.
+// Delegates ALL HLS lifecycle to PlayerCore (the SINGLE HLS owner).
+// watch.js NEVER creates `new window.Hls()` — PlayerCore owns hls.js.
+// Phase 8: Before attaching ANY source, resolve the pre-roll ad. It NEVER
+// blocks content — if it times out, fails, or no ad is configured, content
+// attaches anyway.
 function attachStreamSource(video, source) {
-  // ── FIX: log the exact URL type being attached so a 401/403 at the proxy is
-  // visible in the same log stream as sourceReturned.
   console.log('[WATCH] attachStreamSource', {
     hasToken: typeof source === 'string' && !!streamAuth && !!streamAuth.token,
     isProxy: typeof source === 'string' && /\/api\/stream-proxy\//.test(source),
@@ -3128,158 +3176,125 @@ function attachStreamSource(video, source) {
       showPreRollAd(servedAd, adsInstance);
     }
 
-    if (hlsInstance) {
-      hlsInstance.destroy();
-      hlsInstance = null;
-    }
+    var isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
+    return new Promise(function(resolve, reject) {
+      var timeout = setTimeout(function() {
+        reject(new Error('Timed out loading video source.'));
+      }, SOURCE_ATTACH_TIMEOUT_MS);
 
-  var isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
-  return new Promise(function(resolve, reject) {
-    const timeout = setTimeout(() => {
-      reject(new Error('Timed out loading video source.'));
-    }, SOURCE_ATTACH_TIMEOUT_MS);
+      function cleanup() {
+        clearTimeout(timeout);
+      }
 
-    function cleanup() {
-      clearTimeout(timeout);
-    }
+      // ── HLS path: delegate to PlayerCore (the SINGLE HLS owner) ──
+      if (isHlsStream && window.Hls && window.Hls.isSupported()) {
+        if (!window.__playerCore) {
+          reject(new Error('PlayerCore not initialized.'));
+          return;
+        }
+        try {
+          window.__playerCore.loadSource(source);
+          // PlayerCore's onManifestParsed callback handles resolution.
+          // We resolve here immediately — the manifest callback in setupPlayer
+          // already wires up quality/audio/subtitle population.
+          cleanup();
+          watchLog('loadedmetadata', { hls: true, via: 'PlayerCore' });
+          resolve();
+        } catch (e) {
+          cleanup();
+          reject(e);
+        }
+        return;
+      }
 
-    // HLS attach shared by the primary HLS path and the native→HLS fallback
-    // for extension-less proxy URLs (see the video error handler below).
-    function beginHls() {
-      if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-      hlsInstance = new window.Hls();
-      hlsInstance.loadSource(source);
-      hlsInstance.attachMedia(video);
-      hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function() {
+      // ── MP4 / Direct source ─────────────────────────────────
+      console.log('[WATCH PLAYER] assigning source:', {
+        provider: currentProvider || 'unknown',
+        sourceType: 'mp4',
+        mimeType: 'video/mp4',
+        url: source
+      });
+
+      if (window.__aniStrimPlaybackDebug) {
+        window.__aniStrimPlaybackDebug.sourceAttached = true;
+        window.__aniStrimPlaybackDebug.selectedSource = source;
+      }
+
+      var resolved = false;
+      var hlsFallbackTried = false;
+      function onReady() {
+        if (resolved) return;
+        resolved = true;
         cleanup();
-        watchLog('loadedmetadata', { hls: true });
-        // Populate adaptive quality selector from HLS levels.
-        hlsQualityOptions = [{ label: 'Auto', value: -1 }];
+        watchLog('loadedmetadata', { hls: false });
         currentQualityIndex = -1;
-        const qualityValue = document.getElementById('quality-value');
-        if (qualityValue) qualityValue.textContent = 'Auto';
         refreshHlsQualityOptions();
         refreshAudioTracks();
         populateAudioOptions();
         refreshSubtitleTracks();
         populateSubtitleOptions();
         resolve();
-      });
-      hlsInstance.on(window.Hls.Events.LEVEL_SWITCHED, function(_e, data) {
-        if (data && data.level >= 0) {
-          const qualityValue = document.getElementById('quality-value');
-          if (qualityValue && currentQualityIndex === -1) {
-            const lvl = hlsInstance.levels && hlsInstance.levels[data.level];
-            if (lvl && lvl.height) qualityValue.textContent = lvl.height + 'p';
-          }
-        }
-      });
-      // ── HLS ERROR RECOVERY ───────────────────────────────
-      // Phase 4: PlayerResilience owns the ONLY recovery ladder. The legacy
-      // inline recovery (startLoad/recoverMediaError/destroy+reload) is removed
-      // so two engines never fight over the same <video>.
-      hlsInstance.on(window.Hls.Events.ERROR, function(_event, data) {
-        if (window.__playerResilience && window.__playerResilience.onError) {
-          window.__playerResilience.onError(_event, data);
-        }
-      });
-    }
-
-    if (isHlsStream && window.Hls && window.Hls.isSupported()) {
-      beginHls();
-      return;
-    }
-
-    // ── MP4 / Direct source ─────────────────────────────────
-    // For MP4 (especially 206 partial-content from the proxy), resolve ONLY
-    // when the video is actually ready to play. We deliberately EXCLUDE
-    // `durationchange` here: it can fire with `NaN` duration long before the
-    // media is playable, which would make setupPlayer() call play() too early
-    // and surface a false "Unable to Play". The 10s fallback below still
-    // guarantees the player becomes visible even if metadata is delayed.
-    console.log('[WATCH PLAYER] assigning source:', {
-      provider: currentProvider || 'unknown',
-      sourceType: 'mp4',
-      mimeType: 'video/mp4',
-      url: source
-    });
-
-    // Track playback health for debugging.
-    if (window.__aniStrimPlaybackDebug) {
-      window.__aniStrimPlaybackDebug.sourceAttached = true;
-      window.__aniStrimPlaybackDebug.selectedSource = source;
-    }
-
-    let resolved = false;
-    let hlsFallbackTried = false;
-    function onReady() {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      watchLog('loadedmetadata', { hls: false });
-      currentQualityIndex = -1;
-      refreshHlsQualityOptions();
-      refreshAudioTracks();
-      populateAudioOptions();
-      refreshSubtitleTracks();
-      populateSubtitleOptions();
-      resolve();
-    }
-
-    // Resolve on the first REAL media-ready event (not durationchange).
-    ['canplay', 'loadeddata', 'loadedmetadata'].forEach(function(evt) {
-      video.addEventListener(evt, onReady, { once: true });
-    });
-
-    video.addEventListener('error', function() {
-      if (resolved) return;
-      // ── HLS FALLBACK for extension-less proxy URLs ─────────
-      // The backend appends `/index.m3u8` to HLS proxy URLs, but older
-      // backends (or extension-less upstream playlists) can still serve an
-      // HLS manifest from a URL with no `.m3u8` hint. Android/Chrome cannot
-      // play HLS natively (MEDIA_ERR_SRC_NOT_SUPPORTED), so before failing
-      // this source, retry ONCE through hls.js. This only fires when native
-      // playback has already failed — healthy MP4 sources are unaffected.
-      if (!hlsFallbackTried && /\/api\/stream-proxy\//.test(source) && window.Hls && window.Hls.isSupported()) {
-        hlsFallbackTried = true;
-        clearTimeout(fallbackResolve);
-        console.warn('[WATCH PLAYER] Native playback failed for proxy URL — retrying via hls.js:', {
-          code: video.error?.code,
-          url: source
-        });
-        beginHls();
-        return;
       }
-      resolved = true;
-      cleanup();
-      console.error('[WATCH PLAYER] video error:', {
-        code: video.error?.code,
-        message: video.error?.message,
-        currentSrc: video.currentSrc
+
+      ['canplay', 'loadeddata', 'loadedmetadata'].forEach(function(evt) {
+        video.addEventListener(evt, onReady, { once: true });
       });
-      reject(new Error('Video source could not be loaded.'));
-    }, { once: true });
 
-    // Fallback: if no media event fires within 10s, still resolve so the
-    // player becomes visible (the browser may be buffering slowly).
-    const fallbackResolve = setTimeout(function() {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      console.warn('[WATCH PLAYER] No media event within 10s — resolving anyway');
-      resolve();
-    }, 10000);
+      video.addEventListener('error', function() {
+        if (resolved) return;
+        // ── HLS FALLBACK for extension-less proxy URLs ─────────
+        if (!hlsFallbackTried && /\/api\/stream-proxy\//.test(source) && window.Hls && window.Hls.isSupported()) {
+          hlsFallbackTried = true;
+          clearTimeout(fallbackResolve);
+          console.warn('[WATCH PLAYER] Native playback failed for proxy URL — retrying via hls.js:', {
+            code: video.error ? video.error.code : null,
+            url: source
+          });
+          if (window.__playerCore) {
+            try {
+              window.__playerCore.loadSource(source);
+              cleanup();
+              watchLog('loadedmetadata', { hls: true, via: 'PlayerCore', fallback: true });
+              resolve();
+            } catch (e) {
+              resolved = true;
+              cleanup();
+              reject(e);
+            }
+          } else {
+            resolved = true;
+            cleanup();
+            reject(new Error('Video source could not be loaded.'));
+          }
+          return;
+        }
+        resolved = true;
+        cleanup();
+        console.error('[WATCH PLAYER] video error:', {
+          code: video.error ? video.error.code : null,
+          message: video.error ? video.error.message : null,
+          currentSrc: video.currentSrc
+        });
+        reject(new Error('Video source could not be loaded.'));
+      }, { once: true });
 
-    // Override cleanup to also clear the fallback timer.
-    const originalCleanup = cleanup;
-    cleanup = function() {
-      clearTimeout(timeout);
-      clearTimeout(fallbackResolve);
-      originalCleanup();
-    };
+      var fallbackResolve = setTimeout(function() {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        console.warn('[WATCH PLAYER] No media event within 10s — resolving anyway');
+        resolve();
+      }, 10000);
 
-    video.src = source;
-    video.load();
+      var originalCleanup = cleanup;
+      cleanup = function() {
+        clearTimeout(timeout);
+        clearTimeout(fallbackResolve);
+        originalCleanup();
+      };
+
+      video.src = source;
+      video.load();
     });
   });
 }

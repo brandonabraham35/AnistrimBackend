@@ -1,29 +1,28 @@
 // Frontend/js/player/core.js — Phase 4.1 player engine.
 //
-// Handles hls.js | native HLS detection, source loading, and the error bus.
+// SINGLE HLS OWNER. Handles hls.js | native HLS detection, source loading,
+// manifest parsing, level switching, error bus, and clean destruction.
 // No global state — explicit init contract. The page wires:
 //
 //   core.init({
-//     video, sourceUrl, episodeId, onSourceLoaded, onError, onLevels,
-//     getToken, isHlsUrl
+//     video, onSourceLoaded, onError, onLevels,
+//     onManifestParsed, onLevelSwitched
 //   })
 //
-// Returns { getHls, getLevels, setQuality, setSource, destroy }.
+// init() MUST be called ONCE per playback session. It does NOT auto-load a
+// source — call loadSource(url) after init to begin playback.
+//
+// Returns { getHls, getLevels, setQuality, loadSource, destroy }.
 (function () {
   'use strict';
 
   function init(opts) {
     var video = opts.video;
-    var sourceUrl = opts.sourceUrl;
-    var episodeId = opts.episodeId;
     var onSourceLoaded = opts.onSourceLoaded || function () {};
     var onError = opts.onError || function (err) {};
     var onLevels = opts.onLevels || function (levels) {};
-    var getToken = opts.getToken || function () { return localStorage.getItem('token') || ''; };
-    var isHlsUrl = opts.isHlsUrl || function (url) {
-      return /\.m3u8|application\/vnd\.apple\.mpegurl|application\/x-mpegURL/i.test(url) ||
-        (video.canPlayType && !video.canPlayType('application/vnd.apple.mpegurl'));
-    };
+    var onManifestParsed = opts.onManifestParsed || function () {};
+    var onLevelSwitched = opts.onLevelSwitched || function (level) {};
 
     if (!video) return null;
 
@@ -35,21 +34,20 @@
     }
 
     // Load a source: use hls.js when available & native HLS unsupported,
-    // else fall back to native.
+    // else fall back to native. Destroys any previous HLS instance first.
+    // Returns the hls.js instance (or null for native).
     function loadSource(url) {
-      sourceUrl = url || sourceUrl;
-      if (!sourceUrl) return;
+      if (!url) return null;
 
       // Clean up existing hls instance.
       if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
 
-      var token = getToken();
-      var headers = {};
-      if (token) { headers['Authorization'] = 'Bearer ' + token; }
+      // Clear video src to stop any existing playback before re-attaching.
+      try { video.removeAttribute('src'); video.load(); } catch (e) {}
 
       if (typeof Hls !== 'undefined' && !supportsNativeHls()) {
-        hls = new Hls({ xhrSetup: function (xhr) { xhr.open('GET', url, true); } });
-        hls.loadSource(sourceUrl);
+        hls = new Hls();
+        hls.loadSource(url);
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function () {
@@ -57,31 +55,34 @@
             var levels = hls.levels.map(function (l) { return { height: l.height, bandwidth: l.bitrate }; });
             onLevels(levels);
             onSourceLoaded(hls.levels);
+            onManifestParsed();
           } catch (e) {}
         });
 
-        hls.on(Hls.Events.ERROR, function (event, data) {
-          onError({ type: 'hls', data: data });
+        hls.on(Hls.Events.LEVEL_SWITCHED, function (_e, data) {
+          if (data && data.level >= 0) {
+            onLevelSwitched(data.level);
+          }
         });
 
-        // Expose to resilience via the error bus.
-        if (opts.errorBus) { opts.errorBus.hls = hls; }
+        hls.on(Hls.Events.ERROR, function (event, data) {
+          onError({ type: 'hls', data: data, event: event });
+        });
+
         return hls;
       }
 
-      // Native HLS.
-      video.src = sourceUrl;
+      // Native HLS or MP4 — set src directly.
+      video.src = url;
       video.addEventListener('loadedmetadata', function once() {
         video.removeEventListener('loadedmetadata', once);
-        var levels = [];
-        try {
-          var lvls = video.audioTracks || [];
-          onLevels(levels);
-        } catch (e) {}
         onSourceLoaded(null);
+        onManifestParsed();
       });
       return null;
     }
+
+    function getHls() { return hls; }
 
     function getLevels() {
       if (hls) {
@@ -93,24 +94,18 @@
     function setQuality(levelIndex) {
       currentLevel = levelIndex;
       if (hls) { try { hls.currentLevel = levelIndex; } catch (e) {} }
-      if (levelIndex === -1 && hls) { try { hls.currentLevel = -1; } catch (e) {} }
     }
-
-    function setSource(url) { loadSource(url); }
 
     function destroy() {
       if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
       if (video) { try { video.removeAttribute('src'); video.load(); } catch (e) {} }
     }
 
-    // Load the initial source.
-    loadSource(sourceUrl);
-
     return {
       getHls: function () { return hls; },
       getLevels: getLevels,
       setQuality: setQuality,
-      setSource: setSource,
+      loadSource: loadSource,
       destroy: destroy,
     };
   }
