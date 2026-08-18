@@ -107,39 +107,56 @@
       try {
         var episodeId = getEpisodeId();
         var newUrl = resolveStreamUrl(episodeId, true);
-        if (hls) {
-          hls.loadSource(newUrl);
-          hls.attachMedia(video);
-          await seekTo(position);
-        } else if (video) {
-          video.src = newUrl;
-          await seekTo(position);
-          video.play().catch(function () {});
+        if (newUrl) {
+          if (window.__playerCore && typeof window.__playerCore.loadSource === 'function') {
+            // Delegate to PlayerCore — it destroys the old HLS instance first,
+            // clears the video src, and creates a fresh instance. This is the
+            // SINGLE HLS owner; we never attach directly.
+            window.__playerCore.loadSource(newUrl);
+            await seekTo(position);
+          } else if (video) {
+            video.src = newUrl;
+            await seekTo(position);
+            video.play().catch(function () {});
+          }
+          level1Attempts = 0;
+          recovering = false;
+          return;
         }
-        level1Attempts = 0;
-        recovering = false;
-        return;
       } catch (e) { log(2, 're-resolve_failed', e.message); }
 
-      // Level 3: failover to next healthy provider. (Provider list from
-      // /api/stream/resolve with a different provider hint; simplified here.)
+      // Level 3: failover to next healthy provider. Re-authorize + re-resolve
+      // via the currentUnifiedStream pipeline, then delegate to PlayerCore.
       setReconnecting(3);
       log(3, 'fatal_network', 'provider failover');
       try {
         var episodeId2 = getEpisodeId();
-        var failoverUrl = API_BASE + '/api/stream/resolve?episodeId=' + encodeURIComponent(episodeId2) + '&force=1&failover=1';
-        if (hls) {
-          hls.loadSource(failoverUrl);
-          hls.attachMedia(video);
-          await seekTo(position);
-        } else if (video) {
-          video.src = failoverUrl;
-          await seekTo(position);
-          video.play().catch(function () {});
+        if (window.__playerCore && typeof window.__playerCore.loadSource === 'function') {
+          // Re-authorize to mint a fresh token for the same episode, then
+          // delegate the new source to PlayerCore (which destroys the old hls).
+          if (typeof window.authorizeStream === 'function') {
+            await new Promise(function (resolve) {
+              window.authorizeStream(episodeId2).then(function (auth) {
+                if (auth && auth.token && typeof window.appendStreamToken === 'function') {
+                  var base = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : '';
+                  var current = window.currentStreamUrl;
+                  if (current && current.includes('/api/stream-proxy/')) {
+                    var sep = current.includes('?') ? '&' : '?';
+                    current = current + sep + 'token=' + encodeURIComponent(auth.token);
+                    window.__playerCore.loadSource(current);
+                    resolve();
+                    return;
+                  }
+                }
+                resolve();
+              }).catch(function () { resolve(); });
+            });
+            await seekTo(position);
+          }
+          level1Attempts = 0;
+          recovering = false;
+          return;
         }
-        level1Attempts = 0;
-        recovering = false;
-        return;
       } catch (e) { log(3, 'failover_failed', e.message); }
 
       // Level 4: only now show the error card.
