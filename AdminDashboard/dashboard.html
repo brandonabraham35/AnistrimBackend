@@ -111,6 +111,54 @@ iles<!DOCTYPE html>
                 <span id="health-overall-status" class="health-overall-badge health-unknown">UNKNOWN</span>
             </div>
 
+            <!-- Health & Reliability Metrics (p50/p95, 5xx, sparklines) -->
+            <div class="section-card" style="margin-bottom:1rem;">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-heart-pulse"></i> Health & Reliability Metrics <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(24h)</span></h4>
+                </div>
+                <div class="health-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;padding:1rem;">
+                    <div class="health-metric">
+                        <span class="health-metric-label">p50 Latency</span>
+                        <span class="health-metric-value" id="hm-p50">—</span>
+                    </div>
+                    <div class="health-metric">
+                        <span class="health-metric-label">p95 Latency</span>
+                        <span class="health-metric-value" id="hm-p95">—</span>
+                    </div>
+                    <div class="health-metric">
+                        <span class="health-metric-label">5xx Rate</span>
+                        <span class="health-metric-value" id="hm-5xx">—</span>
+                    </div>
+                    <div class="health-metric">
+                        <span class="health-metric-label">Stream Failures</span>
+                        <span class="health-metric-value" id="hm-stream-fails">—</span>
+                    </div>
+                    <div class="health-metric">
+                        <span class="health-metric-label">Failed Payments</span>
+                        <span class="health-metric-value" id="hm-payment-fails">—</span>
+                    </div>
+                    <div class="health-metric">
+                        <span class="health-metric-label">Email Failures</span>
+                        <span class="health-metric-value" id="hm-email-fails">—</span>
+                    </div>
+                </div>
+                <div class="health-metrics-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;padding:0 1rem 1rem;">
+                    <div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">5xx / Total (per hour)</div>
+                        <div class="chart-container" id="chart-5xx-rate" style="height:180px;"><canvas></canvas></div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Health Sparklines</div>
+                        <div class="chart-container" id="chart-health-sparkline" style="height:180px;"><canvas></canvas></div>
+                        <div id="health-sparkline-meta" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Top Failing Episodes</div>
+                        <div id="hm-top-episodes" style="font-size:0.8rem;color:var(--text-muted);max-height:180px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+            </div>
+
 <!-- Stats Grid Row 1 -->
             <div class="stats-grid">
                 <div class="stat-card card">

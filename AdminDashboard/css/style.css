@@ -74,6 +74,38 @@ body::before {
 .health-card.health-err   { border-left: 4px solid var(--danger); }
 .health-card.health-unknown { border-left: 4px solid var(--border); }
 .health-icon { font-size: 1.15rem; flex-shrink: 0; }
+
+/* Health & Reliability Metrics (p50/p95, 5xx, sparklines) */
+.health-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: var(--bg-card, #11131b);
+    border: 1px solid var(--border, #2a2c37);
+    border-left: 4px solid var(--border, #2a2c37);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    transition: border-color 0.2s;
+}
+.health-metric-label {
+    font-size: 0.72rem;
+    color: var(--text-muted, #a0aec0);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+.health-metric-value {
+    font-size: 1.05rem;
+    color: var(--text-main, #f8fafc);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.health-metrics-charts .chart-container {
+    background: var(--bg-card, #11131b);
+    border: 1px solid var(--border, #2a2c37);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+}
 .health-info { display: flex; flex-direction: column; min-width: 0; }
 .health-label { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .health-status { font-size: 0.85rem; font-weight: 700; color: var(--text-main); }

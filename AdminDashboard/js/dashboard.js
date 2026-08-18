@@ -279,6 +279,116 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ─── Load Health & Reliability Metrics (p50/p95, 5xx, sparklines) ──
+  // Fetches /api/admin/dashboard/health/metrics (adminHealthMetrics-backed)
+  // and renders the latency percentiles, 5xx rate, health sparklines, top
+  // failing episodes, and payment/email failure buckets.
+  async function loadHealthMetrics() {
+    const _set = (id, val, unit = '') => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val === null || val === undefined || val === '' ? '—' : String(val) + unit;
+    };
+
+    try {
+      const data = await window.apiRequest('/api/admin/dashboard/health/metrics?hours=24');
+
+      // ── Summary cards ──
+      if (data.latency) {
+        _set('hm-p50', data.latency.p50 != null ? Math.round(data.latency.p50) : null, ' ms');
+        _set('hm-p95', data.latency.p95 != null ? Math.round(data.latency.p95) : null, ' ms');
+      }
+      if (data.fivexx) {
+        const buckets = data.fivexx.buckets || [];
+        const serverErrors = buckets.reduce((a, b) => a + (b.serverErrors || 0), 0);
+        const total = buckets.reduce((a, b) => a + (b.total || 0), 0);
+        const rate = total > 0 ? ((serverErrors / total) * 100).toFixed(2) + '%' : '—';
+        _set('hm-5xx', rate);
+        // ── 5xx / total per-hour chart ──
+        _createOrUpdateChart('chart-5xx-rate', {
+          type: 'line',
+          data: {
+            labels: buckets.map(b => String(b.hour).slice(5, 16)), // MM-DD HH:00
+            datasets: [
+              { label: 'Total', data: buckets.map(b => b.total), borderColor: '#64748b', backgroundColor: 'rgba(100,116,139,0.15)', fill: true, tension: 0.3, pointRadius: 1, borderWidth: 1 },
+              { label: '5xx', data: buckets.map(b => b.serverErrors), borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.15)', fill: true, tension: 0.3, pointRadius: 1, borderWidth: 1 },
+            ],
+          },
+          options: _getChartDefaults(),
+        });
+      }
+      if (data.stream) {
+        const fails = (data.stream.byProvider || []).reduce((a, p) => a + (p.failures || 0), 0);
+        _set('hm-stream-fails', fails);
+      }
+      if (data.payments) {
+        const failed = (data.payments.buckets || []).reduce((a, b) => a + (b.failed || 0), 0);
+        _set('hm-payment-fails', failed);
+      }
+      if (data.email) {
+        const failed = (data.email.buckets || []).filter(b => b.status === 'failure').reduce((a, b) => a + (b.count || 0), 0);
+        _set('hm-email-fails', failed);
+      }
+
+      // ── Health sparklines (component health history) ──
+      if (data.health && data.health.points && data.health.points.length) {
+        const grouped = {};
+        data.health.points.forEach(p => {
+          if (!grouped[p.component]) grouped[p.component] = [];
+          grouped[p.component].push({ t: new Date(p.sampledAt).getTime(), s: p.status, lat: p.latencyMs });
+        });
+        const components = Object.keys(grouped).slice(0, 6);
+        const colors = ['#10b981', '#3b82f6', '#f59e0b', '#dc2626', '#8b5cf6', '#06b6d4'];
+        const datasets = components.map((c, i) => ({
+          label: c,
+          data: grouped[c].map(p => p.lat),
+          borderColor: colors[i % colors.length],
+          backgroundColor: 'transparent',
+          fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+        }));
+        _createOrUpdateChart('chart-health-sparkline', {
+          type: 'line',
+          data: { labels: grouped[components[0]] ? grouped[components[0]].map(p => new Date(p.t).toLocaleTimeString()) : [], datasets },
+          options: { ..._getChartDefaults(), plugins: { ..._getChartDefaults().plugins, legend: { ..._getChartDefaults().plugins.legend, position: 'bottom', labels: { ..._getChartDefaults().plugins.legend.labels, boxWidth: 8, font: { size: 8 } } } } },
+        });
+
+        const metaEl = document.getElementById('health-sparkline-meta');
+        if (metaEl) {
+          const degradedSince = data.health.degradedSince;
+          metaEl.textContent = degradedSince
+            ? `Earliest non-up sample: ${new Date(degradedSince).toLocaleString()}`
+            : `${data.health.points.length} samples over ${data.health.hours || 24}h`;
+        }
+      } else {
+        _destroyChart('chart-health-sparkline');
+        const metaEl = document.getElementById('health-sparkline-meta');
+        if (metaEl) metaEl.textContent = 'No health_samples data yet (runs every 30s).';
+      }
+
+      // ── Top failing episodes ──
+      const topEl = document.getElementById('hm-top-episodes');
+      if (topEl) {
+        const top = (data.stream && data.stream.topEpisodes) || [];
+        if (!top.length) {
+          topEl.textContent = 'No stream failures recorded in range.';
+        } else {
+          topEl.innerHTML = top.slice(0, 10).map(ep =>
+            `<div style="display:flex;justify-content:space-between;gap:0.5rem;padding:2px 0;border-bottom:1px solid var(--border,#2a2c37);">
+               <span>${window._escapeHTML(ep.title || 'Episode #' + ep.episodeId)}</span>
+               <span style="color:var(--danger,#f43f5e);white-space:nowrap;">${ep.failures} fails</span>
+             </div>`
+          ).join('');
+        }
+      }
+    } catch (e) {
+      console.warn('[HealthMetrics] Failed to load:', e.message);
+      ['hm-p50','hm-p95','hm-5xx','hm-stream-fails','hm-payment-fails','hm-email-fails'].forEach(id => _set(id, null));
+      _destroyChart('chart-5xx-rate');
+      _destroyChart('chart-health-sparkline');
+      const topEl = document.getElementById('hm-top-episodes');
+      if (topEl) topEl.textContent = 'Failed to load health metrics.';
+    }
+  }
+
   // ─── Load Recent Activity Timeline ─────────────────────────────
   async function loadActivityTimeline() {
     const container = document.getElementById('recent-activity-timeline');
@@ -407,6 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load all dashboard components
     loadOverview();
     loadHealth();
+    loadHealthMetrics();
     loadCharts();
     loadAdsMetrics();
     loadActivityTimeline();
@@ -430,6 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function fullRefresh() {
       loadOverview();
       loadHealth();
+      loadHealthMetrics();
       loadCharts();
       loadAdsMetrics();
       loadActivityTimeline();
