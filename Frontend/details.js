@@ -1,9 +1,10 @@
-// details.js — AniStrim (Updated: episodes now fetched from separate endpoint)
+// details.js — AniStrim (Updated: episodes rendered from payload + refresh endpoint)
 // Prompt 6: frontend gating is COSMETIC ONLY. The server is the boundary.
 // The frontend reads ONLY the server-emitted fields effectiveTier / locked /
 // availableAt / accessState — never is_premium, never localStorage, never a
 // JWT claim.
 let currentAnime = null;
+let currentStatus = null; // last non-2xx status (for error reporting)
 
 // ── Robust image helper ──────────────────────────────────
 // Uses the shared fallback implementation from the consolidated frontend runtime
@@ -57,56 +58,72 @@ async function loadDetails() {
 
   showLoadingState();
 
-  // Hard timeout — if nothing resolves in 8s, try the backup
-  const timeout = setTimeout(() => loadFromBackup(id), 8000);
+  // Hard timeout — if nothing resolves in 10s, surface a network-error state
+  // (does NOT mask real 4xx/5xx; it fires only when the fetch never resolves).
+  const timeout = setTimeout(() => {
+    if (!currentAnime) showErrorState(id, 0, 'Request timed out. Please check your connection.');
+  }, 10000);
 
   try {
     const controller = new AbortController();
     const signalTimeout = setTimeout(() => controller.abort(), 7000);
 
-    // Use the centralized apiFetch helper from scrpt.js
-    const { ok, data } = await apiFetch(`/api/anime/${id}`, { signal: controller.signal });
+    // Use the centralized apiFetch helper (returns envelope { ok, status, data })
+    const res = await apiFetch(`/api/anime/${id}`, { signal: controller.signal });
 
     clearTimeout(signalTimeout);
     clearTimeout(timeout);
 
-    if (!ok) throw new Error('API fetch failed');
+    if (res.timedOut) {
+      // Real network timeout — surface it (status 0).
+      console.error('[Details] Timed out loading anime', { id, status: res.status });
+      showErrorState(id, 0, 'Timed out loading anime data. Please check your connection and retry.');
+      return;
+    }
+
+    if (!res.ok) {
+      // Real HTTP error — report status + server message, no trending fallback.
+      currentStatus = res.status;
+      const serverMsg = (res.data && res.data.error) || (res.data && res.data.message) || 'Could not load this title.';
+      console.error('[Details] Failed to load anime', { id, status: res.status, data: res.data });
+      showErrorState(id, res.status, serverMsg);
+      return;
+    }
+
+    const data = res.data || {};
     // Guard: ensure we got a real anime object back
-    if (!data || typeof data !== 'object' || !data.id) throw new Error('Invalid response shape');
+    if (!data || typeof data !== 'object' || !data.id) {
+      showErrorState(id, 0, 'Invalid response shape from server.');
+      return;
+    }
 
     currentAnime = data;
     renderDetails(currentAnime);
 
-    // Fetch episodes from the new dedicated endpoint
+    // Render episodes from the payload immediately (getById returns episodes[]),
+    // then refine via the dedicated endpoint. A single endpoint failure must
+    // NOT blank the episode section.
+    const payloadEpisodes = Array.isArray(data.episodes) ? data.episodes : [];
+    if (payloadEpisodes.length) {
+      renderEpisodeRows(data.id, payloadEpisodes);
+    }
+
+    // Refresh / refine from the dedicated endpoint (best-effort).
     fetchAndRenderEpisodes(data.id);
   } catch (e) {
     clearTimeout(timeout);
-    console.warn('Primary fetch failed, trying backup:', e.message);
-    loadFromBackup(id);
+    console.error('[Details] loadDetails error:', e);
+    showErrorState(id, 0, 'Could not load anime data. Please check your connection and retry.');
   }
 }
 
-// ── Backup: scan trending list ──────────────────────────
-async function loadFromBackup(id) {
-  try {
-    // Use the centralized apiFetch helper
-    const { ok, data: all } = await apiFetch('/api/anime/trending');
-    if (!ok) throw new Error('Trending fetch failed');
-
-    const found = Array.isArray(all) ? all.find(a => String(a.id) === String(id)) : null;
-    if (found) {
-      currentAnime = { ...found, episodes: [] }; // episodes not in trending; show empty list
-      renderDetails(currentAnime);
-      // Even backup can try to fetch episodes
-      fetchAndRenderEpisodes(id);
-    } else {
-      showErrorState(id);
-    }
-  } catch (err) {
-    console.error('Backup fetch failed:', err);
-    showErrorState(id);
-  }
-}
+// ── No backup trending-scan fallback for HTTP errors ─────
+// In FIX 2 we REMOVE the loadFromBackup trending-scan path entirely.
+// The previous version hid real 404/500 responses behind a "backup" that
+// re-scanned the trending list and silently failed to find the title, leaving
+// a false "Could Not Load Anime". Now genuine network failures (status 0 /
+// timeout) show a clear, retryable network-error state; real HTTP errors show
+// their actual status + message.
 
 // ── Main render ─────────────────────────────────────────
 function renderDetails(a) {
@@ -126,9 +143,13 @@ function renderDetails(a) {
   setText('details-rating',   `⭐ ${a.rating || '0.0'}`);
   setText('details-desc',     a.description || 'No description available.');
 
-  // Use setText for year and episodes count for consistency and safety
+  // ── Render the real episode count from the payload immediately ──
+  // No hardcoded '-- Episodes'. getById returns episodes[], so we show the
+  // real count now; fetchAndRenderEpisodes will refine it (and may add the
+  // per-episode rows + Start Watching button).
+  const epCount = Array.isArray(a.episodes) ? a.episodes.length : 0;
   setText('details-year', `📅 ${a.year || 'N/A'}`);
-  setText('details-eps', `📺 -- Episodes`);
+  setText('details-eps', `📺 ${epCount} Episode${epCount !== 1 ? 's' : ''}`);
 
   const studioEl = document.getElementById('details-studio');
   if (studioEl && a.studio) studioEl.innerHTML = `🏠 ${a.studio}`;
@@ -145,78 +166,110 @@ function renderDetails(a) {
   }
 }
 
-// ── Fetch & render episodes from dedicated endpoint ────
+// ── Render episode rows (shared by payload render + refresh) ──
+// Extracted so both the initial payload render and the /episodes refresh use
+// the exact same row-building + Start Watching logic.
+function renderEpisodeRows(animeId, episodes) {
+  const container = document.getElementById('episode-list');
+  if (!container) return;
+
+  const list = Array.isArray(episodes) ? episodes : [];
+
+  // ── Set "Start Watching" button to first unlocked episode ──
+  // CANONICAL URL: watch.html?id=<animeId>&ep=<episodeNumber>
+  // Prompt 6: unlocked = server says NOT locked. Never read is_premium.
+  const watchBtn = document.getElementById('start-watching-btn');
+  if (watchBtn) {
+    const firstUnlocked = list.find(ep => !episodeIsLocked(ep));
+    if (firstUnlocked) {
+      const epNum = firstUnlocked.episode_number || firstUnlocked.number;
+      watchBtn.onclick = () => {
+        location.href = `watch.html?id=${animeId}&ep=${epNum}`;
+      };
+    } else {
+      // All episodes are locked for this user
+      watchBtn.onclick = () => { location.href = 'upgrade.html'; };
+      watchBtn.textContent = '👑 Upgrade to Watch';
+    }
+  }
+
+  if (!list.length) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">No episodes available yet.</p>';
+    return;
+  }
+
+  // Update episode count in meta bar.
+  const epsEl = document.getElementById('details-eps');
+  if (epsEl) {
+    epsEl.innerHTML = `📺 ${list.length} Episode${list.length !== 1 ? 's' : ''}`;
+  }
+
+  // ── Build episode rows ──
+  container.innerHTML = list.map(ep => {
+    const locked = episodeIsLocked(ep);
+    const epNum = ep.number || ep.episode_number;
+    const label = episodeAccessLabel(ep);
+    const accessClass = episodeAccessClass(ep);
+    const isPremiumTier = ep.effectiveTier === 'premium';
+    return `
+      <div class="episode-row ${locked ? 'episode-locked' : ''} ${accessClass}"
+           data-locked="${locked}" data-anime-id="${animeId}" data-ep-id="${ep.id}">
+        <span class="ep-num-badge">${epNum}</span>
+        <span class="ep-row-title">
+          ${window._escapeHTML(ep.title || 'Episode ' + epNum)}
+          ${isPremiumTier ? ' <span style="color:var(--orange);font-size:0.75rem;">👑</span>' : ''}
+        </span>
+        <span class="ep-access-label">${window._escapeHTML(label)}</span>
+        ${locked ? '<span class="ep-lock-badge">🔒</span>' : '<span class="ep-play-arrow">▶</span>'}
+      </div>`;
+  }).join('');
+
+  // ── Attach the delegated click listener exactly ONCE ──
+  // Guard with a data-bound flag so repeated renderEpisodeRows / Retry calls
+  // never stack a second handleEpisodeClick (one tap = one navigation).
+  if (!container.dataset.bound) {
+    container.addEventListener('click', handleEpisodeClick);
+    container.dataset.bound = '1';
+  }
+}
+
+// ── Fetch & refine episodes from dedicated endpoint ────
+// The payload already rendered rows; this endpoint is a REFRESH. A failure
+// must NOT blank the section (it shows the inline error + Retry which
+// re-runs just this refresh).
 async function fetchAndRenderEpisodes(animeId) {
   const container = document.getElementById('episode-list');
   if (!container) return;
 
-  // Show a loading spinner inside the episode area
-  container.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">Loading episodes...</p>';
+  // If we already rendered payload rows, keep them visible while we refresh.
+  const hadRows = container.querySelector('.episode-row');
+  if (!hadRows) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">Loading episodes...</p>';
+  }
 
   try {
-    const { ok, data } = await apiFetch(`/api/anime/${animeId}/episodes`);
+    const res = await apiFetch(`/api/anime/${animeId}/episodes`);
 
-    if (!ok || !Array.isArray(data)) {
-      throw new Error('Invalid episodes response');
-    }
-
-    const episodes = data;
-
-    // Update episode count in meta bar
-    const epsEl = document.getElementById('details-eps');
-    if (epsEl) {
-      epsEl.innerHTML = `📺 ${episodes.length} Episode${episodes.length !== 1 ? 's' : ''}`;
-    }
-
-    // Empty state
-    if (!episodes.length) {
-      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">No episodes available yet.</p>';
+    if (!res.ok) {
+      console.error('[Details] Episode refresh failed', { animeId, status: res.status, data: res.data });
+      // If we have payload rows, keep them — the refresh failure is non-fatal.
+      if (hadRows) return;
+      container.innerHTML = `
+        <p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">
+          ${window._escapeHTML('Could not load episodes.')}
+          <button onclick="fetchAndRenderEpisodes('${animeId}')"
+            style="background:none;border:1px solid var(--border);color:var(--purple);padding:4px 12px;border-radius:6px;cursor:pointer;margin-left:8px;font-size:0.82rem;">
+            ↺ Retry
+          </button>
+        </p>`;
       return;
     }
 
-    // ── Set "Start Watching" button to first unlocked episode ──
-    // CANONICAL URL: watch.html?id=<animeId>&ep=<episodeNumber>
-    // Prompt 6: unlocked = server says NOT locked. Never read is_premium.
-    const watchBtn = document.getElementById('start-watching-btn');
-    if (watchBtn) {
-      const firstUnlocked = episodes.find(ep => !episodeIsLocked(ep));
-      if (firstUnlocked) {
-        const epNum = firstUnlocked.episode_number || firstUnlocked.number;
-        watchBtn.onclick = () => {
-          location.href = `watch.html?id=${animeId}&ep=${epNum}`;
-        };
-      } else {
-        // All episodes are locked for this user
-        watchBtn.onclick = () => { location.href = 'upgrade.html'; };
-        watchBtn.textContent = '👑 Upgrade to Watch';
-      }
-    }
-
-    // ── Build episode rows ──
-    container.innerHTML = episodes.map(ep => {
-      const locked = episodeIsLocked(ep);
-      const epNum = ep.number || ep.episode_number;
-      const label = episodeAccessLabel(ep);
-      const accessClass = episodeAccessClass(ep);
-      const isPremiumTier = ep.effectiveTier === 'premium';
-      return `
-        <div class="episode-row ${locked ? 'episode-locked' : ''} ${accessClass}" 
-             data-locked="${locked}" data-anime-id="${animeId}" data-ep-id="${ep.id}">
-          <span class="ep-num-badge">${epNum}</span>
-          <span class="ep-row-title">
-            ${window._escapeHTML(ep.title || 'Episode ' + epNum)}
-            ${isPremiumTier ? ' <span style="color:var(--orange);font-size:0.75rem;">👑</span>' : ''}
-          </span>
-          <span class="ep-access-label">${window._escapeHTML(label)}</span>
-          ${locked ? '<span class="ep-lock-badge">🔒</span>' : '<span class="ep-play-arrow">▶</span>'}
-        </div>`;
-    }).join('');
-
-    // Add a single, delegated event listener for all episode rows
-    container.addEventListener('click', handleEpisodeClick);
-
+    const episodes = Array.isArray(res.data) ? res.data : [];
+    renderEpisodeRows(animeId, episodes);
   } catch (e) {
-    console.error('fetchAndRenderEpisodes error:', e);
+    console.error('[Details] fetchAndRenderEpisodes error:', e);
+    if (hadRows) return;
     container.innerHTML = `
       <p style="color:var(--text-muted);font-size:0.88rem;padding:12px 0;">
         ${window._escapeHTML('Could not load episodes.')}
@@ -252,7 +305,7 @@ async function addToListFromDetails() {
   if (!currentAnime) return;
   if (!localStorage.getItem('token')) { location.href = 'login.html'; return; }
   try {
-    // Use the centralized apiFetch helper
+    // Use the centralized apiFetch helper (returns envelope)
     const { ok, data } = await apiFetch('/api/watchlist/add', {
       method: 'POST',
       body: { animeId: currentAnime.id }
@@ -272,12 +325,17 @@ function showLoadingState() {
   if (img) img.src = '';
 }
 
-function showErrorState(id) {
+function showErrorState(id, status, message) {
+  currentStatus = status || 0;
+  // Name the real signal: HTTP status + server message where available.
+  const statusText = status
+    ? ` (HTTP ${status})`
+    : ' (network error)';
   setText('details-title', 'Could Not Load Anime');
-  setText('details-desc', window._escapeHTML('Something went wrong fetching this title. Check your connection and try again.'));
+  setText('details-desc', window._escapeHTML((message || 'Something went wrong fetching this title.') + statusText));
   document.getElementById('start-watching-btn')?.remove();
 
-  // Show a retry button
+  // Show retry (re-runs the ORIGINAL load — now it can actually succeed).
   const btns = document.querySelector('.details-btns');
   if (btns && id) {
     btns.innerHTML = `
