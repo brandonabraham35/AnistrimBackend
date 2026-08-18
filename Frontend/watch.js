@@ -634,21 +634,15 @@ function initializePlayerWithSource(video, source, metadata) {
 // ── Multi-API: Resolve and play stream ──────────────────────
 // Requests the stream from the backend, then uses
 // initializePlayerWithSource() to attach and play it.
-async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredProvider) {
-  // ── Prompt 2: Authorize playback BEFORE resolving any source ──
+ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredProvider) {
+  // ── Prompt 2: Authorize playback AFTER resolving the stream ──
   // The hardened path requires a valid HMAC token from POST /api/stream/authorize.
-  // This also serves as the authoritative premium gate — a 403 PREMIUM_REQUIRED
-  // renders the premium-required state and aborts stream resolution.
-  if (currentEpId) {
-    try {
-      await authorizeStream(currentEpId);
-    } catch (err) {
-      if (err && err.premiumRequired) throw err; // premium gate already shown
-      if (err && err.deviceLimit) throw err;     // device limit gate already shown (FIX 8)
-      console.warn('[WATCH] Stream authorization failed (non-fatal, continuing):', err.message);
-    }
-  }
-
+  // IMPORTANT: authorization MUST run AFTER /api/stream is fetched. Only then are
+  // the stream contexts registered server-side (via rewriteResultToProxy), so
+  // authorizeStream() mints tokens bound to the EXACT streamIds the frontend will
+  // play. Authorizing BEFORE the fetch mints tokens for a DIFFERENT set of
+  // streamIds, so the proxy URLs returned by /api/stream can't be token-authorized
+  // → the video never loads ("Unable to Play").
   var url = '/api/stream/' + encodeURIComponent(animeTitle) + '/' + episodeNumber;
   if (preferredProvider) {
     url += '?preferredProvider=' + preferredProvider;
@@ -667,6 +661,19 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
   }
 
   console.log("[PLAYER] Stream API response", data);
+
+  // ── Authorize NOW (contexts are registered) ──────────────────
+  // This also serves as the authoritative premium gate — a 403 PREMIUM_REQUIRED
+  // renders the premium-required state and aborts playback.
+  if (data && data.sources && data.sources.length > 0 && currentEpId) {
+    try {
+      await authorizeStream(currentEpId);
+    } catch (err) {
+      if (err && err.premiumRequired) throw err; // premium gate already shown
+      if (err && err.deviceLimit) throw err;     // device limit gate already shown (FIX 8)
+      console.warn('[WATCH] Stream authorization failed (non-fatal, continuing):', err.message);
+    }
+  }
 
   if (data && data.sources && data.sources.length > 0) {
     const parsedTime = Date.now();
