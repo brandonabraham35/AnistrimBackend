@@ -973,3 +973,32 @@ html, body {
 video::cue {
     font-family: inherit;
 }
+
+
+/* ── Device Limit Gate (FIX 8 — plans.max_devices) ─────────── */
+.device-limit-list {
+    list-style: none;
+    margin: 12px 0 4px;
+    padding: 0;
+    width: 100%;
+    max-height: 160px;
+    overflow-y: auto;
+    text-align: left;
+}
+.device-limit-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    font-size: 0.9rem;
+    color: var(--player-text-muted, rgba(255,255,255,0.7));
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.device-limit-list li:last-child { border-bottom: none; }
+.device-limit-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+}

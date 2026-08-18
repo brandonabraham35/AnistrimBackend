@@ -49,6 +49,20 @@
             </div>
         </div>
 
+        <!-- Device Limit Overlay (FIX 8 — plans.max_devices enforcement) -->
+        <div id="device-limit-overlay" class="player-overlay premium-gate" style="display: none;">
+            <div class="premium-gate-card">
+                <div class="premium-gate-icon">📱</div>
+                <h2 id="device-limit-title">Too many devices streaming</h2>
+                <p id="device-limit-message">Your plan has an active device limit.</p>
+                <ul id="device-limit-list" class="device-limit-list"></ul>
+                <div class="premium-gate-actions">
+                    <button id="device-limit-manage-btn" class="player-btn premium-gate-primary">Manage Devices</button>
+                    <button id="device-limit-back-btn" class="player-btn">← Back</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Resume Prompt Overlay (near-end continue) -->
         <div id="resume-overlay" class="player-overlay resume-prompt">
             <div class="resume-card">

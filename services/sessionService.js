@@ -274,6 +274,77 @@ async function listSessions(userId) {
   return rows;
 }
 
+// ── FIX 8 (P1): plans.max_devices enforcement ────────────────
+// Counts the user's CURRENTLY ACTIVE sessions (not revoked, not expired) and
+// compares against the effective plan's max_devices (from the plans table,
+// joined via the user's active subscription). This is evaluated at stream
+// authorize time so a device over-run blocks new playback, and it surfaces a
+// DEVICE_LIMIT_REACHED error with the active-device list.
+async function countActiveDevices(userId) {
+  if (userId === undefined || userId === null) return 0;
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS c
+     FROM user_sessions
+     WHERE user_id = ? AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+    [userId]
+  );
+  return Number(rows && rows[0] && rows[0].c) || 0;
+}
+
+// Returns the user's effective plan max_devices (default 2), or null for
+// non-premium / legacy (no active subscription).
+async function getPlanMaxDevices(userId) {
+  if (userId === undefined || userId === null) return null;
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.max_devices
+       FROM subscriptions s
+       JOIN plans p ON p.id = s.plan_id
+       WHERE s.user_id = ? AND s.state IN ('trialing','active','grace')
+         AND (s.ends_at IS NULL OR s.ends_at > NOW())
+       ORDER BY (s.ends_at IS NULL) DESC
+       LIMIT 1`,
+      [userId]
+    );
+    const md = rows && rows[0] && rows[0].max_devices;
+    return (md === undefined || md === null || md === '') ? null : Number(md);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Enforce plans.max_devices at stream-authorize time.
+ * @returns {{ok:boolean, maxDevices?:number, activeDevices?:number, devices?:Array}}
+ *   ok=false => DEVICE_LIMIT_REACHED. ok=true => allowed (or no limit / free).
+ * Admin is always allowed.
+ */
+async function enforceDeviceLimit(userId, isAdmin = false) {
+  if (isAdmin) return { ok: true }; // admins bypass device limits
+  const max = await getPlanMaxDevices(userId);
+  if (max === null) return { ok: true }; // non-premium / no plan → no limit
+  const active = await countActiveDevices(userId);
+  if (active > max) {
+    const [rows] = await pool.query(
+      `SELECT id, device_name, platform, last_seen_at
+       FROM user_sessions
+       WHERE user_id = ? AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY last_seen_at DESC
+       LIMIT ?`,
+      [userId, max + 10]
+    );
+    return {
+      ok: false,
+      maxDevices: max,
+      activeDevices: active,
+      devices: rows || [],
+    };
+  }
+  return { ok: true, maxDevices: max, activeDevices: active };
+}
+
 module.exports = {
   createSession,
   signAccessToken,
@@ -282,6 +353,9 @@ module.exports = {
   revokeAllSessions,
   logEvent,
   listSessions,
+  countActiveDevices,
+  getPlanMaxDevices,
+  enforceDeviceLimit,
   sha256,
   ipHash,
   detectPlatform,

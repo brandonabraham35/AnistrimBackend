@@ -487,6 +487,29 @@ exports.authorizeStream = async (req, res) => {
       });
     }
 
+    // ── FIX 8 (P1): enforce plans.max_devices ─────────────────
+    // Count the user's active sessions and compare against the effective
+    // plan's max_devices. Refuse to mint if over the limit — surface the
+    // active-device list so the player can show a distinct DEVICE_LIMIT state.
+    try {
+      const { enforceDeviceLimit } = require('../services/sessionService');
+      const isAdmin = req.user?.isAdmin === true || (req.tokenClaims?.roles || []).includes('admin');
+      const deviceCheck = await enforceDeviceLimit(userId, isAdmin);
+      if (!deviceCheck.ok) {
+        return res.status(403).json({
+          code: 'DEVICE_LIMIT_REACHED',
+          maxDevices: deviceCheck.maxDevices,
+          activeDevices: deviceCheck.activeDevices,
+          devices: deviceCheck.devices || [],
+          message: `Device limit reached (${deviceCheck.activeDevices}/${deviceCheck.maxDevices}). Remove a device from your account to keep streaming.`,
+        });
+      }
+    } catch (deviceErr) {
+      // On a failure, deny (fail closed) — but only for the device check itself;
+      // the episode resolve below still runs normally.
+      logger.warn('[StreamController] device limit check failed (deny)', { userId, error: deviceErr.message });
+    }
+
     // ── Resolve (animeTitle, episodeNumber) from the episodeId ──
     // Both are needed to resolve the stream if no context is registered yet.
     let animeTitle = '', episodeNumber = null;

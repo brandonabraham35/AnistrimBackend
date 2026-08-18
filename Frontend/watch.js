@@ -124,6 +124,21 @@ async function authorizeStream(episodeId) {
     method: 'POST',
     body: JSON.stringify({ episodeId: String(episodeId) }),
   });
+  // ── FIX 8 (P1): plans.max_devices enforcement ─────────────────
+  // The backend returns 403 DEVICE_LIMIT_REACHED with the active-device list
+  // when the user's active sessions exceed their plan's max_devices. Surface
+  // it as a DISTINCT player state (DEVICE_LIMIT_REQUIRED) — not the generic
+  // PREMIUM_REQUIRED gate, and not a generic playback failure.
+  if (status === 403 || (data && data.code === 'DEVICE_LIMIT_REACHED')) {
+    setPlayerState(PLAYER_STATES.DEVICE_LIMIT_REQUIRED, {
+      maxDevices: data.maxDevices,
+      activeDevices: data.activeDevices,
+    });
+    showDeviceLimitGate(data);
+    const err = new Error('Device limit reached.');
+    err.deviceLimit = true;
+    throw err;
+  }
   if (status === 403 || (data && data.code === 'PREMIUM_REQUIRED')) {
     setPlayerState(PLAYER_STATES.PREMIUM_REQUIRED, {
       requiredTier: data.requiredTier,
@@ -296,6 +311,7 @@ const PLAYER_STATES = {
   PLAYBACK_ERROR: 'PLAYBACK_ERROR',
   AUTH_REQUIRED: 'AUTH_REQUIRED',
   PREMIUM_REQUIRED: 'PREMIUM_REQUIRED',
+  DEVICE_LIMIT_REQUIRED: 'DEVICE_LIMIT_REQUIRED',
 };
 let playerState = PLAYER_STATES.INITIALIZING;
 
@@ -321,6 +337,7 @@ function setPlayerState(state, meta = {}) {
     [PLAYER_STATES.PLAYBACK_ERROR]: 'Playback problem',
     [PLAYER_STATES.AUTH_REQUIRED]: 'Sign in required',
     [PLAYER_STATES.PREMIUM_REQUIRED]: 'Premium required',
+    [PLAYER_STATES.DEVICE_LIMIT_REQUIRED]: 'Device limit reached',
   };
   const statusEl = document.getElementById('loading-status');
   if (statusEl && statusText[state]) setLoadingStatus(statusText[state]);
@@ -627,6 +644,7 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
       await authorizeStream(currentEpId);
     } catch (err) {
       if (err && err.premiumRequired) throw err; // premium gate already shown
+      if (err && err.deviceLimit) throw err;     // device limit gate already shown (FIX 8)
       console.warn('[WATCH] Stream authorization failed (non-fatal, continuing):', err.message);
     }
   }
@@ -2886,6 +2904,79 @@ function showPremiumGate(epTitle, requiredTier, availableAt, accessState) {
   }
 }
 window.showPremiumGate = showPremiumGate;
+
+// ════════════════════════════════════════════════════════════
+//  DEVICE LIMIT GATE (FIX 8 — plans.max_devices enforcement)
+// ════════════════════════════════════════════════════════════
+// Shown when POST /api/stream/authorize returns 403 DEVICE_LIMIT_REACHED. The
+// user's active sessions (devices) exceed their plan's max_devices, so new
+// playback is blocked. It is a DISTINCT player state (DEVICE_LIMIT_REQUIRED)
+// with the active-device list so the UI is not a generic failure.
+function showDeviceLimitGate(data) {
+  const info = data || {};
+  const max = info.maxDevices;
+  const active = info.activeDevices;
+  const devices = Array.isArray(info.devices) ? info.devices : [];
+  watchLog('device limit gate shown', { maxDevices: max, activeDevices: active, deviceCount: devices.length });
+  setPlayerState(PLAYER_STATES.DEVICE_LIMIT_REQUIRED, { maxDevices: max, activeDevices: active });
+
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const premiumOverlay = document.getElementById('premium-overlay');
+  const errorOverlay = document.getElementById('error-overlay');
+  const deviceOverlay = document.getElementById('device-limit-overlay');
+  if (loadingOverlay) loadingOverlay.style.display = 'none';
+  if (premiumOverlay) premiumOverlay.style.display = 'none';
+  if (errorOverlay) errorOverlay.style.display = 'none';
+  if (deviceOverlay) {
+    deviceOverlay.style.display = 'flex';
+    deviceOverlay.style.opacity = '1';
+    deviceOverlay.style.visibility = 'visible';
+  }
+
+  const titleEl = document.getElementById('device-limit-title');
+  if (titleEl) titleEl.textContent = 'Too many devices streaming';
+  const msgEl = document.getElementById('device-limit-message');
+  if (msgEl) {
+    msgEl.textContent = 'Your plan allows ' + (max || 'a limited number of') + ' active device' + ((max === 1) ? '' : 's') + ' at a time. You currently have ' + (active || 0) + ' device' + ((active === 1) ? '' : 's') + ' streaming. Remove a device to continue watching here.';
+  }
+
+  // Render the active device list.
+  const listEl = document.getElementById('device-limit-list');
+  if (listEl) {
+    listEl.innerHTML = '';
+    if (devices.length) {
+      devices.forEach(function(d) {
+        const li = document.createElement('li');
+        const platform = d && d.platform ? d.platform : 'device';
+        const name = (d && d.device_name) ? d.device_name : (platform.charAt(0).toUpperCase() + platform.slice(1));
+        const lastSeen = d && d.last_seen_at ? (new Date(d.last_seen_at)).toLocaleString() : 'Active now';
+        const dot = document.createElement('span');
+        dot.className = 'device-limit-dot';
+        li.appendChild(dot);
+        li.appendChild(document.createTextNode(' ' + name + ' — ' + lastSeen));
+        listEl.appendChild(li);
+      });
+    } else {
+      const li = document.createElement('li');
+      li.textContent = 'Another device is currently streaming on this account.';
+      listEl.appendChild(li);
+    }
+  }
+
+  const manageBtn = document.getElementById('device-limit-manage-btn');
+  if (manageBtn) {
+    manageBtn.onclick = function() {
+      // Remember where to return after managing devices.
+      try { localStorage.setItem('anistrim_redirect_after_auth', window.location.href); } catch(e) {}
+      window.location.href = 'profile.html';
+    };
+  }
+  const backBtn = document.getElementById('device-limit-back-btn');
+  if (backBtn) {
+    backBtn.onclick = function() { window.history.back(); };
+  }
+}
+window.showDeviceLimitGate = showDeviceLimitGate;
 
 // ════════════════════════════════════════════════════════════
 //  ERROR OVERLAY  (preserved recovery actions)
