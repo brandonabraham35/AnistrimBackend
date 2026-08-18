@@ -89,10 +89,30 @@ function sha256(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
 }
 
-// HMAC key: prefer a dedicated STREAM_TOKEN_SECRET, fall back to JWT_SECRET so
-// the deploy never breaks when the dedicated secret isn't configured yet.
+// HMAC key: a DEDICATED STREAM_TOKEN_SECRET is REQUIRED. FIX 6 (P1): we no
+// longer fall back to JWT_SECRET — a stream-token key compromise must never
+// become an auth-token (JWT) key compromise, and the two must be rotatable
+// independently. server.js enforces its presence in production (REQUIRED_ENV);
+// here we throw a clear error so a misconfigured process fails loudly instead
+// of minting HMAC with an undefined key (which crypto.createHmac would throw
+// on anyway, but with a confusing message).
+const STREAM_TOKEN_SECRET =
+  process.env.STREAM_TOKEN_SECRET ||
+  (() => {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'STREAM_TOKEN_SECRET is required in production. Generate one with: openssl rand -hex 32'
+      );
+    }
+    // In development, allow boot but warn loudly — production is enforced.
+    // eslint-disable-next-line no-console
+    console.warn('[streamToken] WARNING: STREAM_TOKEN_SECRET is not set. ' +
+      'This is insecure and will fail to boot in production. Use: openssl rand -hex 32');
+    return process.env.JWT_SECRET;
+  })();
+
 function secret() {
-  return process.env.STREAM_TOKEN_SECRET || process.env.JWT_SECRET;
+  return STREAM_TOKEN_SECRET;
 }
 
 function ipHash(ip) {

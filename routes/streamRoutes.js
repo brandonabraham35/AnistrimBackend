@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const streamController = require('../controllers/streamController');
 const { protect } = require('../middleware/auth');
+const { streamAuthorizeLimiter, streamResolveLimiter } = require('../middleware/rateLimit');
 
 // ── FIX 4 (P0): /api/stream/proxy QUERY ROUTE DELETED ────────
 // The stateless query proxy was the security bypass: it accepted an arbitrary
@@ -27,7 +28,8 @@ const { protect } = require('../middleware/auth');
 // ── Phase 10 (item 21): stream authorization ────────────────
 // POST /api/stream/authorize { episodeId } → canWatch() → 120 s HMAC token.
 // MUST be registered before the /:animeTitle/:episodeNumber catch-all.
-router.post('/authorize', protect, streamController.authorizeStream);
+// FIX 7: per-user authorize limiter (30/min) stops token-minting abuse.
+router.post('/authorize', protect, streamAuthorizeLimiter, streamController.authorizeStream);
 
 // ── Protected: Best stream (AnimeHeaven single provider) ───
 // GET /api/stream/:animeTitle/:episodeNumber
@@ -35,7 +37,8 @@ router.post('/authorize', protect, streamController.authorizeStream);
 //   (accepted for backward compatibility but IGNORED — AnimeHeaven is the
 //    only streaming provider. The response contract is unchanged.)
 // Uses the canonical protect middleware (DB reload + status + tv + session).
-router.get('/:animeTitle/:episodeNumber', protect, streamController.getStream);
+// FIX 7: per-user resolve limiter (20/5min) — provider resolution is expensive.
+router.get('/:animeTitle/:episodeNumber', protect, streamResolveLimiter, streamController.getStream);
 
 // ── Public: List all providers for "Switch Server" dropdown ─
 // GET /api/stream/providers/:animeTitle/:episodeNumber

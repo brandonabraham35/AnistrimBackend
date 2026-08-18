@@ -97,6 +97,60 @@ const adEventLimiter = rateLimit({
   handler,
 });
 
+// ── FIX 7 (P1): Streaming-surface limiters ────────────────────
+// These are deliberately tuned low for the expensive auth/resolve steps and
+// high (coarse) for the proxy media path so normal playback and HLS segment
+// bursts are never throttled.
+
+// streamAuthorizeLimiter — per-user. POST /api/stream/authorize mints a token
+// after a canWatch() DB gate + (on cold cache) an expensive stream resolution.
+// 30 / min per user is generous for a real user while stopping token minting
+// abuse.
+const streamAuthorizeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'stream-auth:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
+// streamResolveLimiter — per-user. GET /api/stream/:title/:ep triggers the
+// provider scrape (expensive). 20 / 5 min per user is tight enough to stop
+// scraping floods while a user switching servers a few times is unaffected.
+const streamResolveLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'stream-resolve:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
+// proxyLimiter — coarse, per-IP, applied ONLY to the parent manifest request
+// (req.path has no ?url= / no segment). HLS segment requests carry a ?url=
+// and are excluded from the strict bucket so a 2-5 min episode (hundreds of
+// segments) never 429s. The ceiling is intentionally high (measure first) to
+// absorb bursts; it only stops pathologically abusive clients.
+const proxyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Skip the strict bucket for HLS child/segment requests (?url= present).
+    if (req.query && req.query.url) return 'proxy-hls:' + ipKeyGenerator(req.ip);
+    return 'proxy:' + ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
 module.exports = {
   loginLimiter,
   otpLimiter,
@@ -105,4 +159,7 @@ module.exports = {
   sensitiveLimiter,
   googleLimiter,
   adEventLimiter,
+  streamAuthorizeLimiter,
+  streamResolveLimiter,
+  proxyLimiter,
 };

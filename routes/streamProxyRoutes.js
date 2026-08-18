@@ -11,11 +11,16 @@
 const express = require('express');
 const router = express.Router();
 const proxyController = require('../controllers/streamProxyController');
+const { proxyLimiter } = require('../middleware/rateLimit');
 
 // Preflight for cross-origin media playback (HLS / MP4).
 router.options('/:streamId', proxyController.preflight);
 
 // Stream the registered (or HLS child) resource behind the proxy.
-router.get('/:streamId', proxyController.streamMedia);
+// FIX 7: coarse per-IP limiter. The keyGenerator routes HLS child/segment
+// (?url=) requests to a separate `proxy-hls:` bucket (high ceiling), so the
+// strict bucket only throttles parent-manifest requests and stops abusive
+// clients without breaking HLS segment bursts.
+router.get('/:streamId', proxyLimiter, proxyController.streamMedia);
 
 module.exports = router;
