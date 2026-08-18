@@ -41,6 +41,7 @@
 
 <script src="config.js"></script>
 <script src="scrpt.js"></script>
+<script src="js/api.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
   const params = new URLSearchParams(window.location.search);
@@ -168,8 +169,8 @@ async function pollPaymentStatus(txRef, subscriptionRef) {
 // and store that. The server remains the single source of truth.
 async function updatePremiumState(txRef) {
   try {
-    const fresh = await window.apiFetch('/api/auth/me');
-    if (fresh && fresh.id) {
+    const { ok, data: fresh } = await window.apiFetch('/api/auth/me');
+    if (ok && fresh && fresh.id) {
       State.save(State.token, fresh);
     }
   } catch (e) {

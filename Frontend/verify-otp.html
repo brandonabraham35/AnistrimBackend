@@ -107,13 +107,14 @@ async function handleVerifyOtp() {
   btn.textContent = 'Verifying...';
   btn.disabled = true;
 
+  let data;
   try {
-    const data = await window.apiFetch('/api/auth/verify-otp', {
+    const res = await window.apiFetch('/api/auth/verify-otp', {
       method: 'POST',
       body: JSON.stringify({ email, code })
     });
-
-    if (data && data.token) {
+    data = res.data;
+    if (res.ok !== false && data && data.token) {
       if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
       else localStorage.setItem('token', data.token);
       localStorage.setItem('isFirstVisit', 'true');
@@ -121,12 +122,17 @@ async function handleVerifyOtp() {
       window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
       return;
     }
-
+    if (!res.ok) {
+      showError((data && data.message) || 'Verification failed. Please try again.');
+      btn.textContent = 'Verify & Continue';
+      btn.disabled = false;
+      return;
+    }
     showError((data && data.message) || 'Verification failed. Please try again.');
     btn.textContent = 'Verify & Continue';
     btn.disabled = false;
   } catch (e) {
-    // Distinguish the common error types for a clear message.
+    // Distinguish the common error types for a clear message (429 throws).
     const msg = (e && e.message) || '';
     let friendly = 'Verification failed. Please try again.';
     if (/too many/i.test(msg)) friendly = 'Too many attempts. Please tap "Resend code" to get a new code.';
@@ -173,7 +179,7 @@ async function handleResendOtp() {
   btn.disabled = true;
 
   try {
-    const data = await window.apiFetch('/api/auth/resend-otp', {
+    await window.apiFetch('/api/auth/resend-otp', {
       method: 'POST',
       body: JSON.stringify({ email })
     });

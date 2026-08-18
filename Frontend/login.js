@@ -28,35 +28,30 @@ async function handleLogin() {
   btn.textContent = 'Signing in...';
   btn.disabled = true;
 
-  try {
-    // apiFetch: on 403 requiresVerification it fires resend-otp and redirects
-    // to the OTP screen; on 401 it clears the token and goes to login.html.
-    const data = await window.apiFetch('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-      resendOtp: true
-    });
+  // apiFetch returns the envelope { ok, status, data }. On 403 requiresVerification
+  // it fires resend-otp and redirects to the OTP screen; on 401 it clears the
+  // token and redirects to login.html. Other failures come back via ok:false.
+  const { ok, data } = await window.apiFetch('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+    resendOtp: true
+  });
 
-    if (data && data.token) {
-      // Store both access + refresh tokens via the canonical helper.
-      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
-      else localStorage.setItem('token', data.token);
-      localStorage.setItem('isFirstVisit', 'true');
-      // Use the canonical session + navigation contract.
-      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-      const user = data.user || (await window.Session?.refresh?.());
-      window.redirectAfterAuthentication?.(user, data.token, data.refreshToken);
-      return;
-    }
-
-    showError((data && data.message) || 'Incorrect email or password.');
-    btn.textContent = 'Sign In';
-    btn.disabled = false;
-  } catch (e) {
-    showError(e && e.message ? e.message : 'Cannot reach server. Please check your connection.');
-    btn.textContent = 'Sign In';
-    btn.disabled = false;
+  if (ok && data && data.token) {
+    // Store both access + refresh tokens via the canonical helper.
+    if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+    else localStorage.setItem('token', data.token);
+    localStorage.setItem('isFirstVisit', 'true');
+    // Use the canonical session + navigation contract.
+    const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    const user = data.user || (await window.Session?.refresh?.());
+    window.redirectAfterAuthentication?.(user, data.token, data.refreshToken);
+    return;
   }
+
+  showError((data && data.message) || 'Incorrect email or password.');
+  btn.textContent = 'Sign In';
+  btn.disabled = false;
 }
 window.handleLogin = handleLogin;
 
@@ -90,29 +85,27 @@ window.loginWithInAppBrowser = loginWithInAppBrowser;
 
 // Send the ID token to POST /api/auth/google/verify (web GIS flow)
 async function sendIdTokenToBackend(idToken) {
-  try {
-    const data = await window.apiFetch('/api/auth/google/verify', {
-      method: 'POST',
-      body: JSON.stringify({ idToken })
-    });
-    if (data && data.token && data.user) {
-      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
-      else localStorage.setItem('token', data.token);
-      localStorage.setItem('isFirstVisit', 'true');
-      const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-      window.redirectAfterAuthentication?.(data.user, data.token, data.refreshToken);
-      return;
-    }
-    showError((data && data.message) || 'Google sign-in failed. Please try again.');
-  } catch (e) {
-    console.error('[Login] Backend verification error:', e);
-    // Distinguish the Google login business errors for a clear message.
-    const code = e && e.data && e.data.code;
-    let msg = e && e.message ? e.message : 'Cannot reach server. Please check your connection.';
-    if (code === 'GOOGLE_ACCOUNT_NOT_FOUND') msg = 'No AniStrim account exists for this Google account. Please create an account first.';
-    else if (code === 'GOOGLE_ACCOUNT_NOT_LINKED') msg = 'An AniStrim account already exists with this email. Please log in using your email and password.';
-    showError(msg);
+  const { ok, data } = await window.apiFetch('/api/auth/google/verify', {
+    method: 'POST',
+    body: JSON.stringify({ idToken })
+  });
+
+  if (ok && data && data.token && data.user) {
+    if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+    else localStorage.setItem('token', data.token);
+    localStorage.setItem('isFirstVisit', 'true');
+    const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    window.redirectAfterAuthentication?.(data.user, data.token, data.refreshToken);
+    return;
   }
+
+  console.error('[Login] Backend verification failed:', data || ok);
+  // Distinguish the Google login business errors for a clear message.
+  const code = data && data.code;
+  let msg = (data && data.message) || 'Google sign-in failed. Please try again.';
+  if (code === 'GOOGLE_ACCOUNT_NOT_FOUND') msg = 'No AniStrim account exists for this Google account. Please create an account first.';
+  else if (code === 'GOOGLE_ACCOUNT_NOT_LINKED') msg = 'An AniStrim account already exists with this email. Please log in using your email and password.';
+  showError(msg);
 }
 
 // ── Deep Link Handler (native only) ─────────────────────────

@@ -73,23 +73,10 @@ const State = (function () {
 })();
 
 // ===================== API HELPER =====================
-// Runtime helpers are exposed globally by config.js and intentionally
-// resolved through the shared frontend runtime to avoid duplicate bodies.
-// The canonical apiFetch lives in js/api.js (loaded after config.js) and
-// handles 401 auto-refresh, 429 rate limiting, and 403 verification.
-// This delegates so pages that load only config.js+scrpt.js still get the
-// canonical behavior when js/api.js is present.
-if (window.AniStrimShared && !window.AniStrimShared._apiFetchDelegated) {
-  window.AniStrimShared._apiFetchDelegated = true;
-  const original = window.AniStrimShared.apiFetch;
-  window.AniStrimShared.apiFetch = function (endpoint, options) {
-    if (window.apiFetch && window.apiFetch !== original) {
-      return window.apiFetch(endpoint, options);
-    }
-    return original(endpoint, options);
-  };
-  window.apiFetch = window.AniStrimShared.apiFetch;
-}
+// The canonical apiFetch is defined in ONE place: js/api.js. config.js installs
+// a thin delegate that forwards to it once js/api.js is loaded (detected via
+// window.__CANONICAL_API_FETCH). Nothing here reassigns window.apiFetch — that
+// would break the single-implementation contract.
 
 // ===================== UTILS =====================
 function togglePasswordVisibility(id) {
@@ -150,9 +137,8 @@ async function loadHomeContent() {
   try {
     // PRIMARY: the backend section engine. One call returns all four ranked
     // rows (trending/popular/newReleases/classics), each guaranteed >= 10.
-    // NOTE: apiFetch (js/api.js) resolves to the response BODY directly — do
-    // NOT destructure { data, ok }.
-    const sections = await apiFetch('/api/home/sections');
+    // apiFetch returns the envelope { ok, status, data }.
+    const { data: sections } = await apiFetch('/api/home/sections');
 
     if (sections && Array.isArray(sections.trending)) {
       // Hero slider from featured (fall back to top-rated trending).
@@ -170,7 +156,7 @@ async function loadHomeContent() {
     // FALLBACK: only when /api/home/sections fails. Re-partition the raw
     // catalogue, but WITHOUT cross-row dedupe starvation — each row slices to
     // 8 before any dedupe, and rows are allowed to overlap (the server does).
-    const trending = await apiFetch('/api/anime/trending');
+    const { data: trending } = await apiFetch('/api/anime/trending');
     if (!Array.isArray(trending)) {
       showCatalogError('Could not connect to the server. The catalog data is currently unavailable.');
       return;
@@ -191,7 +177,7 @@ async function loadHomeContent() {
 
     // New Releases — latest uploads endpoint (independent of rating/status).
     try {
-      const latest = await apiFetch('/api/anime/latest?limit=12');
+      const { data: latest } = await apiFetch('/api/anime/latest?limit=12');
       renderSection('new-row', Array.isArray(latest) ? latest : trending.filter(a => (a.year||0) >= 2020));
     } catch(e) {
       renderSection('new-row', trending.filter(a => (a.year||0) >= 2020));
@@ -210,9 +196,9 @@ async function loadHomeContent() {
 // positionSec, durationSec, percent, resumeUrl.
 async function loadContinueWatching() {
   try {
-    // apiFetch resolves to the body directly. Real route is /api/watch/continue-watching.
-    const data = await apiFetch('/api/watch/continue-watching');
-    if (!data || !Array.isArray(data) || !data.length) return;
+    // apiFetch returns the envelope. Real route is /api/watch/continue-watching.
+    const { ok, data } = await apiFetch('/api/watch/continue-watching');
+    if (!ok || !Array.isArray(data) || !data.length) return;
 
     const section = document.getElementById('continue-section');
     const row     = document.getElementById('continue-row');
@@ -458,9 +444,9 @@ window.reloadCatalog = reloadCatalog;
 // ===================== WATCHLIST =====================
 async function addToWatchlist(animeId) {
   if (!State.isLoggedIn) { alert('Please log in first!'); return; }
-  // apiFetch (js/api.js) resolves to the body directly and throws on failure.
-  // Real route is POST /api/watchlist (there is no /api/watchlist/add).
-  const data = await apiFetch('/api/watchlist', {
+  // apiFetch returns the envelope. Real route is POST /api/watchlist (there is
+  // no /api/watchlist/add).
+  const { data } = await apiFetch('/api/watchlist', {
     method: 'POST', body: JSON.stringify({ animeId })
   });
   // Toast notification instead of alert

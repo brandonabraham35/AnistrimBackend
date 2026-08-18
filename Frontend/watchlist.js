@@ -4,11 +4,11 @@ let currentFilter = 'All';
 
 async function loadWatchlist() {
   try {
-    // FIX 8 (Phase 3): apiFetch returns raw data (canonical client).
+    // FIX 8 (Phase 3): apiFetch returns the envelope { ok, status, data }.
     // The server now returns camelCase: animeId, title, poster, status,
     // episodesWatched, totalEpisodes.
-    const data = await window.apiFetch('/api/watchlist');
-    if (!Array.isArray(data)) { renderEmpty(); return; }
+    const { ok, data } = await window.apiFetch('/api/watchlist');
+    if (!ok || !Array.isArray(data)) { renderEmpty(); return; }
 
     watchlistData = data.map(a => ({
       ...a,

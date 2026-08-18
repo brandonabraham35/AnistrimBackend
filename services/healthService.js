@@ -94,11 +94,18 @@ function probe(label, checkFn, timeoutMs = PROBE_TIMEOUT_MS, mapper = defaultMap
     .then((result) => {
       let status = 'up';
       let lastError = null;
+      const extra = {};
       if (typeof result === 'string') {
         status = result;
       } else if (result && typeof result === 'object') {
         status = result.status || 'up';
         lastError = result.lastError || null;
+        // Preserve extra fields (e.g. streaming's per-provider `breakdown`) so
+        // they reach the dashboard snapshot — required by the provider
+        // breakdown acceptance item.
+        for (const [k, v] of Object.entries(result)) {
+          if (k !== 'status' && k !== 'lastError') extra[k] = v;
+        }
       } else if (result === false) {
         status = 'down';
       }
@@ -107,6 +114,7 @@ function probe(label, checkFn, timeoutMs = PROBE_TIMEOUT_MS, mapper = defaultMap
         latencyMs: Date.now() - start,
         lastError,
         checkedAt: new Date().toISOString(),
+        ...extra,
       };
     })
     .catch((err) => {
@@ -268,6 +276,11 @@ async function probeGoogleOAuth() {
 
 // ── Full probe grid ──────────────────────────────────────────
 async function runAllProbes() {
+  // Log marking the start of a probe grid run (INFO so it's visible at the
+  // default log level). Concurrency acceptance checks can grep for
+  // "[HEALTH] Probe grid START" — with module-level single-flight, two calls
+  // within 30 s must only produce ONE such line.
+  logger.info('[HEALTH] Probe grid START');
   const [api, database, redisCache, streaming, payments, email, googleOAuth, storage] = await Promise.all([
     probeApi(), probeDatabase(), probeCache(), probeStreaming(),
     probePayments(), probeEmail(), probeGoogleOAuth(), probeStorage(),

@@ -7,14 +7,16 @@ function setText(id, val) { const el = $(id); if (el) el.textContent = val || ''
 function setHtml(id, val) { const el = $(id); if (el) el.innerHTML = val || ''; }
 
 // ── Canonical apiFetch wrapper ─────────────────────────────
-// js/api.js returns raw data and throws ApiError on non-2xx. This page's
-// code uses the legacy { ok, data } shape, so wrap it here (Bug 11: surface
-// the status code so the UI can distinguish 401/403/409/422/429/5xx).
+// js/api.js returns the envelope { ok, status, data }. This page's code uses
+// the same { ok, status, data } shape, so apiOk is now a thin pass-through
+// that keeps the catch fallback for the 429 RATE_LIMITED throw path (Bug 11).
 async function apiOk(path, options) {
   try {
-    const data = await window.apiFetch(path, options);
-    return { ok: true, status: 200, data: data };
+    const res = await window.apiFetch(path, options);
+    // Envelope already carries ok/status/data. Normalize a missing status.
+    return { ok: !!res.ok, status: res.status || (res.ok ? 200 : 0), data: res.data || {} };
   } catch (e) {
+    // 429 RATE_LIMITED still throws ApiError (with .retryAfter).
     return {
       ok: false,
       status: (e && e.status) || 0,
@@ -175,7 +177,7 @@ async function loadGenreOptions(selectedGenres) {
   if (!container) return;
   const selected = new Set(selectedGenres || []);
   try {
-    const data = await window.apiFetch('/api/anime/genres');
+    const { data } = await window.apiFetch('/api/anime/genres');
     const list = Array.isArray(data)
       ? data.map(g => (typeof g === 'string' ? g : g && g.name)).filter(Boolean)
       : (data && Array.isArray(data.genres) ? data.genres.filter(g => typeof g === 'string') : []);

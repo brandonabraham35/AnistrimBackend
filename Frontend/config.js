@@ -82,62 +82,34 @@
   })();
   window.NavGuard = NavGuard;
 
+  // ── apiFetch (thin deferral) ──────────────────────────────
+  // The canonical apiFetch lives in js/api.js (loaded after config.js on every
+  // page that needs it). config.js only installs a THIN delegate so pages that
+  // load only config.js+scrpt.js (e.g. upgrade.html) still get the canonical
+  // behavior once js/api.js is present. There is exactly ONE apiFetch
+  // implementation in the repo. It returns the envelope { ok, status, data }.
   shared.apiFetch = shared.apiFetch || async function apiFetch(endpoint, options = {}) {
-    // When the body is FormData (e.g. multipart avatar upload), we must NOT set
-    // Content-Type: application/json — the browser sets the correct multipart
-    // boundary automatically. Forcing JSON would break file uploads.
-    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-    const headers = { ...(options.headers || {}) };
-    if (!isFormData) headers['Content-Type'] = 'application/json';
-    if (State?.token) headers['Authorization'] = `Bearer ${State.token}`;
-
-    // ── Bounded request timeout ─────────────────────────────
-    // Standard fetch() has NO automatic timeout. Without this, a hung
-    // network request can leave the player stuck on "Loading stream..."
-    // forever. Every request gets a hard upper bound (default 30s) and
-    // an AbortController so the fetch is actually cancelled.
-    const timeoutMs = options.timeout || 30000;
-    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    let timeoutId = null;
-    if (controller) {
-      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    // Delegate to the canonical implementation (js/api.js) once it is loaded.
+    // js/api.js sets window.__CANONICAL_API_FETCH, which is unambiguous — we
+    // cannot compare function identity here because config.js assigns
+    // window.apiFetch = shared.apiFetch at load time (before js/api.js runs).
+    if (window.__CANONICAL_API_FETCH === true && typeof window.apiFetch === 'function') {
+      return window.apiFetch(endpoint, options);
     }
-
+    // Fallback (js/api.js not loaded): minimal last-resort fetch so the page
+    // still has a working request path without duplicating the full body.
+    const API_BASE = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : '';
     try {
-      const res = await fetch(`${API}${endpoint}`, {
-        ...options,
-        headers,
-        ...(controller ? { signal: controller.signal } : {}),
-      });
+      const headers = { ...(options.headers || {}) };
+      const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+      if (!isFormData) headers['Content-Type'] = 'application/json';
+      if (State?.token) headers['Authorization'] = `Bearer ${State.token}`;
+      const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
       const data = await res.json().catch(() => ({}));
-      // Only force a login redirect on authentication-critical requests.
-      // Background/fire-and-forget requests (e.g. watch progress polling) pass
-      // { skipAuthRedirect: true } so a 401 there never kicks the user out of
-      // the player mid-watch.
-      if (res.status === 401) {
-        // A 401 is DATA, not a navigation command. We announce it and let the
-        // page decide. Callers that want the old behaviour opt in explicitly.
-        try {
-          window.dispatchEvent(new CustomEvent('auth:expired', { detail: { endpoint: endpoint } }));
-        } catch (e) {}
-        if (!options.skipAuthRedirect && !window.__AUTH_NO_AUTO_REDIRECT) {
-          State?.clear?.();
-          NavGuard.go('login.html');
-        }
-    }
-      if (res.status === 403 && data?.requiresVerification) {
-        const em = data.email || State?.user?.email || '';
-        if (em) { sessionStorage.setItem('pendingEmail', em); localStorage.setItem('pendingEmail', em); }
-        window.location.href = em ? ('verify-otp.html?email=' + encodeURIComponent(em)) : 'verify-otp.html';
-        return { ok: false, status: 403, data };
-      }
       return { ok: res.ok, status: res.status, data };
     } catch (e) {
       const timedOut = e && (e.name === 'AbortError' || /abort|timeout/i.test(e.message || ''));
-      console.error('API error:', endpoint, e.message, timedOut ? '(timeout)' : '');
       return { ok: false, timedOut, data: {} };
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
     }
   };
 

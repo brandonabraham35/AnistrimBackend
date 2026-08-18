@@ -1,11 +1,19 @@
-// Frontend/js/api.js — single API wrapper for all frontend auth calls.
-// Uses the API base URL exposed by config.js (window.getApiBaseUrl).
-// Attaches Authorization (JWT) when present, parses JSON once, and handles
-// 403 (requiresVerification), 401 (auto-refresh), and 429 (rate limited)
-// globally. Throws ApiError otherwise.
+// Frontend/js/api.js — SINGLE canonical apiFetch for the whole frontend.
+// This is the ONLY place apiFetch is defined. It returns a non-throwing
+// envelope { ok, status, data } on every path so callers never need try/catch
+// for HTTP status codes. It also:
+//   • sets Content-Type: application/json unless body is FormData/URLSearchParams
+//   • attaches Authorization (JWT) when present
+//   • parses JSON once
+//   • handles 403 (requiresVerification → OTP screen)
+//   • handles 401 (auto-refresh once, then replay; else clear + login.html)
+//   • handles 429 (RATE_LIMITED) by throwing ApiError (callers that opt in read
+//     err.retryAfter)
+//   • honors { timeout } by aborting the fetch and returning timedOut:true
 //
-// Must be loaded AFTER config.js/scrpt.js so it overrides window.apiFetch
-// with this canonical version.
+// LOAD ORDER: must load AFTER config.js and scrpt.js so it overrides the thin
+// deferred config.js apiFetch. No later script may reassign window.apiFetch —
+// a dev-only guard at the bottom warns if anything tries.
 
 (function () {
   'use strict';
@@ -122,6 +130,10 @@
     return refreshPromise;
   }
 
+  // ── THE single apiFetch ───────────────────────────────────
+  // Returns { ok, status, data, timedOut? } on every path except 429
+  // (RATE_LIMITED), which throws ApiError with .retryAfter. Pages read the
+  // envelope — never the raw body — so there is exactly ONE return contract.
   async function apiFetch(path, options) {
     options = options || {};
     var headers = Object.assign({}, options.headers || {});
@@ -136,16 +148,31 @@
     var token = getToken();
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
+    // ── Bounded request timeout ─────────────────────────────
+    // watch.js / the player pass { timeout } and rely on timedOut to avoid
+    // hanging the UI on a stalled request. Abort and surface timedOut.
+    var abortCtrl = (typeof AbortController !== 'undefined' && options.timeout)
+      ? new AbortController()
+      : null;
+    var timeoutId = null;
+    if (abortCtrl) {
+      timeoutId = setTimeout(function () { abortCtrl.abort(); }, options.timeout);
+    }
+
     var res;
     try {
       res = await fetch(API_BASE + path, {
         method: options.method || 'GET',
         headers: headers,
-        body: body || undefined
+        body: body || undefined,
+        ...(abortCtrl ? { signal: abortCtrl.signal } : {})
       });
     } catch (e) {
-      throw new ApiError('Cannot reach server. Please check your connection.', 0);
+      if (timeoutId) clearTimeout(timeoutId);
+      var aborted = !!(e && (e.name === 'AbortError' || /abort|timeout/i.test(e.message || '')));
+      return { ok: false, status: 0, data: {}, timedOut: aborted };
     }
+    if (timeoutId) clearTimeout(timeoutId);
 
     var data = {};
     try {
@@ -158,7 +185,6 @@
     if (res.status === 401 && getRefreshToken() && options._retried !== true) {
       var refreshed = await refreshOnce();
       if (refreshed && refreshed.token) {
-        // Replay the original request with the new token.
         var retryOptions = Object.assign({}, options, { _retried: true });
         retryOptions.headers = Object.assign({}, options.headers || {});
         retryOptions.headers['Authorization'] = 'Bearer ' + refreshed.token;
@@ -174,7 +200,7 @@
       if (options.global401Redirect !== false && options.skipAuthRedirect !== true) {
         window.location.href = 'login.html';
       }
-      return data;
+      return { ok: false, status: 401, data: data };
     }
 
     if (res.status === 429 && data && data.code === 'RATE_LIMITED') {
@@ -203,18 +229,51 @@
       }
       var q = email ? ('?email=' + encodeURIComponent(email)) : '';
       window.location.href = 'verify-otp.html' + q;
-      return data;
+      return { ok: false, status: 403, data: data };
     }
 
-    if (!res.ok) {
-      throw new ApiError((data && data.message) || 'Request failed', res.status, data);
-    }
-
-    return data;
+    // Envelope on success AND any other failure — pages never need try/catch
+    // for HTTP status.
+    return { ok: res.ok, status: res.status, data: data };
   }
 
   window.apiFetch = apiFetch;
   window.ApiError = ApiError;
   window.setAuthTokens = setTokens;
   window.clearAuthTokens = clearTokens;
+  // Marker so config.js's thin delegate can detect that the canonical
+  // implementation is installed (config.js can't compare function identity
+  // because it assigns window.apiFetch = shared.apiFetch at load time).
+  window.__CANONICAL_API_FETCH = true;
+
+  // ── Load-order guard (dev only) ──────────────────────────
+  // Exactly ONE apiFetch must exist. If a later script reassigns
+  // window.apiFetch, the envelope contract is broken and pages will corrupt.
+  // Lock it down so accidental reassignment is impossible, and log loudly.
+  var canonical = window.apiFetch;
+  try {
+    Object.defineProperty(window, 'apiFetch', {
+      configurable: false,
+      enumerable: true,
+      writable: false,
+      value: canonical
+    });
+  } catch (e) {
+    // Non-strict scripts that already assigned it are fine; we only harden
+    // against FUTURE reassignments.
+    Object.defineProperty(window, 'apiFetch', {
+      configurable: false,
+      enumerable: true,
+      get: function () { return canonical; },
+      set: function (v) {
+        // eslint-disable-next-line no-console
+        console.error('[api.js] window.apiFetch reassigned — the single canonical apiFetch must not be replaced.', v && v.name);
+      }
+    });
+  }
+
+  if (typeof console !== 'undefined' && console.debug) {
+    // eslint-disable-next-line no-console
+    console.debug('[api.js] canonical apiFetch installed. Envelope = { ok, status, data }.');
+  }
 })();

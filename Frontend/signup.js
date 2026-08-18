@@ -30,40 +30,35 @@ async function handleSignUp() {
   btn.textContent = 'Creating account...';
   btn.disabled = true;
 
-  try {
-    // apiFetch returns the parsed body on 2xx (201 requiresVerification is a
-    // success here), throws ApiError otherwise; 401/403 are handled globally.
-    const data = await window.apiFetch('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ name, email, password })
-    });
+  // apiFetch returns the envelope { ok, status, data }. 201 requiresVerification
+  // is handled by the data.requiresVerification branch below (a "success" for
+  // the OTP funnel). 401/403 redirects are handled globally by js/api.js.
+  const { ok, data } = await window.apiFetch('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ name, email, password })
+  });
 
-    // New registration returns 201 + requiresVerification → send the user to
-    // the OTP funnel. Do NOT store a token (the 201 body carries none).
-    if (data && data.requiresVerification) {
-      sessionStorage.setItem('pendingEmail', email);
-      const emailSent = data.emailSent ? '1' : '0';
-      sessionStorage.setItem('otpEmailSent', emailSent);
-      window.location.href = `verify-otp.html?email=${encodeURIComponent(email)}&emailSent=${emailSent}`;
-      return;
-    }
-
-    if (data && data.token) {
-      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
-      else localStorage.setItem('token', data.token);
-      localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
-      return;
-    }
-
-    showError((data && data.message) || 'Registration failed. Please try again.');
-    btn.textContent = 'Create Account';
-    btn.disabled = false;
-  } catch (e) {
-    showError(e && e.message ? e.message : 'Cannot reach server. Please check your connection.');
-    btn.textContent = 'Create Account';
-    btn.disabled = false;
+  // New registration returns 201 + requiresVerification → send the user to
+  // the OTP funnel. Do NOT store a token (the 201 body carries none).
+  if (data && data.requiresVerification) {
+    sessionStorage.setItem('pendingEmail', email);
+    const emailSent = data.emailSent ? '1' : '0';
+    sessionStorage.setItem('otpEmailSent', emailSent);
+    window.location.href = `verify-otp.html?email=${encodeURIComponent(email)}&emailSent=${emailSent}`;
+    return;
   }
+
+  if (ok && data && data.token) {
+    if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+    else localStorage.setItem('token', data.token);
+    localStorage.setItem('isFirstVisit', 'true');
+    window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
+    return;
+  }
+
+  showError((data && data.message) || 'Registration failed. Please try again.');
+  btn.textContent = 'Create Account';
+  btn.disabled = false;
 }
 window.handleSignUp = handleSignUp;
 
@@ -97,28 +92,25 @@ window.loginWithInAppBrowser = loginWithInAppBrowser;
 
 // Send the ID token to POST /api/auth/google/verify (web GIS flow)
 async function sendIdTokenToBackend(idToken) {
-  try {
-    const data = await window.apiFetch('/api/auth/google/signup', {
-      method: 'POST',
-      body: JSON.stringify({ idToken })
-    });
+  const { ok, data } = await window.apiFetch('/api/auth/google/signup', {
+    method: 'POST',
+    body: JSON.stringify({ idToken })
+  });
 
-    if (data && data.token && data.user) {
-      if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
-      else localStorage.setItem('token', data.token);
-      localStorage.setItem('isFirstVisit', 'true');
-      window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
-      return;
-    }
-    showError((data && data.message) || 'Google sign-in failed. Please try again.');
-  } catch (e) {
-    console.error('[Signup] Backend verification error:', e);
-    // Distinguish the Google signup business error for a clear message.
-    const code = e && e.data && e.data.code;
-    let msg = e && e.message ? e.message : 'Cannot reach server. Please check your connection.';
-    if (code === 'ACCOUNT_ALREADY_EXISTS') msg = 'An AniStrim account already exists with this email or Google account. Please log in instead.';
-    showError(msg);
+  if (ok && data && data.token && data.user) {
+    if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
+    else localStorage.setItem('token', data.token);
+    localStorage.setItem('isFirstVisit', 'true');
+    window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
+    return;
   }
+
+  console.error('[Signup] Backend verification failed:', data || ok);
+  // Distinguish the Google signup business error for a clear message.
+  const code = data && data.code;
+  let msg = (data && data.message) || 'Google sign-in failed. Please try again.';
+  if (code === 'ACCOUNT_ALREADY_EXISTS') msg = 'An AniStrim account already exists with this email or Google account. Please log in instead.';
+  showError(msg);
 }
 
 // ── Deep Link Handler (native only) ─────────────────────────

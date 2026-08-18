@@ -120,7 +120,7 @@ async function authorizeStream(episodeId) {
   if (streamAuth.token && streamAuth.episodeId === String(episodeId) && Date.now() < streamAuth.expiresAt) {
     return streamAuth;
   }
-  const { data, status } = await apiFetch('/api/stream/authorize', {
+  const { ok, status, data } = await apiFetch('/api/stream/authorize', {
     method: 'POST',
     body: JSON.stringify({ episodeId: String(episodeId) }),
   });
@@ -133,6 +133,9 @@ async function authorizeStream(episodeId) {
     const err = new Error('Premium subscription required.');
     err.premiumRequired = true;
     throw err;
+  }
+  if (!ok) {
+    throw new Error((data && data.message) || 'Stream authorization failed.');
   }
   if (!data || !data.token || !data.streamId) {
     throw new Error('Stream authorization failed: no token returned.');
@@ -1811,7 +1814,7 @@ window.cancelAutoplay = cancelAutoplay;
 async function loadProgress(video, animeId, episodeNumber) {
   if (!currentEpId) return;
   try {
-    var data = await apiFetch('/api/watch/progress/' + currentEpId, { timeout: API_TIMEOUT_MS });
+    var { data } = await apiFetch('/api/watch/progress/' + currentEpId, { timeout: API_TIMEOUT_MS });
     if (data && data.positionSec > 10) {
       // Near-end detection: if 90%+ watched, offer Resume/Restart
       if (data.durationSec > 0 && data.positionSec >= data.durationSec * 0.9) {

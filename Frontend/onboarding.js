@@ -48,8 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     try {
-      const res = await apiFetch('/api/profile/username-available?u=' + encodeURIComponent(u), { skipAuthRedirect: true });
-      if (res && res.available === true) {
+      const { ok, data: res } = await apiFetch('/api/profile/username-available?u=' + encodeURIComponent(u), { skipAuthRedirect: true });
+      if (ok && res && res.available === true) {
         usernameValid = true;
         if (usernameStatus) usernameStatus.innerHTML = '<div class="ob-valid">✓ Username available</div>';
       } else {
@@ -85,11 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const img = document.getElementById('ob-avatar-img');
     if (img) img.src = URL.createObjectURL(file);
 
-    // Upload — apiFetch returns raw data and throws ApiError on failure.
+    // Upload — apiFetch returns the envelope { ok, status, data }.
     const fd = new FormData();
     fd.append('avatar', file);
     try {
-      const data = await apiFetch('/api/auth/avatar', { method: 'POST', body: fd });
+      const { data } = await apiFetch('/api/auth/avatar', { method: 'POST', body: fd });
       avatarUploaded = true;
       await Session.refresh();
       if (window.Avatar) window.Avatar.renderAvatarEverywhere(data && data.avatar_url);
@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadGenres() {
     try {
-      const data = await apiFetch('/api/anime/genres');
+      const { data } = await apiFetch('/api/anime/genres');
       const list = Array.isArray(data)
         ? data.map(g => (typeof g === 'string' ? g : g && g.name)).filter(Boolean)
         : (data && Array.isArray(data.genres) ? data.genres.filter(g => typeof g === 'string') : null);
@@ -176,10 +176,16 @@ document.addEventListener('DOMContentLoaded', () => {
     finishBtn.disabled = true;
     finishBtn.textContent = 'Saving...';
     try {
-      await apiFetch('/api/profile/onboarding', {
+      const { ok } = await apiFetch('/api/profile/onboarding', {
         method: 'POST',
         body: JSON.stringify({ displayName, username, genres: selectedGenres })
       });
+      if (!ok) {
+        finishBtn.disabled = false;
+        finishBtn.textContent = originalText;
+        showError('Onboarding failed. Please try again.');
+        return;
+      }
 
       await Session.refresh();
       if (window.Navigation) window.Navigation.afterAuth(Session.getUser(), 'index.html');
