@@ -749,6 +749,28 @@ function ensurePlayerCoreInitialized(video) {
     video: video,
     onSourceLoaded: function () {},
     onError: function (err) {
+      // ── MP4 fallback: if hls.js fails to parse the manifest for a proxy URL,
+      // the source is actually an MP4. Re-attach directly via video.src (and
+      // re-run setupPlayer) so the browser plays the MP4 natively. This only
+      // fires when hls.js MANIFEST_PARSE_ERROR — a genuine HLS source would
+      // not hit this.
+      if (err && err.data && err.data.type === 'manifestError' && currentStreamUrl && /\/api\/stream-proxy\//.test(currentStreamUrl)) {
+        console.warn('[WATCH] hls.js failed to parse manifest — falling back to MP4 for proxy URL');
+        var v = document.getElementById('animePlayer');
+        if (v && window.__playerCore) {
+          try { window.__playerCore.destroy(); } catch (e) {}
+          window.__playerCore = null;
+          window.__hls = null;
+          hlsInstance = null;
+          v.removeAttribute('src');
+          v.src = currentStreamUrl;
+          v.load();
+          // Re-run setup for the MP4 path
+          playerSetupDone = false;
+          setupPlayer(v);
+          return;
+        }
+      }
       if (window.__playerResilience && window.__playerResilience.onError) {
         window.__playerResilience.onError(null, { type: 'mediaError', fatal: true, data: err });
       }
@@ -3283,6 +3305,7 @@ function attachStreamSource(video, source) {
     }
 
     var isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
+    var isProxyUrl = /\/api\/stream-proxy\//.test(source);
     return new Promise(function(resolve, reject) {
       var timeout = setTimeout(function() {
         reject(new Error('Timed out loading video source.'));
@@ -3293,18 +3316,24 @@ function attachStreamSource(video, source) {
       }
 
       // ── HLS path: delegate to PlayerCore (the SINGLE HLS owner) ──
-      if (isHlsStream && window.Hls && window.Hls.isSupported()) {
+      // For a `.m3u8` URL OR any proxy URL that COULD be HLS (extension-less
+      // AnimeHeaven manifests), delegate to PlayerCore. PlayerCore uses
+      // hls.js when native HLS is absent; hls.js auto-detects HLS by the
+      // returned Content-Type even when the URL has no `.m3u8` hint.
+      // This is the FIX for the 0:00 stall where an extension-less proxy URL
+      // was wrongly treated as MP4 → video.src → MEDIA_ERR_SRC_NOT_SUPPORTED.
+      if ((isHlsStream || isProxyUrl) && window.Hls && window.Hls.isSupported()) {
         if (!window.__playerCore) {
           reject(new Error('PlayerCore not initialized.'));
           return;
         }
         try {
           window.__playerCore.loadSource(source);
-          // PlayerCore's onManifestParsed callback handles resolution.
-          // We resolve here immediately — the manifest callback in setupPlayer
-          // already wires up quality/audio/subtitle population.
           cleanup();
-          watchLog('loadedmetadata', { hls: true, via: 'PlayerCore' });
+          watchLog('loadedmetadata', { hls: true, via: 'PlayerCore', proxy: isProxyUrl });
+          // PlayerCore's onManifestParsed (HLS) catches manifest loads. For a
+          // true MP4 behind the proxy, hls.js will fail with MANIFEST_PARSE_ERROR
+          // and the fallback below re-attaches as MP4.
           resolve();
         } catch (e) {
           cleanup();
@@ -3313,7 +3342,7 @@ function attachStreamSource(video, source) {
         return;
       }
 
-      // ── MP4 / Direct source ─────────────────────────────────
+      // ── MP4 / Direct source (non-proxy, non-HLS) ─────────────
       console.log('[WATCH PLAYER] assigning source:', {
         provider: currentProvider || 'unknown',
         sourceType: 'mp4',
@@ -3327,7 +3356,6 @@ function attachStreamSource(video, source) {
       }
 
       var resolved = false;
-      var hlsFallbackTried = false;
       function onReady() {
         if (resolved) return;
         resolved = true;
@@ -3348,32 +3376,6 @@ function attachStreamSource(video, source) {
 
       video.addEventListener('error', function() {
         if (resolved) return;
-        // ── HLS FALLBACK for extension-less proxy URLs ─────────
-        if (!hlsFallbackTried && /\/api\/stream-proxy\//.test(source) && window.Hls && window.Hls.isSupported()) {
-          hlsFallbackTried = true;
-          clearTimeout(fallbackResolve);
-          console.warn('[WATCH PLAYER] Native playback failed for proxy URL — retrying via hls.js:', {
-            code: video.error ? video.error.code : null,
-            url: source
-          });
-          if (window.__playerCore) {
-            try {
-              window.__playerCore.loadSource(source);
-              cleanup();
-              watchLog('loadedmetadata', { hls: true, via: 'PlayerCore', fallback: true });
-              resolve();
-            } catch (e) {
-              resolved = true;
-              cleanup();
-              reject(e);
-            }
-          } else {
-            resolved = true;
-            cleanup();
-            reject(new Error('Video source could not be loaded.'));
-          }
-          return;
-        }
         resolved = true;
         cleanup();
         console.error('[WATCH PLAYER] video error:', {
