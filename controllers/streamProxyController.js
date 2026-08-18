@@ -157,9 +157,10 @@ exports.streamMedia = async (req, res) => {
   }
   const { verify } = require('../utils/streamToken');
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
-  // ── FIX 3: bind token → streamId + episodeId + userId ─────
-  // Verify the token's signature/expiry/IP, and bind to the path streamId
-  // (the streamId is the concrete ONE the resolver registered).
+  // ── FIX 3 + FIX 5: bind token → streamId + episodeId + userId + session ──
+  // Verify against the full expected context (including the in-memory
+  // revocation set, which is populated on logout/logout-all/suspend). The
+  // sid/tv are checked below against the live DB session + user token_version.
   const tokenCheck = verify(authToken, { streamId, ip });
   if (!tokenCheck.ok) {
     logger.warn('[streamProxy] token rejected', { streamId: streamId.slice(0, 8), reason: tokenCheck.reason });
@@ -174,6 +175,47 @@ exports.streamMedia = async (req, res) => {
   const ctx = streamProxyStore.get(streamId);
   if (!ctx) {
     return res.status(404).json({ error: 'Stream context not found or expired.' });
+  }
+
+  // ── FIX 5 (P1): Session + token_version freshness ─────────
+  // A stream token is only valid while its owning access session is still
+  // active (not revoked) AND the user's token_version still matches. This
+  // kills in-flight playback (within one segment fetch) after logout,
+  // logout-all, suspension, password change, or token_version bump. The
+  // 120 s TTL remains as defense in depth.
+  try {
+    const db = require('../config/db');
+    const sid = authPayload.sid;
+    const tv = authPayload.tv;
+    const userId = authPayload.userId;
+    if (userId) {
+      const [userRows] = await db.query('SELECT token_version, status FROM users WHERE id = ?', [userId]);
+      if (!userRows || userRows.length === 0) {
+        return res.status(403).json({ error: 'User not found.' });
+      }
+      if (userRows[0].status !== 'active') {
+        logger.warn('[streamProxy] user not active', { userId: String(userId).slice(0, 8), status: userRows[0].status });
+        return res.status(403).json({ error: 'Account is not active.' });
+      }
+      if (tv !== undefined && tv !== null && Number(userRows[0].token_version) !== Number(tv)) {
+        logger.warn('[streamProxy] token_version mismatch', { userId: String(userId).slice(0, 8) });
+        return res.status(403).json({ error: 'Session invalidated. Please log in again.' });
+      }
+    }
+    if (sid) {
+      const [sessRows] = await db.query(
+        'SELECT revoked_at FROM user_sessions WHERE id = ?',
+        [sid]
+      );
+      if (sessRows.length === 0 || (sessRows[0] && sessRows[0].revoked_at)) {
+        logger.warn('[streamProxy] session revoked/expired', { sid: String(sid).slice(0, 8) });
+        return res.status(403).json({ error: 'Session revoked. Please log in again.' });
+      }
+    }
+  } catch (dbErr) {
+    // On a DB hiccup, fail closed (defense in depth) — refuse to serve.
+    logger.error('[streamProxy] session freshness check failed (deny)', { error: dbErr.message });
+    return res.status(403).json({ error: 'Session verification failed.' });
   }
   const ctxUserId = String(ctx.userId ?? '');
   const ctxEpId = String(ctx.episodeId ?? '');

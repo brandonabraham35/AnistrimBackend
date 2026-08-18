@@ -542,9 +542,13 @@ exports.authorizeStream = async (req, res) => {
     const { PROXY_BASE } = require('../utils/streamProxy');
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
     const apiBase = req.protocol + '://' + req.get('host');
+    // FIX 5: bind the stream token to the session (sid) + token_version (tv)
+    // from the authenticated access JWT so logout/suspend can revoke it.
+    const sid = req.tokenClaims?.sid || req.tokenClaims?.sessionId || null;
+    const tv = (req.tokenClaims && req.tokenClaims.tv !== undefined) ? Number(req.tokenClaims.tv) : null;
 
     const streams = registered.map(({ streamId }) => {
-      const token = mint({ userId, episodeId, streamId, ip });
+      const token = mint({ userId, episodeId, streamId, ip, sid, tv });
       const url = `${apiBase}${PROXY_BASE}/${streamId}?token=${encodeURIComponent(token)}`;
       return { streamId, token, url, expiresIn: Math.round(TTL_MS / 1000) };
     });

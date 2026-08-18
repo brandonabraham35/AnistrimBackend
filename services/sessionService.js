@@ -227,6 +227,11 @@ async function revokeSession(sessionId, userId) {
     'UPDATE user_sessions SET revoked_at = NOW() WHERE id = ? AND user_id = ?',
     [sessionId, userId]
   );
+  // FIX 5: kill any in-flight stream tokens minted for this session.
+  try {
+    const streamToken = require('../utils/streamToken');
+    streamToken.revokeSid(sessionId);
+  } catch (_) {}
 }
 
 async function revokeAllSessions(userId, event = 'logout') {
@@ -234,6 +239,11 @@ async function revokeAllSessions(userId, event = 'logout') {
     'UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL',
     [userId]
   );
+  // FIX 5: kill ALL in-flight stream tokens for this user immediately.
+  try {
+    const streamToken = require('../utils/streamToken');
+    streamToken.revokeAllForUser(userId);
+  } catch (_) {}
   if (event) {
     await logEvent(userId, event);
   }
