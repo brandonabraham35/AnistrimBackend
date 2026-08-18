@@ -14,6 +14,13 @@ const crypto = require('crypto');
 
 const TTL_MS = 120 * 1000; // 120 s
 
+// Long-lived TTL for scoped "hls-child" tokens embedded in rewritten HLS child
+// URLs (segments/variant playlists/keys). A manifest rewrite happens once per
+// playback start, so child URLs must stay valid for a whole viewing session —
+// they can ONLY be used for child (?url=) requests, never for the parent
+// manifest (scope is enforced in streamProxyController).
+const CHILD_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
+
 // ── In-memory revocation set ──────────────────────────────
 // Contains revoked session ids (sid) OR "<userId>:<tv>" markers for a global
 // token-version bump (logout-all / password change / suspend). Verified on
@@ -126,7 +133,7 @@ function ipHash(ip) {
  *   sid = session id (from access JWT), tv = token_version (from access JWT).
  * @returns {string} base64url(payload).base64url(hmac)
  */
-function mint({ userId, episodeId, streamId, ip, sid, tv }) {
+function mint({ userId, episodeId, streamId, ip, sid, tv, scope, ttlMs }) {
   const body = {
     userId: String(userId),
     episodeId: String(episodeId),
@@ -134,7 +141,10 @@ function mint({ userId, episodeId, streamId, ip, sid, tv }) {
     ipHash: ipHash(ip),
     sid: sid ? String(sid) : undefined,
     tv: tv !== undefined && tv !== null ? Number(tv) : undefined,
-    exp: Date.now() + TTL_MS,
+    // scope: 'hls-child' tokens may only fetch child (?url=) resources — the
+    // proxy refuses them for parent manifest requests (see streamProxyController).
+    scope: scope || undefined,
+    exp: Date.now() + (ttlMs || TTL_MS),
   };
   const payload = Buffer.from(JSON.stringify(body)).toString('base64url');
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url');
@@ -180,4 +190,4 @@ function verify(token, expected = {}) {
   return { ok: true, payload: data };
 }
 
-module.exports = { mint, verify, TTL_MS, sha256, ipHash, revokeSid, revokeAllForUser, isRevoked };
+module.exports = { mint, verify, TTL_MS, CHILD_TTL_MS, sha256, ipHash, revokeSid, revokeAllForUser, isRevoked };

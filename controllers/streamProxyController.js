@@ -151,8 +151,11 @@ exports.streamMedia = async (req, res) => {
   // /api/stream-proxy/:streamId accepts ONLY a valid short-lived stream token
   // (from POST /api/stream/authorize), bound to userId + episodeId + ip.
   // Child HLS resources (url query) are allowed once the parent token verifies.
+  // Child (?url=) requests may alternatively authenticate with the scoped
+  // long-lived `ct` token embedded in rewritten HLS child URLs — hls.js
+  // segment/playlist/key XHRs cannot mint the 120 s token themselves.
   const authToken = req.query.token || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')
-    ? req.headers.authorization.split(' ')[1] : null);
+    ? req.headers.authorization.split(' ')[1] : null) || (requestedUrl ? (req.query.ct || null) : null);
   if (!authToken) {
     logger.warn('[streamProxy] token missing', { streamId: streamId.slice(0, 8) });
     return res.status(401).json({ error: 'Stream authorization token required.' });
@@ -179,6 +182,14 @@ exports.streamMedia = async (req, res) => {
     return res.status(403).json({ error: `Invalid or expired stream authorization (${tokenCheck.reason}).` });
   }
   const authPayload = tokenCheck.payload;
+
+  // Scoped child tokens (long TTL, embedded in rewritten HLS child URLs) may
+  // ONLY fetch child resources (?url=). Parent manifest / MP4 requests still
+  // require the short-lived 120 s token from POST /api/stream/authorize.
+  if (!requestedUrl && authPayload.scope === 'hls-child') {
+    logger.warn('[streamProxy] child-scoped token used for parent request', { streamId: streamId.slice(0, 8) });
+    return res.status(403).json({ error: 'Stream authorization scope mismatch.' });
+  }
 
   // ── Security: validate the stream context ────────────────
   // The token must be bound to the SAME userId + episodeId as the store
@@ -373,9 +384,23 @@ exports.streamMedia = async (req, res) => {
       const body = await collectToBuffer(upstream.data, MAX_MANIFEST_BYTES);
       const manifestText = body.toString('utf8');
 
-      // Build the streamId-scoped proxy URL for every child resource.
+      // Build the streamId-scoped proxy URL for every child resource. Each
+      // child URL carries a scoped long-lived `ct` token so hls.js segment /
+      // playlist / key XHRs authenticate without any client-side change
+      // (works for already-installed apps). Parent requests refuse `ct`.
+      const { mint, CHILD_TTL_MS } = require('../utils/streamToken');
+      const childToken = mint({
+        userId: authPayload.userId,
+        episodeId: authPayload.episodeId,
+        streamId,
+        ip,
+        sid: authPayload.sid,
+        tv: authPayload.tv,
+        scope: 'hls-child',
+        ttlMs: CHILD_TTL_MS,
+      });
       const proxyUrlBuilder = (absUrl) =>
-        `${PROXY_BASE}/${streamId}?url=${encodeURIComponent(absUrl)}`;
+        `${PROXY_BASE}/${streamId}?url=${encodeURIComponent(absUrl)}&ct=${encodeURIComponent(childToken)}`;
 
       const { body: rewritten, rewritten: count } = rewriteHlsManifest(
         manifestText,
