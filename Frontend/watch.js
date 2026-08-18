@@ -3325,6 +3325,7 @@ function attachStreamSource(video, source) {
 
     var isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
     var isProxyUrl = /\/api\/stream-proxy\//.test(source);
+    var isDirectMedia = /\/index\.(mp4|webm|ogg)(?:$|\?)|\.(mp4|webm|ogg)(?:$|\?)/i.test(source);
     return new Promise(function(resolve, reject) {
       var timeout = setTimeout(function() {
         reject(new Error('Timed out loading video source.'));
@@ -3341,7 +3342,10 @@ function attachStreamSource(video, source) {
       // returned Content-Type even when the URL has no `.m3u8` hint.
       // This is the FIX for the 0:00 stall where an extension-less proxy URL
       // was wrongly treated as MP4 → video.src → MEDIA_ERR_SRC_NOT_SUPPORTED.
-      if ((isHlsStream || isProxyUrl) && window.Hls && window.Hls.isSupported()) {
+      // An MP4-suffixed proxy URL (/index.mp4) is a DIRECT media target — play
+      // it natively, never route it through hls.js (hls.js would fetch the MP4
+      // bytes and fail MANIFEST_PARSE_ERROR, stalling the native recovery).
+      if ((isHlsStream || (isProxyUrl && !isDirectMedia)) && window.Hls && window.Hls.isSupported()) {
         if (!window.__playerCore) {
           reject(new Error('PlayerCore not initialized.'));
           return;

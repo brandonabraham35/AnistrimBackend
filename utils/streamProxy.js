@@ -57,11 +57,34 @@ const { getPlaybackContext } = require('../services/animeHeavenProvider');
 const HLS_URL_SUFFIX = '/index.m3u8';
 
 /**
+ * Cosmetic path suffix appended to a proxy URL whose registered target is a
+ * direct MP4 (e.g. /api/stream-proxy/<id>/index.mp4). Mirror of the HLS
+ * `.m3u8` hint for the inverse case.
+ *
+ * WHY: AnimeHeaven's direct sources are `video.mp4?<signed-token>` — proxied
+ * behind an extension-less `/api/stream-proxy/:streamId`. The frontend's
+ * attachStreamSource routes ANY extension-less proxy URL through hls.js first
+ * (treating it as potentially-HLS). For a direct MP4, hls.js fetches the
+ * bytes, fails MANIFEST_PARSE_ERROR, and only a narrow `manifestError` handler
+ * recovers — risking a stall/failure before the native MP4 path engages.
+ * Appending a real `.mp4` segment lets the frontend classify the source as a
+ * direct MP4 and play it natively (no hls.js round-trip), while the URL stays
+ * anonymous (streamId + token still gate it). The proxy route accepts the
+ * suffix as an ignored path segment (same as `.m3u8`).
+ */
+const MP4_URL_SUFFIX = '/index.mp4';
+
+/**
  * @param {string|null|undefined} targetUrl - upstream media URL
- * @returns {string} HLS_URL_SUFFIX when the target is an HLS playlist, else ''
+ * @returns {string} MP4_URL_SUFFIX for direct MP4 targets, HLS_URL_SUFFIX for
+ *   HLS playlists, else ''.
  */
 function proxyUrlSuffix(targetUrl) {
-  return isHlsUri(targetUrl) ? HLS_URL_SUFFIX : '';
+  if (isHlsUri(targetUrl)) return HLS_URL_SUFFIX;
+  // Direct MP4 / track media → append a `.mp4` hint so the frontend plays it
+  // natively instead of routing it through hls.js as a would-be manifest.
+  if (/\.(mp4|webm|ogg)(\?|$)/i.test(String(targetUrl || ''))) return MP4_URL_SUFFIX;
+  return '';
 }
 
 /**
@@ -193,6 +216,7 @@ if (rewritten.length === 0) return null;
 module.exports = {
   PROXY_BASE,
   HLS_URL_SUFFIX,
+  MP4_URL_SUFFIX,
   proxyUrlSuffix,
   isAnimeHeavenSource,
   rewriteSource,
