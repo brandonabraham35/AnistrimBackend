@@ -1,5 +1,12 @@
 // AdminDashboard/js/ads.js — Enhanced with scheduling, placement management, shared components
 // Uses shared.js for: _escapeHTML, showToast, _debounce, _confirm, ModalManager, SkeletonLoader, EmptyState, ErrorState, Badge
+//
+// Two ad systems:
+//   1. Ads Policy (ads_config) — the REAL policy source the player reads via
+//      GET/PUT /api/ads/config. This is the primary admin surface.
+//   2. Legacy /api/admin/ads CRUD — DEPRECATED. Kept only for backward
+//      compatibility; the UI marks it as such so admins don't mistake it for
+//      the policy source.
 
 (function() {
   'use strict';
@@ -9,6 +16,117 @@
   let _ads_editId = null;
   let _ads_tbody = null;
 
+  // ─── Ads Policy (ads_config) helpers ────────────────────────────────────
+  // Only http(s) URLs are allowed for ad image_url (stored-XSS guard).
+  function isHttpUrl(value) {
+    if (!value) return false;
+    try {
+      const u = new URL(String(value));
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Load the current ads_config policy into the form.
+  async function loadAdsPolicy() {
+    const statusEl = document.getElementById('ads-config-status');
+    try {
+      const cfg = await window.apiRequest('/api/ads/config');
+      setCheckbox('ads-policy-banner-enabled', cfg.bannerEnabled);
+      setValue('ads-policy-banner-unit-id', cfg.bannerUnitId || '');
+      setCheckbox('ads-policy-interstitial-enabled', cfg.interstitialEnabled);
+      setValue('ads-policy-interstitial-clicks-between', cfg.interstitialClicksBetween);
+      setValue('ads-policy-interstitial-frequency-cap', cfg.interstitialFrequencyCap);
+      setValue('ads-policy-interstitial-every-n-episodes', cfg.interstitialEveryNEpisodes);
+      setCheckbox('ads-policy-preroll-enabled', cfg.preRollEnabled);
+      setValue('ads-policy-preroll-unit-id', cfg.preRollUnitId || '');
+      setValue('ads-policy-preroll-frequency-cap', cfg.preRollFrequencyCap);
+      setValue('ads-policy-preroll-skippable-after', cfg.preRollSkippableAfterSec);
+      setValue('ads-policy-preroll-max-duration', cfg.preRollMaxDurationSec);
+      if (statusEl) { statusEl.style.display = 'none'; }
+    } catch (err) {
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Failed to load ads policy: ' + (err && err.message ? err.message : 'unknown error');
+        statusEl.style.color = 'var(--danger,#e74c3c)';
+      }
+    }
+  }
+
+  function setCheckbox(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
+  }
+  function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value === null || value === undefined ? '' : String(value);
+  }
+
+  // Save the ads_config policy via PUT /api/ads/config.
+  async function saveAdsPolicy() {
+    const statusEl = document.getElementById('ads-config-status');
+    const body = {
+      bannerEnabled: getCheckbox('ads-policy-banner-enabled'),
+      bannerUnitId: getValue('ads-policy-banner-unit-id'),
+      interstitialEnabled: getCheckbox('ads-policy-interstitial-enabled'),
+      interstitialClicksBetween: getInt('ads-policy-interstitial-clicks-between'),
+      interstitialFrequencyCap: getInt('ads-policy-interstitial-frequency-cap'),
+      interstitialEveryNEpisodes: getInt('ads-policy-interstitial-every-n-episodes'),
+      preRollEnabled: getCheckbox('ads-policy-preroll-enabled'),
+      preRollUnitId: getValue('ads-policy-preroll-unit-id'),
+      preRollFrequencyCap: getInt('ads-policy-preroll-frequency-cap'),
+      preRollSkippableAfterSec: getInt('ads-policy-preroll-skippable-after'),
+      preRollMaxDurationSec: getInt('ads-policy-preroll-max-duration'),
+    };
+    try {
+      const saved = await window.apiRequest('/api/ads/config', { method: 'PUT', body });
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Ads policy saved successfully.';
+        statusEl.style.color = 'var(--success,#27ae60)';
+      }
+      // Re-populate from the server response (authoritative).
+      setCheckbox('ads-policy-banner-enabled', saved.bannerEnabled);
+      setValue('ads-policy-banner-unit-id', saved.bannerUnitId || '');
+      setCheckbox('ads-policy-interstitial-enabled', saved.interstitialEnabled);
+      setValue('ads-policy-interstitial-clicks-between', saved.interstitialClicksBetween);
+      setValue('ads-policy-interstitial-frequency-cap', saved.interstitialFrequencyCap);
+      setValue('ads-policy-interstitial-every-n-episodes', saved.interstitialEveryNEpisodes);
+      setCheckbox('ads-policy-preroll-enabled', saved.preRollEnabled);
+      setValue('ads-policy-preroll-unit-id', saved.preRollUnitId || '');
+      setValue('ads-policy-preroll-frequency-cap', saved.preRollFrequencyCap);
+      setValue('ads-policy-preroll-skippable-after', saved.preRollSkippableAfterSec);
+      setValue('ads-policy-preroll-max-duration', saved.preRollMaxDurationSec);
+    } catch (err) {
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Failed to save ads policy: ' + (err && err.message ? err.message : 'unknown error');
+        statusEl.style.color = 'var(--danger,#e74c3c)';
+      }
+    }
+  }
+
+  function getCheckbox(id) {
+    const el = document.getElementById(id);
+    return el ? el.checked : false;
+  }
+  function getValue(id) {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  }
+  function getInt(id) {
+    const el = document.getElementById(id);
+    const n = el ? parseInt(el.value, 10) : NaN;
+    return Number.isNaN(n) ? null : n;
+  }
+
+  // ─── saveAdsConfig() — referenced by dashboard.html:606 ─────────────────
+  // The header "Save Changes" button now saves the real ads_config policy.
+  window.saveAdsConfig = function() {
+    saveAdsPolicy();
+  };
+
   // ─── Initialization ─────────────────────────────────────────────────────
   function initializeAdsSection() {
     console.log('[Ads] Initializing...');
@@ -16,11 +134,16 @@
     _ads_tbody = document.querySelector('#ads-table tbody');
     _setupEventListeners();
     _loadAds();
+    loadAdsPolicy();
   }
 
   function _setupEventListeners() {
-    // Add ad button
+    // Add ad button (legacy CRUD)
     document.getElementById('add-ad-btn')?.addEventListener('click', () => _openAdModal(null));
+
+    // Ads Policy form buttons
+    document.getElementById('save-ads-policy-btn')?.addEventListener('click', saveAdsPolicy);
+    document.getElementById('reload-ads-policy-btn')?.addEventListener('click', loadAdsPolicy);
 
     // Table delegation
     const table = document.querySelector('#ads-table');
@@ -57,7 +180,7 @@
     });
   }
 
-  // ─── Data Fetching ──────────────────────────────────────────────────────
+  // ─── Data Fetching (legacy CRUD) ────────────────────────────────────────
   async function _loadAds() {
     if (!_ads_tbody) return;
     _ads_tbody.innerHTML = '<tr><td colspan="7">' + window.SkeletonLoader.table(3, 6) + '</td></tr>';
@@ -90,15 +213,17 @@
       const scheduleInfo = ad.start_date || ad.end_date
         ? `${ad.start_date ? window._formatDate(ad.start_date) : 'Any'} → ${ad.end_date ? window._formatDate(ad.end_date) : 'Any'}`
         : 'Always';
+      // XSS guard: only render http(s) image URLs, and escape the value.
+      const safeImage = isHttpUrl(ad.image_url) ? window._escapeHTML(ad.image_url) : '';
       return `
       <tr>
         <td>
           <div class="ad-preview">
-            ${ad.image_url ? `<img src="${ad.image_url}" alt="Ad Preview" style="width:60px;height:40px;object-fit:cover;border-radius:4px;">` : '<span style="color:var(--text-muted);font-size:0.78rem;">No Image</span>'}
+            ${safeImage ? `<img src="${safeImage}" alt="Ad Preview" style="width:60px;height:40px;object-fit:cover;border-radius:4px;">` : '<span style="color:var(--text-muted);font-size:0.78rem;">No Image</span>'}
           </div>
         </td>
         <td>${window._escapeHTML(ad.title || 'Untitled')}</td>
-        <td>${ad.type || 'N/A'}</td>
+        <td>${window._escapeHTML(ad.type || 'N/A')}</td>
         <td>
           <label class="switch">
             <input type="checkbox" class="status-toggle" data-id="${ad.id}" ${ad.is_active ? 'checked' : ''}>
@@ -106,7 +231,7 @@
           </label>
         </td>
         <td>${ad.target_free_only ? 'Free Only' : 'All Users'}</td>
-        <td style="font-size:0.78rem;color:var(--text-muted);">${scheduleInfo}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted);">${window._escapeHTML(scheduleInfo)}</td>
         <td style="white-space:nowrap;">
           <button class="btn-action edit" data-id="${ad.id}" title="Edit"><i class="fas fa-edit"></i></button>
           <button class="btn-action delete" data-id="${ad.id}" title="Delete"><i class="fas fa-trash"></i></button>
@@ -115,12 +240,18 @@
     }).join('');
   }
 
-  // ─── Form Submit ───────────────────────────────────────────────────────
+  // ─── Form Submit (legacy CRUD) ─────────────────────────────────────────
   async function _handleFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
     const body = Object.fromEntries(formData.entries());
+
+    // Reject non-http(s) image URLs (stored-XSS guard).
+    if (body.image_url && !isHttpUrl(body.image_url)) {
+      window.showToast?.('Image URL must be http(s).', 'error');
+      return;
+    }
 
     body.is_active = form.querySelector('#ad-is-active').checked ? '1' : '0';
     body.target_free_only = form.querySelector('#ad-target-free-only').checked ? '1' : '0';
@@ -142,7 +273,7 @@
     }
   }
 
-  // ─── CRUD Operations ───────────────────────────────────────────────────
+  // ─── CRUD Operations (legacy) ──────────────────────────────────────────
   async function _updateAd(id, partialBody) {
     try {
       await window.apiRequest(`/api/admin/ads/${id}`, { method: 'PUT', body: partialBody });
@@ -175,7 +306,7 @@
     }
   }
 
-  // ─── Modal Logic ───────────────────────────────────────────────────────
+  // ─── Modal Logic (legacy) ──────────────────────────────────────────────
   function _openAdModal(adId) {
     _ads_editId = adId;
     const modal = document.getElementById('ad-modal');

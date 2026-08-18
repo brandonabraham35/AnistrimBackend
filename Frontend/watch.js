@@ -203,6 +203,15 @@ let adPlayInterval = null;
 let lastAdPlayedAt = 0;
 const AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
+// ── Phase 8: PlayerAds wiring ───────────────────────────────
+// The watch page fetches the player policy ONCE per episode, caches it, and
+// passes it into PlayerAds.init({ policy }) so preRoll/midRoll/shouldServe never
+// re-fetch (previously they issued 3 separate /api/ads/policy calls).
+let adsPolicyFetched = false;      // one fetch per episode load
+let adsInstance = null;            // window.PlayerAds.init() result for the episode
+let currentPreRollAd = null;       // last served pre-roll ad (for skip/click emission)
+let preRollOverlayEl = null;       // lightweight pre-roll ad overlay (created on demand)
+
 // ── Playback stage timeouts (ms) ────────────────────────────
 const API_TIMEOUT_MS = 30000;
 // Cold AnimeHeaven resolutions can take a while (3 attempts + fallbacks).
@@ -447,6 +456,16 @@ async function loadWatch() {
       clearTimeout(playbackTimeout);
       showPremiumGate(ep.title || ('Episode ' + epNum), ep.effectiveTier, ep.availableAt, ep.accessState);
       return;
+    }
+
+    // ── Phase 8: Initialise PlayerAds (single policy fetch per episode) ──
+    // Fetches /api/ads/policy once, caches it, and passes it into init() so
+    // preRoll/midRoll/shouldServe never re-fetch. Premium/admin never inits.
+    // Never blocks playback — failures are non-fatal and content plays anyway.
+    try {
+      await initAdsForEpisode();
+    } catch (adsErr) {
+      console.warn('[ADS] initAdsForEpisode failed (non-fatal):', adsErr && adsErr.message);
     }
 
     try {
@@ -731,6 +750,74 @@ function showMidRollAd(video) {
   // DORMANT: No #adOverlay element in new HTML
 }
 
+// ── Phase 8: PlayerAds bootstrap (single policy fetch per episode) ──
+// Fetches the player policy ONCE, caches it, and initialises PlayerAds with
+// that cached policy so preRoll/midRoll/shouldServe never re-fetch.
+// Premium/admin users never initialise the ad module (policy is empty anyway).
+async function initAdsForEpisode() {
+  if (!window.PlayerAds) return null;
+  if (State.isPremium || State.isAdmin) return null; // premium never initialises
+  try {
+    const video = document.getElementById('animePlayer');
+    const policy = await window.PlayerAds.fetchPolicy('player'); // ONE fetch per episode
+    adsPolicyFetched = true;
+    adsInstance = window.PlayerAds.init({
+      context: 'player',
+      video: video,
+      $: window.__adSdkShowFn || null, // ad SDK show fn, if any (null → never blocks content)
+      policy: policy,                  // reuse the cached policy — no re-fetch
+    });
+    return adsInstance;
+  } catch (e) {
+    console.warn('[ADS] Policy init failed (non-fatal):', e && e.message);
+    return null;
+  }
+}
+
+// Lightweight pre-roll overlay so a served ad has a real surface for
+// skip/click emission. Created on demand; never pauses the video.
+function showPreRollAd(ad, ads) {
+  if (!ad || !ads) return;
+  hidePreRollAd();
+  const wrap = document.getElementById('player-wrap');
+  if (!wrap) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'anistrim-pre-roll-overlay';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);flex-direction:column;gap:16px;';
+
+  const label = document.createElement('div');
+  label.textContent = 'Advertisement';
+  label.style.cssText = 'color:rgba(255,255,255,0.7);font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;';
+
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = 'Skip Ad';
+  skipBtn.style.cssText = 'padding:10px 22px;border-radius:8px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.12);color:#fff;cursor:pointer;font-size:0.9rem;';
+
+  // Ad click → emit 'click'.
+  overlay.addEventListener('click', function(ev) {
+    if (ev.target === skipBtn) return;
+    ads.logEvent(ad.provider, 'pre_roll', 'click', 'player');
+  });
+  // Skip → emit 'skip' and dismiss.
+  skipBtn.addEventListener('click', function() {
+    ads.logEvent(ad.provider, 'pre_roll', 'skip', 'player');
+    hidePreRollAd();
+  });
+
+  overlay.appendChild(label);
+  overlay.appendChild(skipBtn);
+  wrap.appendChild(overlay);
+  preRollOverlayEl = overlay;
+}
+
+function hidePreRollAd() {
+  if (preRollOverlayEl && preRollOverlayEl.parentNode) {
+    preRollOverlayEl.parentNode.removeChild(preRollOverlayEl);
+  }
+  preRollOverlayEl = null;
+}
+
 // ════════════════════════════════════════════════════════════
 //  PREMIUM PLAYER SETUP
 // ════════════════════════════════════════════════════════════
@@ -896,6 +983,10 @@ function setupPlayer(video) {
     // FIX A: route through Progress.pause() when available
     if (currentEpId && window.Progress && typeof window.Progress.pause === 'function') {
       window.Progress.pause(currentEpId, Math.floor(video.currentTime || 0), Math.floor(video.duration || 0));
+    }
+    // Phase 8: user-initiated pause → offer mid-roll (never pauses content itself).
+    if (adsInstance && typeof adsInstance.midRoll === 'function') {
+      adsInstance.midRoll().catch(function() {});
     }
     wrap.classList.add('paused');
     setPlayIcon(false);
@@ -1781,6 +1872,10 @@ function skipOutro() {
   var video = document.getElementById('animePlayer');
   if (outroRange) video.currentTime = outroRange.end;
   document.getElementById('skip-outro-btn').style.display = 'none';
+  // Phase 8: outro marker handler → offer mid-roll (never pauses content itself).
+  if (adsInstance && typeof adsInstance.midRoll === 'function') {
+    adsInstance.midRoll().catch(function() {});
+  }
 }
 window.skipOutro = skipOutro;
 
@@ -2830,11 +2925,32 @@ window.showWatchError = showWatchError;
 // ════════════════════════════════════════════════════════════
 //  HLS / Stream Source Attacher
 // ════════════════════════════════════════════════════════════
+// Phase 8: Before attaching ANY source (initial load, direct, change-server,
+// next-ep, quality-switch), resolve the pre-roll ad. It NEVER blocks content —
+// if it times out, fails, or no ad is configured, content attaches anyway.
 function attachStreamSource(video, source) {
-  if (hlsInstance) {
-    hlsInstance.destroy();
-    hlsInstance = null;
-  }
+  return Promise.resolve().then(function() {
+    // Resolve pre-roll BEFORE setting the source. Never throws.
+    if (adsInstance && typeof adsInstance.preRoll === 'function') {
+      return adsInstance.preRoll().then(function(r) {
+        currentPreRollAd = (r && r.served) ? r.ad : null;
+        return currentPreRollAd;
+      }).catch(function() {
+        currentPreRollAd = null;
+        return null;
+      });
+    }
+    return null;
+  }).then(function(servedAd) {
+    // If an ad was actually served, show the skip/click surface.
+    if (servedAd && adsInstance) {
+      showPreRollAd(servedAd, adsInstance);
+    }
+
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
 
   var isHlsStream = /\.m3u8(?:$|\?)/i.test(source);
   return new Promise(function(resolve, reject) {
@@ -2958,6 +3074,7 @@ function attachStreamSource(video, source) {
 
     video.src = source;
     video.load();
+    });
   });
 }
 
