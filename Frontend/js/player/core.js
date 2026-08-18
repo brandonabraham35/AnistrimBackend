@@ -23,6 +23,8 @@
     var onLevels = opts.onLevels || function (levels) {};
     var onManifestParsed = opts.onManifestParsed || function () {};
     var onLevelSwitched = opts.onLevelSwitched || function (level) {};
+    var onFragmentLoaded = opts.onFragmentLoaded || function (info) {};
+    var onLevelLoaded = opts.onLevelLoaded || function (info) {};
 
     if (!video) return null;
 
@@ -63,6 +65,14 @@
           if (data && data.level >= 0) {
             onLevelSwitched(data.level);
           }
+        });
+
+        hls.on(Hls.Events.LEVEL_LOADED, function (_e, data) {
+          onLevelLoaded({ level: data.level, details: data.details });
+        });
+
+        hls.on(Hls.Events.FRAG_LOADED, function (_e, data) {
+          onFragmentLoaded({ fragSn: data.frag ? data.frag.sn : null, type: data.frag ? data.frag.type : null });
         });
 
         hls.on(Hls.Events.ERROR, function (event, data) {

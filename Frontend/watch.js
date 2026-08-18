@@ -297,53 +297,141 @@ function isTouchDevice() {
 }
 
 // ── PLAYBACK STATE MACHINE ────────────────────────────────
-// Explicit, deterministic watch-page states. The page must NEVER treat
-// "still loading / no source yet" as an error. Only the backend genuinely
-// failing (or a hard network failure) may transition to ERROR.
+// Granular, deterministic watch-page states that distinguish source
+// resolution from real playback. The page must NEVER treat
+// "still loading / no source yet" or "sources: 1" as success.
+// Only TIME_ADVANCING (currentTime > 0) is PLAYBACK_SUCCESS.
+//
+// State transitions:
+//   INITIALIZING → AUTH_CHECK → PREMIUM_CHECK → STREAM_LOADING
+//   STREAM_LOADING → SOURCE_RESOLVED (backend returned sources)
+//   SOURCE_RESOLVED → STREAM_AUTHORIZED (token minted)
+//   STREAM_AUTHORIZED → MANIFEST_REQUESTED (hls.js loadSource called)
+//   MANIFEST_REQUESTED → MANIFEST_LOADED (MANIFEST_PARSED)
+//   MANIFEST_LOADED → LEVEL_LOADED (variant playlist loaded)
+//   LEVEL_LOADED → FRAGMENT_LOADED (first media segment loaded)
+//   FRAGMENT_LOADED → BUFFER_READY (enough buffer)
+//   BUFFER_READY → CANPLAY (canplay event)
+//   CANPLAY → PLAY_REQUESTED (play() called)
+//   PLAY_REQUESTED → PLAYING (playing event)
+//   PLAYING → TIME_ADVANCING (currentTime > 0 confirmed)
+//   TIME_ADVANCING → PLAYBACK_SUCCESS
+//
+// Any state can transition to PLAYBACK_FAILED on fatal error.
 const PLAYER_STATES = {
+  // ── Pre-resolution ──────────────────────────────────────
   INITIALIZING: 'INITIALIZING',
   AUTH_CHECK: 'AUTH_CHECK',
   PREMIUM_CHECK: 'PREMIUM_CHECK',
-  STREAM_LOADING: 'STREAM_LOADING',
-  SOURCE_READY: 'SOURCE_READY',
-  PLAYER_LOADING: 'PLAYER_LOADING',
-  PLAYING: 'PLAYING',
+
+  // ── Backend resolution ──────────────────────────────────
+  STREAM_LOADING: 'STREAM_LOADING',       // waiting for /api/stream response
+  SOURCE_RESOLVED: 'SOURCE_RESOLVED',     // backend returned sources (NOT playback success!)
+  STREAM_AUTHORIZED: 'STREAM_AUTHORIZED', // /api/stream/authorize succeeded
+
+  // ── HLS / media loading ─────────────────────────────────
+  MANIFEST_REQUESTED: 'MANIFEST_REQUESTED', // hls.js loadSource() called
+  MANIFEST_LOADED: 'MANIFEST_LOADED',       // MANIFEST_PARSED fired
+  LEVEL_LOADED: 'LEVEL_LOADED',             // variant playlist loaded
+  FRAGMENT_LOADED: 'FRAGMENT_LOADED',       // first media segment loaded
+  BUFFER_READY: 'BUFFER_READY',             // enough buffer to start
+
+  // ── Playback ────────────────────────────────────────────
+  CANPLAY: 'CANPLAY',                       // canplay event
+  PLAY_REQUESTED: 'PLAY_REQUESTED',         // play() called
+  PLAYING: 'PLAYING',                       // playing event
+  TIME_ADVANCING: 'TIME_ADVANCING',         // currentTime > 0 confirmed
+  PLAYBACK_SUCCESS: 'PLAYBACK_SUCCESS',     // all criteria met
+
+  // ── Terminal / UI states ────────────────────────────────
   PAUSED: 'PAUSED',
   BUFFERING: 'BUFFERING',
   ENDED: 'ENDED',
   AUTOPLAY_BLOCKED: 'AUTOPLAY_BLOCKED',
-  PLAYBACK_ERROR: 'PLAYBACK_ERROR',
+  PLAYBACK_FAILED: 'PLAYBACK_FAILED',
   AUTH_REQUIRED: 'AUTH_REQUIRED',
   PREMIUM_REQUIRED: 'PREMIUM_REQUIRED',
   DEVICE_LIMIT_REQUIRED: 'DEVICE_LIMIT_REQUIRED',
 };
 let playerState = PLAYER_STATES.INITIALIZING;
 
-function setPlayerState(state, meta = {}) {
+// ── Playback trace: records every state transition with safe metadata ──
+window.__playbackTrace = {
+  requestId: requestId,
+  startedAt: new Date().toISOString(),
+  transitions: [],
+  hlsEvents: [],
+  videoEvents: [],
+  errors: [],
+  success: false,
+};
+
+function recordPlaybackTrace(category, event, meta) {
+  var entry = {
+    ts: Date.now(),
+    elapsedMs: Date.now() - new Date(window.__playbackTrace.startedAt).getTime(),
+    category: category,
+    event: event,
+    state: playerState,
+  };
+  // Only include safe metadata — never tokens, JWTs, cookies, or signed URLs.
+  if (meta) {
+    var safe = {};
+    var allowed = ['animeId', 'episodeId', 'provider', 'streamId', 'requestId',
+      'status', 'contentType', 'latencyMs', 'readyState', 'networkState',
+      'code', 'type', 'fatal', 'level', 'height', 'bandwidth', 'fragSn',
+      'fragType', 'bufferLen', 'currentTime', 'duration', 'reason', 'mode',
+      'sourceType', 'quality', 'sourceCount', 'playableSourceCount',
+      'directVideo', 'hls', 'via', 'fallback', 'elapsedMs', 'timedOut',
+      'isPremium', 'isAdmin', 'isLoggedIn', 'tier', 'bestQuality',
+      'subtitleCount', 'episode', 'state', 'message'];
+    Object.keys(meta).forEach(function(k) {
+      if (allowed.indexOf(k) !== -1) safe[k] = meta[k];
+    });
+    entry.meta = safe;
+  }
+  window.__playbackTrace[category === 'state' ? 'transitions' :
+    (category === 'hls' ? 'hlsEvents' :
+    (category === 'video' ? 'videoEvents' :
+    (category === 'error' ? 'errors' : 'transitions')))].push(entry);
+}
+
+function setPlayerState(state, meta) {
+  if (!meta) meta = {};
+  var prevState = playerState;
   playerState = state;
-  watchLog('stateChange', { state, ...meta });
+  recordPlaybackTrace('state', state, meta);
+  watchLog('stateChange', { from: prevState, to: state, elapsedMs: Date.now() - new Date(window.__playbackTrace.startedAt).getTime() });
   if (window.__aniStrimPlaybackDebug) {
     window.__aniStrimPlaybackDebug.state = state;
   }
   // Update the loading-status text to reflect the current state.
-  const statusText = {
-    [PLAYER_STATES.INITIALIZING]: 'Preparing player...',
-    [PLAYER_STATES.AUTH_CHECK]: 'Checking account...',
-    [PLAYER_STATES.PREMIUM_CHECK]: 'Checking access...',
-    [PLAYER_STATES.STREAM_LOADING]: 'Finding stream...',
-    [PLAYER_STATES.SOURCE_READY]: 'Stream ready',
-    [PLAYER_STATES.PLAYER_LOADING]: 'Loading video...',
-    [PLAYER_STATES.PLAYING]: 'Playing',
-    [PLAYER_STATES.PAUSED]: 'Paused',
-    [PLAYER_STATES.BUFFERING]: 'Buffering...',
-    [PLAYER_STATES.ENDED]: 'Ended',
-    [PLAYER_STATES.AUTOPLAY_BLOCKED]: 'Ready to play',
-    [PLAYER_STATES.PLAYBACK_ERROR]: 'Playback problem',
-    [PLAYER_STATES.AUTH_REQUIRED]: 'Sign in required',
-    [PLAYER_STATES.PREMIUM_REQUIRED]: 'Premium required',
-    [PLAYER_STATES.DEVICE_LIMIT_REQUIRED]: 'Device limit reached',
-  };
-  const statusEl = document.getElementById('loading-status');
+  var statusText = {};
+  statusText[PLAYER_STATES.INITIALIZING] = 'Preparing player...';
+  statusText[PLAYER_STATES.AUTH_CHECK] = 'Checking account...';
+  statusText[PLAYER_STATES.PREMIUM_CHECK] = 'Checking access...';
+  statusText[PLAYER_STATES.STREAM_LOADING] = 'Finding stream...';
+  statusText[PLAYER_STATES.SOURCE_RESOLVED] = 'Stream found';
+  statusText[PLAYER_STATES.STREAM_AUTHORIZED] = 'Stream authorized';
+  statusText[PLAYER_STATES.MANIFEST_REQUESTED] = 'Loading manifest...';
+  statusText[PLAYER_STATES.MANIFEST_LOADED] = 'Manifest loaded';
+  statusText[PLAYER_STATES.LEVEL_LOADED] = 'Quality loaded';
+  statusText[PLAYER_STATES.FRAGMENT_LOADED] = 'Loading video...';
+  statusText[PLAYER_STATES.BUFFER_READY] = 'Ready';
+  statusText[PLAYER_STATES.CANPLAY] = 'Ready to play';
+  statusText[PLAYER_STATES.PLAY_REQUESTED] = 'Starting playback...';
+  statusText[PLAYER_STATES.PLAYING] = 'Playing';
+  statusText[PLAYER_STATES.TIME_ADVANCING] = 'Playing';
+  statusText[PLAYER_STATES.PLAYBACK_SUCCESS] = 'Playing';
+  statusText[PLAYER_STATES.PAUSED] = 'Paused';
+  statusText[PLAYER_STATES.BUFFERING] = 'Buffering...';
+  statusText[PLAYER_STATES.ENDED] = 'Ended';
+  statusText[PLAYER_STATES.AUTOPLAY_BLOCKED] = 'Ready to play';
+  statusText[PLAYER_STATES.PLAYBACK_FAILED] = 'Playback failed';
+  statusText[PLAYER_STATES.AUTH_REQUIRED] = 'Sign in required';
+  statusText[PLAYER_STATES.PREMIUM_REQUIRED] = 'Premium required';
+  statusText[PLAYER_STATES.DEVICE_LIMIT_REQUIRED] = 'Device limit reached';
+  var statusEl = document.getElementById('loading-status');
   if (statusEl && statusText[state]) setLoadingStatus(statusText[state]);
 }
 
@@ -673,6 +761,7 @@ function ensurePlayerCoreInitialized(video) {
       }
     },
     onManifestParsed: function () {
+      setPlayerState(PLAYER_STATES.MANIFEST_LOADED, { hls: true, via: 'PlayerCore' });
       watchLog('loadedmetadata', { hls: true, via: 'PlayerCore' });
       // Populate adaptive quality selector from HLS levels.
       hlsQualityOptions = [{ label: 'Auto', value: -1 }];
@@ -693,6 +782,18 @@ function ensurePlayerCoreInitialized(video) {
           var lvl = hls && hls.levels ? hls.levels[level] : null;
           if (lvl && lvl.height) qv.textContent = lvl.height + 'p';
         }
+      }
+    },
+    onLevelLoaded: function (info) {
+      recordPlaybackTrace('hls', 'LEVEL_LOADED', { level: info.level });
+      if (playerState === PLAYER_STATES.MANIFEST_LOADED) {
+        setPlayerState(PLAYER_STATES.LEVEL_LOADED, { level: info.level });
+      }
+    },
+    onFragmentLoaded: function (info) {
+      recordPlaybackTrace('hls', 'FRAG_LOADED', { fragSn: info.fragSn, fragType: info.type });
+      if (playerState === PLAYER_STATES.LEVEL_LOADED || playerState === PLAYER_STATES.MANIFEST_LOADED) {
+        setPlayerState(PLAYER_STATES.FRAGMENT_LOADED, { fragSn: info.fragSn, fragType: info.type });
       }
     }
   });
@@ -752,6 +853,11 @@ function ensurePlayerCoreInitialized(video) {
 
   if (data && data.sources && data.sources.length > 0) {
     const parsedTime = Date.now();
+    setPlayerState(PLAYER_STATES.SOURCE_RESOLVED, {
+      provider: data.provider,
+      sourceCount: data.sources.length,
+      elapsedMs: parsedTime - requestStart
+    });
     watchLog('stream response parsed', { sources: data.sources.length, elapsedMs: parsedTime - requestStart });
 
     const API_BASE_URL = window.getApiBaseUrl();
