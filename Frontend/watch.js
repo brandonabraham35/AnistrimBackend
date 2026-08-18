@@ -1125,8 +1125,27 @@ function setupPlayer(video) {
   var isPremium = State.isPremium || State.isAdmin;
 
   // ── Instrumented playback events (prevent silent failures) ──
+  const VIDEO_EVENT_LABELS = {
+    loadstart: 'MEDIA_LOAD_START',
+    loadedmetadata: 'MEDIA_METADATA_LOADED',
+    loadeddata: 'MEDIA_DATA_LOADED',
+    canplay: 'CANPLAY',
+    playing: 'PLAYING',
+    waiting: 'WAITING',
+    stalled: 'STALLED',
+    error: 'VIDEO_ERROR',
+  };
   ['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'playing', 'waiting', 'stalled', 'error'].forEach(eventName => {
     video.addEventListener(eventName, () => {
+      // ── SAFE DIAGNOSTIC (no token/secret/signed-URL values) ──
+      if (VIDEO_EVENT_LABELS[eventName]) {
+        console.log('[PLAYER_EVENT]', VIDEO_EVENT_LABELS[eventName], {
+          currentTime: video.currentTime,
+          readyState: video.readyState,
+          networkState: video.networkState,
+          duration: video.duration || null,
+        });
+      }
       watchLog(eventName, {
         currentTime: video.currentTime,
         readyState: video.readyState,
