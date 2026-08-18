@@ -32,10 +32,37 @@
 
 const streamProxyStore = require('./streamProxyStore');
 const logger = require('./logger');
+// Single source of truth for HLS URI detection so the suffix appended to
+// proxy URLs can never diverge from the proxy controller's HLS handling.
+const { isHlsUri } = require('./hlsRewriter');
 // Single source of truth for the playback context (referer/origin/cookies/
 // userAgent). Reused so the stored context carries the exact browser-like UA
 // and cookie jar the scraper uses — no duplicate cookie/UA logic.
 const { getPlaybackContext } = require('../services/animeHeavenProvider');
+
+/**
+ * Cosmetic path suffix appended to a proxy URL whose registered target is an
+ * HLS playlist (e.g. /api/stream-proxy/<id>/index.m3u8).
+ *
+ * WHY: players (hls.js gate in the frontend) decide between HLS and native
+ * <video> playback by looking for a `.m3u8` hint in the URL. The anonymized
+ * /api/stream-proxy/:streamId path carries no extension, so Android/Chrome
+ * clients took the native path for an HLS manifest and failed with
+ * MEDIA_ERR_SRC_NOT_SUPPORTED ("All available stream sources failed to load")
+ * even though the backend resolved the source successfully. Appending a real
+ * `.m3u8` segment keeps the URL anonymous (streamId + token still gate it)
+ * while letting ANY client — including already-installed apps — detect HLS.
+ * The proxy route accepts the suffix as an optional, ignored path segment.
+ */
+const HLS_URL_SUFFIX = '/index.m3u8';
+
+/**
+ * @param {string|null|undefined} targetUrl - upstream media URL
+ * @returns {string} HLS_URL_SUFFIX when the target is an HLS playlist, else ''
+ */
+function proxyUrlSuffix(targetUrl) {
+  return isHlsUri(targetUrl) ? HLS_URL_SUFFIX : '';
+}
 
 /**
  * Normalize the requesting user's identity across all call sites. Guarantees
@@ -103,7 +130,9 @@ function rewriteSource(src, userId = null, episodeId = null, ipHash = '') {
     return null;
   }
   return {
-    url: `${PROXY_BASE}/${streamId}`,
+    // HLS targets get a cosmetic `/index.m3u8` segment so clients can detect
+    // HLS from the URL (see proxyUrlSuffix). Non-HLS targets stay extension-less.
+    url: `${PROXY_BASE}/${streamId}${proxyUrlSuffix(src.url)}`,
     quality: src.quality || 'auto',
     sourceType: src.sourceType || null,
     proxied: true,
@@ -163,6 +192,8 @@ if (rewritten.length === 0) return null;
 
 module.exports = {
   PROXY_BASE,
+  HLS_URL_SUFFIX,
+  proxyUrlSuffix,
   isAnimeHeavenSource,
   rewriteSource,
   rewriteResultToProxy,

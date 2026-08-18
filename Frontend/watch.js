@@ -3143,7 +3143,10 @@ function attachStreamSource(video, source) {
       clearTimeout(timeout);
     }
 
-    if (isHlsStream && window.Hls && window.Hls.isSupported()) {
+    // HLS attach shared by the primary HLS path and the native→HLS fallback
+    // for extension-less proxy URLs (see the video error handler below).
+    function beginHls() {
+      if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
       hlsInstance = new window.Hls();
       hlsInstance.loadSource(source);
       hlsInstance.attachMedia(video);
@@ -3180,6 +3183,10 @@ function attachStreamSource(video, source) {
           window.__playerResilience.onError(_event, data);
         }
       });
+    }
+
+    if (isHlsStream && window.Hls && window.Hls.isSupported()) {
+      beginHls();
       return;
     }
 
@@ -3204,6 +3211,7 @@ function attachStreamSource(video, source) {
     }
 
     let resolved = false;
+    let hlsFallbackTried = false;
     function onReady() {
       if (resolved) return;
       resolved = true;
@@ -3225,6 +3233,23 @@ function attachStreamSource(video, source) {
 
     video.addEventListener('error', function() {
       if (resolved) return;
+      // ── HLS FALLBACK for extension-less proxy URLs ─────────
+      // The backend appends `/index.m3u8` to HLS proxy URLs, but older
+      // backends (or extension-less upstream playlists) can still serve an
+      // HLS manifest from a URL with no `.m3u8` hint. Android/Chrome cannot
+      // play HLS natively (MEDIA_ERR_SRC_NOT_SUPPORTED), so before failing
+      // this source, retry ONCE through hls.js. This only fires when native
+      // playback has already failed — healthy MP4 sources are unaffected.
+      if (!hlsFallbackTried && /\/api\/stream-proxy\//.test(source) && window.Hls && window.Hls.isSupported()) {
+        hlsFallbackTried = true;
+        clearTimeout(fallbackResolve);
+        console.warn('[WATCH PLAYER] Native playback failed for proxy URL — retrying via hls.js:', {
+          code: video.error?.code,
+          url: source
+        });
+        beginHls();
+        return;
+      }
       resolved = true;
       cleanup();
       console.error('[WATCH PLAYER] video error:', {

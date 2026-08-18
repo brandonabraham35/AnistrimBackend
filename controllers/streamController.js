@@ -639,7 +639,7 @@ exports.authorizeStream = async (req, res) => {
     }
 
     // ── Mint one token per concrete streamId ────────────────
-    const { PROXY_BASE } = require('../utils/streamProxy');
+    const { PROXY_BASE, proxyUrlSuffix } = require('../utils/streamProxy');
     const apiBase = req.protocol + '://' + req.get('host');
     // FIX 5: bind the stream token to the session (sid) + token_version (tv)
     // from the authenticated access JWT so logout/suspend can revoke it.
@@ -649,7 +649,12 @@ exports.authorizeStream = async (req, res) => {
     const streams = finalStreams.map((streamId) => {
       // Guests mint an anonymous token bound to ipHash + episodeId + streamId.
       const token = mint({ userId: userId || null, episodeId: epIdStr, streamId, ip, sid, tv });
-      const url = `${apiBase}${PROXY_BASE}/${streamId}?token=${encodeURIComponent(token)}`;
+      // Mirror the cosmetic `/index.m3u8` suffix that rewriteSource appended
+      // to the /api/stream response so the concrete authorized URL keeps the
+      // HLS hint the player's hls.js gate needs (see utils/streamProxy.js).
+      const ctx = streamProxyStore.get(streamId);
+      const suffix = proxyUrlSuffix(ctx && ctx.targetUrl);
+      const url = `${apiBase}${PROXY_BASE}/${streamId}${suffix}?token=${encodeURIComponent(token)}`;
       return { streamId, token, url, expiresIn: Math.round(TTL_MS / 1000) };
     });
 
