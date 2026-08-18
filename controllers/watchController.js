@@ -47,8 +47,12 @@ exports.saveProgress = async (req, res) => {
     if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
 
     // Resolve the episode to get anime_id + episode_number.
+    // NOTE: season_number is intentionally NOT selected/inserted here — it is
+    // not part of watch_progress's schema (the runtime error confirmed this).
+    // Episode number is sufficient for the progress row; season context is
+    // derived via the episodes join in read queries.
     const [epRows] = await db.query(
-      'SELECT id, anime_id, episode_number, season_number FROM episodes WHERE id = ?',
+      'SELECT id, anime_id, episode_number FROM episodes WHERE id = ?',
       [episodeId]
     );
     if (!epRows.length) return res.status(404).json({ message: 'Episode not found.' });
@@ -80,8 +84,8 @@ exports.saveProgress = async (req, res) => {
 
     await db.query(
       `INSERT INTO watch_progress
-         (user_id, anime_id, episode_id, season_number, episode_number, position_sec, duration_sec, completed, completed_at, device)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (user_id, anime_id, episode_id, episode_number, position_sec, duration_sec, completed, completed_at, device)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          position_sec = VALUES(position_sec),
          -- FIX 7 (Phase 3): never overwrite a known duration with 0
@@ -90,7 +94,7 @@ exports.saveProgress = async (req, res) => {
          completed_at = IF(VALUES(completed)=1, COALESCE(watch_progress.completed_at, NOW()), watch_progress.completed_at),
          device       = VALUES(device),
          updated_at   = NOW()`,
-      [userId, ep.anime_id, ep.id, ep.season_number || 1, ep.episode_number, position, duration, completed ? 1 : 0, completed ? new Date() : null, device]
+      [userId, ep.anime_id, ep.id, ep.episode_number, position, duration, completed ? 1 : 0, completed ? new Date() : null, device]
     );
 
     return res.json({ success: true, positionSec: position, completed });
@@ -185,9 +189,8 @@ exports.getContinueWatching = async (req, res) => {
          SELECT
            wp.anime_id,
            wp.episode_id,
-           wp.episode_number,
-           wp.season_number,
-           wp.position_sec,
+            wp.episode_number,
+            wp.position_sec,
            wp.duration_sec,
            wp.percent,
            wp.completed,
@@ -253,7 +256,7 @@ exports.getContinueWatching = async (req, res) => {
         animeId: row.anime_id,
         title: row.anime_title,
         poster: row.anime_cover_image,
-        seasonNumber: row.season_number || 1,
+        seasonNumber: 1,
         episodeId: row.episode_id,
         episodeNumber: row.episode_number,
         episodeTitle: row.episode_title || null,
@@ -334,7 +337,7 @@ exports.getHistory = async (req, res) => {
 
     const [rows] = await db.query(
       `SELECT
-         wp.episode_id, wp.anime_id, wp.episode_number, wp.season_number,
+         wp.episode_id, wp.anime_id, wp.episode_number,
          wp.position_sec, wp.duration_sec, wp.percent, wp.completed, wp.updated_at,
          a.title AS anime_title, a.cover_image AS anime_cover_image,
          e.title AS episode_title
@@ -552,7 +555,11 @@ exports.getEpisodeMarkers = async (req, res) => {
     }
 
     // 2. AniSkip fallback for intro/outro if not already admin-resolved.
-    if (!markers.intro || !markers.outro) {
+    // FIX (BUG 1): only call AniSkip when the anime actually has a MAL id.
+    // Passing `null` produced /skip-times/null/1 (HTTP 400/404) on every
+    // episode of non-catalogued anime. When mal_id is absent we gracefully
+    // skip — no intro/outro markers, never a fatal playback error.
+    if ((!markers.intro || !markers.outro) && ep.mal_id) {
       try {
         const skipData = await fetchSkipTimes(ep.mal_id, ep.episode_number);
         if (skipData && skipData.found) {
@@ -565,7 +572,11 @@ exports.getEpisodeMarkers = async (req, res) => {
         }
       } catch (e) {
         // Non-fatal — AniSkip may be unavailable.
+        console.warn('[WatchController] AniSkip fetch skipped/failed (non-fatal):', e.message);
       }
+    } else if (!markers.intro || !markers.outro) {
+      // Log a safe diagnostic — anime has no MAL id, so no AniSkip request.
+      console.warn('[WatchController] AniSkip skipped: no MAL id for anime', { animeId: ep.anime_id, episodeId: Number(episodeId) });
     }
 
     return res.json({ success: true, episodeId: Number(episodeId), markers });
