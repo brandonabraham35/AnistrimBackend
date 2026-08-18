@@ -175,7 +175,7 @@ exports.getStream = async (req, res) => {
         }
       } catch (dbErr) {
         // DB error — fallback to using identifier directly
-        logger.warn(`[StreamController] DB lookup failed — using identifier as-is`, { animeTitle, error: dbErr.message });
+        logger.warn('[StreamController] DB lookup failed — using identifier as-is', { animeTitle, error: dbErr.message });
         episodeNumber = episodeIdentifier;
         resolvedFrom = 'dbError';
       }
@@ -184,7 +184,7 @@ exports.getStream = async (req, res) => {
     // Validate episode number is reasonable
     const epNum = Number(episodeNumber);
     if (isNaN(epNum) || epNum < 1 || epNum > 10000) {
-      logger.warn(`[StreamController] Unreasonable episode number — using as-is anyway`, { animeTitle, episodeNumber });
+      logger.warn('[StreamController] Unreasonable episode number — using as-is anyway', { animeTitle, episodeNumber });
     }
 
 logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episodeNumber}`, { animeTitle, episode: episodeNumber, resolvedFrom, mediaType, mediaId });
@@ -640,7 +640,37 @@ exports.authorizeStream = async (req, res) => {
 
     // ── Mint one token per concrete streamId ────────────────
     const { PROXY_BASE, proxyUrlSuffix } = require('../utils/streamProxy');
-    const apiBase = req.protocol + '://' + req.get('host');
+    // ── FIX: deployment-aware API base URL ──────────────────
+    // The proxy URLs returned to the browser MUST use the same scheme the
+    // browser connected with. Behind Render's reverse proxy, `req.protocol`
+    // is `http` unless Express trusts `X-Forwarded-Proto` — which would
+    // produce `http://anistrimbackend.onrender.com/...` and be blocked as
+    // mixed-content by an HTTPS frontend.
+    //
+    // Resolution priority (safest first, no blind trust proxy):
+    //   1. BACKEND_URL / RENDER_EXTERNAL_URL env → that origin (production canonical).
+    //   2. X-Forwarded-Proto: https          → https (safe; Render sets it).
+    //   3. Known production backend host     → https (locked-down).
+    //   4. Anything else (e.g. localhost)    → req.protocol (preserves dev http).
+    const configuredBackend =
+      process.env.BACKEND_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      process.env.PUBLIC_API_URL;
+    let apiBase = configuredBackend
+      ? configuredBackend.replace(/\/+$/, '')
+      : null;
+    if (!apiBase) {
+      const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+      const host = req.get('host') || '';
+      if (forwardedProto === 'https') {
+        apiBase = 'https://' + host;
+      } else if (/anistrimbackend\.onrender\.com$/i.test(host)) {
+        apiBase = 'https://' + host;
+      } else {
+        apiBase = req.protocol + '://' + host;
+      }
+    }
+
     // FIX 5: bind the stream token to the session (sid) + token_version (tv)
     // from the authenticated access JWT so logout/suspend can revoke it.
     const sid = userId ? (req.tokenClaims?.sid || req.tokenClaims?.sessionId || null) : null;
