@@ -5,35 +5,11 @@ const pool    = require('../config/db');
 const anime   = require('../controllers/animeController');
 const catalogue = require('../controllers/catalogueController');
 const { ConsumetProvider } = require('../services/consumetProvider');
-const { protect } = require('../middleware/auth');
+const { protect, optionalAuth } = require('../middleware/auth');
 const { PUBLIC_EPISODE_FILTER } = require('../utils/contentVisibility');
 const episodeAccess = require('../utils/episodeAccess');
 
 const consumet = new ConsumetProvider();
-
-// Optional auth — attaches user context if a valid token is present, but never
-// rejects unauthenticated callers. Used for public-but-masked endpoints.
-// Handles both new-format tokens (uid/sid/tv/roles) and legacy tokens (id).
-function optionalAuth(req, res, next) {
-  const auth = req.headers.authorization;
-  if (auth && auth.startsWith('Bearer ')) {
-    try {
-      const jwt = require('jsonwebtoken');
-      const decoded = jwt.verify(auth.split(' ')[1], process.env.JWT_SECRET, { algorithms: ['HS256'] });
-      req.user = decoded;
-      // Map uid → userId/id for new-format tokens.
-      if (decoded.uid) {
-        req.user.userId = decoded.uid;
-        req.user.id = decoded.uid;
-      }
-      // New-format tokens carry roles[]; map admin role to isAdmin.
-      if (Array.isArray(decoded.roles) && decoded.roles.includes('admin')) {
-        req.user.isAdmin = true;
-      }
-    } catch(_) {}
-  }
-  next();
-}
 
 /**
  * GET /api/anime/kitsu/:kitsuId/episodes
@@ -142,13 +118,6 @@ router.get('/resolve/stream', anime.resolveStream);
 router.get('/:id/stream/:episode', protect, catalogue.getStream);
 
 // Optional auth — episodes show video_url only for premium users
-router.get('/:id', (req, res, next) => {
-  const auth = req.headers.authorization;
-  if (auth) {
-    const jwt = require('jsonwebtoken');
-    try { req.user = jwt.verify(auth.split(' ')[1], process.env.JWT_SECRET, { algorithms: ['HS256'] }); } catch(_) {}
-  }
-  next();
-}, anime.getById);
+router.get('/:id', optionalAuth, anime.getById);
 
 module.exports = router;

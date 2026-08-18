@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const streamController = require('../controllers/streamController');
-const { protect } = require('../middleware/auth');
+const { protect, optionalAuth } = require('../middleware/auth');
 const { streamAuthorizeLimiter, streamResolveLimiter } = require('../middleware/rateLimit');
 
 // ── FIX 4 (P0): /api/stream/proxy QUERY ROUTE DELETED ────────
@@ -42,16 +42,9 @@ router.get('/:animeTitle/:episodeNumber', protect, streamResolveLimiter, streamC
 
 // ── Public: List all providers for "Switch Server" dropdown ─
 // GET /api/stream/providers/:animeTitle/:episodeNumber
-router.get('/providers/:animeTitle/:episodeNumber', (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const jwt = require('jsonwebtoken');
-      req.user = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    } catch (_) {}
-  }
-  next();
-}, streamController.listProviders);
+// Optional auth attaches the full user context (DB reload, status, tv, session)
+// if a valid token is present, but never rejects anonymous callers.
+router.get('/providers/:animeTitle/:episodeNumber', optionalAuth, streamController.listProviders);
 
 // ── Premium-only: Authorize offline download ───────────────
 // POST /api/stream/offline-download

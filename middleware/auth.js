@@ -3,18 +3,20 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { hasRole } = require('../utils/hasRole');
 
-// Attach user to request if token is valid.
-// New access-token contract (Phase 1):
-//   Claims: { uid, sid, tv (token_version), roles[], iat, exp }
-//   • Loads the user fresh from the DB (authoritative for status, token_version).
-//   • Rejects if status !== 'active' (suspended/deactivated/deleted/pending).
-//   • Rejects if payload.tv !== user.token_version (logout-all / password change).
-//   • Rejects if the session (sid) is revoked.
-//   • Touches last_seen_at on the session.
-exports.protect = async (req, res, next) => {
+// Shared bearer-token verification. Loads the user fresh from the DB
+// (authoritative for status, token_version) and enforces:
+//   • token must be a session access token (no `purpose` claim)
+//   • token must carry { uid, sid, tv }
+//   • user must exist and be status === 'active'
+//   • payload.tv === user.token_version (logout-all / password change)
+//   • session (sid) must not be revoked (touches last_seen_at best-effort)
+//
+// Returns `{ user, userId, tokenClaims }` on success, or
+// `{ status, body }` on failure. Never throws.
+async function verifyBearerToken(req) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Not authenticated. Please log in.' });
+    return { status: 401, body: { message: 'Not authenticated. Please log in.' } };
   }
   const token = authHeader.split(' ')[1];
 
@@ -22,26 +24,26 @@ exports.protect = async (req, res, next) => {
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   } catch (err) {
-    return res.status(401).json({ message: 'Token expired or invalid. Please log in again.' });
+    return { status: 401, body: { message: 'Token expired or invalid. Please log in again.' } };
   }
 
   // Reject non-session tokens (password-reset tokens carry `purpose`).
   if (decoded.purpose) {
-    return res.status(401).json({ message: 'Invalid token type.' });
+    return { status: 401, body: { message: 'Invalid token type.' } };
   }
 
-  // Phase-1 access tokens MUST carry { uid, sid, tv }. Legacy tokens without
-  // `uid` are rejected outright — they skip the tv/session checks and are a
+  // Access tokens MUST carry { uid, sid, tv }. Legacy tokens without `uid`
+  // are rejected outright — they skip the tv/session checks and are a
   // security hole.
   const userId = decoded.uid;
   if (!userId) {
-    return res.status(401).json({ message: 'Invalid token payload.' });
+    return { status: 401, body: { message: 'Invalid token payload.' } };
   }
 
   try {
     const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
     if (rows.length === 0) {
-      return res.status(401).json({ message: 'User not found.' });
+      return { status: 401, body: { message: 'User not found.' } };
     }
     const user = rows[0];
 
@@ -51,12 +53,12 @@ exports.protect = async (req, res, next) => {
         : user.status === 'deactivated' ? 'ACCOUNT_DEACTIVATED'
         : user.status === 'deleted' ? 'ACCOUNT_DELETED'
         : 'ACCOUNT_NOT_ACTIVE';
-      return res.status(403).json({ code, message: 'Account is not active.' });
+      return { status: 403, body: { code, message: 'Account is not active.' } };
     }
 
     // token_version mismatch → token was issued before a logout-all / password change.
     if (Number(decoded.tv) !== Number(user.token_version)) {
-      return res.status(401).json({ code: 'TOKEN_VERSION_MISMATCH', message: 'Session invalidated. Please log in again.' });
+      return { status: 401, body: { code: 'TOKEN_VERSION_MISMATCH', message: 'Session invalidated. Please log in again.' } };
     }
 
     // Session revocation check.
@@ -67,21 +69,47 @@ exports.protect = async (req, res, next) => {
         [sid, userId]
       );
       if (sessRows.length === 0 || sessRows[0].revoked_at) {
-        return res.status(401).json({ code: 'SESSION_REVOKED', message: 'Session revoked. Please log in again.' });
+        return { status: 401, body: { code: 'SESSION_REVOKED', message: 'Session revoked. Please log in again.' } };
       }
       // Touch last_seen_at (best-effort, non-blocking).
       pool.query('UPDATE user_sessions SET last_seen_at = NOW() WHERE id = ?', [sid]).catch(() => {});
     }
 
-    // Attach the full user row + decoded claims to req.
-    req.user = user;
-    req.userId = userId;
-    req.tokenClaims = decoded;
-    next();
+    // Map the admin role claim → isAdmin fast-path fallback (see adminOnly).
+    if (Array.isArray(decoded.roles) && decoded.roles.includes('admin')) {
+      user.isAdmin = true;
+    }
+
+    return { user, userId, tokenClaims: decoded };
   } catch (err) {
-    console.error('[AUTH] protect error:', err.message);
-    return res.status(500).json({ message: 'Server error during authentication.' });
+    console.error('[AUTH] verify error:', err.message);
+    return { status: 500, body: { message: 'Server error during authentication.' } };
   }
+}
+
+// Attach user to request if token is valid, otherwise reject.
+exports.protect = async (req, res, next) => {
+  const result = await verifyBearerToken(req);
+  if (result.user) {
+    req.user = result.user;
+    req.userId = result.userId;
+    req.tokenClaims = result.tokenClaims;
+    return next();
+  }
+  return res.status(result.status).json(result.body);
+};
+
+// Optional auth — attaches user context (full DB reload + status / token_version
+// / session checks) if a valid token is present, but NEVER rejects callers.
+// Used for public-but-masked endpoints (episode masking, provider listing).
+exports.optionalAuth = async (req, res, next) => {
+  const result = await verifyBearerToken(req);
+  if (result.user) {
+    req.user = result.user;
+    req.userId = result.userId;
+    req.tokenClaims = result.tokenClaims;
+  }
+  next();
 };
 
 // Must be used AFTER protect.
