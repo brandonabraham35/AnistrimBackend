@@ -1,0 +1,169 @@
+◇ injected env (51) from .env // tip: ⌘ enable debugging { debug: true }
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+✅ MySQL connected to: anistrim_requirebut
+🔑 Verifying default admin user...
+  = migrations_v6_dashboard.sql (already applied)
+  = migrations_v7_cloudinary.sql (already applied)
+  = migrations_v8_catalogue_automation.sql (already applied)
+  = migrations_v9_daily_views.sql (already applied)
+  = migrations_v10_consumet_id.sql (already applied)
+  = migrations_v11_watch_history.sql (already applied)
+  = migrations_v12_watchlist.sql (already applied)
+  = migrations_v13_reports.sql (already applied)
+  = migrations_v14_ads_config.sql (already applied)
+  = migrations_v15_subscriptions.sql (already applied)
+  = migrations_v16_media_type.sql (already applied)
+  = migrations_v17_last_login.sql (already applied)
+  = migrations_v18_episode_stream_cache.sql (already applied)
+  = migrations_v19_episode_seasons.sql (already applied)
+  = migrations_v20_watch_history_episode_id.sql (already applied)
+  = migrations_v21_animeheaven_import.sql (already applied)
+  = migrations_v22_animeheaven_episode_url.sql (already applied)
+  = migrations_v23_animeheaven_last_sync.sql (already applied)
+  = migrations_v24_home_shelf.sql (already applied)
+  = migrations_v25_email_verification.sql (already applied)
+  = migrations_v26_google_id_unique.sql (already applied)
+  = migrations_v27_user_roles.sql (already applied)
+  = migrations_v28_premium_access.sql (already applied)
+  = migrations_v29_account_lifecycle.sql (already applied)
+  = migrations_v30_user_preferences.sql (already applied)
+  = migrations_v31_watch_history_unify.sql (already applied)
+  = migrations_v32_episode_markers.sql (already applied)
+  = migrations_v33_content_cms_audit.sql (already applied)
+  = migrations_v34_recommendations.sql (already applied)
+  = migrations_v35_plans_subscriptions.sql (already applied)
+  = migrations_v36_ads_policy.sql (already applied)
+  = migrations_v37_health_samples.sql (already applied)
+  = migrations_v38_phase1_reconciliation.sql (already applied)
+  = migrations_v39_refresh_token_rotation.sql (already applied)
+  = migrations_v40_ads_config_fix.sql (already applied)
+  = migrations_v41_ad_events_frequency_index.sql (already applied)
+  = migrations_v42_health_metrics.sql (already applied)
+✅ No pending migrations.
+✅ Admin user 'admin@anistrim.com' verified and password reset.
+✅ Critical tables verified: subscriptions, plans, user_recommendations, user_genre_vector
+✅ Migrations verified. Starting server...
+{"timestamp":"2026-08-18T21:10:42.672Z","level":"INFO","category":"general","message":"[ProviderMonitor]","event":"provider_monitor_initialized","provider":"animeheaven","at":"2026-08-18T21:10:42.671Z","methodsWrapped":["searchAnime","getAnimeDetails","getEpisodeList","resolveEpisode","resolvePlayer","extractStreams"]}
+✅ [AVATAR] sharp is available — avatar uploads enabled.
+✅ Request metrics middleware mounted (api_request_log)
+{"timestamp":"2026-08-18T21:10:52.619Z","level":"INFO","category":"general","message":"[ConsumetProvider] Available ANIME providers: Hianime, AnimePahe, AnimeKai, KickAssAnime, AnimeSaturn, AnimeUnity, AnimeSama"}
+{"timestamp":"2026-08-18T21:10:52.619Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: KickAssAnime"}
+{"timestamp":"2026-08-18T21:10:52.622Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: AnimeKai"}
+{"timestamp":"2026-08-18T21:10:52.622Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: AnimePahe"}
+{"timestamp":"2026-08-18T21:10:52.622Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: Hianime"}
+{"timestamp":"2026-08-18T21:10:52.622Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: AnimeSaturn"}
+{"timestamp":"2026-08-18T21:10:52.623Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: AnimeSama"}
+{"timestamp":"2026-08-18T21:10:52.623Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registered: AnimeUnity"}
+{"timestamp":"2026-08-18T21:10:52.623Z","level":"INFO","category":"general","message":"[ConsumetProvider] Registry ready: KickAssAnime, AnimeKai, AnimePahe, Hianime, AnimeSaturn, AnimeSama, AnimeUnity"}
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+{"timestamp":"2026-08-18T21:11:04.067Z","level":"INFO","category":"general","message":"[Consumet Microservice] Loaded META.Anilist"}
+{"timestamp":"2026-08-18T21:11:04.067Z","level":"INFO","category":"general","message":"[Consumet Microservice] Using shared providerHttp layer for all HTTP traffic"}
+{"timestamp":"2026-08-18T21:11:04.067Z","level":"INFO","category":"general","message":"[Consumet Microservice] Available ANIME providers: Hianime, AnimePahe, AnimeKai, KickAssAnime, AnimeSaturn, AnimeUnity, AnimeSama"}
+{"timestamp":"2026-08-18T21:11:04.067Z","level":"INFO","category":"general","message":"[Consumet Microservice] Using provider: KickAssAnime"}
+✅ Consumet microservice mounted at /consumet-api
+{"timestamp":"2026-08-18T21:11:04.087Z","level":"INFO","category":"general","message":"[AnimeHeavenCatalog] Daily refresh job started","intervalMs":86400000}
+[Recommendations] Nightly scheduler started (03:00)
+[PremiumScheduler] Timed-release + subscription sweep started (every 10 min)
+{"timestamp":"2026-08-18T21:11:04.089Z","level":"INFO","category":"general","message":"[HEALTH] Nightly health_samples prune scheduled (03:17)"}
+==================================================
+🚀 AniStrim2 running on port 5000
+   Listening on: http://0.0.0.0:5000
+==================================================
+⚠️ [SERVER] clientError: read ECONNRESET
+[AUTH] --- Login Attempt ---
+[AUTH] Login successful: admin@anistrim.com (admin: true)
+{"timestamp":"2026-08-18T21:14:25.196Z","level":"INFO","category":"general","message":"[STREAM DEBUG] REQUEST RECEIVED","method":"GET","url":"/api/stream/Sorcery%20Fight%202nd%20Season/1?preferredProvider=animeheaven","anime":"Sorcery Fight 2nd Season","episode":"1"}
+{"timestamp":"2026-08-18T21:14:25.764Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"requestStarted","animeTitle":"Sorcery Fight 2nd Season","episode":"1","isPremium":true,"ts":1787087665764}
+{"timestamp":"2026-08-18T21:14:26.710Z","level":"INFO","category":"general","message":"[PLAYBACK] Loaded imported episode","animeId":61,"episode":"1","episodeId":1484,"hasProviderKey":true,"hasProviderUrl":true}
+{"timestamp":"2026-08-18T21:14:26.711Z","level":"INFO","category":"general","message":"[STREAM DEBUG] PROVIDER RESOLUTION START","animeTitle":"Sorcery Fight 2nd Season","episodeNumber":"1"}
+{"timestamp":"2026-08-18T21:14:26.711Z","level":"INFO","category":"general","message":"[PLAYBACK] Provider: animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"1","episodeId":1484}
+{"timestamp":"2026-08-18T21:14:27.093Z","level":"INFO","category":"general","message":"[AnimeHeaven Mapping]","animeId":61,"identifier":"ot32w","episode":"1","episodeKey":"1a6ae479c7cb0eb8402e283c0c5b6238","episodeUrl":"https://animeheaven.me/gate.php","source":"database"}
+{"timestamp":"2026-08-18T21:14:27.094Z","level":"INFO","category":"general","message":"[PLAYBACK] Provider episode ID","animeTitle":"Sorcery Fight 2nd Season","episode":"1","slug":"ot32w","episodeKey":"1a6ae479c7cb0eb8402e283c0c5b6238","episodeUrl":"https://animeheaven.me/gate.php"}
+{"timestamp":"2026-08-18T21:14:28.223Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"providerStarted","provider":"animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"1"}
+{"timestamp":"2026-08-18T21:14:28.227Z","level":"INFO","category":"stream","message":"get https://animeheaven.me","provider":"animeheaven","attempt":1,"status":"pending","proxy":true}
+{"timestamp":"2026-08-18T21:14:28.228Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://animeheaven.me"}
+{"timestamp":"2026-08-18T21:14:32.042Z","level":"INFO","category":"general","message":"[streamingHttp] ← 200 https://animeheaven.me (3814ms)"}
+{"timestamp":"2026-08-18T21:14:32.043Z","level":"INFO","category":"stream","message":"✅ animeheaven resolved (3816ms)","provider":"animeheaven","attempt":1,"duration":3816,"status":200,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:32.050Z","level":"INFO","category":"stream","message":"get https://animeheaven.me/gate.php","provider":"animeheaven","attempt":1,"status":"pending","proxy":true}
+{"timestamp":"2026-08-18T21:14:32.050Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://animeheaven.me/gate.php"}
+{"timestamp":"2026-08-18T21:14:34.716Z","level":"INFO","category":"general","message":"[streamingHttp] ← 200 https://animeheaven.me/gate.php (2666ms)"}
+{"timestamp":"2026-08-18T21:14:34.716Z","level":"INFO","category":"stream","message":"✅ animeheaven resolved (2666ms)","provider":"animeheaven","attempt":1,"duration":2666,"status":200,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:34.745Z","level":"INFO","category":"general","message":"[AnimeHeaven Timing] resolveStreamByKey","slug":"ot32w","episodeKey":"1a6ae479c7cb0eb8402e283c0c5b6238","gateTime":2669,"mirrorTime":1,"subtitleTime":26,"sourceExtraction":26,"totalTime":6521}
+{"timestamp":"2026-08-18T21:14:34.745Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 1 → success (6522ms)","provider":"animeheaven","anime":"Sorcery Fight 2nd Season","episode":"1","attempt":1,"result":"success","httpStatus":0,"timedOut":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sources":1,"startTime":"2026-08-18T21:14:28.223Z","endTime":"2026-08-18T21:14:34.745Z","latencyMs":6522}
+{"timestamp":"2026-08-18T21:14:34.746Z","level":"INFO","category":"stream","message":"✅ animeheaven resolved (8033ms)","provider":"animeheaven","result":"winner","duration":8033,"sources":1,"win":true,"winner":"animeheaven","totalDurationMs":8033,"fallbackActivated":false,"attemptCount":1}
+{"timestamp":"2026-08-18T21:14:34.972Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 1 → success (8033ms)","provider":"animeheaven","anime":"Sorcery Fight 2nd Season","episode":"1","result":"success","httpStatus":0,"timedOut":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sources":1,"bestQuality":"auto","startTime":"2026-08-18T21:14:26.713Z","endTime":"2026-08-18T21:14:34.972Z","latencyMs":8033}
+{"timestamp":"2026-08-18T21:14:34.973Z","level":"INFO","category":"general","message":"[STREAM DEBUG] PROVIDER RESOLUTION END","elapsedMs":8262,"success":true}
+{"timestamp":"2026-08-18T21:14:34.976Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 1 → success (9211ms)","provider":"animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"1","startTime":"2026-08-18T21:14:25.764Z","endTime":"2026-08-18T21:14:34.975Z","latencyMs":9211,"result":"success","httpStatus":200,"timeoutStatus":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sourceCount":1,"bestQuality":"auto","resolvedFrom":"direct"}
+{"timestamp":"2026-08-18T21:14:34.976Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"sourceReturned","animeTitle":"Sorcery Fight 2nd Season","episode":"1","provider":"animeheaven","latencyMs":9211}
+{"timestamp":"2026-08-18T21:14:35.357Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"providerStarted","provider":"animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":2}
+{"timestamp":"2026-08-18T21:14:35.358Z","level":"INFO","category":"stream","message":"get https://animeheaven.me/gate.php","provider":"animeheaven","attempt":1,"status":"pending","proxy":true}
+{"timestamp":"2026-08-18T21:14:35.358Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://animeheaven.me/gate.php"}
+{"timestamp":"2026-08-18T21:14:36.302Z","level":"INFO","category":"general","message":"[PROXY_REQUEST_RECEIVED]","streamId":"s349303c...","hasUrl":false,"range":"bytes=0-2047","method":"GET"}
+{"timestamp":"2026-08-18T21:14:36.677Z","level":"WARN","category":"general","message":"[ProviderRegistry] Unknown provider requested","provider":"animeheaven-proxy"}
+{"timestamp":"2026-08-18T21:14:36.677Z","level":"INFO","category":"stream","message":"get https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d","provider":"animeheaven-proxy","attempt":1,"status":"pending","proxy":false}
+{"timestamp":"2026-08-18T21:14:36.678Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d"}
+{"timestamp":"2026-08-18T21:14:38.886Z","level":"INFO","category":"general","message":"[streamingHttp] ← 206 https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d (2208ms)"}
+{"timestamp":"2026-08-18T21:14:38.887Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy resolved (2210ms)","provider":"animeheaven-proxy","attempt":1,"duration":2210,"status":206,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:38.887Z","level":"INFO","category":"general","message":"[StreamProxy] Upstream response received","status":206,"contentType":"video/mp4","contentLength":2048,"isHls":false}
+{"timestamp":"2026-08-18T21:14:38.888Z","level":"INFO","category":"general","message":"[StreamProxy] Streaming started","responseStatus":206,"responseContentType":"video/mp4","responseContentRange":"bytes 0-2047/182343186"}
+{"timestamp":"2026-08-18T21:14:38.888Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy → success (2211ms)","provider":"animeheaven-proxy","result":"success","httpStatus":206,"streamType":"mp4","bytes":"2048","latencyMs":2211,"streamId":"s349303c"}
+{"timestamp":"2026-08-18T21:14:38.891Z","level":"INFO","category":"general","message":"[PROXY_REQUEST_RECEIVED]","streamId":"s349303c...","hasUrl":false,"range":"bytes=0-1023","method":"GET"}
+{"timestamp":"2026-08-18T21:14:38.891Z","level":"WARN","category":"general","message":"[streamProxy] token rejected","streamId":"s349303c","reason":"TOKEN_MALFORMED","ip":"127.0.0.1"}
+{"timestamp":"2026-08-18T21:14:38.891Z","level":"ERROR","category":"stream","message":"❌ animeheaven-proxy → failure (0ms): token rejected (TOKEN_MALFORMED)","provider":"animeheaven-proxy","result":"failure","httpStatus":403,"streamType":"mp4","error":"token rejected (TOKEN_MALFORMED)","latencyMs":0,"streamId":"s349303c"}
+{"timestamp":"2026-08-18T21:14:40.602Z","level":"INFO","category":"general","message":"[streamingHttp] ← 200 https://animeheaven.me/gate.php (5244ms)"}
+{"timestamp":"2026-08-18T21:14:40.602Z","level":"INFO","category":"stream","message":"✅ animeheaven resolved (5244ms)","provider":"animeheaven","attempt":1,"duration":5244,"status":200,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:40.616Z","level":"INFO","category":"general","message":"[AnimeHeaven Timing] resolveStreamByKey","slug":"ot32w","episodeKey":"36741f2f4a7224c67bdb384100f454ae","gateTime":5246,"mirrorTime":0,"subtitleTime":12,"sourceExtraction":12,"totalTime":5259}
+{"timestamp":"2026-08-18T21:14:40.616Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 2 → success (5259ms)","provider":"animeheaven","anime":"Sorcery Fight 2nd Season","episode":2,"attempt":1,"result":"success","httpStatus":0,"timedOut":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sources":1,"startTime":"2026-08-18T21:14:35.357Z","endTime":"2026-08-18T21:14:40.616Z","latencyMs":5259}
+{"timestamp":"2026-08-18T21:14:40.811Z","level":"INFO","category":"general","message":"[STREAM_CACHE] SAVE","episodeId":1485,"provider":"animeheaven","ttlMin":8,"streamType":"direct"}
+{"timestamp":"2026-08-18T21:14:40.947Z","level":"INFO","category":"general","message":"[PROXY_REQUEST_RECEIVED]","streamId":"s349303c...","hasUrl":false,"range":"bytes=0-1023","method":"GET"}
+{"timestamp":"2026-08-18T21:14:41.038Z","level":"INFO","category":"general","message":"[AnimeHeaven] Warm-cached next episode","anime":"Sorcery Fight 2nd Season","nextEp":2,"sources":1}
+{"timestamp":"2026-08-18T21:14:41.326Z","level":"WARN","category":"general","message":"[ProviderRegistry] Unknown provider requested","provider":"animeheaven-proxy"}
+{"timestamp":"2026-08-18T21:14:41.326Z","level":"INFO","category":"stream","message":"get https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d","provider":"animeheaven-proxy","attempt":1,"status":"pending","proxy":false}
+{"timestamp":"2026-08-18T21:14:41.327Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d"}
+{"timestamp":"2026-08-18T21:14:41.554Z","level":"INFO","category":"general","message":"[streamingHttp] ← 206 https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d (227ms)"}
+{"timestamp":"2026-08-18T21:14:41.554Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy resolved (228ms)","provider":"animeheaven-proxy","attempt":1,"duration":228,"status":206,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:41.555Z","level":"INFO","category":"general","message":"[StreamProxy] Upstream response received","status":206,"contentType":"video/mp4","contentLength":1024,"isHls":false}
+{"timestamp":"2026-08-18T21:14:41.555Z","level":"INFO","category":"general","message":"[StreamProxy] Streaming started","responseStatus":206,"responseContentType":"video/mp4","responseContentRange":"bytes 0-1023/182343186"}
+{"timestamp":"2026-08-18T21:14:41.555Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy → success (229ms)","provider":"animeheaven-proxy","result":"success","httpStatus":206,"streamType":"mp4","bytes":"1024","latencyMs":229,"streamId":"s349303c"}
+{"timestamp":"2026-08-18T21:14:41.937Z","level":"INFO","category":"general","message":"[STREAM DEBUG] REQUEST RECEIVED","method":"GET","url":"/api/stream/Sorcery%20Fight%202nd%20Season/1?preferredProvider=animeheaven","anime":"Sorcery Fight 2nd Season","episode":"1"}
+{"timestamp":"2026-08-18T21:14:42.510Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"requestStarted","animeTitle":"Sorcery Fight 2nd Season","episode":"1","isPremium":true,"ts":1787087682510}
+{"timestamp":"2026-08-18T21:14:43.454Z","level":"INFO","category":"general","message":"[PLAYBACK] Loaded imported episode","animeId":61,"episode":"1","episodeId":1484,"hasProviderKey":true,"hasProviderUrl":true}
+{"timestamp":"2026-08-18T21:14:43.454Z","level":"INFO","category":"general","message":"[STREAM DEBUG] PROVIDER RESOLUTION START","animeTitle":"Sorcery Fight 2nd Season","episodeNumber":"1"}
+{"timestamp":"2026-08-18T21:14:43.454Z","level":"INFO","category":"general","message":"[PLAYBACK] Provider: animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"1","episodeId":1484}
+{"timestamp":"2026-08-18T21:14:43.832Z","level":"INFO","category":"general","message":"[AnimeHeaven Mapping]","animeId":61,"identifier":"ot32w","episode":"1","episodeKey":"1a6ae479c7cb0eb8402e283c0c5b6238","episodeUrl":"https://animeheaven.me/gate.php","source":"database"}
+{"timestamp":"2026-08-18T21:14:43.832Z","level":"INFO","category":"general","message":"[PLAYBACK] Provider episode ID","animeTitle":"Sorcery Fight 2nd Season","episode":"1","slug":"ot32w","episodeKey":"1a6ae479c7cb0eb8402e283c0c5b6238","episodeUrl":"https://animeheaven.me/gate.php"}
+{"timestamp":"2026-08-18T21:14:44.058Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 1 → success (604ms)","provider":"animeheaven","anime":"Sorcery Fight 2nd Season","episode":"1","result":"success","httpStatus":0,"timedOut":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sources":1,"bestQuality":"auto","startTime":"2026-08-18T21:14:43.454Z","endTime":"2026-08-18T21:14:44.058Z","latencyMs":604}
+{"timestamp":"2026-08-18T21:14:44.058Z","level":"INFO","category":"general","message":"[STREAM DEBUG] PROVIDER RESOLUTION END","elapsedMs":604,"success":true}
+{"timestamp":"2026-08-18T21:14:44.059Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 1 → success (1549ms)","provider":"animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"1","startTime":"2026-08-18T21:14:42.510Z","endTime":"2026-08-18T21:14:44.059Z","latencyMs":1549,"result":"success","httpStatus":200,"timeoutStatus":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sourceCount":1,"bestQuality":"auto","resolvedFrom":"direct"}
+{"timestamp":"2026-08-18T21:14:44.059Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"sourceReturned","animeTitle":"Sorcery Fight 2nd Season","episode":"1","provider":"animeheaven","latencyMs":1549}
+{"timestamp":"2026-08-18T21:14:45.391Z","level":"INFO","category":"general","message":"[PROXY_REQUEST_RECEIVED]","streamId":"s349303c...","hasUrl":false,"range":"bytes=0-1023","method":"GET"}
+{"timestamp":"2026-08-18T21:14:45.766Z","level":"WARN","category":"general","message":"[ProviderRegistry] Unknown provider requested","provider":"animeheaven-proxy"}
+{"timestamp":"2026-08-18T21:14:45.766Z","level":"INFO","category":"stream","message":"get https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d","provider":"animeheaven-proxy","attempt":1,"status":"pending","proxy":false}
+{"timestamp":"2026-08-18T21:14:45.767Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d"}
+{"timestamp":"2026-08-18T21:14:46.542Z","level":"INFO","category":"general","message":"[streamingHttp] ← 206 https://cx.animeheaven.me/video.mp4?1a6ae479c7cb0eb8402e283c0c5b6238&c46905058f7d3f798cb64a5cd01e479d (775ms)"}
+{"timestamp":"2026-08-18T21:14:46.543Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy resolved (777ms)","provider":"animeheaven-proxy","attempt":1,"duration":777,"status":206,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:46.543Z","level":"INFO","category":"general","message":"[StreamProxy] Upstream response received","status":206,"contentType":"video/mp4","contentLength":1024,"isHls":false}
+{"timestamp":"2026-08-18T21:14:46.543Z","level":"INFO","category":"general","message":"[StreamProxy] Streaming started","responseStatus":206,"responseContentType":"video/mp4","responseContentRange":"bytes 0-1023/182343186"}
+{"timestamp":"2026-08-18T21:14:46.543Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy → success (778ms)","provider":"animeheaven-proxy","result":"success","httpStatus":206,"streamType":"mp4","bytes":"1024","latencyMs":778,"streamId":"s349303c"}
+{"timestamp":"2026-08-18T21:14:46.924Z","level":"INFO","category":"general","message":"[STREAM DEBUG] REQUEST RECEIVED","method":"GET","url":"/api/stream/Sorcery%20Fight%202nd%20Season/2?preferredProvider=animeheaven","anime":"Sorcery Fight 2nd Season","episode":"2"}
+{"timestamp":"2026-08-18T21:14:47.486Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"requestStarted","animeTitle":"Sorcery Fight 2nd Season","episode":"2","isPremium":true,"ts":1787087687486}
+{"timestamp":"2026-08-18T21:14:48.429Z","level":"INFO","category":"general","message":"[PLAYBACK] Loaded imported episode","animeId":61,"episode":"2","episodeId":1485,"hasProviderKey":true,"hasProviderUrl":true}
+{"timestamp":"2026-08-18T21:14:48.430Z","level":"INFO","category":"general","message":"[STREAM DEBUG] PROVIDER RESOLUTION START","animeTitle":"Sorcery Fight 2nd Season","episodeNumber":"2"}
+{"timestamp":"2026-08-18T21:14:48.430Z","level":"INFO","category":"general","message":"[PLAYBACK] Provider: animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"2","episodeId":1485}
+{"timestamp":"2026-08-18T21:14:48.808Z","level":"INFO","category":"general","message":"[AnimeHeaven Mapping]","animeId":61,"identifier":"ot32w","episode":"2","episodeKey":"36741f2f4a7224c67bdb384100f454ae","episodeUrl":"https://animeheaven.me/gate.php","source":"database"}
+{"timestamp":"2026-08-18T21:14:48.808Z","level":"INFO","category":"general","message":"[PLAYBACK] Provider episode ID","animeTitle":"Sorcery Fight 2nd Season","episode":"2","slug":"ot32w","episodeKey":"36741f2f4a7224c67bdb384100f454ae","episodeUrl":"https://animeheaven.me/gate.php"}
+{"timestamp":"2026-08-18T21:14:49.034Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 2 → success (604ms)","provider":"animeheaven","anime":"Sorcery Fight 2nd Season","episode":"2","result":"success","httpStatus":0,"timedOut":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sources":1,"bestQuality":"auto","startTime":"2026-08-18T21:14:48.430Z","endTime":"2026-08-18T21:14:49.034Z","latencyMs":604}
+{"timestamp":"2026-08-18T21:14:49.035Z","level":"INFO","category":"general","message":"[STREAM DEBUG] PROVIDER RESOLUTION END","elapsedMs":605,"success":true}
+{"timestamp":"2026-08-18T21:14:49.035Z","level":"INFO","category":"stream","message":"✅ animeheaven | \"Sorcery Fight 2nd Season\" Ep 2 → success (1549ms)","provider":"animeheaven","animeTitle":"Sorcery Fight 2nd Season","episode":"2","startTime":"2026-08-18T21:14:47.486Z","endTime":"2026-08-18T21:14:49.035Z","latencyMs":1549,"result":"success","httpStatus":200,"timeoutStatus":false,"cloudflareDetected":false,"searchSuccess":true,"streamSuccess":true,"sourceCount":1,"bestQuality":"auto","resolvedFrom":"direct"}
+{"timestamp":"2026-08-18T21:14:49.035Z","level":"INFO","category":"general","message":"[PLAYBACK]","event":"sourceReturned","animeTitle":"Sorcery Fight 2nd Season","episode":"2","provider":"animeheaven","latencyMs":1549}
+{"timestamp":"2026-08-18T21:14:50.347Z","level":"INFO","category":"general","message":"[PROXY_REQUEST_RECEIVED]","streamId":"s478f6d2...","hasUrl":false,"range":"bytes=0-1023","method":"GET"}
+{"timestamp":"2026-08-18T21:14:50.722Z","level":"WARN","category":"general","message":"[ProviderRegistry] Unknown provider requested","provider":"animeheaven-proxy"}
+{"timestamp":"2026-08-18T21:14:50.723Z","level":"INFO","category":"stream","message":"get https://cu.animeheaven.me/video.mp4?36741f2f4a7224c67bdb384100f454ae&f11577ea58c734c2ec47895eabb37f8e","provider":"animeheaven-proxy","attempt":1,"status":"pending","proxy":false}
+{"timestamp":"2026-08-18T21:14:50.723Z","level":"INFO","category":"general","message":"[streamingHttp] → GET https://cu.animeheaven.me/video.mp4?36741f2f4a7224c67bdb384100f454ae&f11577ea58c734c2ec47895eabb37f8e"}
+{"timestamp":"2026-08-18T21:14:51.724Z","level":"INFO","category":"general","message":"[streamingHttp] ← 206 https://cu.animeheaven.me/video.mp4?36741f2f4a7224c67bdb384100f454ae&f11577ea58c734c2ec47895eabb37f8e (1001ms)"}
+{"timestamp":"2026-08-18T21:14:51.724Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy resolved (1001ms)","provider":"animeheaven-proxy","attempt":1,"duration":1001,"status":206,"result":"success","timedOut":false,"cloudflareDetected":false}
+{"timestamp":"2026-08-18T21:14:51.724Z","level":"INFO","category":"general","message":"[StreamProxy] Upstream response received","status":206,"contentType":"video/mp4","contentLength":1024,"isHls":false}
+{"timestamp":"2026-08-18T21:14:51.724Z","level":"INFO","category":"general","message":"[StreamProxy] Streaming started","responseStatus":206,"responseContentType":"video/mp4","responseContentRange":"bytes 0-1023/188222197"}
+{"timestamp":"2026-08-18T21:14:51.724Z","level":"INFO","category":"stream","message":"✅ animeheaven-proxy → success (1002ms)","provider":"animeheaven-proxy","result":"success","httpStatus":206,"streamType":"mp4","bytes":"1024","latencyMs":1002,"streamId":"s478f6d2"}
+⚠️ [SERVER] clientError: read ECONNRESET
