@@ -253,7 +253,7 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
     // URLs. Context (cookies/referer/origin) is stored server-side in the
     // streamProxyStore and NEVER returned to the browser. Anonymous
     // providers (Consumet, etc.) are returned unchanged.
-    const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null) || result;
+    const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null, episodeId || null) || result;
 
     const elapsed = Date.now() - startTime;
     logger.streamAttempt({
@@ -449,10 +449,22 @@ const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
 };
 
 /**
- * POST /api/stream/authorize (Phase 10 / item 21)
+ * POST /api/stream/authorize (Phase 10 / item 21) — FIX 3 corrected binding.
  * Body: { episodeId }
- * → canWatch() gate → mints a 120 s HMAC token bound to userId + episodeId + ip.
- * /api/stream-proxy/:streamId accepts ONLY this token.
+ *
+ * FIX 3 (P0): authorize NO LONGER invents a phantom randomUUID() streamId.
+ * Instead it:
+ *   1. Runs the authoritative canWatch() gate (unchanged).
+ *   2. Resolves the (animeTitle, episodeNumber) for the episodeId from the DB.
+ *   3. Ensures the stream contexts are registered in streamProxyStore by
+ *      resolving the stream (same path as GET /api/stream/:title/:ep) if they
+ *      are not already registered for this user+episode. This makes the
+ *      returned streamIds REAL — they match what /api/stream-proxy/:streamId
+ *      expects.
+ *   4. Mints one 120 s HMAC token per registered streamId, each bound to
+ *      { userId, episodeId, streamId, ip }.
+ *   5. Returns the concrete /api/stream-proxy/:streamId?token=... URLs so the
+ *      client never has to guess.
  */
 exports.authorizeStream = async (req, res) => {
   try {
@@ -463,7 +475,7 @@ exports.authorizeStream = async (req, res) => {
     if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
 
     // Authoritative canWatch gate (Phase 7.2) — refuse to mint for unauthorized.
-    const { canWatch } = require('../utils/episodeAccess');
+    const { canWatch, getEntitlement } = require('../utils/episodeAccess');
     const isAdmin = req.user?.isAdmin === true || (req.tokenClaims?.roles || []).includes('admin');
     const access = await canWatch(userId, episodeId, { isAdmin });
     if (!access.allow) {
@@ -475,12 +487,74 @@ exports.authorizeStream = async (req, res) => {
       });
     }
 
-    const { mint } = require('../utils/streamToken');
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
-    const streamId = require('crypto').randomUUID();
+    // ── Resolve (animeTitle, episodeNumber) from the episodeId ──
+    // Both are needed to resolve the stream if no context is registered yet.
+    let animeTitle = '', episodeNumber = null;
+    try {
+      const [epRows] = await db.query(
+        `SELECT e.id, e.episode_number, e.anime_id, a.title, a.title_japanese
+         FROM episodes e JOIN anime a ON a.id = e.anime_id
+         WHERE e.id = ? LIMIT 1`,
+        [episodeId]
+      );
+      if (epRows && epRows[0]) {
+        animeTitle = epRows[0].title || epRows[0].title_japanese || '';
+        episodeNumber = epRows[0].episode_number;
+      }
+    } catch (epErr) {
+      logger.warn('[StreamController] authorize episode lookup failed', { episodeId, error: epErr.message });
+    }
 
-    const token = mint({ userId, episodeId, streamId, ip });
-    return res.json({ token, streamId, expiresIn: 120 });
+    const streamProxyStore = require('../utils/streamProxyStore');
+
+    // ── Ensure contexts exist for this user+episode ─────────
+    // If the frontend already resolved /api/stream/:title/:ep, the contexts
+    // are registered and we reuse their REAL streamIds. Otherwise, resolve the
+    // stream here (same path as getStream) to register them.
+    let registered = streamProxyStore.getByUserEpisode(userId, episodeId);
+    if (!registered.length && animeTitle && episodeNumber) {
+      let isPremium = isAdmin;
+      try {
+        const ent = await getEntitlement(userId);
+        isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
+      } catch (_) { /* deny premium */ }
+
+      try {
+        const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
+          isPremium,
+          episodeId: Number(episodeId) || episodeId,
+        });
+        const proxy = require('../utils/streamProxy');
+        proxy.rewriteResultToProxy(result, userId, episodeId);
+      } catch (resolveErr) {
+        logger.warn('[StreamController] authorize resolveStream failed (no contexts)', { episodeId, error: resolveErr.message });
+      }
+      registered = streamProxyStore.getByUserEpisode(userId, episodeId);
+    }
+
+    if (!registered.length) {
+      logger.warn('[StreamController] authorize: no registered stream contexts', { userId, episodeId });
+      return res.status(404).json({ message: 'No playable stream registered for this episode. Resolve the stream first.' });
+    }
+
+    // ── Mint one token per concrete streamId ────────────────
+    const { mint, TTL_MS } = require('../utils/streamToken');
+    const { PROXY_BASE } = require('../utils/streamProxy');
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    const apiBase = req.protocol + '://' + req.get('host');
+
+    const streams = registered.map(({ streamId }) => {
+      const token = mint({ userId, episodeId, streamId, ip });
+      const url = `${apiBase}${PROXY_BASE}/${streamId}?token=${encodeURIComponent(token)}`;
+      return { streamId, token, url, expiresIn: Math.round(TTL_MS / 1000) };
+    });
+
+    return res.json({
+      token: streams[0].token,          // primary token (backwards-compatible)
+      streamId: streams[0].streamId,    // primary streamId (backwards-compatible)
+      streams,
+      expiresIn: Math.round(TTL_MS / 1000),
+    });
   } catch (error) {
     logger.error('[StreamController] authorize error', { error: error.message });
     return res.status(500).json({ message: 'Stream authorization failed.' });

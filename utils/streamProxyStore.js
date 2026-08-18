@@ -92,6 +92,7 @@ const streamId = generateStreamId();
     userAgent: entry.userAgent || null,
     headers: entry.headers || null,
     userId: entry.userId || null,
+    episodeId: entry.episodeId || null,
     createdAt: now,
     lastAccessAt: now,
     hits: 0,
@@ -148,6 +149,33 @@ function isHostAllowed(ctx, candidateUrl) {
 }
 
 /**
+ * Return all active context streamIds registered for a given userId + episodeId.
+ * Used by /api/stream/authorize to mint tokens bound to the REAL streamIds that
+ * were registered when the stream was resolved (via rewriteResultToProxy →
+ * store()). This is the fix for the P0 where authorize invented a phantom
+ * randomUUID() that never matched a registered context.
+ *
+ * @param {number|string} userId - the owning user id (string-normalized)
+ * @param {number|string} episodeId - the episode id (string-normalized)
+ * @returns {{streamId: string, userId: string, episodeId: string}[]}
+ */
+function getByUserEpisode(userId, episodeId) {
+  const wantUser = String(userId ?? '');
+  const wantEp = String(episodeId ?? '');
+  if (!wantUser || !wantEp) return [];
+  const out = [];
+  const now = Date.now();
+  for (const [streamId, ctx] of contexts) {
+    if (!ctx) continue;
+    if (now - ctx.lastAccessAt > DEFAULT_TTL_MS || now - ctx.createdAt > DEFAULT_TTL_MS) continue; // expired
+    if (String(ctx.userId ?? '') === wantUser && String(ctx.episodeId ?? '') === wantEp) {
+      out.push({ streamId, userId: wantUser, episodeId: wantEp });
+    }
+  }
+  return out;
+}
+
+/**
  * Get the number of currently stored contexts (observability).
  * @returns {number}
  */
@@ -172,6 +200,7 @@ module.exports = {
   get,
   remove,
   isHostAllowed,
+  getByUserEpisode,
   size,
   clear,
   DEFAULT_TTL_MS,

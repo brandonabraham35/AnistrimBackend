@@ -157,6 +157,9 @@ exports.streamMedia = async (req, res) => {
   }
   const { verify } = require('../utils/streamToken');
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  // ── FIX 3: bind token → streamId + episodeId + userId ─────
+  // Verify the token's signature/expiry/IP, and bind to the path streamId
+  // (the streamId is the concrete ONE the resolver registered).
   const tokenCheck = verify(authToken, { streamId, ip });
   if (!tokenCheck.ok) {
     logger.warn('[streamProxy] token rejected', { streamId: streamId.slice(0, 8), reason: tokenCheck.reason });
@@ -165,9 +168,32 @@ exports.streamMedia = async (req, res) => {
   const authPayload = tokenCheck.payload;
 
   // ── Security: validate the stream context ────────────────
+  // The token must be bound to the SAME userId + episodeId as the store
+  // context registered for this path streamId. This prevents a token minted
+  // for one user/episode from playing another user's/episode's context.
   const ctx = streamProxyStore.get(streamId);
   if (!ctx) {
     return res.status(404).json({ error: 'Stream context not found or expired.' });
+  }
+  const ctxUserId = String(ctx.userId ?? '');
+  const ctxEpId = String(ctx.episodeId ?? '');
+  const tokUserId = String(authPayload.userId ?? '');
+  const tokEpId = String(authPayload.episodeId ?? '');
+  if (ctxUserId && tokUserId && ctxUserId !== tokUserId) {
+    logger.warn('[streamProxy] user/episode binding mismatch', {
+      streamId: streamId.slice(0, 8),
+      ctxUserId: ctxUserId.slice(0, 8),
+      tokUserId: tokUserId.slice(0, 8),
+    });
+    return res.status(403).json({ error: 'Stream authorization does not match this stream context.' });
+  }
+  if (ctxEpId && tokEpId && ctxEpId !== tokEpId) {
+    logger.warn('[streamProxy] episode binding mismatch', {
+      streamId: streamId.slice(0, 8),
+      ctxEpId: String(ctxEpId).slice(0, 12),
+      tokEpId: String(tokEpId).slice(0, 12),
+    });
+    return res.status(403).json({ error: 'Stream authorization does not match this episode.' });
   }
 
   // Bind the authorized user to the stream context (created by rewriteResultToProxy).

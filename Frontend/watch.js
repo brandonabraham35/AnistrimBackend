@@ -140,9 +140,15 @@ async function authorizeStream(episodeId) {
   if (!data || !data.token || !data.streamId) {
     throw new Error('Stream authorization failed: no token returned.');
   }
+  // FIX 3: the backend now returns concrete proxy URLs (each streamId → token)
+  // so the client never has to guess. Capture the first stream's proxy URL.
+  const firstStream = Array.isArray(data.streams) && data.streams.length ? data.streams[0] : null;
   streamAuth = {
     token: data.token,
     streamId: data.streamId,
+    // Concrete same-origin proxy URL (already includes ?token=) when provided.
+    proxyUrl: firstStream && firstStream.url ? firstStream.url : null,
+    streams: Array.isArray(data.streams) ? data.streams : [],
     expiresAt: Date.now() + (data.expiresIn || 120) * 1000,
     episodeId: String(episodeId),
   };
@@ -177,6 +183,27 @@ function appendStreamToken(url) {
     return url + sep + 'token=' + encodeURIComponent(streamAuth.token);
   }
   return url;
+}
+
+// FIX 3: Prefer a concrete authorized proxy URL (returned by authorize) when
+// the resolved source's URL is a proxy path. This is the hardened
+// /api/stream-proxy/:streamId?token= path — no guessing needed.
+function preferAuthorizedProxyUrl(url) {
+  if (!url) return url;
+  // Only rewrite proxy-relative URLs (not absolute external CDN links).
+  if (url.includes('/api/stream-proxy/') && streamAuth.proxyUrl) {
+    // Extract the path streamId from the resolved source to find its token.
+    const m = url.match(/\/api\/stream-proxy\/([^/?]+)/);
+    if (m && m[1] && Array.isArray(streamAuth.streams)) {
+      const match = streamAuth.streams.find(s => s.streamId === m[1]);
+      if (match && match.url) return match.url;
+    }
+    // Fall back to the primary stream's concrete URL.
+    return streamAuth.streams && streamAuth.streams[0] && streamAuth.streams[0].url
+      ? streamAuth.streams[0].url
+      : appendStreamToken(url);
+  }
+  return appendStreamToken(url);
 }
 
 // ── Premium player state ────────────────────────────────────
@@ -628,9 +655,11 @@ async function resolveAndPlayStream(animeTitle, episodeNumber, video, preferredP
     const sourcesToTry = data.sources
       .map(source => ({
         ...source,
-        // Prompt 2: Append the stream token to proxy URLs so the hardened
-        // /api/stream-proxy/:streamId and /api/stream/proxy paths accept them.
-        url: appendStreamToken(source.url.startsWith('http') ? source.url : API_BASE_URL + source.url)
+        // Prompt 2 + FIX 3: Prefer the concrete authorized /api/stream-proxy
+        // URL (with ?token=) returned by /api/stream/authorize; fall back to
+        // appending the token to the resolved proxy URL. The hardened
+        // /api/stream-proxy/:streamId path is used when available.
+        url: preferAuthorizedProxyUrl(source.url.startsWith('http') ? source.url : API_BASE_URL + source.url)
       }))
       // ── SOURCE SELECTION ─────────────────────────────────
       // Prefer sources that are actually suitable for browser playback and
@@ -1947,11 +1976,11 @@ async function playNextEp() {
       let sourceUrl = null;
       if (sources.length > 0) {
         const src = sources[0];
-        // Prompt 2: Append the stream token to proxy URLs.
-        sourceUrl = appendStreamToken(src.url.startsWith('http') ? src.url : API_BASE_URL + src.url);
+        // Prompt 2 + FIX 3: prefer the concrete authorized proxy URL.
+        sourceUrl = preferAuthorizedProxyUrl(src.url.startsWith('http') ? src.url : API_BASE_URL + src.url);
         currentStreamSources = sources.map(s => ({
           ...s,
-          url: appendStreamToken(s.url.startsWith('http') ? s.url : API_BASE_URL + s.url)
+          url: preferAuthorizedProxyUrl(s.url.startsWith('http') ? s.url : API_BASE_URL + s.url)
         }));
         currentProvider = 'animeheaven';
         currentStreamQuality = src.quality || 'auto';
