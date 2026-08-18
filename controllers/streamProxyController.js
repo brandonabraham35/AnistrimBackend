@@ -140,11 +140,14 @@ exports.streamMedia = async (req, res) => {
   const { streamId } = req.params;
   const requestedUrl = req.query.url || null;
   const startedProxyTime = Date.now();
+  const SAFE_STREAM_ID = streamId ? streamId.slice(0, 8) + '...' : null;
 
-  logger.info('[StreamProxy] Incoming request', {
-    streamId: streamId.slice(0, 8) + '...',
-    requestedUrl: requestedUrl ? requestedUrl.substring(0, 100) + '...' : null,
+  // ── DIAGNOSTIC (safe — no token/cookie/secret values) ──
+  logger.info('[PROXY_REQUEST_RECEIVED]', {
+    streamId: SAFE_STREAM_ID,
+    hasUrl: !!requestedUrl,
     range: req.headers.range || 'none',
+    method: req.method,
   });
 
   // ── Phase 10 (item 21): token gate ───────────────────────
