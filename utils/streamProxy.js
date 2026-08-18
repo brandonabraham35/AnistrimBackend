@@ -166,4 +166,7 @@ module.exports = {
   isAnimeHeavenSource,
   rewriteSource,
   rewriteResultToProxy,
+  // Normalizes the requesting user's identity across all call sites so
+  // getStream/authorizeStream/rewriteResultToProxy can't use different ids.
+  resolveUserId,
 };
