@@ -858,9 +858,19 @@ async updateGenre(req, res) {
         ? `${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m`
         : `${Math.floor(uptimeSeconds / 60)}m ${uptimeSeconds % 60}s`;
 
-      const overall = Object.values(snapshot)
-        .filter(v => v && typeof v === 'object' && v.status)
-        .some(v => v.status === 'down') ? 'degraded' : 'healthy';
+      // Standardize overall status on the 'up'|'degraded'|'down' vocabulary.
+      // Critical components (api, database): any down → overall down.
+      // Any component down or degraded → overall degraded. Else → up.
+      const { api: apiCheck, database: dbCheck } = snapshot;
+      let overall = 'up';
+      if (apiCheck?.status === 'down' || dbCheck?.status === 'down') {
+        overall = 'down';
+      } else {
+        const anyDownOrDegraded = Object.entries(snapshot)
+          .filter(([k, v]) => k !== 'checkedAt' && v && typeof v === 'object' && v.status)
+          .some(([, v]) => v.status === 'down' || v.status === 'degraded');
+        if (anyDownOrDegraded) overall = 'degraded';
+      }
 
       res.json({
         status: overall,
@@ -878,7 +888,8 @@ async updateGenre(req, res) {
         server_uptime: { status: 'up', uptime: uptimeFormatted, seconds: uptimeSeconds },
       });
     } catch (error) {
-      res.status(500).json({ status: 'error', message: error.message });
+      console.error('[Admin] getDashboardHealth error:', error.message);
+      res.status(500).json({ status: 'error', message: 'Unable to load health snapshot.' });
     }
   },
 
@@ -975,6 +986,44 @@ case 'provider-usage': {
       console.error(`[Charts] Error fetching ${type}:`, error.message);
       // Return empty data on error so the frontend can handle it gracefully
       res.json({ labels: [], values: [] });
+    }
+  },
+
+  // ─── Health & Reliability Metrics (admin widgets) ─────────────────
+  // Aggregated health history, p50/p95 latency, 5xx rate, stream failures,
+  // payment failures and email failures. All queries are defensive (table/column
+  // schema-gated) so a not-yet-migrated table returns an empty source instead
+  // of erroring. Endpoints are admin-only (see routes/adminRoutes.js).
+  async getHealthMetrics(req, res) {
+    try {
+      const metrics = require('../services/adminHealthMetrics');
+      const hours = req.query.hours;
+      const component = req.query.component || null;
+
+      const [history, latency, fivexx, stream, payments, email] = await Promise.all([
+        metrics.getHealthHistory({ component, hours }),
+        metrics.getLatencyPercentiles({ hours }),
+        metrics.get5xxRate({ hours }),
+        metrics.getStreamFailures({ hours }),
+        metrics.getPaymentFailures({ hours }),
+        metrics.getEmailFailures({ hours }),
+      ]);
+
+      // Compute "degraded since <ts>" for the requested component (if any) or
+      // the overall point set.
+      const degradedSince = metrics.degradedSince(history.points, component);
+
+      res.json({
+        health: { ...history, degradedSince },
+        latency: { p50: latency.p50, p95: latency.p95, samples: latency.samples, source: latency.source, hours: latency.hours },
+        fivexx: { buckets: fivexx.buckets, source: fivexx.source, hours: fivexx.hours },
+        stream: { byProvider: stream.byProvider, topEpisodes: stream.topEpisodes, liveProvider: stream.liveProvider, source: stream.source, hours: stream.hours },
+        payments: { buckets: payments.buckets, source: payments.source, hours: payments.hours },
+        email: { buckets: email.buckets, source: email.source, hours: email.hours },
+      });
+    } catch (error) {
+      console.error('[Admin] getHealthMetrics error:', error.message);
+      res.status(500).json({ message: 'Unable to load health metrics.' });
     }
   },
 

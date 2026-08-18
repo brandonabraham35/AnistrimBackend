@@ -67,7 +67,7 @@ iles<!DOCTYPE html>
             </div>
 
             <!-- System Health Widgets -->
-            <div class="health-grid">
+            <div class="health-grid" style="margin-bottom:0.75rem;">
                 <div class="health-card" data-health="database">
                     <div class="health-icon"><i class="fas fa-database"></i></div>
                     <div class="health-info"><span class="health-label">Database</span><span class="health-status">—</span></div>
@@ -80,14 +80,35 @@ iles<!DOCTYPE html>
                     <div class="health-icon"><i class="fas fa-code"></i></div>
                     <div class="health-info"><span class="health-label">API</span><span class="health-status">—</span></div>
                 </div>
-                <div class="health-card" data-health="server_uptime">
-                    <div class="health-icon"><i class="fas fa-clock"></i></div>
-                    <div class="health-info"><span class="health-label">Uptime</span><span class="health-status">—</span></div>
+                <div class="health-card" data-health="cache">
+                    <div class="health-icon"><i class="fas fa-bolt"></i></div>
+                    <div class="health-info"><span class="health-label">Cache</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="payments">
+                    <div class="health-icon"><i class="fas fa-credit-card"></i></div>
+                    <div class="health-info"><span class="health-label">Payments</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="email">
+                    <div class="health-icon"><i class="fas fa-envelope"></i></div>
+                    <div class="health-info"><span class="health-label">Email</span><span class="health-status">—</span></div>
+                </div>
+                <div class="health-card" data-health="google_oauth">
+                    <div class="health-icon"><i class="fab fa-google"></i></div>
+                    <div class="health-info"><span class="health-label">Google OAuth</span><span class="health-status">—</span></div>
                 </div>
                 <div class="health-card" data-health="storage">
                     <div class="health-icon"><i class="fas fa-hdd"></i></div>
                     <div class="health-info"><span class="health-label">Storage</span><span class="health-status">—</span></div>
                 </div>
+                <div class="health-card" data-health="server_uptime">
+                    <div class="health-icon"><i class="fas fa-clock"></i></div>
+                    <div class="health-info"><span class="health-label">Uptime</span><span class="health-status">—</span></div>
+                </div>
+            </div>
+            <!-- Overall System Status Badge -->
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;font-size:0.85rem;color:var(--text-muted);">
+                <span>Overall System Status:</span>
+                <span id="health-overall-status" class="health-overall-badge health-unknown">UNKNOWN</span>
             </div>
 
 <!-- Stats Grid Row 1 -->

@@ -96,6 +96,16 @@ app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ─── Per-request latency + status logging (admin health widgets) ──
+// Records method/path/status_code/latency_ms into api_request_log for the
+// p50/p95 + 5xx-per-hour widgets. Fire-and-forget, never blocks the request.
+try {
+  app.use(require('./middleware/requestMetrics'));
+  console.log('✅ Request metrics middleware mounted (api_request_log)');
+} catch (err) {
+  console.warn('⚠️ [REQUEST_METRICS] Middleware init failed (non-fatal):', err && err.message);
+}
+
 // ─── Main API Endpoints ────────────────────────────────────
 // API routes must be registered before static file handlers and SPA fallbacks
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -268,6 +278,16 @@ try {
   premiumScheduler.startScheduler();
 } catch (err) {
   console.error('⚠️ [PREMIUM_SCHEDULER] Scheduler init failed (non-fatal):', err && err.message);
+}
+
+// Start the nightly health_samples prune (Phase 9). Each night at 03:17 deletes
+// health_samples older than 30 days so the table doesn't grow unbounded
+// (10 components sampled per probe run). Idempotent + failure-safe.
+try {
+  const healthService = require('./services/healthService');
+  healthService.startPruner();
+} catch (err) {
+  console.error('⚠️ [HEALTH] Pruner init failed (non-fatal):', err && err.message);
 }
 
 })();

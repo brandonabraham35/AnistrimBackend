@@ -10,6 +10,7 @@
 //     code to the console and "succeed" so the signup/verify flow still works
 //     locally without a mail server.
 const nodemailer = require('nodemailer');
+const db = require('../config/db');
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -44,6 +45,20 @@ function getTransporter() {
 const FROM = process.env.MAIL_FROM || process.env.FROM_EMAIL || 'AniStrim <no-reply@anistrim.com>';
 
 /**
+ * Record a send outcome to email_events (best-effort — a failed event-log write
+ * must never break the email call itself).
+ */
+function recordEmailEvent(to, subject, status, errorMessage) {
+  db.query(
+    'INSERT INTO email_events (to_email, subject, status, error) VALUES (?, ?, ?, ?)',
+    [to ? String(to).slice(0, 191) : null, subject ? String(subject).slice(0, 255) : null, status, errorMessage ? String(errorMessage).slice(0, 500) : null]
+  ).catch(err => {
+    // Never surface email-event logging failures to the caller.
+    if (!IS_PRODUCTION) console.warn('[Mailer] email_events write failed (non-fatal):', err && err.message);
+  });
+}
+
+/**
  * Send an HTML email.
  * @param {string} to - recipient email
  * @param {string} subject - email subject
@@ -56,6 +71,7 @@ async function sendEmail(to, subject, html, otpCode) {
       // Fail loudly — never silently swallow mail delivery in production, and
       // never print the OTP code.
       console.error(`EMAIL NOT SENT (SMTP unconfigured) to: ${to}`);
+      recordEmailEvent(to, subject, 'failure', 'SMTP is not configured (production)');
       throw new Error('SMTP is not configured and we are in production. Email not sent.');
     }
     // Development fallback: print the code so local testing still works.
@@ -64,12 +80,20 @@ async function sendEmail(to, subject, html, otpCode) {
     } else {
       console.log(`[DEV MAIL] To: ${to} | Subject: ${subject} (no code supplied)`);
     }
+    // Dev console-delivery counts as success (it delivered to the dev console).
+    recordEmailEvent(to, subject, 'success', null);
     return;
   }
 
   const t = getTransporter();
   const from = process.env.MAIL_FROM || process.env.FROM_EMAIL || process.env.SMTP_USER;
-  await t.sendMail({ from, to, subject, html });
+  try {
+    await t.sendMail({ from, to, subject, html });
+    recordEmailEvent(to, subject, 'success', null);
+  } catch (error) {
+    recordEmailEvent(to, subject, 'failure', error && (error.message || String(error)));
+    throw error;
+  }
 }
 
 module.exports = { sendEmail, getTransporter, smtpConfigured };

@@ -11,6 +11,8 @@ router.use(protect, adminOnly);
 router.get('/stats',                        admin.getDashboardStats);
 router.get('/dashboard/overview',           admin.getDashboardOverview);
 router.get('/dashboard/health',             admin.getDashboardHealth);
+router.get('/dashboard/health/history',     admin.getHealthMetrics);
+router.get('/dashboard/health/metrics',     admin.getHealthMetrics);
 router.get('/dashboard/charts/:type',       admin.getChartData);
 router.get('/dashboard/activity/recent',    admin.getRecentActivity);
 router.get('/dashboard/ads-metrics',        admin.getAdsMetrics);

@@ -217,9 +217,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ─── Load Health Status ────────────────────────────────────────
+  // The probe vocabulary is now standardized on 'up' | 'degraded' | 'down'.
   async function loadHealth() {
     try {
       const health = await window.apiRequest('/api/admin/dashboard/health');
+      // Overall status badge.
+      const overallEl = document.getElementById('health-overall-status');
+      if (overallEl) {
+        const overall = health.status || 'unknown';
+        overallEl.textContent = overall.toUpperCase();
+        overallEl.className = 'health-overall-badge';
+        if (overall === 'up') overallEl.classList.add('health-ok');
+        else if (overall === 'degraded') overallEl.classList.add('health-warn');
+        else if (overall === 'down') overallEl.classList.add('health-err');
+        else overallEl.classList.add('health-unknown');
+      }
+
       const cards = document.querySelectorAll('.health-card');
       cards.forEach(card => {
         const key = card.dataset.health;
@@ -229,10 +242,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!check) return;
 
         card.className = 'health-card';
-        if (check.status === 'healthy') {
+        let status = check.status || 'unknown';
+        if (status === 'up') {
           card.classList.add('health-ok');
           if (iconEl) iconEl.style.color = '#10b981';
-        } else if (check.status === 'degraded') {
+        } else if (status === 'degraded') {
           card.classList.add('health-warn');
           if (iconEl) iconEl.style.color = '#f59e0b';
         } else {
@@ -240,13 +254,25 @@ document.addEventListener('DOMContentLoaded', () => {
           if (iconEl) iconEl.style.color = '#f43f5e';
         }
 
+        // Show status text; for server_uptime show the formatted uptime.
         if (key === 'server_uptime') {
           statusEl.textContent = check.uptime || '—';
-        } else if (key === 'storage') {
-          statusEl.textContent = check.usage_gb !== null ? `${check.usage_gb} GB` : '—';
         } else {
-          statusEl.textContent = check.status || '—';
+          statusEl.textContent = status.toUpperCase();
         }
+
+        // Sanitized tooltip: latency + a sanitized lastError (no raw DB/Pesapal
+        // messages that could leak hostnames/connection strings).
+        let tooltip = `${status.toUpperCase()} · ${Number(check.latencyMs) ? check.latencyMs + 'ms' : '—'}ms`;
+        if (check.lastError && typeof check.lastError === 'string') {
+          const sanitized = String(check.lastError)
+            .replace(/https?:\/\/[^\s]+/gi, '[url]')
+            .replace(/(?:[A-Za-z0-9+/]{32,}={0,3})/g, '[token]')
+            .replace(/\b(?:user|pass|key|secret|token|password)\b[=: ]+[^\s,;]+/gi, '$1=[redacted]')
+            .slice(0, 160);
+          tooltip += ` · ${sanitized}`;
+        }
+        card.title = tooltip;
       });
     } catch (e) {
       console.warn('[Health] Failed to load:', e.message);

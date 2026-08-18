@@ -334,6 +334,46 @@ class ProviderHealthMonitor {
     };
   }
 
+  getProviderStatuses() {
+    const statuses = [];
+    const health = providerHttp.getProviderHealth() || {};
+
+    for (const [name, stats] of Object.entries(health)) {
+      let status = 'up';
+      let lastError = null;
+      const latencyMs = stats.avgResponseTime !== 'N/A' && stats.avgResponseTime != null
+        ? (parseInt(stats.avgResponseTime, 10) || null)
+        : null;
+
+      if (stats.successCount === 0 && stats.failureCount > 0) {
+        status = 'down';
+        lastError = stats.degraded ? 'provider degraded (never recovered)' : `all requests failed (${stats.failureCount})`;
+      } else if (stats.degraded || stats.consecutiveFailures > 0) {
+        status = 'degraded';
+        lastError = stats.degraded
+          ? `degraded; consecutive failures: ${stats.consecutiveFailures}`
+          : `consecutive failures: ${stats.consecutiveFailures}`;
+      }
+
+      statuses.push({ name, status, latencyMs, lastError });
+    }
+
+    // No tracked provider yet — fall back to the single known provider snapshot.
+    if (!statuses.length) {
+      const providerSnapshot = typeof provider.getHealthSnapshot === 'function' ? provider.getHealthSnapshot() : {};
+      const overall = providerSnapshot.status;
+      const mapped = overall === 'healthy' ? 'up' : (overall === 'busy' || overall === 'degraded' ? 'degraded' : (overall || 'up'));
+      statuses.push({
+        name: 'animeheaven',
+        status: mapped,
+        latencyMs: providerSnapshot.latency?.avgResponseMs || null,
+        lastError: providerSnapshot.lastErrorMessage || null,
+      });
+    }
+
+    return statuses;
+  }
+
   getSnapshot() {
     const now = Date.now();
     const total = this.metrics.successCount + this.metrics.failureCount;

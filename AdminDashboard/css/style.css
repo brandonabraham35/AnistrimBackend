@@ -52,6 +52,48 @@ body::before {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
+/* --- System Health Widgets (Phase 9) --- */
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+}
+.health-card {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.7rem 0.85rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    cursor: default;
+}
+.health-card.health-ok    { border-left: 4px solid var(--success); }
+.health-card.health-warn  { border-left: 4px solid var(--warning); }
+.health-card.health-err   { border-left: 4px solid var(--danger); }
+.health-card.health-unknown { border-left: 4px solid var(--border); }
+.health-icon { font-size: 1.15rem; flex-shrink: 0; }
+.health-info { display: flex; flex-direction: column; min-width: 0; }
+.health-label { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.health-status { font-size: 0.85rem; font-weight: 700; color: var(--text-main); }
+
+/* Overall system status badge */
+.health-overall-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    border: 1px solid transparent;
+}
+.health-overall-badge.health-ok       { color: #10b981; background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.35); }
+.health-overall-badge.health-warn     { color: #f59e0b; background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); }
+.health-overall-badge.health-err      { color: #f43f5e; background: rgba(244,63,94,0.12); border-color: rgba(244,63,94,0.35); }
+.health-overall-badge.health-unknown  { color: var(--text-muted); background: var(--bg-card); border-color: var(--border); }
+
 /* --- Sidebar --- */
 .sidebar {
     width: 260px;
