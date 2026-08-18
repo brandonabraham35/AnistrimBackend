@@ -3,8 +3,11 @@
 --
 --  8.1 ads_config per-placement controls (enriched).
 --  8.3 ad_events log for the health dashboard.
+--
+--  NOTE: The migration runner strips `USE` statements, so any
+--  information_schema guard MUST use DATABASE() — never a
+--  hardcoded schema name.
 -- ============================================================
-USE anistrim2;
 
 -- ── 8.3 ad_events table ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ad_events (
@@ -23,7 +26,7 @@ CREATE TABLE IF NOT EXISTS ad_events (
 -- ── 8.1 ads_config per-placement enrichment (idempotent) ────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'ads_config' AND COLUMN_NAME = 'pre_roll_unit_id'
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ads_config' AND COLUMN_NAME = 'pre_roll_unit_id'
 );
 SET @alter_sql := IF(@col_exists = 0,
     'ALTER TABLE ads_config
@@ -41,4 +44,4 @@ DEALLOCATE PREPARE stmt;
 
 -- Verify
 SELECT TABLE_NAME FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'ad_events';
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ad_events';

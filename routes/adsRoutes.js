@@ -1,5 +1,6 @@
 const express = require('express');
 const auth = require('../middleware/auth');
+const { adEventLimiter } = require('../middleware/rateLimit');
 const ads = require('../controllers/adsController');
 
 const router = express.Router();
@@ -12,6 +13,7 @@ router.put('/config', auth.protect, auth.adminOnly, ads.updateAdConfig);
 router.get('/policy', auth.protect, ads.getPolicy);
 
 // Phase 8.3: log ad impression/failure for the health dashboard.
-router.post('/event', auth.protect, ads.logAdEvent);
+// Rate-limited (60 req / 5 min / user) to prevent flooding ad_events.
+router.post('/event', auth.protect, adEventLimiter, ads.logAdEvent);
 
 module.exports = router;

@@ -146,6 +146,76 @@ document.addEventListener('DOMContentLoaded', () => {
     await Promise.all(chartPromises);
   }
 
+  // ─── Load Ads Metrics (ad_events) ──────────────────────────────
+  // Renders impressions/clicks/fails/skips/timeouts per slot per day for the
+  // last 30 days, plus fill-rate = impressions / (impressions + fail + timeout).
+  async function loadAdsMetrics() {
+    const container = document.getElementById('chart-ads-metrics');
+    if (!container) return;
+    const summaryEl = document.getElementById('ads-metrics-summary');
+    try {
+      const data = await window.apiRequest('/api/admin/dashboard/ads-metrics');
+      if (!data || !data.series || !data.series.length) {
+        if (summaryEl) summaryEl.textContent = 'No ad events recorded yet.';
+        return;
+      }
+
+      const colors = ['#dc2626', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+      const datasets = [];
+      data.series.forEach((s, i) => {
+        const color = colors[i % colors.length];
+        datasets.push({
+          label: `${s.slot} · impressions`,
+          data: s.perDay.map(d => d.impressions),
+          borderColor: color,
+          backgroundColor: color + '20',
+          fill: true, tension: 0.3, pointRadius: 2, borderWidth: 2,
+          yAxisID: 'y',
+        });
+        datasets.push({
+          label: `${s.slot} · fill-rate %`,
+          data: s.perDay.map(d => d.fillRate),
+          borderColor: color,
+          borderDash: [4, 4],
+          backgroundColor: 'transparent',
+          fill: false, tension: 0.3, pointRadius: 2, borderWidth: 1,
+          yAxisID: 'y1',
+        });
+      });
+
+      _createOrUpdateChart('chart-ads-metrics', {
+        type: 'line',
+        data: { labels: data.days, datasets },
+        options: {
+          ..._getChartDefaults(),
+          scales: {
+            ..._getChartDefaults().scales,
+            y: { ..._getChartDefaults().scales.y, position: 'left', title: { display: true, text: 'Count', color: '#64748b', font: { size: 9 } } },
+            y1: { position: 'right', beginAtZero: true, max: 100, grid: { drawOnChartArea: false }, ticks: { color: '#64748b', font: { size: 9 }, callback: v => v + '%' }, title: { display: true, text: 'Fill rate %', color: '#64748b', font: { size: 9 } } },
+          },
+        },
+      });
+
+      // Summary line: totals per slot.
+      if (summaryEl) {
+        const lines = data.series.map(s => {
+          const totals = s.perDay.reduce((acc, d) => {
+            acc.impressions += d.impressions; acc.clicks += d.clicks; acc.fails += d.fails; acc.skips += d.skips; acc.timeouts += d.timeouts;
+            return acc;
+          }, { impressions: 0, clicks: 0, fails: 0, skips: 0, timeouts: 0 });
+          const denom = totals.impressions + totals.fails + totals.timeouts;
+          const fill = denom > 0 ? ((totals.impressions / denom) * 100).toFixed(1) + '%' : '—';
+          return `${s.slot}: ${totals.impressions} imp · ${totals.clicks} clk · ${totals.fails} fail · ${totals.skips} skip · ${totals.timeouts} timeout · fill ${fill}`;
+        });
+        summaryEl.textContent = lines.join('  |  ');
+      }
+    } catch (e) {
+      console.warn('[AdsMetrics] Failed to load:', e.message);
+      _destroyChart('chart-ads-metrics');
+      if (summaryEl) summaryEl.textContent = 'Failed to load ads metrics.';
+    }
+  }
+
   // ─── Load Health Status ────────────────────────────────────────
   async function loadHealth() {
     try {
@@ -312,6 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadOverview();
     loadHealth();
     loadCharts();
+    loadAdsMetrics();
     loadActivityTimeline();
 
     // Auto-refresh setup
@@ -334,6 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadOverview();
       loadHealth();
       loadCharts();
+      loadAdsMetrics();
       loadActivityTimeline();
       const refreshEl = document.getElementById('last-refresh-time');
       if (refreshEl) refreshEl.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;

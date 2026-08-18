@@ -475,6 +475,75 @@ const adminController = {
   async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); res.json({ message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
   async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); res.json({ message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
+  // ── GET /api/admin/dashboard/ads-metrics ────────────────────
+  // Per-slot, per-day ad_events breakdown for the last 30 days, plus fill-rate
+  // = impressions / (impressions + fail + timeout). Makes the ad_events write
+  // path verifiable in the admin dashboard.
+  async getAdsMetrics(req, res) {
+    try {
+      const [rows] = await db.query(
+        `SELECT
+           DATE(created_at) AS day,
+           slot,
+           SUM(event = 'impression') AS impressions,
+           SUM(event = 'click')      AS clicks,
+           SUM(event = 'fail')       AS fails,
+           SUM(event = 'skip')       AS skips,
+           SUM(event = 'timeout')    AS timeouts
+         FROM ad_events
+         WHERE created_at >= CURDATE() - INTERVAL 30 DAY
+         GROUP BY DATE(created_at), slot
+         ORDER BY day ASC, slot ASC`
+      );
+
+      // Build a per-day map keyed by slot for the chart.
+      const days = [];
+      const bySlot = {};
+      const slotSet = new Set();
+      for (const r of rows) {
+        const day = r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
+        if (!days.includes(day)) days.push(day);
+        const slot = r.slot || 'unknown';
+        slotSet.add(slot);
+        if (!bySlot[slot]) bySlot[slot] = {};
+        bySlot[slot][day] = {
+          impressions: Number(r.impressions) || 0,
+          clicks: Number(r.clicks) || 0,
+          fails: Number(r.fails) || 0,
+          skips: Number(r.skips) || 0,
+          timeouts: Number(r.timeouts) || 0,
+        };
+      }
+
+      // Fill-rate per slot per day: impressions / (impressions + fail + timeout).
+      const slots = Array.from(slotSet).sort();
+      const series = slots.map(slot => {
+        const perDay = days.map(day => {
+          const d = bySlot[slot] && bySlot[slot][day];
+          const imp = d ? d.impressions : 0;
+          const fail = d ? d.fails : 0;
+          const timeout = d ? d.timeouts : 0;
+          const denominator = imp + fail + timeout;
+          return {
+            day,
+            impressions: imp,
+            clicks: d ? d.clicks : 0,
+            fails: fail,
+            skips: d ? d.skips : 0,
+            timeouts: timeout,
+            fillRate: denominator > 0 ? Number(((imp / denominator) * 100).toFixed(1)) : 0,
+          };
+        });
+        return { slot, perDay };
+      });
+
+      return res.json({ days, slots, series });
+    } catch (error) {
+      console.error('[Admin] getAdsMetrics error:', error.message);
+      return res.status(500).json({ message: 'Unable to load ads metrics.' });
+    }
+  },
+
   async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); res.json({ message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
   async getVideoStatus(req, res) { try { const video = await cloudinaryVideo.getVideo(req.params.videoId); res.json({ success: true, ...video, status: 'ready', video_status: 'ready', encodeProgress: 100 }); } catch (error) { res.status(502).json({ message: error.message }); } },
 

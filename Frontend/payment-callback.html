@@ -163,11 +163,19 @@ async function pollPaymentStatus(txRef, subscriptionRef) {
 }
 
 // ── Update local premium state ───────────────────────────────
+// The client NEVER writes isPremium itself. After a successful payment we
+// re-fetch the canonical user DTO from the server (authoritative entitlement)
+// and store that. The server remains the single source of truth.
 async function updatePremiumState(txRef) {
-  const user = State.user;
-  if (user) {
-    user.isPremium = true;
-    State.save(State.token, user);
+  try {
+    const fresh = await window.apiFetch('/api/auth/me');
+    if (fresh && fresh.id) {
+      State.save(State.token, fresh);
+    }
+  } catch (e) {
+    // Non-fatal — the server is authoritative; the next /api/auth/me refresh
+    // will pick up the new entitlement.
+    console.warn('[PaymentCallback] Could not refresh user after payment:', e && e.message);
   }
   if (txRef) {
     localStorage.removeItem('pending_tx_ref');

@@ -19,6 +19,7 @@
 const db = require('../config/db');
 const { fetchSkipTimes } = require('../services/aniSkipService');
 const streamingService = require('../services/streamingService');
+const { getEntitlement } = require('../utils/episodeAccess');
 
 // ── Helpers ─────────────────────────────────────────────────
 function clampPosition(position, duration) {
@@ -456,8 +457,18 @@ exports.resolveNextEpisode = async (req, res) => {
 
     const nextEpisode = epRows[0];
 
+    // Authoritative premium status from getEntitlement() — never the stale
+    // req.user.isPremium JWT claim. Admin is always entitled.
+    let isPremium = req.user?.isAdmin === true;
+    try {
+      const ent = await getEntitlement(req.userId ?? req.user?.id);
+      isPremium = isPremium || (ent && ent.isPremium && ['trialing', 'active', 'grace'].includes(ent.state));
+    } catch (e) {
+      console.warn('[WatchController] resolveNextEpisode entitlement check failed (treat as free):', e.message);
+    }
+
     const result = await streamingService.resolveStream(animeTitle, targetEpisodeNumber, {
-      isPremium: req.user?.isPremium === true || req.user?.isAdmin === true,
+      isPremium,
       episodeId: nextEpisode.id,
     });
 

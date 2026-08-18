@@ -99,14 +99,16 @@ function togglePasswordVisibility(id) {
 window.togglePasswordVisibility = togglePasswordVisibility;
 
 // ===================== PREMIUM UI =====================
+// Reads State.isPremium / State.isAdmin — both prefer the server-authoritative
+// Session DTO entitlement (from /api/auth/me) over the cached localStorage user.
 function applyPremiumUI() {
   const user = State.user;
   if (!user) return;
-  if (user.isPremium || user.isAdmin) {
+  if (State.isPremium || State.isAdmin) {
     document.getElementById('premium-badge')?.style.setProperty('display','inline-flex');
     document.querySelectorAll('.upgrade-prompt').forEach(el => el.style.display = 'none');
   }
-  if (user.isAdmin) {
+  if (State.isAdmin) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
     document.getElementById('admin-dashboard-link')?.style.setProperty('display','flex');
   }

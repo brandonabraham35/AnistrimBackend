@@ -38,10 +38,14 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
   process.exit(1);
 }
 
-// ─── Prompt 10: Migration runner + critical-table assertion ──
+// ── Prompt 10: Migration runner + critical-table assertion ──
 // Apply any pending sql/migrations_v*.sql files (recorded in schema_migrations)
 // and verify the critical tables exist BEFORE any service that depends on them
 // starts. Fails loudly — never silently falls back to a legacy path.
+//
+// The ENTIRE server bootstrap (route registration + app.listen) is wrapped in
+// an async IIFE that AWAITS migrations first, so no request can ever hit an
+// unmigrated schema. If migrations fail, the process exits before binding.
 (async () => {
   try {
     const { runMigrations, assertCriticalTables } = require('./scripts/migrate');
@@ -52,9 +56,8 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
     console.error('❌ [MIGRATIONS] Startup blocked:', e.message);
     process.exit(1);
   }
-})();
 
-providerHealthMonitor.initialize();
+  providerHealthMonitor.initialize();
 
 // Phase 2 (FIX 3): boot-time probe for sharp so avatar failures are visible
 // in server logs instead of silently returning 502/503 at runtime.
@@ -266,3 +269,5 @@ try {
 } catch (err) {
   console.error('⚠️ [PREMIUM_SCHEDULER] Scheduler init failed (non-fatal):', err && err.message);
 }
+
+})();

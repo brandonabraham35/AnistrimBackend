@@ -82,6 +82,21 @@ const googleLimiter = rateLimit({
   handler,
 });
 
+// Ad event logging: 60 req / 5 min per user (keyed on the authenticated user id).
+// Prevents an authenticated user from flooding ad_events (storage/DoS, poisoned
+// analytics). Falls back to IP when no user id is present.
+const adEventLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'ad-event:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
 module.exports = {
   loginLimiter,
   otpLimiter,
@@ -89,4 +104,5 @@ module.exports = {
   refreshLimiter,
   sensitiveLimiter,
   googleLimiter,
+  adEventLimiter,
 };

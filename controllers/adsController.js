@@ -62,6 +62,24 @@ async function fetchConfig() {
   return rows[0] || null;
 }
 
+// Count impressions for a user+slot in the last hour (frequency-cap lookback).
+// Returns 0 on any query failure so a cap-check hiccup never blocks ads.
+async function countImpressionsLastHour(userId, slot) {
+  if (!userId) return 0;
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS c FROM ad_events
+       WHERE user_id = ? AND slot = ? AND event = 'impression'
+         AND created_at > NOW() - INTERVAL 1 HOUR`,
+      [userId, slot]
+    );
+    return Number(rows[0]?.c) || 0;
+  } catch (e) {
+    console.warn('[Ads] Frequency-cap lookback failed (treat as 0):', e.message);
+    return 0;
+  }
+}
+
 exports.getAdConfig = async (req, res) => {
   try {
     const config = await fetchConfig();
@@ -180,14 +198,21 @@ exports.getPolicy = async (req, res) => {
     // Player placements (pre_roll, mid_roll).
     if (context === 'player') {
       if (toBoolean(config.pre_roll_enabled) && config.pre_roll_unit_id) {
-        ads.push({
-          slot: 'pre_roll',
-          provider: 'admob',
-          unitId: config.pre_roll_unit_id,
-          frequencyCapPerHour: Number(config.pre_roll_frequency_cap) || 2,
-          skippableAfterSec: Number(config.pre_roll_skippable_after_sec) || 5,
-          maxDurationSec: Number(config.pre_roll_max_duration_sec) || 15,
-        });
+        const cap = Number(config.pre_roll_frequency_cap) || 2;
+        const used = await countImpressionsLastHour(userId, 'pre_roll');
+        const remainingAllowance = Math.max(0, cap - used);
+        // Drop the placement when the hourly cap is already reached.
+        if (remainingAllowance > 0) {
+          ads.push({
+            slot: 'pre_roll',
+            provider: 'admob',
+            unitId: config.pre_roll_unit_id,
+            frequencyCapPerHour: cap,
+            remainingAllowance,
+            skippableAfterSec: Number(config.pre_roll_skippable_after_sec) || 5,
+            maxDurationSec: Number(config.pre_roll_max_duration_sec) || 15,
+          });
+        }
       }
     } else if (context === 'home' || context === 'details') {
       if (toBoolean(config.banner_enabled)) {
@@ -195,10 +220,16 @@ exports.getPolicy = async (req, res) => {
       }
     }
 
+    // Interstitial frequency cap (server-authoritative, from ad_events lookback).
+    const interstitialCap = Number(config.interstitial_frequency_cap) || 2;
+    const interstitialUsed = await countImpressionsLastHour(userId, 'interstitial');
+    const interstitialRemainingAllowance = Math.max(0, interstitialCap - interstitialUsed);
+
     const session = {
       interstitialEveryNEpisodes: Number(config.interstitial_every_n_episodes || 3),
-      interstitialEnabled: toBoolean(config.interstitial_enabled),
-      interstitialFrequencyCap: Number(config.interstitial_frequency_cap) || 2,
+      interstitialEnabled: toBoolean(config.interstitial_enabled) && interstitialRemainingAllowance > 0,
+      interstitialFrequencyCap: interstitialCap,
+      interstitialRemainingAllowance,
     };
 
     return res.json({ ads, session });
@@ -209,16 +240,30 @@ exports.getPolicy = async (req, res) => {
 };
 
 // ── Phase 8.3: POST /api/ads/event — log impression/failure ──
+// Whitelists provider/slot/context so arbitrary values can't poison analytics,
+// and truncates detail to 255 chars (the column width) to avoid silent errors.
+const VALID_AD_EVENTS = new Set(['impression', 'click', 'fail', 'skip', 'timeout']);
+const VALID_AD_PROVIDERS = new Set(['admob', 'admanager', 'unity', 'applovin', 'ironSource', 'vungle', 'chartboost', 'custom']);
+const VALID_AD_SLOTS = new Set(['pre_roll', 'mid_roll', 'banner', 'interstitial']);
+const VALID_AD_CONTEXTS = new Set(['home', 'details', 'player']);
+
 exports.logAdEvent = async (req, res) => {
   const { provider, slot, event, context, detail } = req.body || {};
-  const valid = ['impression', 'click', 'fail', 'skip', 'timeout'];
-  if (!valid.includes(event)) return res.status(400).json({ message: 'Invalid ad event.' });
+
+  if (!VALID_AD_EVENTS.has(event)) return res.status(400).json({ message: 'Invalid ad event.' });
+  if (provider && !VALID_AD_PROVIDERS.has(provider)) return res.status(400).json({ message: 'Invalid ad provider.' });
+  if (slot && !VALID_AD_SLOTS.has(slot)) return res.status(400).json({ message: 'Invalid ad slot.' });
+  if (context && !VALID_AD_CONTEXTS.has(context)) return res.status(400).json({ message: 'Invalid ad context.' });
+
+  // Truncate detail to the VARCHAR(255) column width.
+  const safeDetail = detail === null || detail === undefined ? null : String(detail).slice(0, 255);
+
   try {
     const userId = req.userId ?? req.user?.id ?? null;
     await db.query(
       `INSERT INTO ad_events (user_id, provider, slot, event, context, detail)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, provider || null, slot || null, event, context || null, detail || null]
+      [userId, provider || null, slot || null, event, context || null, safeDetail]
     );
     return res.json({ success: true });
   } catch (error) {

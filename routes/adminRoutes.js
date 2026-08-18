@@ -13,6 +13,7 @@ router.get('/dashboard/overview',           admin.getDashboardOverview);
 router.get('/dashboard/health',             admin.getDashboardHealth);
 router.get('/dashboard/charts/:type',       admin.getChartData);
 router.get('/dashboard/activity/recent',    admin.getRecentActivity);
+router.get('/dashboard/ads-metrics',        admin.getAdsMetrics);
 
 // Audit Log (Phase 5.3, read-only, filterable)
 router.get('/audit',                        admin.getAuditLogs);
