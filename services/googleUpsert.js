@@ -84,8 +84,12 @@ async function createGoogleUser(profile) {
 
 /**
  * Authenticate an existing Google-linked user (LOGIN path).
- * Refreshes avatar/name from Google and updates last_login. Does NOT touch
- * password_hash or auth_provider.
+ * Updates last_login. Does NOT touch password_hash or auth_provider.
+ *
+ * AVATAR PRESERVATION FIX: Only set the avatar from Google if the user has
+ * NO avatar yet (NULL). Never overwrite a custom avatar the user uploaded —
+ * the uploaded avatar is the user's deliberate choice and must persist
+ * across logouts/logins.
  */
 async function authenticateExistingGoogleUser(user, profile) {
   const googleAvatar = profile.picture || null;
@@ -93,7 +97,9 @@ async function authenticateExistingGoogleUser(user, profile) {
 
   const updates = ['last_login = NOW()', 'last_login_at = NOW()', 'updated_at = NOW()'];
   const params = [];
-  if (googleAvatar && googleAvatar !== user.avatar_url) {
+  // Only set avatar from Google if user has NO avatar (NULL or empty).
+  // NEVER overwrite a custom uploaded avatar.
+  if (googleAvatar && !user.avatar_url) {
     updates.push('avatar_url = ?');
     params.push(googleAvatar);
   }
@@ -104,7 +110,8 @@ async function authenticateExistingGoogleUser(user, profile) {
   params.push(user.id);
   await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
 
-  if (googleAvatar) user.avatar_url = googleAvatar;
+  // Only update the in-memory object if we actually changed the avatar.
+  if (googleAvatar && !user.avatar_url) user.avatar_url = googleAvatar;
   if (googleName) user.name = googleName;
   return user;
 }
@@ -129,7 +136,8 @@ async function linkGoogleAccount(user, profile) {
   user.google_id = googleId;
   user.is_verified = 1;
   user.auth_provider = 'google';
-  if (googleAvatar) user.avatar_url = googleAvatar;
+  // Only update in-memory if user had no avatar before (COALESCE preserves existing).
+  if (googleAvatar && !user.avatar_url) user.avatar_url = googleAvatar;
   return user;
 }
 
