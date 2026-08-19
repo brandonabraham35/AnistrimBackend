@@ -5,6 +5,7 @@
 //   getUser()   — returns the cached user (or null)
 //   refresh()   — calls GET /api/auth/me and updates the in-memory cache
 //   onChange(cb) — register a callback fired when the user changes
+//   setUser(user) — push a fresh DTO into the cache AND the persisted Auth copy
 //
 // This replaces every ad-hoc localStorage.getItem('user') read. The token is
 // still stored in localStorage (Auth module in config.js) for persistence, but
@@ -27,12 +28,22 @@
   function setUser(user) {
     var changed = JSON.stringify(cachedUser) !== JSON.stringify(user);
     cachedUser = user;
+    // Write through to the persisted Auth snapshot so localStorage('user')
+    // always carries the freshest DTO (e.g. avatarUrl after an upload).
+    // Auth lives in config.js which loads before session.js on every page.
+    if (user && window.Auth && window.Auth.setUser) {
+      try { window.Auth.setUser(user); } catch (e) { console.error('[Session] Auth.setUser error:', e); }
+    }
     if (changed) {
       listeners.forEach(function (cb) {
         try { cb(user); } catch (e) { console.error('[Session] onChange error:', e); }
       });
     }
   }
+
+  // Public alias so callers (e.g. profile.js avatar upload) can push a fresh
+  // DTO into the in-memory snapshot AND the persisted Auth copy in one call.
+  function setUserPublic(user) { setUser(user); }
 
   // Fetch the authoritative user DTO from /api/auth/me.
   async function refresh() {
@@ -75,5 +86,6 @@
     getUser: getUser,
     refresh: refresh,
     onChange: onChange,
+    setUser: setUserPublic,
   };
 })();

@@ -289,7 +289,11 @@ const adminController = {
     const { title, title_japanese, description, cover_image, banner_image, cover_public_id, banner_public_id, trailer_url, rating, year, studio, status = 'completed', is_premium = 0, is_featured = 0, tags, genres = [] } = req.body;
     if (!title?.trim()) return res.status(400).json({ message: 'Anime title is required.' });
     try {
-      const result = await insertExistingColumns('anime', { title: title.trim(), title_japanese: title_japanese || null, description: description || null, cover_image: cover_image || null, banner_image: banner_image || null, cover_public_id: cover_public_id || null, banner_public_id: banner_public_id || null, trailer_url: trailer_url || null, rating: numberOrNull(rating), year: numberOrNull(year), studio: studio || null, status, is_premium: toBool(is_premium) ? 1 : 0, is_featured: toBool(is_featured) ? 1 : 0, tags: tags || null });
+      // access_tier is the single source of truth for episode inheritance
+      // (utils/episodeAccess.js). Mirror is_premium into it so marking a title
+      // premium actually locks its inheriting episodes. (Issue 2 fix.)
+      const premium = toBool(is_premium) ? 1 : 0;
+      const result = await insertExistingColumns('anime', { title: title.trim(), title_japanese: title_japanese || null, description: description || null, cover_image: cover_image || null, banner_image: banner_image || null, cover_public_id: cover_public_id || null, banner_public_id: banner_public_id || null, trailer_url: trailer_url || null, rating: numberOrNull(rating), year: numberOrNull(year), studio: studio || null, status, is_premium: premium, access_tier: premium ? 'premium' : 'free', is_featured: toBool(is_featured) ? 1 : 0, tags: tags || null });
        await adminController.replaceGenres(result.insertId, genres);
        invalidateCatalogue(result.insertId);
       await logActivity(req, `Created anime: ${title.trim()}`, 'anime', result.insertId);
@@ -304,7 +308,12 @@ const adminController = {
       if (!existing.length) return res.status(404).json({ message: 'Anime not found.' });
       const before = existing[0];
       const schema = await getSchema();
-      const values = { title: title?.trim(), title_japanese, description, cover_image, banner_image, cover_public_id, banner_public_id, trailer_url, rating: numberOrNull(rating), year: numberOrNull(year), studio, status, is_premium: is_premium === undefined ? undefined : (toBool(is_premium) ? 1 : 0), is_featured: is_featured === undefined ? undefined : (toBool(is_featured) ? 1 : 0), tags };
+      // access_tier is the single source of truth for episode inheritance.
+      // Mirror is_premium writes into it so premium anime both displays the
+      // badge AND locks inheriting episodes. (Issue 2 fix.)
+      const premiumVal = is_premium === undefined ? undefined : (toBool(is_premium) ? 1 : 0);
+      const accessTierVal = is_premium === undefined ? undefined : (toBool(is_premium) ? 'premium' : 'free');
+      const values = { title: title?.trim(), title_japanese, description, cover_image, banner_image, cover_public_id, banner_public_id, trailer_url, rating: numberOrNull(rating), year: numberOrNull(year), studio, status, is_premium: premiumVal, access_tier: accessTierVal, is_featured: is_featured === undefined ? undefined : (toBool(is_featured) ? 1 : 0), tags };
       const entries = Object.entries(values).filter(([field, value]) => hasColumn(schema, 'anime', field) && value !== undefined);
       if (entries.length) await db.query(`UPDATE anime SET ${entries.map(([field]) => `\`${field}\` = ?`).join(', ')} WHERE id = ?`, [...entries.map(([, value]) => value), req.params.id]);
        if (Array.isArray(genres)) await adminController.replaceGenres(req.params.id, genres);

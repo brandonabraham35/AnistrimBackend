@@ -469,8 +469,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (user) {
     document.querySelectorAll('.profile-name').forEach(el => el.textContent  = user.name  || '');
     document.querySelectorAll('.profile-email').forEach(el => el.textContent = user.email || '');
-    const av = document.getElementById('profile-avatar');
-    if (av) av.textContent = (user.name || 'U').charAt(0).toUpperCase();
+    // NOTE: #profile-avatar is intentionally NOT overwritten here. The shared
+    // Avatar module (js/avatar.js) owns avatar rendering and hydrates from
+    // Session.refresh(), so an unconditional initials overwrite here would
+    // clobber a freshly uploaded avatar. (Issue 1 fix.)
   }
 
   if (localStorage.getItem('isFirstVisit') === 'true') {

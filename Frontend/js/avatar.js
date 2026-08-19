@@ -94,11 +94,19 @@
         renderAvatarEverywhere(url, name);
       });
     }
-    // Initial pass from the current user.
-    var user = (session && session.getUser()) || (window.State && window.State.user) || null;
-    var url = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || null;
-    var name = (user && (user.displayName || user.name)) || 'U';
-    renderAvatarEverywhere(url, name);
+    // Hydrate the session from the server before the first paint so a freshly
+    // uploaded avatar is present on every page (e.g. home) — previously the
+    // home page never refreshed, so it rendered the stale snapshot fallback.
+    async function hydrateAndRender() {
+      try {
+        if (session && session.refresh) await session.refresh();
+      } catch (e) { /* non-fatal — fall back to the cached user */ }
+      var user = (session && session.getUser()) || (window.State && window.State.user) || null;
+      var url = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || null;
+      var name = (user && (user.displayName || user.name)) || 'U';
+      renderAvatarEverywhere(url, name);
+    }
+    hydrateAndRender();
   }
 
   window.Avatar = {

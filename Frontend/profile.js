@@ -197,6 +197,18 @@ function togglePrefGenre(btn) {
   btn.classList.toggle('selected');
 }
 
+// Issue 3 fix: toggle the genre multi-select picker visibility so the profile
+// only shows the user's selected genres by default (not the whole catalogue).
+function toggleGenreOptions() {
+  const container = document.getElementById('pref-genre-options');
+  const btn = document.getElementById('pref-genre-toggle');
+  if (!container) return;
+  const show = container.style.display === 'none' || !container.style.display;
+  container.style.display = show ? 'flex' : 'none';
+  if (btn) btn.textContent = show ? 'Done' : '✏️ Edit genres';
+}
+window.toggleGenreOptions = toggleGenreOptions;
+
 // FIX 8: collect the currently selected genre chips.
 function getSelectedPrefGenres() {
   const container = $('pref-genre-options');
@@ -339,12 +351,18 @@ function uploadAvatarPreview(input) {
   apiOk('/api/auth/avatar', { method: 'POST', body: fd, skipAuthRedirect: true })
     .then(({ ok, data }) => {
       if (!ok) throw new Error(data?.message || 'Upload failed');
-      return Session.refresh();
-    })
-    .then((user) => {
-      renderAvatars(user);
+      // Persist the fresh avatarUrl into the stored session object so the
+      // avatar survives sign-out/sign-in and page navigations. (Bug 1 fix.)
+      const avatarUrl = data && (data.avatar_url || data.avatarUrl || data.avatar);
+      const current = (window.Session && window.Session.getUser()) || (window.Auth && window.Auth.getUser && window.Auth.getUser()) || {};
+      const fresh = { ...current, avatarUrl: avatarUrl || current.avatarUrl || null };
+      if (window.Auth && window.Auth.setUser) window.Auth.setUser(fresh);
+      if (window.Session && window.Session.setUser) window.Session.setUser(fresh);
+      // Re-render with a cache-buster so a replaced file at the same path is
+      // not served from the browser cache.
+      const busted = avatarUrl ? (avatarUrl + (avatarUrl.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now()) : null;
+      renderAvatars({ ...fresh, avatarUrl: busted, avatar: busted, avatar_url: busted });
       if (typeof showToast === 'function') showToast('Profile picture updated!');
-      if (typeof showToast === 'function') showToast;
     })
     .catch((err) => alert(err.message || 'Upload failed.'));
 }

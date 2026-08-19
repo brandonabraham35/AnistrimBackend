@@ -1,12 +1,18 @@
 // browse.js — FIX 1: Search + Genre + Status filters all working
+// Issue 4 fix: default view renders a bounded slice of trending (perPage=10),
+// and search queries the server (debounced) instead of filtering the in-memory
+// array. Results are only shown once the user types a query.
 let allAnime = [];
 let currentGenre  = 'All';
 let currentStatus = 'all';
 let currentSearch = '';
+let searchTimer = null;
 
 async function initBrowse() {
   try {
-    const { data, ok } = await apiFetch('/api/anime/trending');
+    // The backend supports page & perPage on /trending; request a bounded
+    // default so the browse grid no longer dumps the whole catalogue.
+    const { data, ok } = await apiFetch('/api/anime/trending?perPage=10');
     allAnime = Array.isArray(data) ? data : [];
     if (!ok || !allAnime.length) throw new Error('Empty or invalid response');
     applyFilters();
@@ -16,6 +22,69 @@ async function initBrowse() {
     console.error('Browse init error:', e.message);
     showBrowseError('Could not load anime catalog. Please check your connection.');
   }
+}
+// Search — Issue 4 fix: debounce + server-side query. Empty query restores
+// the trending default; results appear only once the user types.
+function handleSearch(query) {
+  clearTimeout(searchTimer);
+  const q = (query || '').toString();
+  const trimmed = q.trim();
+  searchTimer = setTimeout(async () => {
+    currentSearch = trimmed.toLowerCase();
+    if (!trimmed) {
+      // Restore the trending default view.
+      await reloadBrowse();
+      return;
+    }
+    try {
+      const { data, ok } = await apiFetch('/api/anime/search/advanced?query=' + encodeURIComponent(trimmed) + '&perPage=15');
+      if (!ok) throw new Error('Search failed');
+      // Normalize provider results to the shapes renderBrowseGrid expects.
+      const list = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : (Array.isArray(data.data) ? data.data : []));
+      renderSearchResults(list);
+      hideBrowseError();
+    } catch(e) {
+      console.error('Browse search error:', e.message);
+      // Fall back to local filtering of the loaded page so search still works
+      // if the provider search endpoint is down.
+      applyFilters();
+    }
+  }, 350);
+}
+window.handleSearch = handleSearch;
+
+// Issue 4 fix: render server search results (or empty state) into the grid.
+function renderSearchResults(list) {
+  const grid = document.getElementById('browse-grid');
+  const countEl = document.getElementById('results-count');
+  const noResult = document.getElementById('no-results');
+  if (!grid) return;
+  if (countEl) countEl.textContent = `${list.length} result${list.length !== 1 ? 's' : ''}`;
+  if (!list.length) {
+    grid.innerHTML = '';
+    if (noResult) noResult.style.display = 'block';
+    return;
+  }
+  if (noResult) noResult.style.display = 'none';
+  grid.innerHTML = list.map(a => {
+    const cover = a.cover_image || a.coverImage || a.image || '';
+    const title = a.title || a.name || 'Unknown';
+    const year = a.year || a.releaseYear || a.releaseDate || '';
+    const rating = a.rating || a.averageScore || '?';
+    const status = a.status || '';
+    const id = a.id != null ? a.id : (a.malId || (a.animeId != null ? a.animeId : ''));
+    return `
+    <div class="browse-card" onclick="location.href='details.html?id=${id}'">
+      <div class="browse-card-img">
+        <img src="${cover}" alt="${window._escapeHTML(title)}" loading="lazy"
+             onerror="cardImgError(this, '${window._escapeHTML((title || '').replace(/'/g, "\\'"))}')">
+        <span class="browse-card-badge">⭐ ${rating}</span>
+        ${a.is_premium ? '<span class="browse-card-premium">👑 Premium</span>' : ''}
+      </div>
+      <div class="browse-card-title">${window._escapeHTML(title)}</div>
+      <div class="browse-card-sub">${window._escapeHTML(String(year))} · ${window._escapeHTML(status)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── Browse Error UI & Reload ─────────────────────────
@@ -71,7 +140,7 @@ async function reloadBrowse() {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const { data, ok } = await apiFetch('/api/anime/trending');
+      const { data, ok } = await apiFetch('/api/anime/trending?perPage=10');
       if (!ok || !Array.isArray(data)) throw new Error('Invalid response');
       allAnime = data;
       applyFilters();
@@ -99,13 +168,6 @@ async function reloadBrowse() {
   }
 }
 window.reloadBrowse = reloadBrowse;
-
-// Search
-function handleSearch(query) {
-  currentSearch = query.toLowerCase().trim();
-  applyFilters();
-}
-window.handleSearch = handleSearch;
 
 // Genre filter
 function filterByGenre(genre, el) {
