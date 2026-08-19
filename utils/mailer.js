@@ -15,7 +15,14 @@ const db = require('../config/db');
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(
+    process.env.SMTP_HOST &&
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS &&
+    process.env.SMTP_HOST !== 'REPLACE_WITH_GMAIL' &&
+    process.env.SMTP_USER !== 'REPLACE_WITH_GMAIL' &&
+    process.env.SMTP_PASS !== 'REPLACE_WITH_APP_PASSWORD'
+  );
 }
 
 let transporter;
@@ -38,8 +45,58 @@ function getTransporter() {
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === 'true',
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    // Gmail requires TLS (STARTTLS) on port 587; nodemailer defaults to
+    // opportunistic TLS which works, but explicitly require it so a
+    // misconfigured server fails loudly instead of silently downgrading.
+    requireTLS: process.env.SMTP_HOST === 'smtp.gmail.com' ? true : undefined,
   });
   return transporter;
+}
+
+/**
+ * Verify the SMTP transport (transporter.verify()). Runs once at server boot
+ * so misconfiguration (bad credentials/host) is visible at startup rather than
+ * at first signup. Throws on failure — caller decides whether to exit or warn.
+ * @param {boolean} [exitOnFailure=true] - if true, process.exit(1) on bad creds
+ */
+async function verifyTransport(exitOnFailure = true) {
+  if (!smtpConfigured()) {
+    const msg = 'SMTP is not configured or contains placeholder values. ' +
+      'Set REAL SMTP_HOST, SMTP_USER, SMTP_PASS in .env. ' +
+      'Gmail: smtp.gmail.com / 587 / false + a Google App Password (16 chars).';
+    if (IS_PRODUCTION) {
+      console.error('============================================================');
+      console.error('❌ EMAIL DELIVERY IS BROKEN:');
+      console.error('  ' + msg);
+      console.error('  A normal Gmail password will be REJECTED — use an App Password.');
+      console.error('============================================================');
+    }
+    if (exitOnFailure) {
+      console.error('❌ [SMTP] Refusing to start: email verification will not work.');
+      process.exit(1);
+    }
+    throw new Error(msg);
+  }
+
+  try {
+    const t = getTransporter();
+    await t.verify();
+    console.log('✅ SMTP transport verified (' + process.env.SMTP_HOST + ':' + process.env.SMTP_PORT + '). Emails will deliver.');
+    return true;
+  } catch (error) {
+    const msg = 'SMTP credential/transport verification FAILED: ' + (error && error.message || String(error));
+    console.error('============================================================');
+    console.error('❌ EMAIL DELIVERY IS BROKEN:');
+    console.error('  ' + msg);
+    console.error('  Check SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS.');
+    console.error('  Gmail requires: 2-Step Verification enabled + a 16-char App Password.');
+    console.error('============================================================');
+    if (exitOnFailure) {
+      console.error('❌ [SMTP] Refusing to start: email verification will not work.');
+      process.exit(1);
+    }
+    throw error;
+  }
 }
 
 const FROM = process.env.MAIL_FROM || process.env.FROM_EMAIL || 'AniStrim <no-reply@anistrim.com>';
@@ -96,4 +153,4 @@ async function sendEmail(to, subject, html, otpCode) {
   }
 }
 
-module.exports = { sendEmail, getTransporter, smtpConfigured };
+module.exports = { sendEmail, getTransporter, smtpConfigured, verifyTransport };

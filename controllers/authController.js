@@ -150,7 +150,7 @@ exports.login = async (req, res) => {
             }
             return res.status(403).json({
                 success: false,
-                code: 'EMAIL_NOT_VERIFIED',
+                code: 'ACCOUNT_UNVERIFIED',
                 requiresVerification: true,
                 email: user.email,
                 emailSent,
@@ -266,15 +266,29 @@ exports.signup = async (req, res) => {
             </p>
           </div>`;
 
-        let emailSent = false;
+        // ── Email dispatch is CRITICAL — never a silent failure. ──
+        // If the OTP email cannot be sent, roll back the just-created row and
+        // surface a clear 502 so the user is never left with an unusable,
+        // unverified account and a misleading "success".
         try {
             await sendEmail(email, 'Verify your AniStrim account', html, verificationCode);
             await pool.query('UPDATE users SET verification_last_sent = NOW() WHERE id = ?', [userId]);
-            emailSent = true;
             log(`Verification email dispatched to: ${email}`);
         } catch (mailError) {
-            // Registration succeeds regardless; email failures surface later.
-            log(`WARN: verification email failed for ${email}: ${mailError.message}`);
+            log(`ERROR: verification email FAILED for ${email}: ${mailError.message}`);
+            // Best-effort rollback — delete the just-created unverified row so
+            // the email address is free to retry, never leaving a zombie account.
+            try {
+                await pool.query('DELETE FROM users WHERE id = ? AND is_verified = 0', [userId]);
+                log(`Rolled back unverified signup for ${email} (id ${userId}).`);
+            } catch (rollbackError) {
+                log(`WARN: rollback failed for userId ${userId}: ${rollbackError.message}`);
+            }
+            return res.status(502).json({
+                success: false,
+                code: 'EMAIL_SEND_FAILED',
+                message: "We couldn't send your verification email. Please try again.",
+            });
         }
 
         log(`Signup successful (pending verification): ${email}`);
@@ -282,7 +296,7 @@ exports.signup = async (req, res) => {
         res.status(201).json({
             success: true,
             requiresVerification: true,
-            emailSent,
+            emailSent: true,
             message: 'Account created. Please enter the verification code sent to your email.',
         });
 
@@ -385,8 +399,24 @@ exports.verifyEmailToken = async (req, res) => {
 
 // ─── Resend the verification OTP ────────────────────────────────
 // Regenerates the code, resets the expiry, and throttles on
-// verification_last_sent (>= 60s). Silently no-ops for unknown/verified emails
-// to avoid an account-existence oracle.
+// verification_last_sent (>= 60s) AND a rolling 5-per-hour per-email budget.
+// Silently no-ops for unknown/verified emails to avoid an account-existence
+// oracle.
+const resendBudget = new Map(); // email -> { windowStart, count }
+function resendAllowed(email) {
+  const now = Date.now();
+  const rec = resendBudget.get(email);
+  if (!rec || (now - rec.windowStart) >= 3600 * 1000) {
+    resendBudget.set(email, { windowStart: now, count: 1 });
+    return { allowed: true };
+  }
+  if (rec.count >= 5) {
+    return { allowed: false, retryAfter: Math.ceil((rec.windowStart + 3600 * 1000 - now) / 1000) };
+  }
+  rec.count += 1;
+  return { allowed: true };
+}
+
 exports.resendVerification = async (req, res) => {
     let { email } = req.body;
     email = typeof email === 'string' ? email.trim().toLowerCase() : email;
@@ -414,6 +444,12 @@ exports.resendVerification = async (req, res) => {
             const waitMs = RESEND_THROTTLE_SECONDS * 1000 - (Date.now() - lastSent.getTime());
             const retryAfter = Math.max(1, Math.ceil(waitMs / 1000));
             return res.status(429).json({ success: false, retryAfter, message: 'Please wait before requesting another code.' });
+        }
+
+        // Rolling 5/hour per-email cap.
+        const budget = resendAllowed(email);
+        if (!budget.allowed) {
+            return res.status(429).json({ success: false, retryAfter: budget.retryAfter, message: 'Too many resend requests. Please wait an hour.' });
         }
 
         const verificationCode = generateVerificationCode();

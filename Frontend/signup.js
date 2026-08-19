@@ -48,6 +48,16 @@ async function handleSignUp() {
     return;
   }
 
+  // EMAIL_SEND_FAILED (502): the account could NOT be created/verified because
+  // the OTP email failed to send. NEVER silently redirect — surface a clear,
+  // actionable error so the user knows to retry.
+  if (!ok && data && data.code === 'EMAIL_SEND_FAILED') {
+    showError(data.message || "We couldn't send your verification email. Please try again.");
+    btn.textContent = 'Create Account';
+    btn.disabled = false;
+    return;
+  }
+
   if (ok && data && data.token) {
     if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
     else localStorage.setItem('token', data.token);

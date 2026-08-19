@@ -63,6 +63,20 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
 
   providerHealthMonitor.initialize();
 
+  // ── SMTP boot-time verification ──────────────────────────
+  // Verify the mailer transport (transporter.verify()) once at startup so
+  // bad SMTP credentials/host are visible IMMEDIATELY, not at the first
+  // signup. Deliberately breaking SMTP_PASS (or leaving placeholders) now
+  // produces a loud startup error + refuses to boot — never a silent redirect.
+  try {
+    const { verifyTransport } = require('./utils/mailer');
+    await verifyTransport(true); // exitOnFailure=true → process.exit(1) on bad creds
+  } catch (e) {
+    // verifyTransport already logged + exited in production. This is a safety net.
+    console.error('❌ [SMTP] Startup aborted due to email configuration problem.', e && e.message);
+    process.exit(1);
+  }
+
 // Phase 2 (FIX 3): boot-time probe for sharp so avatar failures are visible
 // in server logs instead of silently returning 502/503 at runtime.
 try {
