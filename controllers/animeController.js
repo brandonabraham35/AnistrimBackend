@@ -51,13 +51,23 @@ exports.getGenres = async (req, res) => {
   }
 };
 
-// GET /api/anime/trending  — returns all anime (used as main feed)
+// GET /api/anime/trending — paginated trending/popular anime (Browse default).
+// Query params: page (default 1), perPage (default 10, max 50).
+// Returns a bounded slice of the catalogue ordered by engagement (views + rating).
+// The Browse page shows only the first page (10 items); search uses /search/advanced.
 exports.getTrending = async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const perPage = Math.min(50, Math.max(1, parseInt(req.query.perPage, 10) || 10));
+    const offset = (page - 1) * perPage;
+
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
               rating, year, studio, status, is_premium, is_featured, view_count, created_at
-       FROM anime a WHERE ${PUBLIC_ANIME_FILTER} ORDER BY rating DESC, view_count DESC, created_at DESC`
+       FROM anime a WHERE ${PUBLIC_ANIME_FILTER}
+       ORDER BY view_count DESC, rating DESC, created_at DESC
+       LIMIT ? OFFSET ?`,
+      [perPage, offset]
     );
     const result = await attachGenres(rows);
     res.json(result);
