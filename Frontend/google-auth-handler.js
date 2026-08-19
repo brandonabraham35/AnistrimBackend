@@ -7,15 +7,23 @@
  *   ✓ Loads and waits for the GIS library (with timeout + retry)
  *   ✓ Fetches GOOGLE_CLIENT_ID from backend (with timeout + retry)
  *   ✓ Initializes GIS exactly once (never re-initializes)
- *   ✓ Provides a clean Promise-based API: initGoogleAuth(buttonId)
- *   ✓ Manages loading/error states on the button
+ *   ✓ Renders the OFFICIAL GIS button via google.accounts.id.renderButton()
+ *     into a container next to the custom button — a user click ALWAYS opens
+ *     the Google account chooser (One Tap suppression can no longer block it)
+ *   ✓ Keeps google.accounts.id.prompt() ONLY as an optional fallback
+ *     (single call — no nested second prompt)
+ *   ✓ Provides a clean Promise-based API: initGoogleAuth(buttonId, options)
+ *   ✓ Manages loading/error states on the button (element IDs configurable)
  *   ✓ Returns the credential response on success
  *   ✓ Rejects with specific error messages on failure
  *   ✓ Prevents duplicate authentication requests
- *   ✓ Uses renderButton() approach for reliable account chooser display
  *
  * Usage:
- *   const credential = await window.initGoogleAuth('google-login-btn');
+ *   const credential = await window.initGoogleAuth('google-login-btn', {
+ *     textElementId: 'google-btn-text',   // optional, defaults shown
+ *     iconElementId: 'google-btn-icon',   // optional
+ *     defaultText: 'Continue with Google' // restored on reset
+ *   });
  *   // Send credential.credential (ID token) to backend
  *
  * Error messages:
@@ -30,10 +38,10 @@
  *
  * Include order on HTML pages:
  *   <script src="https://accounts.google.com/gsi/client"></script>
- *   <script src="config.js"></script>
- *   <script src="scrpt.js"></script>
+ *   <script src="config.js"></script>            (Frontend pages)
+ *   <script src="js/backend-url.js"></script>    (Admin pages — instead of config.js)
  *   <script src="google-auth-handler.js"></script>
- *   <script src="login.js"></script> (or signup.js, etc.)
+ *   <script src="login.js"></script> (or signup.js / AdminDashboard/js/auth.js)
  */
 
 (function () {
@@ -46,15 +54,28 @@
   var CLIENT_ID_INTERVAL = 2000; // 2s between retries
   var CLIENT_ID_TIMEOUT = 10000; // 10s max for fetch
 
+  var SPINNER_HTML =
+    '<div style="width:20px;height:20px;border:2px solid rgba(108,43,217,0.2);' +
+    'border-top-color:#6c2bd9;border-radius:50%;animation:gspin 0.8s linear infinite;"></div>';
+
   // ── State ────────────────────────────────────────────────
   var gisInitialized = false;     // Has GIS been initialized?
-  var gisClientId = null;        // Stored client ID after fetch
-  var authInProgress = false;    // Prevent concurrent auth requests
-  var pendingResolve = null;     // Promise resolve function
-  var pendingReject = null;      // Promise reject function
+  var gisClientId = null;         // Stored client ID after fetch
+  var authInProgress = false;     // Prevent concurrent auth requests
+  var pendingResolve = null;      // Promise resolve function
+  var pendingReject = null;       // Promise reject function
+  var popupWatchdogTimer = null;  // Post-popup cancel detection timer
 
   // ── Backend URL ─────────────────────────────────────────
+  // Resolution order:
+  //   1. window.getAdminBackendUrl()  — AdminDashboard shared helper (js/backend-url.js)
+  //   2. window.getApiBaseUrl()       — Frontend shared helper (Frontend/config.js)
+  //   3. window.__API_BASE_URL        — legacy global
+  //   4. production backend (last resort)
   function getBackendUrl() {
+    if (typeof window.getAdminBackendUrl === 'function') {
+      return window.getAdminBackendUrl();
+    }
     if (typeof window.getApiBaseUrl === 'function') {
       return window.getApiBaseUrl();
     }
@@ -154,9 +175,95 @@
     console.log('[GoogleAuth] GIS initialized successfully.');
   }
 
+  // ── Official GIS button (renderButton) ──────────────────
+  // Renders Google's official Sign-In button into a container placed NEXT TO
+  // the caller's custom button. Clicking that official button ALWAYS opens the
+  // Google account chooser — this is the primary flow and is immune to One Tap
+  // suppression (iTP, FedCM, prior dismissal).
+  function ensureOfficialButton(btn) {
+    try {
+      if (!gisInitialized || typeof google === 'undefined' || !google.accounts ||
+          !google.accounts.id || typeof google.accounts.id.renderButton !== 'function') {
+        return null;
+      }
+      // Reuse an existing container if it is still attached to the DOM.
+      if (btn._gisOfficialParent && document.body.contains(btn._gisOfficialParent)) {
+        return btn._gisOfficialParent;
+      }
+      var parent = document.createElement('div');
+      parent.className = 'gis-official-btn-container';
+      parent.style.cssText = 'display:flex;justify-content:center;margin-top:10px;min-height:40px;';
+      // Insert the container right after the custom button.
+      if (btn.parentNode) {
+        btn.parentNode.insertBefore(parent, btn.nextSibling);
+      } else {
+        document.body.appendChild(parent);
+      }
+      var width = Math.max(200, Math.min(400, btn.offsetWidth || 320));
+      google.accounts.id.renderButton(parent, {
+        theme: 'outline',
+        size: 'large',
+        type: 'standard',
+        text: 'signin_with',
+        shape: 'rectangular',
+        logo_alignment: 'left',
+        width: width
+      });
+      btn._gisOfficialParent = parent;
+      console.log('[GoogleAuth] Official GIS button rendered next to custom button.');
+      return parent;
+    } catch (e) {
+      console.warn('[GoogleAuth] renderButton failed:', e && e.message);
+      return null;
+    }
+  }
+
+  // Find the clickable element inside the official-button container and click it.
+  function clickOfficialButton(parent) {
+    if (!parent) return false;
+    var target = parent.querySelector('div[role="button"]') ||
+                 parent.querySelector('[role="button"]') ||
+                 parent.firstElementChild;
+    if (target && typeof target.click === 'function') {
+      target.click();
+      return true;
+    }
+    return false;
+  }
+
+  // ── Popup watchdog ──────────────────────────────────────
+  // When the popup account chooser closes, the window regains focus. If no
+  // credential has arrived shortly after, treat it as a cancel so the button
+  // never stays stuck. FedCM (in-page modal) flows never blur the window, so
+  // this watchdog is a no-op there.
+  function startPopupWatchdog(btn, ctx) {
+    try {
+      var onBlur = function () {
+        window.removeEventListener('blur', onBlur);
+        window.addEventListener('focus', onFocusOnce, { once: true });
+      };
+      var onFocusOnce = function () {
+        if (popupWatchdogTimer) clearTimeout(popupWatchdogTimer);
+        popupWatchdogTimer = setTimeout(function () {
+          if (authInProgress) {
+            console.log('[GoogleAuth] Popup closed without credential — treating as cancel.');
+            cancelSignIn(btn, ctx);
+          }
+        }, 1500);
+      };
+      window.addEventListener('blur', onBlur);
+      // Safety: stop watching after 5 minutes regardless.
+      setTimeout(function () { window.removeEventListener('blur', onBlur); }, 300000);
+    } catch (e) { /* watchdog is best-effort */ }
+  }
+
   // ── Handle Credential Response ──────────────────────────
   function handleCredentialResponse(response) {
     authInProgress = false;
+    if (popupWatchdogTimer) {
+      clearTimeout(popupWatchdogTimer);
+      popupWatchdogTimer = null;
+    }
     if (pendingResolve) {
       if (response && response.credential) {
         pendingResolve(response);
@@ -168,15 +275,39 @@
     }
   }
 
+  // ── Outcome helpers ─────────────────────────────────────
+  function failSignIn(btn, ctx, suppressErrors, msg) {
+    resetButtonState(btn, ctx);
+    if (!suppressErrors) showError(btn, msg);
+    if (pendingReject) {
+      var r = pendingReject;
+      pendingResolve = null;
+      pendingReject = null;
+      r(new Error(msg));
+    }
+  }
+
+  function cancelSignIn(btn, ctx) {
+    resetButtonState(btn, ctx);
+    if (pendingReject) {
+      var r = pendingReject;
+      pendingResolve = null;
+      pendingReject = null;
+      r(new Error('Authentication cancelled'));
+    }
+  }
+
   // ── Public API: Initialize Google Auth on a Button ──────
   /**
    * initGoogleAuth(buttonId, options)
    *
-   * @param {string} buttonId - DOM element ID of the "Continue with Google" button
+   * @param {string} buttonId - DOM element ID of the custom "Continue with Google" button
    * @param {object} [options] - Optional settings
    * @param {boolean} [options.suppressErrors=false] - If true, don't show inline error messages
    * @param {string} [options.loadingText='Signing in...'] - Text during loading
-   * @param {string} [options.defaultText='Continue with Google'] - Default button text
+   * @param {string} [options.defaultText='Continue with Google'] - Restored on reset
+   * @param {string} [options.textElementId='google-btn-text'] - ID of the button-text element
+   * @param {string} [options.iconElementId='google-btn-icon'] - ID of the button-icon element
    * @returns {Promise} Resolves with { credential: idToken } on success
    *
    * The returned Promise:
@@ -193,9 +324,14 @@
    */
   function initGoogleAuth(buttonId, options) {
     options = options || {};
-    var suppressErrors = options.suppressErrors || false;
-    var loadingText = options.loadingText || 'Signing in...';
-    var defaultText = options.defaultText || 'Continue with Google';
+    var ctx = {
+      suppressErrors: options.suppressErrors || false,
+      loadingText: options.loadingText || 'Signing in...',
+      defaultText: options.defaultText || 'Continue with Google',
+      textElementId: options.textElementId || 'google-btn-text',
+      iconElementId: options.iconElementId || 'google-btn-icon',
+      defaultIconHtml: null
+    };
 
     return new Promise(function (resolve, reject) {
       if (authInProgress) {
@@ -212,26 +348,27 @@
       // Set loading state
       authInProgress = true;
       btn.disabled = true;
-      var btnText = document.getElementById('google-btn-text');
-      var btnIcon = document.getElementById('google-btn-icon');
-      if (btnText) btnText.textContent = loadingText;
-      if (btnIcon) {
-        btnIcon.innerHTML = '<div style="width:20px;height:20px;border:2px solid rgba(108,43,217,0.2);border-top-color:#6c2bd9;border-radius:50%;animation:gspin 0.8s linear infinite;"></div>';
+      var btnText = document.getElementById(ctx.textElementId);
+      var btnIcon = document.getElementById(ctx.iconElementId);
+      // Capture the caller's original icon markup once so reset restores it.
+      if (btnIcon && ctx.defaultIconHtml === null) {
+        ctx.defaultIconHtml = btnIcon.innerHTML;
       }
+      if (btnText) btnText.textContent = ctx.loadingText;
+      if (btnIcon) btnIcon.innerHTML = SPINNER_HTML;
 
       // Store promise callbacks
       pendingResolve = resolve;
       pendingReject = reject;
 
-      // If GIS is already initialized and we have a client ID, show the prompt
+      // If GIS is already initialized and we have a client ID, show the chooser
       if (gisInitialized && gisClientId) {
-        console.log('[GoogleAuth] GIS ready, showing sign-in prompt...');
-        showGoogleSignIn(btn, suppressErrors);
+        console.log('[GoogleAuth] GIS ready, opening account chooser...');
+        showGoogleSignIn(btn, ctx);
         return;
       }
 
       // Step 1: Wait for GIS library
-      btnText = btnText || document.getElementById('google-btn-text');
       if (btnText) btnText.textContent = 'Loading Google...';
 
       waitForGISLibrary(GIS_LIB_RETRIES)
@@ -243,8 +380,8 @@
         .then(function (clientId) {
           // Step 3: Initialize GIS exactly once
           initializeGIS(clientId, handleCredentialResponse);
-          // Step 4: Show sign-in prompt
-          showGoogleSignIn(btn, suppressErrors);
+          // Step 4: Open the account chooser (official button primary path)
+          showGoogleSignIn(btn, ctx);
         })
         .catch(function (err) {
           // Reset state
@@ -254,19 +391,11 @@
 
           // Reset button
           btn.disabled = false;
-          if (btnText) btnText.textContent = defaultText;
-          if (btnIcon) {
-            btnIcon.innerHTML =
-              '<svg width="15" height="15" viewBox="0 0 24 24">' +
-              '<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>' +
-              '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>' +
-              '<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>' +
-              '<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>' +
-              '</svg>';
-          }
+          if (btnText) btnText.textContent = ctx.defaultText;
+          if (btnIcon && ctx.defaultIconHtml !== null) btnIcon.innerHTML = ctx.defaultIconHtml;
 
           // Show meaningful error
-          if (!suppressErrors) {
+          if (!ctx.suppressErrors) {
             showError(btn, err.message);
           }
           reject(err);
@@ -274,89 +403,81 @@
     });
   }
 
-  // ── Show Google Sign-In Prompt ──────────────────────────
-  function showGoogleSignIn(btn, suppressErrors) {
+  // ── Show Google Sign-In (account chooser) ───────────────
+  // PRIMARY PATH: click the official GIS button rendered next to the custom
+  // button — this always opens the Google account chooser.
+  // OPTIONAL FALLBACK: a SINGLE google.accounts.id.prompt() call (no nested
+  // second prompt) when the official button cannot be rendered/clicked.
+  function showGoogleSignIn(btn, ctx) {
     try {
-      // Use prompt() to show the sign-in UI.
-      // First call: shows One Tap if available.
-      // If not displayed, the notification handler can attempt again.
+      var parent = ensureOfficialButton(btn);
+      var clicked = parent ? clickOfficialButton(parent) : false;
+      if (clicked) {
+        console.log('[GoogleAuth] Official GIS button activated — account chooser opening.');
+        startPopupWatchdog(btn, ctx);
+        return;
+      }
+
+      // Optional enhancement / fallback: single prompt() call.
+      console.log('[GoogleAuth] Official button unavailable — falling back to prompt().');
       google.accounts.id.prompt(function (notification) {
         if (notification.isNotDisplayed()) {
           console.log('[GoogleAuth] Prompt not displayed:', notification.getNotDisplayedReason());
-          // Try rendering a button approach as fallback by triggering
-          // the prompt again which may show the full account chooser
-          google.accounts.id.prompt(function (notification2) {
-            if (notification2.isNotDisplayed()) {
-              console.log('[GoogleAuth] Second prompt also not displayed:', notification2.getNotDisplayedReason());
-              // GIS may be blocked or configured incorrectly
-              resetButtonState(btn);
-              if (!suppressErrors) {
-                showError(btn, 'Google sign-in unavailable. Please use email/password or try again later.');
-              }
-              if (pendingReject) {
-                pendingReject(new Error('Google sign-in unavailable. Please use email/password or try again later.'));
-                pendingResolve = null;
-                pendingReject = null;
-              }
-            }
-          });
+          failSignIn(btn, ctx, ctx.suppressErrors,
+            'Google sign-in unavailable. Please use email/password or try again later.');
         } else if (notification.isSkippedMoment()) {
           console.log('[GoogleAuth] Prompt skipped:', notification.getSkippedReason());
-          resetButtonState(btn);
-          if (pendingReject) {
-            pendingReject(new Error('Authentication cancelled'));
-            pendingResolve = null;
-            pendingReject = null;
-          }
+          cancelSignIn(btn, ctx);
         } else if (notification.isDismissedMoment()) {
           console.log('[GoogleAuth] Prompt dismissed:', notification.getDismissedReason());
-          resetButtonState(btn);
-          if (pendingReject) {
-            pendingReject(new Error('Authentication cancelled'));
-            pendingResolve = null;
-            pendingReject = null;
-          }
+          cancelSignIn(btn, ctx);
         }
         // If credential_returned, the initialize callback handles it
       });
     } catch (e) {
-      console.error('[GoogleAuth] Error showing prompt:', e);
-      resetButtonState(btn);
-      if (!suppressErrors) {
-        showError(btn, 'Google sign-in unavailable. Please try again.');
-      }
-      if (pendingReject) {
-        pendingReject(new Error('Google sign-in unavailable. Please try again.'));
-        pendingResolve = null;
-        pendingReject = null;
-      }
+      console.error('[GoogleAuth] Error showing sign-in UI:', e);
+      failSignIn(btn, ctx, ctx.suppressErrors, 'Google sign-in unavailable. Please try again.');
     }
   }
 
   // ── Reset Button State ──────────────────────────────────
-  function resetButtonState(btn) {
+  // Restores the caller-provided defaultText (never a hardcoded string) and the
+  // captured original icon markup.
+  function resetButtonState(btn, ctx) {
     authInProgress = false;
+    if (popupWatchdogTimer) {
+      clearTimeout(popupWatchdogTimer);
+      popupWatchdogTimer = null;
+    }
     if (btn) {
       btn.disabled = false;
     }
-    var btnText = document.getElementById('google-btn-text');
-    if (btnText) btnText.textContent = 'Continue with Google';
-    var btnIcon = document.getElementById('google-btn-icon');
-    if (btnIcon) {
-      btnIcon.innerHTML =
-        '<svg width="15" height="15" viewBox="0 0 24 24">' +
-        '<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>' +
-        '<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>' +
-        '<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>' +
-        '<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>' +
-        '</svg>';
+    ctx = ctx || {};
+    var btnText = document.getElementById(ctx.textElementId || 'google-btn-text');
+    if (btnText) btnText.textContent = ctx.defaultText || 'Continue with Google';
+    var btnIcon = document.getElementById(ctx.iconElementId || 'google-btn-icon');
+    if (btnIcon && ctx.defaultIconHtml != null) {
+      btnIcon.innerHTML = ctx.defaultIconHtml;
     }
   }
 
   // ── On Page Load: Pre-initialize GIS (warm up) ──────────
   // This runs on every page that includes google-auth-handler.js.
   // It loads the GIS library and fetches the client ID so that
-  // when the user clicks the button, everything is ready.
+  // when the user clicks the button, everything is ready. After init it also
+  // pre-renders the official GIS button next to any known custom button so a
+  // visible, guaranteed account-chooser target exists immediately.
+  var KNOWN_BUTTON_IDS = ['admin-google-btn', 'google-login-btn', 'google-signup-btn'];
+
+  function preRenderOfficialButtons() {
+    for (var i = 0; i < KNOWN_BUTTON_IDS.length; i++) {
+      var btn = document.getElementById(KNOWN_BUTTON_IDS[i]);
+      if (btn) {
+        ensureOfficialButton(btn);
+      }
+    }
+  }
+
   function preInitialize() {
     console.log('[GoogleAuth] Pre-initializing Google auth...');
 
@@ -366,6 +487,7 @@
       })
       .then(function (clientId) {
         initializeGIS(clientId, handleCredentialResponse);
+        preRenderOfficialButtons();
         console.log('[GoogleAuth] Pre-initialization complete. Ready for sign-in.');
       })
       .catch(function (err) {
@@ -529,4 +651,3 @@
 
   console.log('[GoogleAuth] Shared module loaded.');
 })();
-

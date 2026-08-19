@@ -24,15 +24,21 @@ function googleLogin() {
 
   isGoogleAuthInProgress = true;
 
-  // Determine backend URL
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const baseUrl = isLocalhost ? 'http://localhost:5000' : 'https://anistrimbackend.onrender.com';
+  // Determine backend URL via the SINGLE shared helper (js/backend-url.js).
+  const baseUrl = (typeof window.getAdminBackendUrl === 'function')
+    ? window.getAdminBackendUrl()
+    : ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:5000'
+        : 'https://anistrimbackend.onrender.com');
 
-  // Use the shared Google auth module to get the credential
-  // Note: Admin uses 'admin-google-btn' as button ID
+  // Use the shared Google auth module to get the credential.
+  // Note: Admin uses 'admin-google-btn' as button ID and its own text/icon
+  // element IDs, passed through the options object (no hardcoded IDs).
   window.initGoogleAuth('admin-google-btn', {
     loadingText: 'Verifying...',
     defaultText: 'Sign in with Google',
+    textElementId: 'admin-google-btn-text',
+    iconElementId: 'admin-google-btn-icon',
     suppressErrors: false
   })
     .then(function (response) {
