@@ -906,7 +906,11 @@ async function _handleManualFormSubmit(e) {
   e.preventDefault();
   const form = e.target;
   const formData = new FormData(form);
-  formData.set('is_premium', form.querySelector('#manual-is-premium').checked ? '1' : '0');
+  const premium = form.querySelector('#manual-is-premium').checked;
+  formData.set('is_premium', premium ? '1' : '0');
+  // Keep the backend access authority (anime.access_tier) consistent with the
+  // display flag (is_premium) so inheriting episodes resolve correctly.
+  formData.set('access_tier', premium ? 'premium' : 'free');
   formData.set('is_featured', form.querySelector('#manual-is-featured').checked ? '1' : '0');
 
   const apiRequest = _editId
