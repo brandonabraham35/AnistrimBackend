@@ -35,8 +35,19 @@ const loginLimiter = rateLimit({
   handler,
 });
 
-// OTP verify/resend: 5 attempts / 10 min per IP+email
+// OTP verification: 5 attempts / 10 min per IP+email (brute-force protection).
 const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: ipEmailKeyGenerator('email'),
+  handler,
+});
+
+// OTP resend: separate limiter so failed verification attempts don't consume
+// the capacity needed to request a new code.
+const resendOtpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
   standardHeaders: true,
@@ -154,6 +165,7 @@ const proxyLimiter = rateLimit({
 module.exports = {
   loginLimiter,
   otpLimiter,
+  resendOtpLimiter,
   signupLimiter,
   refreshLimiter,
   sensitiveLimiter,

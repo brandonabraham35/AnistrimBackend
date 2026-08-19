@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db');
 const authController = require('../controllers/authController');
 const googleVerifyController = require('../controllers/googleVerifyController');
 const googleAuthController = require('../controllers/googleAuthController');
@@ -8,6 +7,7 @@ const authMiddleware = require('../middleware/auth');
 const {
   loginLimiter,
   otpLimiter,
+  resendOtpLimiter,
   signupLimiter,
   refreshLimiter,
   sensitiveLimiter,
@@ -37,7 +37,7 @@ router.post('/verify-otp', otpLimiter, authController.verifyEmailToken);
 // @route   POST /api/auth/resend-otp
 // @desc    Resend a new 6-digit verification code (throttled)
 // @access  Public
-router.post('/resend-otp', otpLimiter, authController.resendVerification);
+router.post('/resend-otp', resendOtpLimiter, authController.resendVerification);
 
 // @route   GET /api/auth/me
 // @desc    Fetch the current authenticated user profile (canonical DTO)

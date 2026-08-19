@@ -1,105 +1,94 @@
-// utils/mailer.js — SMTP email dispatcher for AniStrim.
-// Uses nodemailer with the env keys: SMTP_HOST, SMTP_PORT, SMTP_SECURE,
-// SMTP_USER, SMTP_PASS, and optionally MAIL_FROM / FROM_EMAIL.
+// utils/mailer.js — Mailgun HTTP API email dispatcher for AniStrim.
+//
+// Uses Mailgun's HTTPS API (not SMTP, not Gmail SMTP). The Render backend makes
+// a normal HTTPS POST to Mailgun, so it works without SMTP port connectivity.
+//
+// Configuration (server-side only, never shipped to the frontend):
+//   MAILGUN_API_KEY        — the Mailgun sending/domain API key
+//   MAILGUN_DOMAIN         — e.g. mg.anistrim.com
+//   MAILGUN_API_BASE_URL   — https://api.eu.mailgun.net (EU) or https://api.mailgun.net (US)
+//   MAILGUN_FROM_EMAIL     — e.g. verification@mg.anistrim.com
+//   MAILGUN_FROM_NAME      — display name, e.g. AniStrim
 //
 // Behavior:
-//   • Production: SMTP must be configured. If it is missing, fail LOUDLY with
-//     a clear startup error and throw on send (so OTP delivery can never be a
-//     silent failure). OTP codes are NEVER logged in production.
-//   • Development: if SMTP is not configured, fall back to logging the OTP
+//   • Production: Mailgun must be configured. If it is missing, sendEmail throws
+//     so OTP delivery can never be a silent failure. OTP codes are NEVER logged.
+//   • Development: if Mailgun is not configured, fall back to logging the OTP
 //     code to the console and "succeed" so the signup/verify flow still works
 //     locally without a mail server.
-const nodemailer = require('nodemailer');
 const db = require('../config/db');
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
+// The mailer no longer depends on SMTP. provide smtpConfigured() as a
+// thin, always-false helper so any legacy callers that still reference it
+// (e.g. older health probes) don't crash — but the production email path uses
+// Mailgun exclusively.
 function smtpConfigured() {
-  return Boolean(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS &&
-    process.env.SMTP_HOST !== 'REPLACE_WITH_GMAIL' &&
-    process.env.SMTP_USER !== 'REPLACE_WITH_GMAIL' &&
-    process.env.SMTP_PASS !== 'REPLACE_WITH_APP_PASSWORD'
-  );
+  // Legacy SMTP is fully removed. Mailgun configuration is the source of truth.
+  return false;
 }
 
-let transporter;
+function mailgunConfigured() {
+  const key = process.env.MAILGUN_API_KEY;
+  const domain = process.env.MAILGUN_DOMAIN;
+  const base = process.env.MAILGUN_API_BASE_URL;
+  const fromEmail = process.env.MAILGUN_FROM_EMAIL;
+  // Placeholder / empty values are treated as unconfigured.
+  const clean = (v) => typeof v === 'string' && v.trim() !== '' &&
+    !/^(your_|REPLACE_|change_|key-XXXX)/i.test(v.trim());
+  return Boolean(clean(key) && clean(domain) && clean(base) && clean(fromEmail));
+}
 
-function getTransporter() {
-  if (transporter) return transporter;
-  if (!smtpConfigured()) {
-    const err = new Error('SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS.');
-    if (IS_PRODUCTION) {
-      console.error('============================================================');
-      console.error('EMAIL DELIVERY IS BROKEN IN PRODUCTION:');
-      console.error('  SMTP is not configured. Verification/reset emails will not send.');
-      console.error('  Set SMTP_HOST, SMTP_USER, SMTP_PASS (and SMTP_PORT/SMTP_SECURE).');
-      console.error('============================================================');
-    }
-    throw err;
-  }
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    // Gmail requires TLS (STARTTLS) on port 587; nodemailer defaults to
-    // opportunistic TLS which works, but explicitly require it so a
-    // misconfigured server fails loudly instead of silently downgrading.
-    requireTLS: process.env.SMTP_HOST === 'smtp.gmail.com' ? true : undefined,
-  });
-  return transporter;
+function getBaseUrl() {
+  return (process.env.MAILGUN_API_BASE_URL || 'https://api.eu.mailgun.net').replace(/\/+$/, '');
+}
+
+function getDomain() {
+  return process.env.MAILGUN_DOMAIN || 'mg.anistrim.com';
+}
+
+function getFrom() {
+  const name = process.env.MAILGUN_FROM_NAME || 'AniStrim';
+  const email = process.env.MAILGUN_FROM_EMAIL || 'verification@mg.anistrim.com';
+  return `${name} <${email}>`;
 }
 
 /**
- * Verify the SMTP transport (transporter.verify()). Runs once at server boot
- * so misconfiguration (bad credentials/host) is visible at startup rather than
- * at first signup. Throws on failure — caller decides whether to exit or warn.
- * @param {boolean} [exitOnFailure=true] - if true, process.exit(1) on bad creds
+ * Legacy connector kept for compatibility. The production path never uses SMTP,
+ * so this throws a clear error explaining the migration if any legacy code
+ * tries to obtain an SMTP transporter.
  */
-async function verifyTransport(exitOnFailure = true) {
-  if (!smtpConfigured()) {
-    const msg = 'SMTP is not configured or contains placeholder values. ' +
-      'Set REAL SMTP_HOST, SMTP_USER, SMTP_PASS in .env. ' +
-      'Gmail: smtp.gmail.com / 587 / false + a Google App Password (16 chars).';
-    if (IS_PRODUCTION) {
-      console.error('============================================================');
-      console.error('❌ EMAIL DELIVERY IS BROKEN:');
-      console.error('  ' + msg);
-      console.error('  A normal Gmail password will be REJECTED — use an App Password.');
-      console.error('============================================================');
-    }
-    if (exitOnFailure) {
-      console.error('❌ [SMTP] Refusing to start: email verification will not work.');
-      process.exit(1);
-    }
-    throw new Error(msg);
-  }
-
-  try {
-    const t = getTransporter();
-    await t.verify();
-    console.log('✅ SMTP transport verified (' + process.env.SMTP_HOST + ':' + process.env.SMTP_PORT + '). Emails will deliver.');
-    return true;
-  } catch (error) {
-    const msg = 'SMTP credential/transport verification FAILED: ' + (error && error.message || String(error));
-    console.error('============================================================');
-    console.error('❌ EMAIL DELIVERY IS BROKEN:');
-    console.error('  ' + msg);
-    console.error('  Check SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS.');
-    console.error('  Gmail requires: 2-Step Verification enabled + a 16-char App Password.');
-    console.error('============================================================');
-    if (exitOnFailure) {
-      console.error('❌ [SMTP] Refusing to start: email verification will not work.');
-      process.exit(1);
-    }
-    throw error;
-  }
+function getTransporter() {
+  const err = new Error('SMTP has been removed. Use Mailgun HTTP API instead.');
+  throw err;
 }
 
-const FROM = process.env.MAIL_FROM || process.env.FROM_EMAIL || 'AniStrim <no-reply@anistrim.com>';
+/**
+ * Legacy verification kept so old callers don't crash. Now a no-op that reports
+ * readiness based on Mailgun configuration, and never exits the process.
+ */
+async function verifyTransport(exitOnFailure = true) {
+  if (mailgunConfigured()) {
+    console.log('✅ Mailgun HTTP API configured. Emails will deliver via HTTPS.');
+    return true;
+  }
+  const msg = 'MAILGUN_API_KEY / MAILGUN_DOMAIN / MAILGUN_API_BASE_URL / MAILGUN_FROM_EMAIL are not configured.';
+  if (!IS_PRODUCTION) {
+    console.warn('[MAILER] ' + msg + ' Falling back to dev console delivery.');
+  } else {
+    console.error('============================================================');
+    console.error('❌ EMAIL DELIVERY IS BROKEN IN PRODUCTION:');
+    console.error('  ' + msg);
+    console.error('  Set the MAILGUN_* env vars (see Render environment).');
+    console.error('============================================================');
+  }
+  // Never process.exit(1) — the server must start even if email is misconfigured.
+  if (exitOnFailure) {
+    console.error('❌ [MAILER] Email is not configured (non-fatal at startup).');
+  }
+  throw new Error(msg);
+}
 
 /**
  * Record a send outcome to email_events (best-effort — a failed event-log write
@@ -115,21 +104,37 @@ function recordEmailEvent(to, subject, status, errorMessage) {
   });
 }
 
+// Strip HTML tags to produce a reasonable plain-text fallback.
+function stripHtml(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&/gi, '&')
+    .replace(/</gi, '<')
+    .replace(/>/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
- * Send an HTML email.
+ * Send an HTML email via Mailgun HTTP API.
  * @param {string} to - recipient email
  * @param {string} subject - email subject
  * @param {string} html - HTML body
  * @param {string} [otpCode] - the OTP code, used ONLY for the dev console fallback
+ * @returns {Promise<{messageId?: string}>} - resolves with the Mailgun message id
+ *                                            when Mailgun accepts the message.
  */
 async function sendEmail(to, subject, html, otpCode) {
-  if (!smtpConfigured()) {
+  if (!mailgunConfigured()) {
     if (IS_PRODUCTION) {
       // Fail loudly — never silently swallow mail delivery in production, and
       // never print the OTP code.
-      console.error(`EMAIL NOT SENT (SMTP unconfigured) to: ${to}`);
-      recordEmailEvent(to, subject, 'failure', 'SMTP is not configured (production)');
-      throw new Error('SMTP is not configured and we are in production. Email not sent.');
+      console.error(`EMAIL NOT SENT (Mailgun unconfigured) to: ${to}`);
+      recordEmailEvent(to, subject, 'failure', 'Mailgun is not configured (production)');
+      throw new Error('Mailgun is not configured and we are in production. Email not sent.');
     }
     // Development fallback: print the code so local testing still works.
     if (otpCode) {
@@ -139,18 +144,72 @@ async function sendEmail(to, subject, html, otpCode) {
     }
     // Dev console-delivery counts as success (it delivered to the dev console).
     recordEmailEvent(to, subject, 'success', null);
-    return;
+    return { messageId: 'dev-console' };
   }
 
-  const t = getTransporter();
-  const from = process.env.MAIL_FROM || process.env.FROM_EMAIL || process.env.SMTP_USER;
+  // Mailgun HTTP Basic Auth: username = api, password = MAILGUN_API_KEY.
+  const token = `Basic ${Buffer.from('api:' + process.env.MAILGUN_API_KEY).toString('base64')}`;
+  const endpoint = `${getBaseUrl()}/v3/${getDomain()}/messages`;
+
+  // Build a plain-text part from the optional OTP code, else strip the HTML.
+  let text = '';
+  if (otpCode) {
+    text = `Your AniStrim verification code is: ${otpCode}. This code expires in 15 minutes. If you didn't request this, you can safely ignore this email.`;
+  } else {
+    text = stripHtml(html) || 'AniStrim';
+  }
+
+  const body = new URLSearchParams();
+  body.append('from', getFrom());
+  body.append('to', to);
+  body.append('subject', subject);
+  body.append('text', text);
+  body.append('html', html);
+
+  console.log(`[Mailgun] Email send started -> ${to} (${subject})`);
   try {
-    await t.sendMail({ from, to, subject, html });
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      let parsed = null;
+      try { parsed = JSON.parse(responseText); } catch (e) { /* ignore */ }
+      const errMsg = parsed && parsed.message ? parsed.message : `HTTP ${response.status}`;
+      const detail = (parsed && parsed.error) ? ` ${String(parsed.error).slice(0, 200)}` : '';
+      console.error(`[Mailgun] Email send failed: ${errMsg}${detail}`);
+      recordEmailEvent(to, subject, 'failure', `Mailgun HTTP ${response.status}: ${errMsg}`);
+      const error = new Error(`Mailgun send failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+
+    let data = null;
+    try { data = JSON.parse(responseText); } catch (e) { /* ignore */ }
+    const messageId = (data && data.id) || null;
+    if (messageId) {
+      console.log(`[Mailgun] Email accepted. Message ID: ${messageId}`);
+    } else {
+      console.log('[Mailgun] Email accepted.');
+    }
     recordEmailEvent(to, subject, 'success', null);
+    return { messageId };
   } catch (error) {
-    recordEmailEvent(to, subject, 'failure', error && (error.message || String(error)));
+    // If fetch itself failed (network / timeout), record + rethrow.
+    if (error && error.status) {
+      // Already recorded + logged above.
+    } else {
+      console.error(`[Mailgun] Email send failed (network/transport): ${error && error.message}`);
+      recordEmailEvent(to, subject, 'failure', `Network/transport: ${error && error.message}`);
+    }
     throw error;
   }
 }
 
-module.exports = { sendEmail, getTransporter, smtpConfigured, verifyTransport };
+module.exports = { sendEmail, getTransporter, smtpConfigured, mailgunConfigured, verifyTransport };

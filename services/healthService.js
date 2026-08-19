@@ -25,7 +25,6 @@ const LAST_ERROR_MAX_LEN = 500; // matches health_samples.last_error VARCHAR(500
 // Last known good snapshot (and the moment it was produced), so we can serve a
 // stale-while-revalidate result if the cache backend is unreachable.
 let lastSnapshot = null;
-let lastSnapshotAt = null;
 
 // Module-level in-flight promise: concurrent getHealthSnapshot() callers share
 // ONE probe run. Reset in .finally() once the run settles.
@@ -222,21 +221,15 @@ async function probePayments() {
 async function probeEmail() {
   return probe('email', async () => {
     const mailer = require('../utils/mailer');
-    if (typeof mailer.smtpConfigured !== 'function') {
+    if (typeof mailer.mailgunConfigured !== 'function') {
       return { status: 'degraded', lastError: 'mailer API unavailable' };
     }
-    if (!mailer.smtpConfigured()) {
-      return { status: 'degraded', lastError: 'SMTP not configured' };
+    if (!mailer.mailgunConfigured()) {
+      return { status: 'degraded', lastError: 'MAILGUN_NOT_CONFIGURED' };
     }
-    const transporter = mailer.getTransporter();
-    if (typeof transporter?.verify !== 'function') {
-      return { status: 'degraded', lastError: 'no transporter.verify' };
-    }
-    // SMTP handshake with a 4s timeout.
-    await withTimeout(
-      new Promise((resolve, reject) => transporter.verify(err => err ? reject(err) : resolve())),
-      4000
-    );
+    // Mailgun is configured — report 'up' without sending a real email.
+    // Mailgun is contacted at send-time only, not at startup.
+    return { status: 'up', lastError: null };
   }, PROBE_TIMEOUT_MS, errorMappers.smtp);
 }
 
@@ -324,7 +317,6 @@ async function runAllProbes() {
 async function revalidate() {
   const snapshot = await runAllProbes();
   lastSnapshot = snapshot;
-  lastSnapshotAt = Date.now();
   try {
     await cache.set(CACHE_KEY, snapshot, CACHE_TTL);
   } catch (e) {

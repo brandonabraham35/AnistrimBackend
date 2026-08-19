@@ -63,18 +63,17 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
 
   providerHealthMonitor.initialize();
 
-  // ── SMTP boot-time verification ──────────────────────────
-  // Verify the mailer transport (transporter.verify()) once at startup so
-  // bad SMTP credentials/host are visible IMMEDIATELY, not at the first
-  // signup. Deliberately breaking SMTP_PASS (or leaving placeholders) now
-  // produces a loud startup error + refuses to boot — never a silent redirect.
+  // ── Email (Mailgun) boot-time check ──────────────────────
+  // The server MUST start even if email is misconfigured or Mailgun is down.
+  // No real test email is sent at startup — Mailgun is only used at runtime
+  // when an email actually needs to be sent. This replaces the old Gmail SMTP
+  // transporter.verify() which could block/crash the Render boot.
   try {
     const { verifyTransport } = require('./utils/mailer');
-    await verifyTransport(true); // exitOnFailure=true → process.exit(1) on bad creds
+    await verifyTransport(false); // exitOnFailure=false → never kills the server
   } catch (e) {
-    // verifyTransport already logged + exited in production. This is a safety net.
-    console.error('❌ [SMTP] Startup aborted due to email configuration problem.', e && e.message);
-    process.exit(1);
+    // verifyTransport logged already. Non-fatal — the app keeps running.
+    console.warn('⚠️ [MAILER] Email configuration check failed at startup (non-fatal).', e && e.message);
   }
 
 // Phase 2 (FIX 3): boot-time probe for sharp so avatar failures are visible

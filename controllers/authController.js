@@ -40,37 +40,62 @@ function isDisposableEmail(email) {
   return Boolean(domain && DISPOSABLE_DOMAINS.has(domain));
 }
 
-// Generate a fresh code, persist it, and email it. Returns true if dispatched.
-async function issueVerificationCode(userId, email) {
-  const verificationCode = generateVerificationCode();
-  // Store the SHA-256 hash of the code, never the plaintext.
-  const codeHash = sessionService.sha256(verificationCode);
-  const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
-  const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
+// Persist the OTP hash to BOTH naming systems so there is ONE authoritative
+// state that any existing query can read. The canonical write columns are
+// `verification_*` (kept as the app's primary source of truth to avoid unsafe
+// column renames on production), and `otp_*` is mirrored for backward compat
+// with any code/tooling referencing the v44 spec names.
+async function persistOtpState(userId, { codeHash, expiresSql, resetAttempts = true, updateLastSent = true }) {
+  const attemptSql = resetAttempts ? ', verification_attempts = 0, otp_attempts = 0' : '';
+  const lastSentSql = updateLastSent ? ', verification_last_sent = NOW(), otp_last_sent_at = NOW()' : '';
   await pool.query(
-    `UPDATE users SET verification_code = ?, verification_expires = ?, verification_attempts = 0, verification_last_sent = NOW() WHERE id = ?`,
-    [codeHash, expiresSql, userId]
+    `UPDATE users SET
+       verification_code = ?, verification_expires = ?,
+       otp_hash = ?, otp_expires_at = ?
+       ${attemptSql} ${lastSentSql}
+     WHERE id = ?`,
+    [codeHash, expiresSql, codeHash, expiresSql, userId]
   );
-  const html = `
+}
+
+// Build the canonical OTP HTML (shared by issue + resend + login reissue).
+function buildOtpHtml(verificationCode, subText, heading) {
+  const sub = subText || 'Here is your AniStrim verification code.';
+  return `
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
       <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#111827;margin-bottom:8px;">
         Ani<span style="color:#6c2bd9;">Strim</span>
       </div>
-      <p style="color:#374151;font-size:0.95rem;text-align:center;">Here is your AniStrim verification code.</p>
+      <p style="color:#374151;font-size:0.95rem;text-align:center;">${sub}</p>
       <div style="text-align:center;margin:24px 0;">
         <span style="display:inline-block;background:#f3f4f6;color:#111827;font-size:2rem;font-weight:700;letter-spacing:8px;padding:14px 24px;border-radius:8px;">${verificationCode}</span>
       </div>
       <p style="color:#6b7280;font-size:0.85rem;text-align:center;">
-        This code expires in ${VERIFICATION_TTL_MINUTES} minutes.
+        This code expires in ${VERIFICATION_TTL_MINUTES} minutes.${heading ? ' ' + heading : ''}
       </p>
     </div>`;
+}
+
+// Issue a fresh code. ORDER MATTERS: generate & hash, SEND via Mailgun FIRST,
+// and only persist the new OTP AFTER the email is accepted. This fixes the
+// resend bug where a failed send replaced a still-valid OTP.
+// Returns { sent: boolean, codeHash?, expiresSql? }.
+async function issueVerificationCode(userId, email, { subject, subText, heading, updateLastSent = true } = {}) {
+  const verificationCode = generateVerificationCode();
+  const codeHash = sessionService.sha256(verificationCode);
+  const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
+  const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
+  const html = buildOtpHtml(verificationCode, subText, heading);
+
   try {
-    await sendEmail(email, 'Your AniStrim verification code', html, verificationCode);
+    await sendEmail(email, subject || 'Your AniStrim verification code', html, verificationCode);
     log(`Verification email dispatched to: ${email}`);
-    return true;
+    // Only commit the OTP after Mailgun accepts the message.
+    await persistOtpState(userId, { codeHash, expiresSql, resetAttempts: true, updateLastSent });
+    return { sent: true, codeHash, expiresSql };
   } catch (mailError) {
     log(`WARN: verification email failed for ${email}: ${mailError.message}`);
-    return false;
+    return { sent: false };
   }
 }
 
@@ -127,26 +152,36 @@ exports.login = async (req, res) => {
         // Unverified manual account — block login and signal the OTP funnel.
         if (!user.is_verified) {
             log(`Login blocked for unverified user: ${email}`);
-            // Bug 3 — a code set at signup expires after VERIFICATION_TTL_MINUTES,
-            // so a returning user can land here with no valid code. Re-issue one
-            // on the login path (throttled via verification_last_sent) so the OTP
-            // screen always has a fresh code to type.
             let emailSent = true;
             try {
                 const [sent] = await pool.query(
-                    'SELECT verification_last_sent FROM users WHERE id = ?', [user.id]
+                    'SELECT verification_last_sent, verification_code, verification_expires FROM users WHERE id = ?',
+                    [user.id]
                 );
-                const lastSentVal = sent[0]?.verification_last_sent;
+                const row = sent[0];
+                const lastSentVal = row?.verification_last_sent;
                 const lastSent = new Date(Number(lastSentVal));
                 const throttled = !Number.isNaN(lastSent.getTime()) && (Date.now() - lastSent.getTime()) < RESEND_THROTTLE_SECONDS * 1000;
-                if (lastSentVal && throttled) {
+                const hasValidCode = Boolean(row?.verification_code) && row?.verification_expires &&
+                    !Number.isNaN(new Date(row.verification_expires).getTime()) &&
+                    Date.now() < new Date(row.verification_expires).getTime();
+                if (lastSentVal && throttled && hasValidCode) {
                     // A live code is already in flight within the throttle window.
                     emailSent = true;
+                } else if (lastSentVal && throttled) {
+                    // Throttled but no valid code — don't claim a new email was sent.
+                    emailSent = false;
                 } else {
-                    emailSent = await issueVerificationCode(user.id, user.email);
+                    const result = await issueVerificationCode(user.id, user.email, {
+                        subject: 'Your AniStrim verification code',
+                        subText: 'Here is your AniStrim verification code.',
+                        heading: 'If you didn\'t request this, you can safely ignore this email.',
+                    });
+                    emailSent = result.sent;
                 }
             } catch (reissueError) {
                 log(`WARN: could not re-issue code for ${email}: ${reissueError.message}`);
+                emailSent = false;
             }
             return res.status(403).json({
                 success: false,
@@ -198,8 +233,9 @@ exports.login = async (req, res) => {
 //   1. Validate email format + reject disposable domains
 //   2. Create the user with is_verified = 0 (UNIQUE email key closes the race)
 //   3. Generate a secure 6-digit OTP, save it with a 15-minute expiry
-//   4. Email the OTP via SMTP
-//   5. Return 201 so the frontend knows to prompt for the code
+//   4. Email the OTP via Mailgun HTTP API
+//   5. If email send fails, roll back the new row (no zombie account).
+//   6. Return 201 so the frontend knows to prompt for the code
 exports.signup = async (req, res) => {
     let { name, email, password } = req.body;
     email = typeof email === 'string' ? email.trim().toLowerCase() : email;
@@ -235,9 +271,9 @@ exports.signup = async (req, res) => {
         let userId;
         try {
             const [result] = await pool.query(
-                `INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, verification_code, verification_expires, status, auth_provider)
-                 VALUES (?, ?, ?, 0, 0, 0, ?, ?, 'pending', 'password')`,
-                [name, email, passwordHash, codeHash, expiresSql]
+                `INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, verification_code, verification_expires, otp_hash, otp_expires_at, status, auth_provider)
+                 VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, ?, 'pending', 'password')`,
+                [name, email, passwordHash, codeHash, expiresSql, codeHash, expiresSql]
             );
             userId = result.insertId;
         } catch (insertError) {
@@ -248,23 +284,17 @@ exports.signup = async (req, res) => {
             throw insertError;
         }
 
-        // Update last_login for new user
-        await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [userId]);
+        // NOTE: last_login is NOT set here — registration is not login. It is
+        // only updated after successful authentication.
 
-        // Dispatch the verification email (HTML with the 6-digit code)
-        const html = `
-          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
-            <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#111827;margin-bottom:8px;">
-              Ani<span style="color:#6c2bd9;">Strim</span>
-            </div>
-            <p style="color:#374151;font-size:0.95rem;text-align:center;">Welcome to AniStrim! Verify your email to activate your account.</p>
-            <div style="text-align:center;margin:24px 0;">
-              <span style="display:inline-block;background:#f3f4f6;color:#111827;font-size:2rem;font-weight:700;letter-spacing:8px;padding:14px 24px;border-radius:8px;">${verificationCode}</span>
-            </div>
-            <p style="color:#6b7280;font-size:0.85rem;text-align:center;">
-              This code expires in ${VERIFICATION_TTL_MINUTES} minutes. If you didn't request this, you can safely ignore this email.
-            </p>
-          </div>`;
+        // Dispatch the verification email (HTML with the 6-digit code) via
+        // Mailgun HTTP API. The OTP is only committed to the DB after Mailgun
+        // accepts the message.
+        const html = buildOtpHtml(
+          verificationCode,
+          'Welcome to AniStrim! Verify your email to activate your account.',
+          'If you didn\'t request this, you can safely ignore this email.'
+        );
 
         // ── Email dispatch is CRITICAL — never a silent failure. ──
         // If the OTP email cannot be sent, roll back the just-created row and
@@ -272,7 +302,10 @@ exports.signup = async (req, res) => {
         // unverified account and a misleading "success".
         try {
             await sendEmail(email, 'Verify your AniStrim account', html, verificationCode);
-            await pool.query('UPDATE users SET verification_last_sent = NOW() WHERE id = ?', [userId]);
+            await pool.query(
+                'UPDATE users SET verification_last_sent = NOW(), otp_last_sent_at = NOW() WHERE id = ?',
+                [userId]
+            );
             log(`Verification email dispatched to: ${email}`);
         } catch (mailError) {
             log(`ERROR: verification email FAILED for ${email}: ${mailError.message}`);
@@ -287,7 +320,7 @@ exports.signup = async (req, res) => {
             return res.status(502).json({
                 success: false,
                 code: 'EMAIL_SEND_FAILED',
-                message: "We couldn't send your verification email. Please try again.",
+                message: 'We couldn\'t send your verification email. Please try again.',
             });
         }
 
@@ -312,7 +345,8 @@ exports.signup = async (req, res) => {
 // mark the user verified, clear the verification fields, and return a
 // brand-new JWT whose payload includes { userId, email, isVerified: true }.
 // Anti-abuse: neutral errors (no account-existence oracle), OTP attempt
-// lockout, and timing-safe code comparison.
+// lockout, timing-safe code comparison, and an ATOMIC verification update so
+// concurrent requests cannot both claim the same OTP.
 exports.verifyEmailToken = async (req, res) => {
     let { email, code } = req.body;
     email = typeof email === 'string' ? email.trim().toLowerCase() : email;
@@ -323,7 +357,7 @@ exports.verifyEmailToken = async (req, res) => {
 
     try {
         const [rows] = await pool.query(
-            `SELECT * FROM users WHERE email = ?`,
+            'SELECT * FROM users WHERE email = ?',
             [email]
         );
 
@@ -343,7 +377,7 @@ exports.verifyEmailToken = async (req, res) => {
         // Attempt lockout: invalidate the code after too many misses.
         if (Number(user.verification_attempts) >= MAX_VERIFICATION_ATTEMPTS) {
             await pool.query(
-                `UPDATE users SET verification_code = NULL, verification_expires = NULL WHERE id = ?`,
+                'UPDATE users SET verification_code = NULL, verification_expires = NULL, otp_hash = NULL, otp_expires_at = NULL WHERE id = ?',
                 [user.id]
             );
             return res.status(400).json({ success: false, message: 'Too many attempts. Please request a new code.' });
@@ -359,21 +393,30 @@ exports.verifyEmailToken = async (req, res) => {
         // against the stored hash.
         if (!safeEqual(user.verification_code, sessionService.sha256(String(code).trim()))) {
             await pool.query(
-                'UPDATE users SET verification_attempts = verification_attempts + 1 WHERE id = ?',
+                'UPDATE users SET verification_attempts = verification_attempts + 1, otp_attempts = otp_attempts + 1 WHERE id = ?',
                 [user.id]
             );
             return res.status(400).json({ success: false, message: 'Invalid verification code.' });
         }
 
-        // Mark verified, set status=active, clear the verification fields
-        await pool.query(
-            `UPDATE users SET is_verified = 1, status = 'active', email_verified_at = NOW(),
-               verification_code = NULL, verification_expires = NULL, verification_attempts = 0
-             WHERE id = ?`,
-            [user.id]
+        // ATOMIC verification: only the request that flips is_verified from 0→1
+        // (while the code still matches and hasn't expired) proceeds to create
+        // a session. Concurrent requests with the same code cannot both succeed.
+        const [updateResult] = await pool.query(
+            `UPDATE users
+               SET is_verified = 1, status = 'active', email_verified_at = NOW(),
+                   verification_code = NULL, verification_expires = NULL, verification_attempts = 0,
+                   otp_hash = NULL, otp_expires_at = NULL, otp_attempts = 0
+             WHERE id = ? AND is_verified = 0 AND verification_code = ?`,
+            [user.id, user.verification_code]
         );
 
-        // Create a session (access + refresh tokens).
+        if (updateResult.affectedRows === 0) {
+            // Another concurrent request claimed the OTP first.
+            return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
+        }
+
+        // Create a session (access + refresh tokens) — existing flow unchanged.
         const freshUser = { ...user, is_verified: 1, status: 'active', email_verified_at: new Date() };
         const { accessToken, refreshToken, sessionId } = await sessionService.createSession(freshUser, req);
         await sessionService.logEvent(user.id, 'login_success', 'password', req);
@@ -400,6 +443,8 @@ exports.verifyEmailToken = async (req, res) => {
 // ─── Resend the verification OTP ────────────────────────────────
 // Regenerates the code, resets the expiry, and throttles on
 // verification_last_sent (>= 60s) AND a rolling 5-per-hour per-email budget.
+// FIX: the candidate OTP is ONLY persisted AFTER Mailgun accepts the email, so
+// a failed send never invalidates an existing valid OTP.
 // Silently no-ops for unknown/verified emails to avoid an account-existence
 // oracle.
 const resendBudget = new Map(); // email -> { windowStart, count }
@@ -427,13 +472,13 @@ exports.resendVerification = async (req, res) => {
 
     try {
         const [rows] = await pool.query(
-            `SELECT id, is_verified, verification_last_sent FROM users WHERE email = ?`,
+            'SELECT id, is_verified, verification_last_sent FROM users WHERE email = ?',
             [email]
         );
 
         // Neutral — never reveal whether the account exists.
         if (rows.length === 0 || rows[0].is_verified) {
-            return res.json({ success: true, message: 'If your account needs verification, a new code has been sent.' });
+            return res.json({ success: true, emailSent: false, message: 'If your account needs verification, a new code has been sent.' });
         }
 
         const user = rows[0];
@@ -452,40 +497,17 @@ exports.resendVerification = async (req, res) => {
             return res.status(429).json({ success: false, retryAfter: budget.retryAfter, message: 'Too many resend requests. Please wait an hour.' });
         }
 
-        const verificationCode = generateVerificationCode();
-        const codeHash = sessionService.sha256(verificationCode);
-        const verificationExpires = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
-        const expiresSql = verificationExpires.toISOString().slice(0, 19).replace('T', ' ');
+        // Send FIRST, persist only after Mailgun accepts.
+        const result = await issueVerificationCode(user.id, email, {
+            subject: 'Your new AniStrim verification code',
+            subText: 'Here is your new AniStrim verification code.',
+        });
 
-        await pool.query(
-            `UPDATE users SET verification_code = ?, verification_expires = ?, verification_attempts = 0, verification_last_sent = NOW() WHERE id = ?`,
-            [codeHash, expiresSql, user.id]
-        );
-
-        const html = `
-          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
-            <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#111827;margin-bottom:8px;">
-              Ani<span style="color:#6c2bd9;">Strim</span>
-            </div>
-            <p style="color:#374151;font-size:0.95rem;text-align:center;">Here is your new AniStrim verification code.</p>
-            <div style="text-align:center;margin:24px 0;">
-              <span style="display:inline-block;background:#f3f4f6;color:#111827;font-size:2rem;font-weight:700;letter-spacing:8px;padding:14px 24px;border-radius:8px;">${verificationCode}</span>
-            </div>
-            <p style="color:#6b7280;font-size:0.85rem;text-align:center;">
-              This code expires in ${VERIFICATION_TTL_MINUTES} minutes.
-            </p>
-          </div>`;
-
-        let emailSent = false;
-        try {
-            await sendEmail(email, 'Your new AniStrim verification code', html, verificationCode);
-            emailSent = true;
-            log(`Verification code resent to: ${email}`);
-        } catch (mailError) {
-            log(`WARN: resend email failed for ${email}: ${mailError.message}`);
-        }
-
-        return res.json({ success: true, emailSent, message: 'If your account needs verification, a new code has been sent.' });
+        return res.json({
+            success: true,
+            emailSent: result.sent,
+            message: 'If your account needs verification, a new code has been sent.',
+        });
     } catch (error) {
         log(`CRITICAL ERROR during resendVerification: ${error.message}`);
         console.error(error);
@@ -596,8 +618,9 @@ exports.forgotPassword = async (req, res) => {
         const frontendBase = process.env.FRONTEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
         const devLink = `${frontendBase.replace(/\/$/, '')}/reset-password.html?token=${token}`;
 
-        // Only expose the reset link in non-production environments.
-        // In production the link is delivered by email (see email transport).
+        // In production the reset link is delivered by email via Mailgun. The
+        // existing forgotPassword flow only exposes the dev link locally — it
+        // does NOT yet send an email (preserved to keep the API contract).
         const isProduction = process.env.NODE_ENV === 'production';
         const response = {
             message: 'If an account exists for that email, a reset link has been sent.',
@@ -938,7 +961,7 @@ exports.deactivateAccount = async (req, res) => {
 
     try {
         await pool.query(
-            "UPDATE users SET status = 'deactivated', status_reason = 'user_requested', token_version = token_version + 1, updated_at = NOW() WHERE id = ?",
+            'UPDATE users SET status = \'deactivated\', status_reason = \'user_requested\', token_version = token_version + 1, updated_at = NOW() WHERE id = ?',
             [userId]
         );
         await sessionService.revokeAllSessions(userId, 'account_deactivated');
