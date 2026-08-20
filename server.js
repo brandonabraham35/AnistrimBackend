@@ -176,40 +176,60 @@ app.get('/health/provider', (req, res) => {
 });
 
 // ─── Static Files (configurable) ───────────────────────────
-// API-only deployments set SERVE_STATIC_FRONTEND=false so the API and the
-// frontend(s) can be deployed independently. Local development keeps the
-// default (true) to preserve the current in-repo frontend serving.
-if (clientAgnostic.SERVE_STATIC_FRONTEND) {
-  // Serve static assets after API routes have been checked.
-  const frontendDir = path.join(__dirname, clientAgnostic.FRONTEND_DIR || 'Frontend');
-  const adminDir = path.join(__dirname, clientAgnostic.ADMIN_DIR || 'AdminDashboard');
+// The backend is a pure API/service for independent deployment. Static serving
+// of the Web (Frontend/) and Admin (AdminDashboard/) is OPTIONAL and controlled
+// by environment configuration. Local development keeps the default (true) so
+// the in-repo frontends keep working; production API deployments set:
+//   SERVE_STATIC_FRONTEND=false   (disables both, API-only)
+//   SERVE_FRONTEND=false          (disables the Web frontend only)
+//   SERVE_ADMIN=false             (disables the admin dashboard only)
+// The API 404 guard and /api/health always work regardless.
+const frontendDir = path.join(__dirname, clientAgnostic.FRONTEND_DIR || 'Frontend');
+const adminDir = path.join(__dirname, clientAgnostic.ADMIN_DIR || 'AdminDashboard');
+
+if (clientAgnostic.SERVE_FRONTEND) {
+  // Serve the Web frontend static assets (dev convenience / monolith mode).
   app.use(express.static(frontendDir));
+}
+
+if (clientAgnostic.SERVE_ADMIN) {
+  // Serve the Admin dashboard static assets under /admin.
   app.use('/admin', express.static(adminDir));
-  app.use('/uploads', (req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    next();
-  }, express.static(path.join(__dirname, 'uploads')));
+}
 
-  // ─── API 404 Guard ─────────────────────────────────────
-  app.use('/api', (req, res) => {
-    res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
-  });
+// Uploads are always served (they are API-adjacent user content, not a frontend).
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
-  // ─── SPA Fallback Routes ──────────────────────────────
+// ─── API 404 Guard ─────────────────────────────────────────
+// Always present: unknown /api/* routes return JSON regardless of static config.
+app.use('/api', (req, res) => {
+  res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
+});
+
+// ─── SPA Fallback Routes (only when the component is served) ──
+if (clientAgnostic.SERVE_ADMIN && clientAgnostic.SERVE_FRONTEND) {
   app.get(/^\/admin(\/.*)?$/, (req, res) => {
     res.sendFile(path.join(adminDir, 'dashboard.html'));
   });
   app.get(/.*/, (req, res) => {
     res.sendFile(path.join(frontendDir, 'index.html'));
   });
-  console.log('Static frontend serving ENABLED (SERVE_STATIC_FRONTEND=true)');
-} else {
-  console.log('API-only mode: static frontend serving DISABLED (SERVE_STATIC_FRONTEND=false)');
-  app.use('/api', (req, res) => {
-    res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
+} else if (clientAgnostic.SERVE_ADMIN) {
+  app.get(/^\/admin(\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(adminDir, 'dashboard.html'));
+  });
+} else if (clientAgnostic.SERVE_FRONTEND) {
+  app.get(/.*/, (req, res) => {
+    res.sendFile(path.join(frontendDir, 'index.html'));
   });
 }
+
+console.log(`[SERVE] API-only=${!clientAgnostic.SERVE_FRONTEND && !clientAgnostic.SERVE_ADMIN} | SERVE_FRONTEND=${clientAgnostic.SERVE_FRONTEND} | SERVE_ADMIN=${clientAgnostic.SERVE_ADMIN}`);
+console.log(`[SERVE] API is reachable at /api/health regardless of static serving.`);
 
 
 // ─── Start Server ──────────────────────────────────────────

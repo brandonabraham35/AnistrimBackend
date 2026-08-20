@@ -11,7 +11,16 @@ function bool(value, fallback) {
   return String(value).toLowerCase() === 'true' || value === '1';
 }
 
+// Static-serving defaults. A single all-or-nothing flag (SERVE_STATIC_FRONTEND)
+// remains the legacy control; granular SERVE_FRONTEND / SERVE_ADMIN default to
+// it so local dev keeps serving both while production can disable each.
+const serveStatic = bool(process.env.SERVE_STATIC_FRONTEND, true);
+const serveFrontend = bool(process.env.SERVE_FRONTEND, serveStatic);
+const serveAdmin = bool(process.env.SERVE_ADMIN, serveStatic);
+
 module.exports = {
+  SERVE_FRONTEND: serveFrontend,
+  SERVE_ADMIN: serveAdmin,
   // ── Password reset ──────────────────────────────────────────
   // The destination URI a client should use to render the password-reset form.
   // Clients can override per-request via `?resetPath=` on /forgot-password.
@@ -26,10 +35,13 @@ module.exports = {
   GOOGLE_AUTH_DEEP_LINK: process.env.GOOGLE_AUTH_DEEP_LINK || '',
 
   // ── Static frontend serving (migration) ─────────────────────
-  // API-only mode: when true, server.js will NOT serve Frontend/ or
-  // AdminDashboard/ static files or SPA fallbacks. This is the target state
-  // for deploying the API and frontends independently.
-  SERVE_STATIC_FRONTEND: bool(process.env.SERVE_STATIC_FRONTEND, true),
+  // API-only mode: `SERVE_STATIC_FRONTEND=false` disables serving both
+  // Frontend/ and AdminDashboard/. This is the target state for deploying the
+  // API and frontends independently. SERVE_FRONTEND / SERVE_ADMIN override
+  // per-component.
+
+  // Backward-compatible alias for the all-or-nothing flag.
+  SERVE_STATIC_FRONTEND: serveStatic,
 
   // Which directories to serve when static serving is enabled (dev convenience).
   FRONTEND_DIR: process.env.FRONTEND_DIR || 'Frontend',
