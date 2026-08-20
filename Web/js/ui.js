@@ -1,0 +1,489 @@
+/* eslint-env browser */
+/* global AniStrimApi, AniStrimAuth, AniStrimRouter, AniStrimPlayer, AniStrimUI, google */
+// AniStrim Web — UI layer (independent from Frontend/)
+(function () {
+  'use strict';
+
+  var API = window.AniStrimApi;
+  var Auth = window.AniStrimAuth;
+  var Router = window.AniStrimRouter;
+  var Player = window.AniStrimPlayer;
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '\x26amp;').replace(/</g, '\x3C').replace(/>/g, '\x3E')
+      .replace(/"/g, '\x22quot;').replace(/'/g, '\x26#039;');
+  }
+  function toast(msg, type) {
+    var root = document.getElementById('toast-root');
+    if (!root) return;
+    var el = document.createElement('div');
+    el.className = 'toast ' + (type || 'info');
+    el.textContent = msg;
+    root.appendChild(el);
+    setTimeout(function () { el.classList.add('show'); }, 10);
+    setTimeout(function () { el.classList.remove('show'); setTimeout(function () { el.remove(); }, 300); }, 3200);
+  }
+  function fallback(title) {
+    var t = (title || '?').charAt(0).toUpperCase();
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="300" height="450" fill="#151527"/>' +
+      '<text x="150" y="245" font-family="sans-serif" font-size="72" fill="#8b5cf6" text-anchor="middle">' + t + '</text></svg>');
+  }
+  function card(a) {
+    var img = (a && (a.cover_image || a.poster || a.coverImage)) || '';
+    var title = (a && a.title) || '';
+    var id = a && (a.id != null ? a.id : a.animeId);
+    return '<div class="anime-card" onclick="AniStrimUI.goAnime(' + id + ')">' +
+      '<div class="anime-card-img"><img src="' + (img || fallback(title)) + '" alt="' + esc(title) + '" loading="lazy" ' +
+      'onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')">' +
+      (a && a.is_premium ? '<span class="badge-premium">👑</span>' : '') +
+      (a && a.rating ? '<span class="badge-rating">★ ' + esc(a.rating) + '</span>' : '') +
+      '</div><div class="anime-card-title">' + esc(title) + '</div>' +
+      (a && a.year ? '<div class="anime-card-sub">' + esc(a.year) + '</div>' : '') + '</div>';
+  }
+  function grid(list, cols) {
+    return '<div class="anime-grid' + (cols ? ' cols-' + cols : '') + '">' + list.map(card).join('') + '</div>';
+  }
+  function section(title, link) {
+    return '<div class="section-header"><h2>' + esc(title) + '</h2>' +
+      (link ? '<a class="section-link" href="' + link + '">View all →</a>' : '') + '</div>';
+  }
+  function norm(list) {
+    if (Array.isArray(list)) return list;
+    return (list && (list.rows || list.items || list.data || list.watchlist || list.history)) || [];
+  }
+
+  // ── Header / Footer ─────────────────────────────────────
+  function renderHeader() {
+    var h = document.getElementById('site-header');
+    var user = Auth.state.user;
+    var logged = Auth.state.isLoggedIn;
+    h.innerHTML = '<nav class="nav"><div class="nav-inner">' +
+      '<a class="brand" href="#/">AniStrim</a>' +
+      '<div class="nav-links"><a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
+      (logged ? '<a href="#/watchlist">Watchlist</a><a href="#/history">History</a>' : '') + '</div>' +
+      '<div class="nav-auth">' +
+      (logged
+        ? '<a href="#/profile" class="btn-ghost">' + esc(user && (user.displayName || user.username || user.email) || 'Profile') + '</a>' +
+          '<button class="btn-outline" onclick="AniStrimUI.logout()">Logout</button>'
+        : '<a href="#/login" class="btn-outline">Sign In</a><a href="#/signup" class="btn-primary">Get Started</a>') +
+      '</div></div></nav>';
+    var f = document.getElementById('site-footer');
+    f.innerHTML = '<div class="footer-inner"><span>© ' + new Date().getFullYear() + ' AniStrim</span>' +
+      '<div class="footer-links"><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
+      (Auth.state.isPremium ? '<a href="#/profile">Account</a>' : '<a href="#/upgrade">Upgrade</a>') + '</div></div>';
+  }
+
+  // ── Home ────────────────────────────────────────────────
+  function homeView() {
+    renderHeader();
+    return Promise.resolve('<div class="page home-page"><div class="hero"><div class="hero-inner" id="hero-inner">' +
+      '<h1 id="hero-title">Loading...</h1><p id="hero-desc"></p><div class="hero-actions"><a class="btn-primary" id="hero-watch" href="#/browse">Browse Anime</a></div>' +
+      '</div></div><div class="container" id="home-sections"></div></div>').then(function (h) {
+      setTimeout(loadHome, 0);
+      return h;
+    });
+  }
+
+  async function loadHome() {
+    var wrap = document.getElementById('home-sections');
+    if (!wrap) return;
+    try {
+      var s = await API.homeSections();
+      var out = '';
+      var order = [['trending', 'Trending Now'], ['popular', 'Popular'], ['newReleases', 'New Releases'], ['classics', 'Classics']];
+      if (Auth.state.isLoggedIn) {
+        out += '<div id="home-continue"></div>';
+        API.continueWatching().then(function (cw) {
+          var rows = norm(cw).slice(0, 10);
+          var el = document.getElementById('home-continue');
+          if (el && rows.length) el.innerHTML = section('Continue Watching') + grid(rows);
+        }).catch(function () {});
+      }
+      order.forEach(function (o) {
+        var key = o[0];
+        if (s && s[key] && s[key].length) out += section(o[1]) + grid(s[key].slice(0, 10));
+      });
+      wrap.innerHTML = out || '<div class="empty">No content available.</div>';
+      if (s && s.trending && s.trending[0]) {
+        var t = s.trending[0];
+        document.getElementById('hero-title').textContent = t.title;
+        document.getElementById('hero-desc').textContent = (t.description || '').substring(0, 200);
+        var hero = document.querySelector('.hero');
+        if (hero && (t.banner_image || t.cover_image)) hero.style.backgroundImage = 'linear-gradient(to bottom, rgba(10,10,15,0.4), #0a0a0f), url(\'' + (t.banner_image || t.cover_image) + '\')';
+        var w = document.getElementById('hero-watch');
+        if (w && t.id) { w.href = '#/anime/' + t.id; w.textContent = 'Watch Now'; }
+      }
+    } catch (e) { wrap.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+
+  // ── Auth pages ──────────────────────────────────────────
+  function authShell(title) {
+    return '<div class="page auth-page"><div class="auth-card"><h1>' + title + '</h1><div id="auth-error" class="form-error"></div>';
+  }
+  function loginView() {
+    renderHeader();
+    return authShell('Sign In') +
+      '<form onsubmit="return AniStrimUI.doLogin(event)"><label>Email<input type="email" id="login-email" required></label>' +
+      '<label>Password<input type="password" id="login-password" required></label>' +
+      '<button class="btn-primary btn-block" type="submit">Sign In</button></form>' +
+      '<div class="auth-alt"><span>or</span></div><button class="btn-google" onclick="AniStrimUI.doGoogleLogin()">Continue with Google</button>' +
+      '<p class="auth-switch">New here? <a href="#/signup">Create an account</a></p></div></div>';
+  }
+  function signupView() {
+    renderHeader();
+    return authShell('Create Account') +
+      '<form onsubmit="return AniStrimUI.doSignup(event)"><label>Name<input id="signup-name" required></label>' +
+      '<label>Email<input type="email" id="signup-email" required></label>' +
+      '<label>Password<input type="password" id="signup-password" required minlength="6"></label>' +
+      '<button class="btn-primary btn-block" type="submit">Create Account</button></form>' +
+      '<div class="auth-alt"><span>or</span></div><button class="btn-google" onclick="AniStrimUI.doGoogleSignup()">Continue with Google</button>' +
+      '<p class="auth-switch">Have an account? <a href="#/login">Sign in</a></p></div></div>';
+  }
+  function verifyView() {
+    renderHeader();
+    var email = Router.query().email || '';
+    return authShell('Verify Email') +
+      '<form onsubmit="return AniStrimUI.doVerify(event)"><label>Email<input type="email" id="verify-email" value="' + esc(email) + '" required></label>' +
+      '<label>Code<input type="text" id="verify-otp" required inputmode="numeric"></label>' +
+      '<button class="btn-primary btn-block" type="submit">Verify</button></form>' +
+      '<button class="btn-ghost btn-block" onclick="AniStrimUI.resendOtp()">Resend code</button></div></div>';
+  }
+
+  async function doLogin(e) {
+    e.preventDefault();
+    var err = document.getElementById('auth-error');
+    try {
+      var data = await Auth.login(document.getElementById('login-email').value, document.getElementById('login-password').value);
+      renderHeader();
+      Router.navigate(data.user && data.user.emailVerified === false ? '/verify' : '/');
+    } catch (e2) { if (err) err.textContent = e2.message; }
+    return false;
+  }
+  async function doSignup(e) {
+    e.preventDefault();
+    var err = document.getElementById('auth-error');
+    try {
+      var data = await Auth.signup({
+        name: document.getElementById('signup-name').value,
+        email: document.getElementById('signup-email').value,
+        password: document.getElementById('signup-password').value,
+      });
+      if (data && data.token) { renderHeader(); Router.navigate('/'); }
+      else Router.navigate('/verify?email=' + encodeURIComponent(document.getElementById('signup-email').value));
+    } catch (e2) { if (err) err.textContent = e2.message; }
+    return false;
+  }
+  async function doVerify(e) {
+    e.preventDefault();
+    var err = document.getElementById('auth-error');
+    try {
+      await Auth.verifyEmail(document.getElementById('verify-email').value, document.getElementById('verify-otp').value);
+      renderHeader(); Router.navigate('/');
+    } catch (e2) { if (err) err.textContent = e2.message; }
+    return false;
+  }
+  async function resendOtp() {
+    try { await API.resendOtp(document.getElementById('verify-email').value); toast('Code resent.'); } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function gAuth(intent) {
+    try {
+      var clientIdRes = await API.googleClientId();
+      var clientId = clientIdRes && clientIdRes.clientId;
+      if (!clientId) { toast('Google not configured', 'error'); return; }
+      if (typeof google === 'undefined' || !google.accounts) {
+        await new Promise(function (res, rej) {
+          var s = document.createElement('script');
+          s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+          s.onload = res; s.onerror = function () { rej(new Error('Google lib failed')); };
+          document.head.appendChild(s);
+        });
+      }
+      await new Promise(function (resolve, reject) {
+        var tc;
+        try {
+          tc = google.accounts.oauth2.initTokenClient({
+            client_id: clientId, scope: 'openid email profile',
+            callback: function (r) { if (r && r.access_token) resolve(r); else reject(new Error('Cancelled')); },
+          });
+        } catch (e) { reject(e); }
+        tc.requestAccessToken();
+      });
+      // Redirect to backend Google OAuth flow (documented endpoint).
+      window.location.href = API.API_BASE + '/api/auth/google/start?intent=' + intent + '&redirect=' +
+        encodeURIComponent(window.location.origin + window.location.pathname);
+    } catch (err) { toast(err.message || 'Google sign-in failed.', 'error'); }
+  }
+
+  // ── Browse / Search ─────────────────────────────────────
+  function browseView() {
+    renderHeader();
+    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Browse</h1><div class="toolbar-controls">' +
+      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="trending">Trending</option><option value="popular">Popular</option>' +
+      '<option value="latest">Latest</option></select>' +
+      '<input id="browse-q" placeholder="Search..." onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div>' +
+      '<div id="browse-grid" class="grid-loading">Loading...</div></div></div>';
+  }
+  async function reloadBrowse() {
+    var el = document.getElementById('browse-grid');
+    if (!el) return;
+    el.innerHTML = '<div class="grid-loading">Loading...</div>';
+    var sort = document.getElementById('browse-sort') ? document.getElementById('browse-sort').value : 'trending';
+    var q = document.getElementById('browse-q') ? document.getElementById('browse-q').value : '';
+    try {
+      var list = q ? norm(await API.search(q)) : sort === 'popular' ? norm(await API.popular()) : sort === 'latest' ? norm(await API.latest()) : norm(await API.trending());
+      el.innerHTML = list.length ? grid(list) : '<div class="empty">No results.</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+  function searchView() {
+    renderHeader();
+    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Search</h1><div class="search-bar">' +
+      '<input id="search-input" placeholder="Search anime..." onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
+      '<button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
+      '<div id="search-results" class="grid-loading">Enter a search term or pick a genre.</div></div></div>';
+  }
+  async function doSearch() {
+    var q = document.getElementById('search-input') ? document.getElementById('search-input').value : '';
+    var el = document.getElementById('search-results');
+    if (!el) return;
+    el.innerHTML = '<div class="grid-loading">Searching...</div>';
+    try {
+      var list = norm(await API.search(q));
+      el.innerHTML = list.length ? grid(list) : '<div class="empty">No results for "' + esc(q) + '".</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+
+  // ── Anime details ───────────────────────────────────────
+  function animeView() {
+    renderHeader();
+    return '<div class="page"><div class="container" id="anime-main"><div class="grid-loading">Loading...</div></div></div>';
+  }
+  function afterAnime(root, params) { loadAnime(params.id); }
+  async function loadAnime(id) {
+    var root = document.getElementById('anime-main');
+    if (!root) return;
+    root.innerHTML = '<div class="grid-loading">Loading...</div>';
+    try {
+      var anime = await API.anime(id);
+      var eps = norm(await API.episodes(id));
+      var recs = [];
+      try { recs = norm(await API.recommendations(id)); } catch (e) { recs = []; }
+      var img = anime && (anime.banner_image || anime.cover_image || anime.poster);
+      var title = anime && (anime.title || '');
+      var genres = (anime && anime.genres) || [];
+      root.innerHTML =
+        '<div class="anime-hero" style="background-image:linear-gradient(to bottom, rgba(10,10,15,0.4), #0a0a0f), url(\'' + (img || '') + '\')">' +
+        '<div class="anime-hero-inner"><div class="anime-poster"><img src="' + (img || fallback(title)) + '" onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')"></div>' +
+        '<div class="anime-info"><h1>' + esc(title) + '</h1><div class="meta-line">' + (anime && anime.year ? esc(anime.year) + ' · ' : '') + (anime && anime.status ? esc(anime.status) : '') + '</div>' +
+        '<div class="genres">' + genres.map(function (g) { return '<span class="genre-pill">' + esc(g) + '</span>'; }).join('') + '</div>' +
+        '<p class="desc">' + esc(anime && anime.description) + '</p>' +
+        '<div class="hero-actions"><a class="btn-primary play" onclick="AniStrimUI.playFirst(\'' + esc(id) + '\')">▶ Watch Now</a>' +
+        '<button class="btn-outline" onclick="AniStrimUI.toggleWatchlist(\'' + esc(id) + '\')">My List</button></div></div></div></div>' +
+        '<div class="container"><div class="episodes-section"><h2>Episodes</h2><div class="episode-grid">' +
+        eps.map(function (ep, i) {
+          var num = ep && (ep.number || ep.episode_number);
+          return '<button class="episode-item" onclick="AniStrimUI.watch(\'' + esc(id) + '\',' + (num || i + 1) + ',\'' + esc(ep.id) + '\')">' +
+            '<span class="ep-num">' + (num || i + 1) + '</span><span class="ep-title">' + esc(ep.title || ('Episode ' + (num || i + 1))) + '</span>' +
+            (ep.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
+        }).join('') + '</div></div>' +
+        (recs.length ? '<div class="recommend-section">' + section('Recommended') + grid(recs) + '</div>' : '') + '</div>';
+    } catch (e) { root.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+
+  // ── Watch / Player ──────────────────────────────────────
+  function watchView(params) {
+    renderHeader();
+    return '<div class="page watch-page"><div class="watch-container">' +
+      '<div class="player-stage"><video id="animePlayer" class="video-element" controls playsinline></video>' +
+      '<div class="player-error" id="player-error" style="display:none"></div></div>' +
+      '<div class="watch-meta"><h2 id="watch-title">Loading...</h2></div>' +
+      '<div class="episode-list" id="watch-episodes"><div class="grid-loading">Loading...</div></div>' +
+      '<div class="watch-back"><a href="#/anime/' + esc(params.id) + '" class="btn-ghost">← Back to Anime</a></div>' +
+      '</div></div>';
+  }
+  function afterWatch(root, params) { loadWatch(params.id, params.ep || params.episode || 1, params.epId || ''); }
+
+  var trackTimer = null;
+  async function loadWatch(id, ep, epId) {
+    var video = document.getElementById('animePlayer');
+    var titleEl = document.getElementById('watch-title');
+    var listEl = document.getElementById('watch-episodes');
+    var errEl = document.getElementById('player-error');
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login'); return; }
+    Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
+    try {
+      var anime = await API.anime(id);
+      var eps = norm(await API.episodes(id));
+      if (titleEl && anime) titleEl.textContent = anime.title + (ep ? ' — Ep ' + ep : '');
+      var target = eps.find(function (x) { return epId && String(x.id) === String(epId); }) ||
+        eps.find(function (x) { return String(x.number || x.episode_number) === String(ep); });
+      if (!target) { if (errEl) { errEl.textContent = 'Episode not found.'; errEl.style.display = 'block'; } return; }
+      if (listEl) {
+        listEl.innerHTML = '<div class="episode-grid">' + eps.map(function (x) {
+          var n = x.number || x.episode_number;
+          var active = String(x.id) === String(target.id) ? ' active' : '';
+          return '<button class="episode-item' + active + '" onclick="AniStrimUI.watch(\'' + esc(id) + '\',' + (n || 1) + ',\'' + esc(x.id) + '\')">' +
+            '<span class="ep-num">' + esc(n) + '</span><span class="ep-title">' + esc(x.title || 'Episode ' + n) + '</span>' +
+            (x.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
+        }).join('') + '</div>';
+      }
+      await Player.playEpisode(target.id, video,
+        function (err, authData) {
+          if (err) {
+            if (errEl) { errEl.textContent = 'This episode requires Premium. Upgrade to watch.'; errEl.style.display = 'block'; }
+            var up = document.createElement('div');
+            up.className = 'upgrade-banner';
+            up.innerHTML = '<span>🔒 Premium episode</span><a href="#/upgrade" class="btn-primary">Upgrade</a>';
+            if (listEl) listEl.appendChild(up);
+          } else {
+            if (trackTimer) clearInterval(trackTimer);
+            trackTimer = setInterval(function () {
+              if (video && !video.paused && video.currentTime > 0 && target.id) {
+                API.saveProgress(target.id, Math.round(video.currentTime), Math.round(video.duration || 0)).catch(function () {});
+              }
+            }, 10000);
+          }
+        },
+        function (err2) { if (errEl) { errEl.textContent = err2.message; errEl.style.display = 'block'; } }
+      );
+    } catch (e) { if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; } }
+  }
+
+  // ── Watchlist / History ─────────────────────────────────
+  function watchlistView() {
+    renderHeader();
+    return '<div class="page"><div class="container"><h1>My Watchlist</h1><div id="watchlist-grid" class="grid-loading">Loading...</div></div></div>';
+  }
+  async function loadWatchlist() {
+    var el = document.getElementById('watchlist-grid');
+    if (!el) return;
+    el.innerHTML = '<div class="grid-loading">Loading...</div>';
+    try {
+      var list = norm(await API.watchlist());
+      el.innerHTML = list.length ? grid(list.map(function (w) { return w.anime || w; })) : '<div class="empty">Your watchlist is empty.</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+  function historyView() {
+    renderHeader();
+    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Watch History</h1>' +
+      '<button class="btn-outline" onclick="AniStrimUI.clearHistory()">Clear</button></div>' +
+      '<div id="history-list"><div class="grid-loading">Loading...</div></div></div></div>';
+  }
+  async function loadHistory() {
+    var el = document.getElementById('history-list');
+    if (!el) return;
+    el.innerHTML = '<div class="grid-loading">Loading...</div>';
+    try {
+      var list = norm(await API.watchHistory(1, 30));
+      el.innerHTML = list.length ? grid(list.map(function (h) { return h.anime || h; })) : '<div class="empty">No watch history.</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+  async function clearHistory() {
+    try { await API.clearHistory(); toast('History cleared.'); loadHistory(); } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // ── Profile ─────────────────────────────────────────────
+  function profileView() {
+    renderHeader();
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login'); return ''; }
+    var user = Auth.state.user;
+    return '<div class="page"><div class="container"><div class="profile-grid">' +
+      '<div class="profile-card"><div class="avatar-wrap"><img id="profile-avatar" class="avatar" src="" alt="avatar"></div>' +
+      '<h2>' + esc(user && (user.displayName || user.name)) + '</h2><p class="muted">' + esc(user && user.email) + '</p>' +
+      '<div class="profile-meta">' + (Auth.state.isPremium ? '<span class="badge-premium">👑 Premium</span>' : '<a href="#/upgrade" class="btn-outline">Upgrade</a>') + '</div>' +
+      '<button class="btn-ghost btn-block" onclick="AniStrimUI.uploadAvatar()">Change Avatar</button>' +
+      '<input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="AniStrimUI.doAvatarUpload(event)">' +
+      '<button class="btn-outline btn-block" onclick="AniStrimUI.logout()">Logout</button></div>' +
+      '<div class="profile-settings"><div class="settings-card"><h3>Preferences</h3>' +
+      '<label class="checkbox"><input type="checkbox" id="pref-auto-skip"> Auto-skip intros</label>' +
+      '<label class="checkbox"><input type="checkbox" id="pref-auto-play"> Auto-play next</label>' +
+      '<label>Username<input id="pref-username" placeholder="Set username"></label>' +
+      '<button class="btn-primary" onclick="AniStrimUI.saveProfile()">Save</button></div></div></div></div></div>';
+  }
+  function afterProfile() {
+    var user = Auth.state.user;
+    var av = document.getElementById('profile-avatar');
+    if (av) av.src = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || fallback(user && (user.name || 'A'));
+    var u = document.getElementById('pref-username');
+    if (u && user && user.username) u.value = user.username;
+  }
+  async function saveProfile() {
+    try {
+      var u = document.getElementById('pref-username') ? document.getElementById('pref-username').value : '';
+      var skip = document.getElementById('pref-auto-skip') ? document.getElementById('pref-auto-skip').checked : false;
+      var play = document.getElementById('pref-auto-play') ? document.getElementById('pref-auto-play').checked : false;
+      if (u) await API.profileSetUsername(u);
+      await API.profileUpdatePreferences({ skip_intro_auto: skip, autoplay: play });
+      toast('Saved'); await Auth.refreshMe(); renderHeader();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  function uploadAvatar() { var i = document.getElementById('avatar-input'); if (i) i.click(); }
+  async function doAvatarUpload(e) {
+    var file = e.target && e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      await API.uploadAvatar(file);
+      await Auth.refreshMe(); renderHeader(); toast('Avatar updated');
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  // ── Upgrade ─────────────────────────────────────────────
+  function upgradeView() {
+    renderHeader();
+    if (Auth.state.isPremium) return '<div class="page"><div class="container"><div class="card premium-card"><h1>You are Premium 👑</h1></div></div></div>';
+    return '<div class="page"><div class="container"><h1>Upgrade to Premium</h1><div class="plans">' +
+      '<div class="plan"><h3>Monthly</h3><div class="price">UGX 15,000<span>/mo</span></div><button class="btn-primary" onclick="AniStrimUI.checkout(\'monthly\')">Choose</button></div>' +
+      '<div class="plan featured"><h3>Yearly</h3><div class="price">UGX 180,000<span>/yr</span></div><button class="btn-primary" onclick="AniStrimUI.checkout(\'yearly\')">Choose</button></div>' +
+      '</div></div></div>';
+  }
+  async function checkout(plan) {
+    try {
+      var data = await API.checkout(plan);
+      if (data && data.payment_link) { window.location.href = data.payment_link; return; }
+      toast('Could not start checkout', 'error');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // ── Public API ──────────────────────────────────────────
+  window.AniStrimUI = {
+    fallback: fallback,
+    goAnime: function (id) { Router.navigate('/anime/' + id); },
+    watch: function (id, ep, epId) { Router.navigate('/watch/' + id + '/' + (ep || 1) + (epId ? ('?epId=' + epId) : '')); },
+    playFirst: function (id) {
+      API.episodes(id).then(function (eps) {
+        var list = norm(eps);
+        if (list.length) { var e = list[0]; AniStrimUI.watch(id, e.number || e.episode_number || 1, e.id); }
+        else toast('No episodes available.', 'error');
+      }).catch(function (e) { toast(e.message, 'error'); });
+    },
+    toggleWatchlist: async function (id) {
+      if (!Auth.state.isLoggedIn) { Router.navigate('/login'); return; }
+      try { await API.toggleWatchlist(id); toast('Watchlist updated'); } catch (e) { toast(e.message, 'error'); }
+    },
+    logout: async function () { await Auth.logout(); renderHeader(); Router.navigate('/'); },
+    doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp,
+    doGoogleLogin: function () { gAuth('login'); }, doGoogleSignup: function () { gAuth('signup'); },
+    reloadBrowse: reloadBrowse, doSearch: doSearch,
+    loadAnime: loadAnime, loadWatch: loadWatch,
+    loadWatchlist: loadWatchlist, loadHistory: loadHistory, clearHistory: clearHistory,
+    saveProfile: saveProfile, uploadAvatar: uploadAvatar, doAvatarUpload: doAvatarUpload,
+    checkout: checkout, renderHeader: renderHeader,
+  };
+
+  window.AniStrimViews = {
+    home: homeView, login: loginView, signup: signupView, verify: verifyView,
+    browse: browseView, afterBrowse: reloadBrowse, search: searchView,
+    anime: animeView, afterAnime: afterAnime, watch: watchView, afterWatch: afterWatch,
+    watchlist: watchlistView, afterWatchlist: loadWatchlist,
+    history: historyView, afterHistory: loadHistory,
+    profile: profileView, afterProfile: afterProfile, upgrade: upgradeView,
+  };
+
+  Auth.state.onChange(renderHeader);
+  Player.setErrorDisplay(function (m) {
+    var el = document.getElementById('player-error');
+    if (el) { el.textContent = m; el.style.display = 'block'; }
+  });
+})();

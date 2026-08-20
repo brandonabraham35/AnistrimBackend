@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { getEntitlement } = require('../utils/episodeAccess');
+const { sendSuccess } = require('../utils/response');
 
 const toBoolean = value => value === true || value === 1 || value === '1' || value === 'true';
 const GRANTING_STATES = new Set(['trialing', 'active', 'grace']);
@@ -99,13 +100,13 @@ exports.getAdConfig = async (req, res) => {
     // or a 503 for free users (admin should initialize it).
     if (!config) {
       if (isPremium) {
-        return res.json(serialize(null, true));
+        return sendSuccess(res, serialize(null, true));
       }
       return res.status(503).json({ message: 'Ads configuration has not been initialized.' });
     }
 
     // Serialize the config with premium override.
-    return res.json(serialize(config, isPremium));
+    return sendSuccess(res, serialize(config, isPremium));
   } catch (error) {
     console.error('Unable to read ads configuration:', error.message);
     return res.status(500).json({ message: 'Unable to load ads configuration.' });
@@ -162,7 +163,7 @@ exports.updateAdConfig = async (req, res) => {
     if (!config) {
       return res.status(500).json({ message: 'Ads configuration row is missing after update.' });
     }
-    return res.json(serialize(config, false));
+    return sendSuccess(res, serialize(config, false));
   } catch (error) {
     console.error('Unable to update ads configuration:', error.message);
     return res.status(500).json({ message: 'Unable to update ads configuration.' });
@@ -186,7 +187,7 @@ exports.getPolicy = async (req, res) => {
 
     // Premium users always get empty ads AND ad modules are never initialised.
     if (isPremium) {
-      return res.json({ ads: [], session: null });
+      return sendSuccess(res, { ads: [], session: null });
     }
 
     const config = await fetchConfig();
@@ -232,7 +233,7 @@ exports.getPolicy = async (req, res) => {
       interstitialRemainingAllowance,
     };
 
-    return res.json({ ads, session });
+    return sendSuccess(res, { ads, session });
   } catch (error) {
     console.error('Unable to build ads policy:', error.message);
     return res.status(500).json({ message: 'Unable to load ads policy.' });
@@ -265,7 +266,7 @@ exports.logAdEvent = async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, provider || null, slot || null, event, context || null, safeDetail]
     );
-    return res.json({ success: true });
+    return sendSuccess(res, { success: true });
   } catch (error) {
     console.error('Unable to log ad event:', error.message);
     return res.status(500).json({ message: 'Unable to log ad event.' });

@@ -90,7 +90,8 @@ try {
 // Environment-driven CORS from config/cors.js:
 //   - API_ALLOWED_ORIGINS env var (comma-separated) for Web, Admin,
 //     Capacitor (mobile), and future desktop origins.
-//   - Development localhost/private-LAN origins auto-enabled in dev.
+//   - Native WebView origins (capacitor://localhost, https://localhost) are
+//     ALWAYS allowed regardless of NODE_ENV (B1 fix).
 //   - credentials:false because auth uses Bearer JWT (Authorization header),
 //     not cookies.
 const corsOptions = require('./config/cors').buildCorsOptions();
@@ -142,11 +143,6 @@ app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/home', require('./routes/homeShelfRoutes'));
 
-// ─── Centralized Error Handler ─────────────────────────────
-// Must be registered AFTER all routes so it catches any errors thrown from
-// controllers, and BEFORE the SPA fallback so API errors stay JSON.
-app.use(require('./middleware/errorHandler'));
-
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
 try {
   const consumetApp = require('./services/consumet/server');
@@ -175,26 +171,114 @@ app.get('/health/provider', (req, res) => {
   }
 });
 
+// ─── API 404 Guard (B3 fix) ────────────────────────────────
+// ALWAYS present: unknown /api/* routes return JSON 404, never HTML.
+// This must come AFTER all /api/* routers but BEFORE static/SPA fallbacks.
+// A bad API path returning the mobile HTML shell was a whole class of bugs.
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'NOT_FOUND',
+      message: 'API endpoint not found.',
+      status: 404,
+      requestId: req.requestId || undefined,
+    },
+  });
+});
+
 // ─── Static Files (configurable) ───────────────────────────
-// The backend is a pure API/service for independent deployment. Static serving
-// of the Web (Frontend/) and Admin (AdminDashboard/) is OPTIONAL and controlled
-// by environment configuration. Local development keeps the default (true) so
-// the in-repo frontends keep working; production API deployments set:
-//   SERVE_STATIC_FRONTEND=false   (disables both, API-only)
-//   SERVE_FRONTEND=false          (disables the Web frontend only)
-//   SERVE_ADMIN=false             (disables the admin dashboard only)
-// The API 404 guard and /api/health always work regardless.
+// The backend serves up to four static roots. Mount order matters:
+//   1. /admin → AdminDashboard/
+//   2. /web → Web/ (browser SPA)
+//   3. /desktop-preview → Desktop/ (optional, for testing)
+//   4. /shared/client-contract → shared contract layer
+//   5. / → Frontend/ (mobile, Capacitor webDir) — LAST (catch-all)
+//
+// Static serving is OPTIONAL and controlled by environment configuration.
+// Local development keeps the default (true); production API-only deployments
+// set SERVE_STATIC_FRONTEND=false.
+
 const frontendDir = path.join(__dirname, clientAgnostic.FRONTEND_DIR || 'Frontend');
 const adminDir = path.join(__dirname, clientAgnostic.ADMIN_DIR || 'AdminDashboard');
+const webDir = path.join(__dirname, clientAgnostic.WEB_DIR || 'Web');
+const desktopDir = path.join(__dirname, clientAgnostic.DESKTOP_DIR || 'Desktop');
+const webMountPath = clientAgnostic.WEB_MOUNT_PATH || '/web';
 
-if (clientAgnostic.SERVE_FRONTEND) {
-  // Serve the Web frontend static assets (dev convenience / monolith mode).
-  app.use(express.static(frontendDir));
+// Cache control helpers
+const NO_CACHE = 'no-cache, no-store, must-revalidate';
+const ASSET_CACHE = 'public, max-age=31536000, immutable'; // 1 year for hashed assets
+
+// ─── Shared client contract layer ──────────────────────────
+// Serve shared/client-contract/* so all clients can load the same API contract.
+// This is non-visual logic only: endpoints, envelope unwrapping, http, session.
+app.use('/shared/client-contract', express.static(path.join(__dirname, 'shared', 'client-contract'), {
+  index: false,
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  },
+}));
+
+// ─── 1. Admin Dashboard ────────────────────────────────────
+if (clientAgnostic.SERVE_ADMIN) {
+  app.use('/admin', express.static(adminDir, {
+    index: false, // Let the fallback route handle index
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', NO_CACHE);
+      } else if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?)$/.test(filePath)) {
+        res.setHeader('Cache-Control', ASSET_CACHE);
+      }
+    },
+  }));
+  // SPA fallback for /admin/*
+  app.get(/^\/admin(\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(adminDir, 'dashboard.html'));
+  });
 }
 
-if (clientAgnostic.SERVE_ADMIN) {
-  // Serve the Admin dashboard static assets under /admin.
-  app.use('/admin', express.static(adminDir));
+// ─── 2. Web Client (browser SPA at /web) ───────────────────
+// B3 fix: The Web/ folder is now served at /web with proper SPA fallback.
+// Deep links like /web/anime/123 return Web/index.html, not mobile shell.
+if (clientAgnostic.SERVE_WEB) {
+  app.use(webMountPath, express.static(webDir, {
+    index: false, // Let the fallback route handle index
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', NO_CACHE);
+      } else if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?)$/.test(filePath)) {
+        res.setHeader('Cache-Control', ASSET_CACHE);
+      }
+    },
+  }));
+  // SPA fallback for /web/* — all deep links return Web/index.html
+  const webFallbackRegex = new RegExp(`^${webMountPath.replace(/\//g, '\\/')}(\\/.*)?$`);
+  app.get(webFallbackRegex, (req, res) => {
+    res.sendFile(path.join(webDir, 'index.html'));
+  });
+}
+
+// ─── 3. Desktop Preview (optional) ─────────────────────────
+// For testing the Electron renderer in a browser before packaging.
+// Disabled by default (SERVE_DESKTOP_PREVIEW=false).
+if (clientAgnostic.SERVE_DESKTOP_PREVIEW) {
+  app.use('/desktop-preview', express.static(desktopDir, {
+    index: false,
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', NO_CACHE);
+      }
+    },
+  }));
+  app.get(/^\/desktop-preview(\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(desktopDir, 'index.html'));
+  });
 }
 
 // Uploads are always served (they are API-adjacent user content, not a frontend).
@@ -204,33 +288,45 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
-// ─── API 404 Guard ─────────────────────────────────────────
-// Always present: unknown /api/* routes return JSON regardless of static config.
-app.use('/api', (req, res) => {
-  res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
-});
+// ─── 4. Mobile Frontend (catch-all, MUST be last) ──────────
+// Frontend/ is the mobile-only UI (Capacitor webDir). It is served at /
+// and is the FINAL catch-all — any unmatched route returns Frontend/index.html.
+if (clientAgnostic.SERVE_FRONTEND) {
+  app.use(express.static(frontendDir, {
+    index: false, // Let the fallback route handle index
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', NO_CACHE);
+      } else if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?)$/.test(filePath)) {
+        res.setHeader('Cache-Control', ASSET_CACHE);
+      }
+    },
+  }));
+}
 
-// ─── SPA Fallback Routes (only when the component is served) ──
-if (clientAgnostic.SERVE_ADMIN && clientAgnostic.SERVE_FRONTEND) {
-  app.get(/^\/admin(\/.*)?$/, (req, res) => {
-    res.sendFile(path.join(adminDir, 'dashboard.html'));
-  });
-  app.get(/.*/, (req, res) => {
-    res.sendFile(path.join(frontendDir, 'index.html'));
-  });
-} else if (clientAgnostic.SERVE_ADMIN) {
-  app.get(/^\/admin(\/.*)?$/, (req, res) => {
-    res.sendFile(path.join(adminDir, 'dashboard.html'));
-  });
-} else if (clientAgnostic.SERVE_FRONTEND) {
+// ─── Centralized Error Handler ─────────────────────────────
+// MUST be registered AFTER all routes (API + static) so it catches any errors
+// thrown from controllers or middleware. B3 audit noted it was registered too
+// early — now it's here, after all route registrations, before final catch-all.
+app.use(require('./middleware/errorHandler'));
+
+// ─── Final SPA Fallback (mobile) ───────────────────────────
+// This MUST be the very last route. Any request that didn't match /api/*,
+// /admin/*, /web/*, /desktop-preview/*, or a static file gets the mobile shell.
+if (clientAgnostic.SERVE_FRONTEND) {
   app.get(/.*/, (req, res) => {
     res.sendFile(path.join(frontendDir, 'index.html'));
   });
 }
 
-console.log(`[SERVE] API-only=${!clientAgnostic.SERVE_FRONTEND && !clientAgnostic.SERVE_ADMIN} | SERVE_FRONTEND=${clientAgnostic.SERVE_FRONTEND} | SERVE_ADMIN=${clientAgnostic.SERVE_ADMIN}`);
-console.log(`[SERVE] API is reachable at /api/health regardless of static serving.`);
-
+console.log('[SERVE] Configuration:');
+console.log(`  API-only: ${!clientAgnostic.SERVE_FRONTEND && !clientAgnostic.SERVE_ADMIN && !clientAgnostic.SERVE_WEB}`);
+console.log(`  SERVE_FRONTEND (mobile at /): ${clientAgnostic.SERVE_FRONTEND}`);
+console.log(`  SERVE_WEB (browser at ${webMountPath}): ${clientAgnostic.SERVE_WEB}`);
+console.log(`  SERVE_ADMIN (at /admin): ${clientAgnostic.SERVE_ADMIN}`);
+console.log(`  SERVE_DESKTOP_PREVIEW: ${clientAgnostic.SERVE_DESKTOP_PREVIEW}`);
+console.log('[SERVE] API is reachable at /api/health regardless of static serving.');
 
 // ─── Start Server ──────────────────────────────────────────
 // Bind to 0.0.0.0 to ensure the server is accessible from outside the container,

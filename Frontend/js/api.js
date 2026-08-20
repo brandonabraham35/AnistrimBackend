@@ -322,4 +322,70 @@
     // eslint-disable-next-line no-console
     console.debug('[api.js] canonical apiFetch installed. Envelope = { ok, status, data }.');
   }
+
+  // ── Startup health check with visible banner ──────────────
+  // Pings GET /api/health once on load. If the API is unreachable (CORS,
+  // DNS, network), shows a human-readable banner so failures are never
+  // silent. This makes B1-class bugs (CORS blocking) immediately visible.
+  (function startupHealthCheck() {
+    var HEALTH_CHECKED_KEY = '__anistrim_health_checked';
+    // Only check once per session to avoid banner spam on navigation.
+    if (sessionStorage.getItem(HEALTH_CHECKED_KEY)) return;
+    sessionStorage.setItem(HEALTH_CHECKED_KEY, '1');
+
+    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timeoutId = controller ? setTimeout(function () { controller.abort(); }, 8000) : null;
+
+    fetch(API_BASE + '/api/health', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller ? controller.signal : undefined
+    }).then(function (res) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      console.log('[api.js] Health check passed:', API_BASE);
+    }).catch(function (err) {
+      if (timeoutId) clearTimeout(timeoutId);
+      var reason = 'network error';
+      if (err && err.name === 'AbortError') reason = 'timeout (8s)';
+      else if (err && err.message) reason = err.message;
+      console.error('[api.js] Health check FAILED:', API_BASE, reason);
+      showApiUnreachableBanner(reason);
+    });
+
+    function showApiUnreachableBanner(reason) {
+      // Don't show banner if one already exists
+      if (document.getElementById('api-health-banner')) return;
+      var banner = document.createElement('div');
+      banner.id = 'api-health-banner';
+      banner.setAttribute('role', 'alert');
+      banner.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:99999',
+        'background:#dc2626', 'color:#fff', 'padding:12px 16px',
+        'font-family:system-ui,-apple-system,sans-serif', 'font-size:14px',
+        'text-align:center', 'box-shadow:0 2px 8px rgba(0,0,0,0.3)'
+      ].join(';');
+      banner.innerHTML = [
+        '<strong>⚠️ Cannot reach AniStrim servers.</strong><br>',
+        '<span style="font-size:12px;opacity:0.9">Check your internet connection. If this persists, the app may need an update.</span><br>',
+        '<span style="font-size:11px;opacity:0.7">(' + escapeHtml(reason) + ')</span>',
+        '<button onclick="this.parentElement.remove();window.location.reload();" ',
+        'style="margin-left:12px;padding:4px 12px;background:#fff;color:#dc2626;border:none;border-radius:4px;cursor:pointer;font-weight:600">Retry</button>'
+      ].join('');
+      function escapeHtml(s) {
+        return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+      }
+      function insertBanner() {
+        if (document.body) document.body.insertBefore(banner, document.body.firstChild);
+        else document.addEventListener('DOMContentLoaded', function () {
+          document.body.insertBefore(banner, document.body.firstChild);
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', insertBanner);
+      } else {
+        insertBanner();
+      }
+    }
+  })();
 })();

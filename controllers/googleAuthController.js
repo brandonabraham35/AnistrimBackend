@@ -125,8 +125,12 @@ exports.googleCallback = async (req, res) => {
     const loginCode = createLoginCode(accessToken, dto, intent);
 
     // Client-agnostic path: return structured result + suggested deep link.
+    // B7 fix: per-client return target resolved from X-Client header with
+    // strict allow-list validation — never reflect caller-supplied URLs.
     if (jsonMode) {
-      const deepLink = clientAgnostic.GOOGLE_AUTH_DEEP_LINK ||
+      const client = (req.headers && req.headers['x-client']) || 'mobile';
+      const requestedTarget = req.query && typeof req.query.returnTarget === 'string' ? req.query.returnTarget : '';
+      const deepLink = clientAgnostic.getGoogleReturnTarget(client, requestedTarget || undefined) ||
         `${APP_SCHEME}://auth?code=${encodeURIComponent(loginCode)}&intent=${intent}`;
       return sendSuccess(res, {
         code: loginCode,

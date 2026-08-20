@@ -594,13 +594,14 @@ exports.forgotPassword = async (req, res) => {
             { expiresIn: '1h', algorithm: 'HS256' }
         );
 
-                // Presentation-decoupling: the reset destination is configurable via
-        // PASSWORD_RESET_PATH (env) or a per-request ?resetPath=. The backend
-        // returns a machine-readable reset token/result; the client decides
-        // which screen/page handles it. No page name is hardcoded.
+                // Presentation-decoupling (B7 fix): the reset destination is now
+        // per-client, resolved from the X-Client header (mobile|web|desktop|admin)
+        // with a strict allow-list. A per-request ?resetPath= can override, but
+        // only if it is in the allow-list — never reflect caller-supplied URLs.
         const clientAgnostic = require('../config/clientAgnostic');
         const requestedPath = req.query && typeof req.query.resetPath === 'string' ? req.query.resetPath : '';
-        const resetPath = (requestedPath || clientAgnostic.PASSWORD_RESET_PATH || '').replace(/^\//, '');
+        const client = (req.headers && req.headers['x-client']) || 'mobile';
+        const resetPath = clientAgnostic.getPasswordResetPath(client, requestedPath || undefined).replace(/^\//, '');
         const frontendBase = process.env.FRONTEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
         const response = {
             message: 'If an account exists for that email, a reset link has been sent.',
