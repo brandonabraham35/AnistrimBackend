@@ -3,6 +3,8 @@ const cloudinaryVideo = require('../utils/bunnyStream');
 const { deleteImage } = require('../utils/bunnyUpload');
 const cache = require('../utils/cacheService');
 const { sendSuccess, sendPaginated } = require('../utils/response');
+const DTO = require('../services/adminDtoService');
+const apiDto = require('../services/apiDtoService');
 
 const toBool = value => value === true || value === 1 || value === '1' || (Buffer.isBuffer(value) && value[0] === 1);
 const numberOrNull = value => value === '' || value === undefined || value === null ? null : Number(value);
@@ -252,12 +254,7 @@ const adminController = {
         });
       }
 
-      const data = anime.map(row => ({
-        ...row,
-        genres: genreMap[row.id] || [],
-        is_premium: toBool(row.is_premium),
-        is_featured: toBool(row.is_featured),
-      }));
+      const data = anime.map(row => ({ ...DTO.animeDto(row), genres: genreMap[row.id] || [] }));
 
       return sendPaginated(res, data, { page, perPage: limit, totalItems: total });
     } catch (error) { res.status(500).json({ message: error.message }); }
@@ -286,11 +283,7 @@ const adminController = {
       const [epViews] = await db.query('SELECT COALESCE(SUM(view_count), 0) AS views FROM episodes WHERE anime_id = ?', [anime.id]);
       anime.total_episode_views = epViews[0]?.views || 0;
 
-      return sendSuccess(res, {
-        ...anime,
-        is_premium: toBool(anime.is_premium),
-        is_featured: toBool(anime.is_featured),
-      });
+      return sendSuccess(res, DTO.animeDto(anime));
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -365,9 +358,9 @@ const adminController = {
   async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); return sendSuccess(res, { id: r.insertId, name: req.body.name.trim() }, null, 201); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : error.message }); } },
   async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); return sendSuccess(res, null, { message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); return sendSuccess(res, rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); return sendSuccess(res, rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); return sendSuccess(res, { ...rows[0], is_premium: toBool(rows[0].is_premium) }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); return sendSuccess(res, rows.map(DTO.episodeDto)); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); return sendSuccess(res, rows.map(DTO.episodeDto)); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); return sendSuccess(res, DTO.episodeDto(rows[0])); } catch (error) { res.status(500).json({ message: error.message }); } },
   // P2: server-side premium timing. Maps an admin-chosen duration label to a
   // premium_until timestamp (server clock, not device clock). 'permanent'/null
   // means null (permanent).
@@ -409,8 +402,17 @@ const adminController = {
     try {
       const schema = await getSchema();
       const status = hasColumn(schema, 'users', 'status') ? 'status' : "'unavailable' AS status";
-      const [rows] = await db.query(`SELECT id, name, email, is_admin, is_premium, premium_expires_at, ${status}, created_at FROM users ORDER BY created_at DESC`);
-      return sendSuccess(res, rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) })));
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+      const offset = (page - 1) * limit;
+      const [countRows] = await db.query('SELECT COUNT(*) AS total FROM users');
+      const total = countRows[0]?.total || 0;
+      const [rows] = await db.query(
+        `SELECT id, name, email, is_admin, is_premium, premium_expires_at, ${status}, created_at, updated_at, avatar_url
+         FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        [limit, offset]
+      );
+      return sendPaginated(res, rows.map(DTO.userDto), { page, perPage: limit, totalItems: total });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
   async updateUser(req, res) {
@@ -491,7 +493,7 @@ const adminController = {
   async getSettings(req, res) { try { return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
   async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'cloudinary_cloud_name']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); return sendSuccess(res, rows.map(row => ({ ...row, banner_url: row.image_url, frequency_minutes: row.frequency, is_active: toBool(row.is_active), target_free_only: toBool(row.target_free_only) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); return sendSuccess(res, rows.map(DTO.adDto)); } catch (error) { res.status(500).json({ message: error.message }); } },
   async createAd(req, res) { const { title, type = 'banner', image_url, banner_url, video_url, target_url, frequency, frequency_minutes, is_active = 1, target_free_only = 1 } = req.body; if (!title?.trim()) return res.status(400).json({ message: 'Ad title is required.' }); try { const [r] = await db.query('INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), type, image_url || banner_url || null, video_url || null, target_url || null, Number(frequency ?? frequency_minutes) || 1, toBool(is_active) ? 1 : 0, toBool(target_free_only) ? 1 : 0]); await logActivity(req, `Created advertisement: ${title.trim()}`, 'ad', r.insertId); return sendSuccess(res, { id: r.insertId }, { message: 'Advertisement created.' }, 201); } catch (error) { res.status(500).json({ message: error.message }); } },
   async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
   async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
@@ -746,10 +748,7 @@ if (search) {
         [...params, limitNum, offset]
       );
 
-      return sendPaginated(res, rows.map(p => ({
-        ...p,
-        is_premium: toBool(p.is_premium),
-      })), { page: pageNum, perPage: limitNum, totalItems: total }, { summary: { total } });
+      return sendPaginated(res, rows.map(DTO.paymentDto), { page: pageNum, perPage: limitNum, totalItems: total }, { summary: { total } });
     } catch (error) {
       console.error('getPayments error:', error);
       res.status(500).json({ message: error.message });
@@ -795,12 +794,7 @@ async updateGenre(req, res) {
         [req.params.id]
       );
       if (!rows.length) return res.status(404).json({ message: 'User not found.' });
-      const user = {
-        ...rows[0],
-        is_admin: toBool(rows[0].is_admin),
-        is_premium: toBool(rows[0].is_premium),
-      };
-      return sendSuccess(res, user);
+      return sendSuccess(res, DTO.userDto(rows[0]));
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -856,7 +850,7 @@ async updateGenre(req, res) {
         ? `SELECT a.action, a.created_at, a.ip_address, ${userNameExpr} user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50`
         : `SELECT a.action, a.created_at, NULL ip_address, ${userNameExpr} user_name FROM admin_logs a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 50`;
       const [rows] = await db.query(sql);
-      return sendSuccess(res, rows);
+      return sendSuccess(res, rows.map(DTO.logDto));
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -1068,7 +1062,7 @@ case 'provider-usage': {
           [limit, offset]
         );
         const [countRows] = await db.query('SELECT COUNT(*) AS total FROM admin_logs');
-        return sendPaginated(res, rows, { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
+        return sendPaginated(res, rows.map(DTO.auditDto), { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
       }
 
       const userNameExpr = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
@@ -1082,7 +1076,7 @@ case 'provider-usage': {
         `SELECT COUNT(*) AS total FROM admin_logs l ${whereClause}`,
         params
       );
-      return sendPaginated(res, rows, { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
+      return sendPaginated(res, rows.map(DTO.auditDto), { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
     } catch (error) {
       console.error('[Admin] getAuditLogs error:', error.message);
       res.status(500).json({ message: error.message });
