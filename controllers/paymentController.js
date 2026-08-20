@@ -158,6 +158,7 @@ exports.initializeCheckout = async (req, res) => {
       plan: plan,
       plan_id: planRow.id,
       amount,
+      orderTrackingId: orderResult.order_tracking_id,
       order_tracking_id: orderResult.order_tracking_id,
     });
 
@@ -166,8 +167,11 @@ exports.initializeCheckout = async (req, res) => {
     );
 
     return sendSuccess(res, {
+      paymentLink: orderResult.redirect_url,
       payment_link: orderResult.redirect_url,
+      txRef: reference,
       tx_ref: reference,
+      orderTrackingId: orderResult.order_tracking_id,
       order_tracking_id: orderResult.order_tracking_id,
     }, { message: 'Payment link created.' });
   } catch (err) {
@@ -406,10 +410,13 @@ exports.verifySubscriptionPayment = async (req, res) => {
       plan: sub.plan,
       amount: sub.amount,
       currency: sub.currency,
-      is_premium: sub.is_premium,
+      isPremium: !!sub.is_premium,
+      is_premium: !!sub.is_premium,
       name: sub.name,
       email: sub.email,
+      endsAt: sub.ends_at,
       ends_at: sub.ends_at,
+      paidAt: sub.paid_at,
       paid_at: sub.paid_at,
     });
   } catch (err) {

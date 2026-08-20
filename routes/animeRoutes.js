@@ -80,18 +80,24 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
         const mapped = masked.map(m => ({
             id: m.id,
             number: m.episode_number,
-            season: m.season || 1,
+            season: m.season || m.season_number || 1,
             title: m.title,
             description: m.description,
+            thumbnailUrl: m.thumbnail_url,
             thumbnail_url: m.thumbnail_url,
+            videoUrl: m.video_url || null,
             video_url: m.video_url || null,
+            durationSec: m.duration_sec,
             duration_sec: m.duration_sec,
+            isPremium: m.premium || Boolean(m.is_premium),
             is_premium: m.premium || Boolean(m.is_premium),
+            viewCount: m.view_count,
             view_count: m.view_count,
             locked: m.locked,
             effectiveTier: m.effectiveTier,
             availableAt: m.availableAt,
             accessState: m.accessState,
+            accessTier: m.access_tier || 'inherit',
         }));
 
         return sendSuccess(res, mapped);

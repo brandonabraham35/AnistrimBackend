@@ -222,6 +222,7 @@ exports.getWatchlistStats = async (req, res) => {
     return sendSuccess(res, {
       watching: Number(statRow.watching || 0),
       completed: Number(statRow.completed || 0),
+      planToWatch: Number(statRow.plan_to_watch || 0),
       plan_to_watch: Number(statRow.plan_to_watch || 0),
       total: Number(statRow.total || 0),
     });
