@@ -120,6 +120,7 @@ try {
 // ─── Main API Endpoints ────────────────────────────────────
 // API routes must be registered before static file handlers and SPA fallbacks
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/v1', require('./routes/v1'));
 app.use('/api/auth', require('./routes/avatarRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
 // FIX 10: profileRoutes already declares /username-available and /set-username
