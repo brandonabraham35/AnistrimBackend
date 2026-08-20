@@ -7,12 +7,20 @@
 // The login/signup business decision is made in the SHARED
 // resolveGoogleIdentity(profile, intent) helper (services/googleIdentityService.js)
 // so the web GIS and native Capacitor flows apply the IDENTICAL intent rule.
+//
+// Presentation decoupling:
+//   • By default (no ?client param) the callback returns the legacy HTML bridge
+//     page that deep-links back into the mobile app (unchanged).
+//   • A client-agnostic client passes ?client=api to receive the SAME result
+//     as structured JSON (status, short-lived login code, user DTO, intent, and
+//     a suggested deep link) so the client decides how to render/handle it.
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const { resolveGoogleIdentity } = require('../services/googleIdentityService');
 const sessionService = require('../services/sessionService');
 const { buildUserDto } = require('../services/userDtoService');
 const { sendSuccess } = require('../utils/response');
+const clientAgnostic = require('../config/clientAgnostic');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
@@ -68,9 +76,20 @@ exports.googleRedirect = (req, res) => {
 };
 
 // ── Google redirect_uri — apply the SAME login/signup business rules.
+//    Client-agnostic path: pass ?client=api to receive structured JSON instead
+//    of the HTML bridge page. The existing mobile flow (no client param) is
+//    unchanged.
 exports.googleCallback = async (req, res) => {
   const { code, error, state } = req.query;
-  if (error || !code) return res.send(errorPage('Sign-in cancelled.'));
+  const jsonMode = req.query.client === 'api';
+  const fail = (message, codeVal = 'GOOGLE_AUTH_FAILED') => {
+    if (jsonMode) {
+      return res.status(400).json({ success: false, code: codeVal, message });
+    }
+    return res.send(errorPage(message));
+  };
+
+  if (error || !code) return fail('Sign-in cancelled.', 'OAUTH_CANCELLED');
 
   let intent = 'login';
   try {
@@ -90,8 +109,8 @@ exports.googleCallback = async (req, res) => {
     }
 
     const profile = await userInfoResponse.json();
-    if (!profile?.email) return res.send(errorPage('Could not get your email.'));
-    if (profile.email_verified === false) return res.send(errorPage('Google email is not verified.'));
+    if (!profile?.email) return fail('Could not get your email.', 'MISSING_EMAIL');
+    if (profile.email_verified === false) return fail('Google email is not verified.', 'EMAIL_NOT_VERIFIED');
 
     // Apply the IDENTICAL login/signup intent rule via the shared helper.
     const { user } = await resolveGoogleIdentity(profile, intent);
@@ -104,19 +123,33 @@ exports.googleCallback = async (req, res) => {
     const dto = await buildUserDto(user);
 
     const loginCode = createLoginCode(accessToken, dto, intent);
+
+    // Client-agnostic path: return structured result + suggested deep link.
+    if (jsonMode) {
+      const deepLink = clientAgnostic.GOOGLE_AUTH_DEEP_LINK ||
+        `${APP_SCHEME}://auth?code=${encodeURIComponent(loginCode)}&intent=${intent}`;
+      return sendSuccess(res, {
+        code: loginCode,
+        user: dto,
+        intent,
+        deepLink,
+        token: accessToken,
+      }, { message: 'Google authentication successful.' });
+    }
+
     return res.send(successPage(loginCode));
   } catch (err) {
     console.error('Google callback error:', err.message);
     if (err.code === 'GOOGLE_NO_ACCOUNT') {
-      return res.send(errorPage('No AniStrim account is associated with this Google account. Please create an account first.'));
+      return fail('No AniStrim account is associated with this Google account. Please create an account first.', 'GOOGLE_NO_ACCOUNT');
     }
     if (err.code === 'GOOGLE_ACCOUNT_NOT_LINKED') {
-      return res.send(errorPage('An AniStrim account already exists with this email. Please log in using your email and password.'));
+      return fail('An AniStrim account already exists with this email. Please log in using your email and password.', 'GOOGLE_ACCOUNT_NOT_LINKED');
     }
     if (err.code === 'ACCOUNT_ALREADY_EXISTS') {
-      return res.send(errorPage('An AniStrim account already exists. Please log in instead.'));
+      return fail('An AniStrim account already exists. Please log in instead.', 'ACCOUNT_ALREADY_EXISTS');
     }
-    return res.send(errorPage('Google sign-in failed. Please try again.'));
+    return fail('Google sign-in failed. Please try again.', 'GOOGLE_AUTH_FAILED');
   }
 };
 

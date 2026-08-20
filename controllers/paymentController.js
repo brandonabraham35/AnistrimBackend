@@ -364,21 +364,50 @@ exports.cancelSubscription = async (req, res) => {
 };
 
 // GET /api/payments/callback
+// Client-agnostic callback. Returns a structured JSON payload describing the
+// payment outcome so the consuming client (web, mobile, desktop, admin) can
+// decide what to render. No HTML/application UI is generated here, and no
+// payment secrets are exposed. Backward-compatible bridge HTML is provided
+// only via an explicit `?render=html` flag (used by the legacy web bridge page
+// /payment-callback.html).
 exports.paymentCallback = async (req, res) => {
-  const { tx_ref, OrderTrackingId } = req.query;
+  const { tx_ref, OrderTrackingId, render } = req.query;
   const txRef = tx_ref || req.query.OrderMerchantReference;
-  if (!txRef) return res.send(buildBridgePage('error', null, 'Missing transaction reference.'));
+  if (!txRef) {
+    if (render === 'html') return res.send(buildBridgePage('error', null, 'Missing transaction reference.'));
+    return res.status(400).json({
+      success: false,
+      code: 'MISSING_REFERENCE',
+      status: 'error',
+      message: 'Missing transaction reference.',
+    });
+  }
 
   try {
-    const [rows] = await db.query(`SELECT status FROM subscriptions WHERE reference = ?`, [txRef]);
+    const [rows] = await db.query(`SELECT status, state FROM subscriptions WHERE reference = ?`, [txRef]);
     const status = rows[0]?.status || 'pending';
+    const state = rows[0]?.state || 'pending';
     if (OrderTrackingId && rows.length) {
       await db.query(`UPDATE subscriptions SET order_tracking_id = ? WHERE reference = ?`, [OrderTrackingId, txRef]);
     }
-    return res.send(buildBridgePage(status, txRef, null));
+
+    // Never expose payment secrets. Only structured, client-actionable status.
+    const payload = {
+      success: status === 'COMPLETED',
+      status: lowercaseStatus(status),
+      state,
+      txRef,
+      message: toCallbackMessage(status),
+    };
+
+    // Web bridge page is served ONLY when the client explicitly opts in.
+    if (render === 'html') return res.send(buildBridgePage(status, txRef, null));
+
+    return res.status(200).json(payload);
   } catch (err) {
     console.error('Payment callback error:', err.message);
-    return res.send(buildBridgePage('error', txRef, 'Verification error.'));
+    if (render === 'html') return res.send(buildBridgePage('error', txRef, 'Verification error.'));
+    return res.status(500).json({ success: false, status: 'error', txRef, message: 'Verification error.' });
   }
 };
 
@@ -452,6 +481,28 @@ exports.getSubscriptionRevenueStats = async (req, res) => {
     res.status(500).json({ message: 'Could not fetch subscription revenue stats.' });
   }
 };
+
+// Map status string to a stable lowercase machine-readable value.
+function lowercaseStatus(status) {
+  const s = String(status || '').toUpperCase();
+  if (s === 'COMPLETED') return 'completed';
+  if (s === 'PENDING') return 'pending';
+  if (s === 'FAILED') return 'failed';
+  if (s === 'REFUNDED') return 'refunded';
+  if (s === 'CANCELLED') return 'cancelled';
+  return 'unknown';
+}
+
+// Human-readable message derived from status (no secrets).
+function toCallbackMessage(status) {
+  const s = String(status || '').toUpperCase();
+  if (s === 'COMPLETED') return 'Payment completed successfully.';
+  if (s === 'PENDING') return 'Payment is being confirmed.';
+  if (s === 'FAILED') return 'Payment was not completed.';
+  if (s === 'REFUNDED') return 'Payment was refunded.';
+  if (s === 'CANCELLED') return 'Payment was cancelled.';
+  return 'Payment status unknown.';
+}
 
 function buildBridgePage(status, txRef, errorMsg) {
   const appLink = `anistrim://payment-result?tx_ref=${txRef || ''}&status=${status}`;

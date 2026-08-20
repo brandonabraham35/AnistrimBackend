@@ -242,9 +242,6 @@ exports.getContinueWatching = async (req, res) => {
           positionSec: 0,
           durationSec: 0,
           percent: 0,
-          // FIX 5 (Phase 3): resumeUrl must use watch.html?id=<animeId>&ep=<episodeId>
-          // to match what watch.js actually reads.
-          resumeUrl: `watch.html?id=${row.anime_id}&ep=${nextEp[0].id}`,
           state: 'next_episode',
         });
         continue;
@@ -264,9 +261,6 @@ exports.getContinueWatching = async (req, res) => {
         positionSec: row.position_sec,
         durationSec: row.duration_sec,
         percent,
-        // FIX 5 (Phase 3): resumeUrl must use watch.html?id=<animeId>&ep=<episodeId>
-        // to match what watch.js actually reads.
-        resumeUrl: `watch.html?id=${row.anime_id}&ep=${row.episode_id}`,
         state: 'resume',
       });
     }

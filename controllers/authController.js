@@ -594,18 +594,28 @@ exports.forgotPassword = async (req, res) => {
             { expiresIn: '1h', algorithm: 'HS256' }
         );
 
+                // Presentation-decoupling: the reset destination is configurable via
+        // PASSWORD_RESET_PATH (env) or a per-request ?resetPath=. The backend
+        // returns a machine-readable reset token/result; the client decides
+        // which screen/page handles it. No page name is hardcoded.
+        const clientAgnostic = require('../config/clientAgnostic');
+        const requestedPath = req.query && typeof req.query.resetPath === 'string' ? req.query.resetPath : '';
+        const resetPath = (requestedPath || clientAgnostic.PASSWORD_RESET_PATH || '').replace(/^\//, '');
         const frontendBase = process.env.FRONTEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
-        const devLink = `${frontendBase.replace(/\/$/, '')}/reset-password.html?token=${token}`;
-
-        // In production the reset link is delivered by email via Mailgun. The
-        // existing forgotPassword flow only exposes the dev link locally — it
-        // does NOT yet send an email (preserved to keep the API contract).
-        const isProduction = process.env.NODE_ENV === 'production';
         const response = {
             message: 'If an account exists for that email, a reset link has been sent.',
         };
-        if (!isProduction) {
-            response.dev_link = devLink;
+
+        // Expose the reset token/result so any client can complete the reset.
+        if (process.env.NODE_ENV !== 'production') {
+            response.resetToken = token;
+            response.token = token;
+            if (resetPath) {
+                response.resetUrl = `${frontendBase.replace(/\/$/, '')}/${resetPath}?token=${encodeURIComponent(token)}`;
+            } else {
+                response.resetDestination = null;
+                response.resetPathRequired = true;
+            }
         }
 
         return sendSuccess(res, response);

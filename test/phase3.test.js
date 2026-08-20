@@ -80,11 +80,15 @@ test('FIX 4: loadContinueWatching uses canonical field names', () => {
   assert.match(src, /item\.resumeUrl/, 'must use server resumeUrl');
 });
 
-// ── FIX 5: Resume-URL contract ───────────────────────────────
-test('FIX 5: server resumeUrl uses watch.html?id=', () => {
+// ── FIX 5 (updated): Resume data is presentation-decoupled ───
+// The API no longer hardcodes a presentation page (watch.html). It returns
+// machine-readable identifiers (animeId, episodeId, ...) and the client
+// builds its own navigation URL.
+test('FIX 5: server returns machine-readable resume identifiers, not watch.html URLs', () => {
   const src = fs.readFileSync(path.join(ROOT, 'controllers', 'watchController.js'), 'utf8');
-  assert.match(src, /watch\.html\?id=\$\{row\.anime_id\}&ep=\$\{row\.episode_id\}/, 'must use id= param');
-  assert.doesNotMatch(src, /watch\.html\?anime=/, 'must NOT use anime= param');
+  assert.match(src, /episodeId: nextEp\[0\]\.id/, 'next-episode must expose episodeId');
+  assert.match(src, /episodeNumber: row\.episode_number/, 'resume must expose episodeNumber');
+  assert.doesNotMatch(src, /resumeUrl: `watch\.html/, 'must NOT hardcode watch.html resume URL');
 });
 
 // ── FIX 6: One row per anime ─────────────────────────────────

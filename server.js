@@ -15,6 +15,7 @@ process.on('uncaughtException', (error) => {
 const app = express();
 const PORT = process.env.PORT || 5000;
 const providerHealthMonitor = require('./services/providerHealthMonitor');
+const clientAgnostic = require('./config/clientAgnostic');
 
 // Phase 10 (Security): fail fast if any required secret is missing. Credentials
 // are server-side only — never logged, never shipped to the client.
@@ -173,43 +174,42 @@ app.get('/health/provider', (req, res) => {
   }
 });
 
-// ─── Static Files ──────────────────────────────────────────
-// Serve static assets after API routes have been checked
-app.use(express.static(path.join(__dirname, 'Frontend')));
-app.use('/admin', express.static(path.join(__dirname, 'AdminDashboard')));
-app.use('/uploads', (req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  next();
-}, express.static(path.join(__dirname, 'uploads')));
+// ─── Static Files (configurable) ───────────────────────────
+// API-only deployments set SERVE_STATIC_FRONTEND=false so the API and the
+// frontend(s) can be deployed independently. Local development keeps the
+// default (true) to preserve the current in-repo frontend serving.
+if (clientAgnostic.SERVE_STATIC_FRONTEND) {
+  // Serve static assets after API routes have been checked.
+  const frontendDir = path.join(__dirname, clientAgnostic.FRONTEND_DIR || 'Frontend');
+  const adminDir = path.join(__dirname, clientAgnostic.ADMIN_DIR || 'AdminDashboard');
+  app.use(express.static(frontendDir));
+  app.use('/admin', express.static(adminDir));
+  app.use('/uploads', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  }, express.static(path.join(__dirname, 'uploads')));
 
-// ─── API 404 Guard ─────────────────────────────────────────
-// Any unmatched /api/* path returns a JSON 404 instead of being swallowed by
-// the SPA catch-all (which would serve index.html for a typo'd API call).
-app.use('/api', (req, res) => {
-  res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
-});
+  // ─── API 404 Guard ─────────────────────────────────────
+  app.use('/api', (req, res) => {
+    res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
+  });
 
-// ─── SPA Fallback Routes ───────────────────────────────────
-// These routes catch client-side paths and serve the correct HTML entry point.
-// They must come after all API and static asset routes.
+  // ─── SPA Fallback Routes ──────────────────────────────
+  app.get(/^\/admin(\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(adminDir, 'dashboard.html'));
+  });
+  app.get(/.*/, (req, res) => {
+    res.sendFile(path.join(frontendDir, 'index.html'));
+  });
+  console.log('Static frontend serving ENABLED (SERVE_STATIC_FRONTEND=true)');
+} else {
+  console.log('API-only mode: static frontend serving DISABLED (SERVE_STATIC_FRONTEND=false)');
+  app.use('/api', (req, res) => {
+    res.status(404).json({ code: 'NOT_FOUND', message: 'API endpoint not found.' });
+  });
+}
 
-// Admin dashboard SPA fallback
-// This catches any deep links into the admin panel (e.g., /admin/users) that aren't
-// static files, and serves the main external AdminDashboard HTML. This restores
-// the EXTERNAL admin dashboard app to its original behavior at /admin.
-// This must come AFTER the static middleware for '/admin'.
-app.get(/^\/admin(\/.*)?$/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'AdminDashboard', 'dashboard.html'));
-});
-
-// General Frontend SPA fallback:
-// For any other unmatched route (e.g., /, /browse, /details, /watchlist),
-// serve the main frontend index.html, letting the client-side router handle it.
-// This must be the very last route handler.
-app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'Frontend', 'index.html'));
-});
 
 // ─── Start Server ──────────────────────────────────────────
 // Bind to 0.0.0.0 to ensure the server is accessible from outside the container,
