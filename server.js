@@ -16,6 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const providerHealthMonitor = require('./services/providerHealthMonitor');
 const clientAgnostic = require('./config/clientAgnostic');
+const { sendSuccess } = require('./utils/response');
 
 // Phase 10 (Security): fail fast if any required secret is missing. Credentials
 // are server-side only — never logged, never shipped to the client.
@@ -154,8 +155,7 @@ try {
 
 // ─── Health Check ──────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development'
-  });
+  sendSuccess(res, { status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development' });
 });
 
 app.get('/health/provider', (req, res) => {
@@ -305,20 +305,42 @@ if (clientAgnostic.SERVE_FRONTEND) {
   }));
 }
 
-// ─── Centralized Error Handler ─────────────────────────────
-// MUST be registered AFTER all routes (API + static) so it catches any errors
-// thrown from controllers or middleware. B3 audit noted it was registered too
-// early — now it's here, after all route registrations, before final catch-all.
-app.use(require('./middleware/errorHandler'));
-
 // ─── Final SPA Fallback (mobile) ───────────────────────────
-// This MUST be the very last route. Any request that didn't match /api/*,
+// This MUST be the last route. Any request that didn't match /api/*,
 // /admin/*, /web/*, /desktop-preview/*, or a static file gets the mobile shell.
 if (clientAgnostic.SERVE_FRONTEND) {
   app.get(/.*/, (req, res) => {
     res.sendFile(path.join(frontendDir, 'index.html'));
   });
 }
+
+// ─── Loud CORS rejection (B9 fix) ─────────────────────────────
+// cors()'s origin callback rejects blocked origins with callback(null, false),
+// which yields a 200 with NO Access-Control-Allow-Origin header — the silent
+// failure that killed mobile in production. This wrapper turns blocked-origin
+// requests into an explicit 403 JSON so they are visible in server logs and
+// on the client console.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !res.getHeader('access-control-allow-origin') && !res.writableEnded) {
+    res.status(403).json({
+      success: false,
+      error: {
+        code: 'CORS_BLOCKED',
+        message: 'Origin not allowed: ' + origin,
+        status: 403,
+        requestId: req.requestId || req.id || undefined,
+      },
+    });
+    return;
+  }
+  next();
+});
+
+// ─── Centralized Error Handler ─────────────────────────────
+// MUST be registered AFTER every route (API + static + SPA fallback + CORS
+// wrapper) so it catches errors thrown by the final catch-all or the 403 wrapper.
+app.use(require('./middleware/errorHandler'));
 
 console.log('[SERVE] Configuration:');
 console.log(`  API-only: ${!clientAgnostic.SERVE_FRONTEND && !clientAgnostic.SERVE_ADMIN && !clientAgnostic.SERVE_WEB}`);

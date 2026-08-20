@@ -1,1 +1,29 @@
 node_modules/
+
+# ── Secrets & credentials (do NOT commit) ──────────────────
+# These were committed in the working tree and must be removed from git history.
+.env
+.env.*
+.DS_Store
+*.log
+logs/
+*.log.*
+
+# Google / OAuth
+client_secret_*.json
+*.client_secret.json
+
+# Gmail API
+Gmail Key.txt
+MyKey
+*.key
+id_key.json
+credentials*.json
+token.json
+
+# Environment-specific
+config/local-*.js
+
+# OS editors
+.vscode/
+.idea/

@@ -22,6 +22,19 @@
 
   // Get the correct API base URL for the current environment
   function getApiBaseUrl() {
+    // (B3 fix) Honour an explicit override FIRST so local / self-hosted
+    // deployments can point at the correct backend without editing source.
+    // '' = same-origin relative (no CORS). This is additive — it does NOT
+    // change Capacitor/native behavior below, which still uses the absolute
+    // production URL because the Capacitor WebView origin is not the API origin.
+    if (typeof window !== 'undefined' && typeof window.__ANISTRIM_API !== 'undefined') {
+      return String(window.__ANISTRIM_API === null ? '' : window.__ANISTRIM_API).replace(/\/+$/, '');
+    }
+    try {
+      var _meta = document.querySelector('meta[name="anistrim-api"]');
+      if (_meta && _meta.content) return _meta.content.trim().replace(/\/+$/, '');
+    } catch (e) { /* non-browser / no document */ }
+
     const isNative = isCapacitorNative();
     const isFile = window.location.protocol === 'file:';
     // Capacitor's webview on Android serves from a `localhost` origin. This check ensures

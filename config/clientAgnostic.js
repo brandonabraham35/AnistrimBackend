@@ -71,7 +71,9 @@ const googleReturnTargets = parseJsonEnv('GOOGLE_RETURN_TARGETS_JSON', DEFAULT_G
 // Only values in these lists are ever accepted — prevents open redirect attacks.
 const RESET_PATH_ALLOW_LIST = new Set([
   '/reset-password.html',
+  '/reset-password',              // matches DEFAULT_RESET_PATHS.desktop
   '/web/reset-password',
+  '/web/#/reset-password',        // hash-routed web default (SPA)
   '/desktop/reset-password',
   '/admin/reset-password',
   // Add custom paths here if needed

@@ -6,19 +6,39 @@
 
   var CONFIG = window.AniStrimConfig;
   var API = CONFIG.getApiBaseUrl();
-  var TOKEN_KEY = 'web_token';
-  var REFRESH_KEY = 'web_refresh_token';
   var refreshPromise = null;
 
-  function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-  function getRefreshToken() { return localStorage.getItem(REFRESH_KEY) || ''; }
+  // B4/B8 fix: client-scoped session with legacy-key migration so the browser
+  // client (served at /web, same origin as /) never collides with the mobile
+  // shell's tokens. Falls back to the legacy web_token keys if the shared
+  // contract isn't loaded (e.g. Web deployed to a static host without
+  // /shared/client-contract). session.create() migrates web_token once.
+  var session = (typeof window.AniStrimSession !== 'undefined' && window.AniStrimSession.create)
+    ? window.AniStrimSession.create('web')
+    : null;
+  var LEGACY_TOKEN = 'web_token';
+  var LEGACY_REFRESH = 'web_refresh_token';
+
+  function getToken() {
+    return session ? session.getToken() : (localStorage.getItem(LEGACY_TOKEN) || '');
+  }
+  function getRefreshToken() {
+    return session ? session.getRefreshToken() : (localStorage.getItem(LEGACY_REFRESH) || '');
+  }
   function setTokens(token, refresh) {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
+    if (session) {
+      session.setTokens(token, refresh || '');
+    } else {
+      if (token) localStorage.setItem(LEGACY_TOKEN, token);
+      if (refresh) localStorage.setItem(LEGACY_REFRESH, refresh);
+    }
   }
   function clearTokens() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    if (session) session.clear();
+    else {
+      localStorage.removeItem(LEGACY_TOKEN);
+      localStorage.removeItem(LEGACY_REFRESH);
+    }
   }
 
   // Unwrap the { success, data, meta } or { success, error } envelope.

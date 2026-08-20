@@ -1,0 +1,799 @@
+# AniStrim Architecture — How It Works (100% Explained)
+
+This document explains, end-to-end and in plain terms, how the current
+AniStrim backend + three clients are _supposed_ to work after all fixes.
+An AI or human reading this should understand every request path, every
+decision point, and every data flow without needing to cross-reference
+other files.
+
+---
+
+## TABLE OF CONTENTS
+
+1. [High-Level Topology](#1-high-level-topology)
+2. [CORS — The Mobile "Silent Failure" Fix](#2-cors--the-mobile-silent-failure-fix)
+3. [Mobile WebView Transport (Capacitor)](#3-mobile-webview-transport-capacitor)
+4. [Backend Static Serving — One Express App, Three Roots](#4-backend-static-serving--one-express-app-three-roots)
+5. [Shared Client Contract Layer](#5-shared-client-contract-layer)
+6. [Per-Client Settings Resolution (B7)](#6-per-client-settings-resolution-b7)
+7. [Token Storage & Session Isolation (B8)](#7-token-storage--session-isolation-b8)
+8. [Envelope Consistency (B10)](#8-envelope-consistency-b10)
+9. [Desktop Electron App (B6)](#9-desktop-electron-app-b6)
+10. [Request Flow Examples (Walkthrough)](#10-request-flow-examples-walkthrough)
+11. [Environment Variables](#11-environment-variables)
+12. [Testing & Verification](#12-testing--verification)
+
+---
+
+## 1. High-Level Topology
+
+```
+                    ┌────────────────────────────────┐
+                    │   Render (or local) Node server│
+                    │   server.js (single process)   │
+                    │   ┌──────────────────────────┐  │
+                    │   │  Express /api/* routers  │  │
+                    │   └──────────┬───────────────┘  │
+                    │   ┌──────────▼──────────────┐  │
+                    │   │ CORS middleware           │  │
+                    │   └──────────┬───────────────┘  │
+                    │   ┌──────────▼──────────────┐  │
+                    │   │ Shared Contract static    │  │
+                    │   │ /shared/client-contract/* │  │
+                    │   ├──────────────────────────┤  │
+                    │   │ /admin/* static           │  │
+                    │   ├──────────────────────────┤  │
+                    │   │ /web/* static (Web/)      │  │
+                    │   ├──────────────────────────┤  │
+                    │   │ /desktop-preview/* static │  │
+                    │   ├──────────────────────────┤  │
+                    │   │ / static (Frontend/)      │  │
+                    │   │ catch-all SPA fallback    │  │
+                    │   └──────────────────────────┘  │
+                    └──────────────┬─────────────────┘
+                                   │ HTTPS
+             ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+             │
+    ┌────────▼────────┐   ┌───────────────┐   ┌──────────────────┐
+    │  Mobile (iOS/   │   │  Desktop      │   │  Web (Browser)   │
+    │  Android)       │   │  Electron     │   │  (Chrome/FF/Saf)│
+    │  Frontend/      │   │  Desktop/     │   │  Web/            │
+    │  Capacitor      │   │  — main.js    │   │  — router.js     │
+    │  WebView         │   │  — preload   │   │  — ui.js         │
+    │  fetches /api/*  │   │  — renderer   │   │  — api.js        │
+    │  with X-Client:  │   │  fetches      │   │  fetches with    │
+    │  mobile          │   │  with X-Client│   │  X-Client: web   │
+    └─────────────────┘   └───────────────┘   └──────────────────┘
+```
+
+All three clients talk to **the same `/api/*` endpoints** on a single
+Express server. They differ only in:
+
+- The static root the server serves them from
+- The `X-Client` header they set on API calls
+- Their localStorage token key prefixes
+
+Admin dashboard is served from `/admin/*` and is its own client too.
+
+---
+
+## 2. CORS — The Mobile "Silent Failure" Fix
+
+### The original bug (B1)
+
+`config/cors.js` only added Capacitor origins (`capacitor://localhost`,
+`https://localhost`, `http://localhost`, `ionic://localhost`) when
+`NODE_ENV !== 'production'`:
+
+```js
+const DEV_ORIGIN_REGEX = DEV_ORIGINS.join("|"); // in prod this was /^$/ → matches nothing
+```
+
+In production the origin `capacitor://localhost` didn't match any rule, the
+`origin()` callback ran `callback(null, false)`, and **no**
+`Access-Control-Allow-Origin` header was sent back at all. Browsers (and
+Capacitor's embedded WebView in production) treat that as an opaque
+network / CORS error. The mobile app looked "broken" with no message.
+
+### The fix — how it works now
+
+The module computes an **allowed origins Set** with this priority:
+
+1. **Always** `NATIVE_WEBVIEW_ORIGINS` (capacitor://localhost,
+   https://localhost, http://localhost, ionic://localhost). These are
+   not regular browser origins and can't be spoofed into a credentialed
+   attack because **`credentials: false`** and auth is a Bearer header,
+   not a cookie.
+
+2. **If `DESKTOP_ORIGINS` is set:** parse and add custom Electron
+   schemes (e.g. `app://anistrim-desktop`).
+
+3. **If `API_ALLOWED_ORIGINS` is set + NODE_ENV !== 'production':**
+   add the environment-configured web origins.
+
+4. **If NODE_ENV !== 'production' (dev/debug):** add `http://localhost`,
+   `http://localhost:5173`, `http://localhost:4200` (common dev servers).
+
+Then the `origin` factory function decides per-request:
+
+- **No `Origin` header** → `callback(null, true)` — always allowed.
+  Covers Electron `file://`, curl, server-to-server.
+- **`Origin` in the allowed set** → `callback(null, true)`.
+  This now includes `capacitor://localhost` _in every environment_.
+- **Anything else** → `console.warn('[cors] blocked origin', origin)`
+  then `callback(null, false)`. The browser blocks the request with a
+  console-visible CORS error (previously it failed silently — B9).
+
+### cors() options object
+
+| field            | value                                                                         |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `origin`         | the factory above                                                             |
+| `credentials`    | `false` — Bearer JWT in `Authorization`, never cookies                        |
+| `methods`        | `['GET','POST','PUT','PATCH','DELETE','OPTIONS']` — PATCH added (was missing) |
+| `allowedHeaders` | default + `Authorization`, `Content-Type`, `X-Client`, `X-Request-Id`         |
+| `exposedHeaders` | `X-Request-Id`, `X-RateLimit-*`, `Retry-After`                                |
+| `maxAge`         | 86400                                                                         |
+
+### How a test verifies it
+
+`test/cors.test.js` sets `NODE_ENV='production'` and `API_ALLOWED_ORIGINS`
+to a real URL, then builds the full CORS options object and asserts:
+
+- `capacitor://localhost` is in the allowed set **even in production**.
+- `https://localhost` (Android Capacitor w/ `androidScheme: "https"`) is allowed.
+- `https://evil.example.com` is NOT allowed.
+- An empty origin (no Origin header) IS allowed.
+
+Then it calls the actual `origin` factory with the same origins and asserts
+`callback(null, true)` for the allowed ones and `callback(null, false)`
+for the blocked one.
+
+---
+
+## 3. Mobile WebView Transport (Capacitor)
+
+### The original bug (B2)
+
+`capacitor.config.json` had:
+
+```json
+"CapacitorHttp": { "enabled": true }
+```
+
+This swaps Capacitor's embedded HTTP engine in front of `fetch`. That engine
+does NOT honour `AbortController`, changes `FormData`/`URLSearchParams`
+bodies, and alters `res.text()` semantics. `Frontend/js/api.js` relies on
+all three, so on-device API calls would intermittently hang, return empty
+data, or corrupt uploads — **never in a desktop browser**, which hides the
+bug during development.
+
+### The fix — how it works now
+
+`"enabled": false` tells Capacitor to use the **standard browser `fetch`**
+inside the WebView. Now the mobile fetch layer is identical to the desktop
+fetch layer:
+
+- `AbortController` timeouts work.
+- `FormData` / `URLSearchParams` bodies serialize correctly.
+- `res.text()` then `JSON.parse()` works (used for JSON responses).
+- CORS is the ONLY gatekeeper — which is now fixed (Section 2).
+
+### Startup self-check (new code in `Frontend/js/api.js`)
+
+On page load the mobile app now runs a one-shot IIFE:
+
+1. Calls `GET /api/health` with an 8-second `AbortController` timeout.
+2. If it fails OR times out:
+   - Stores `sessionStorage.__anistrim_health_checked = 'fail'`.
+   - Injects a **visible red banner** at the very top of the DOM:
+     `⚠️ Cannot reach AniStrim servers — check your connection.` + a
+     "Retry" button.
+3. If it succeeds, it stores `__anistrim_health_checked = 'ok'` and
+   silently continues (no banner after first check per session).
+
+This means a future CORS/DNS regression will **never again** manifest as a
+silent "can't do that right now". The user sees exactly what's wrong.
+
+---
+
+## 4. Backend Static Serving — One Express App, Three Roots
+
+### The original bug (B3)
+
+`server.js` had:
+
+```js
+app.use(express.static(frontendDir)); // mobile
+app.use("/admin", express.static(adminDir)); // admin
+app.get(/.*/, (req, res) => res.sendFile(frontendIndex)); // ← catches EVERYTHING
+```
+
+Because `app.get(/.*/)` (the mobile SPA fallback) came before a `/web`
+mount that didn't exist, **any unknown non-API URL returned the mobile
+`index.html`**. `/web/#/anime/123` returned the mobile shell, the
+`/web/` folder had no deploy path, and a bad API path returned HTML
+instead of JSON.
+
+### The fix — mount order
+
+The new `server.js` registers routes in this **exact order** (order matters —
+the first matching handler wins):
+
+```
+1. security, parsers, CORS
+2. all /api/*  routers (auth, anime, stream, etc.)
+3. JSON 404 guard:  /^\/api(\/.*)?$/  →  { success:false, error:{code:'NOT_FOUND',...} }
+4. /shared/client-contract  → static files
+5. /admin            → static + SPA fallback → AdminDashboard/dashboard.html
+6. ${WEB_MOUNT_PATH} (default /web) → static + SPA fallback → Web/index.html
+7. /desktop-preview  (if SERVE_DESKTOP_PREVIEW) → static + Desktop/index.html
+8. /  (mobile)       → express.static(Frontend)  [index:false]
+9. errorHandler (global, AFTER all routes)
+10. final catch-all  → Frontend/index.html   (only if SERVE_FRONTEND)
+```
+
+### Why `index: false`
+
+Every `express.static` call sets `{ index: false }`. This prevents static
+from auto-serving `index.html` on a directory request and lets the
+explicit `app.get(webFallbackRegex, ...)` handler serve the SPA shell
+instead — so `/web/anime/123` → SPA fallback → router picks the route.
+
+### Cache headers
+
+A shared `setStaticHeaders` function sets:
+
+- `*.html` → `no-cache, no-store, must-revalidate` (always fresh)
+- Hashed assets (`*-[hash].js`, `*.css`) → `public, max-age=31536000, immutable`
+
+### API 404 guard (the JSON-not-HTML fix)
+
+Right after the `/api/*` routers but BEFORE any static serving:
+
+```js
+const api404 = (req, res) =>
+  sendError(res, 404, {
+    code: "NOT_FOUND",
+    message: "API endpoint not found.",
+    requestId: req.id,
+  });
+app.use("/api", api404);
+```
+
+So `GET /api/does-not-exist` returns JSON, never the mobile HTML shell,
+which previously masked API 404s as "the app returned an unreadable
+response".
+
+---
+
+## 5. Shared Client Contract Layer
+
+**Goal:** one non-visual code layer that every client (mobile, web, desktop,
+admin) can reuse, so no client has to reimplement auth/refresh/envelope logic.
+
+**Location:** `shared/client-contract/` — plain ES5-safe IIFE files, no build step.
+The server serves them at `/shared/client-contract/*` and they can also be
+copied into each client at build time.
+
+Files and what each exposes:
+
+### `endpoints.js` → `window.AniStrimEndpoints` (browser) / `module.exports` (Node)
+
+Single list of all API paths grouped by resource (auth, anime, stream,
+watchlist, etc.). Example:
+
+```js
+{
+  auth: {
+    login: '/api/auth/login',
+    signup: '/api/auth/signup',
+    verifyOtp: '/api/auth/verify-otp',
+    refresh: '/api/auth/refresh',
+    me: '/api/auth/me',
+    logout: '/api/auth/logout',
+    logoutAll: '/api/auth/logout-all',
+    forgot: '/api/auth/forgot-password',
+    reset: '/api/auth/reset-password',
+    ...
+  },
+  ...
+}
+```
+
+No endpoint path is hardcoded in any client — they reference `AniStrimEndpoints.xxx`.
+
+### `envelope.js` → `window.AniStrimEnvelope`
+
+Implements the single source of truth for unwrapping API responses:
+
+```js
+function unwrap(body) {
+  // success path
+  if (body && body.success !== false && body.data !== undefined) {
+    return { ok: true, data: body.data, meta: body.meta };
+  }
+  // error path
+  return {
+    ok: false,
+    error: body.error || { message: body.message || "Unknown error" },
+  };
+}
+```
+
+Every client calls `AniStrimEnvelope.unwrap(await res.json())` and gets back
+`{ ok, data, meta, error }` — identical behaviour across all three UIs.
+
+### `session.js` → `window.AniStrimSession`
+
+Per-client token storage (see Section 7 for the session-collision fix).
+
+- `create(client)` → instance with key prefix `anistrim.${client}.`
+- `getToken()` / `getRefreshToken()` — reads prefixed keys, migrates legacy
+  keys on first read.
+- `setTokens(token, refreshToken)` — writes both under the prefix.
+- `clear()` — deletes both prefixed keys.
+- `hasSession()` — true if `getToken()` returns something.
+
+### `http.js` → `window.AniStrimHttp`
+
+The full request layer:
+
+```js
+const http = AniStrimHttp.create({
+  apiBase: "https://anistrimbackend.onrender.com",
+  client: "desktop", // sets X-Client header
+  session: sessionInstance,
+  onUnauthorized: () => {
+    showLogin();
+  }, // redirect UI to login
+  onRequiresVerification: (email) => {
+    showVerify(email);
+  }, // redirect UI to OTP
+});
+```
+
+`http.get/post/put/patch/delete` all go through a private `request()`:
+
+1. **Build the URL** from `apiBase` + endpoint path.
+2. **Attach Bearer** `Authorization: Bearer ${session.getToken()}` if present.
+3. **Set `X-Client`** header to the configured client id (`mobile|web|desktop|admin`).
+4. **Set a timeout** via `AbortController` (default 30s; can be overridden).
+5. **Send** the fetch with the right body (JSON.stringify or FormData passthrough
+   for uploads).
+6. **Parse the response** — `res.text()` then `JSON.parse` (handles the envelope).
+7. **Run `unwrap()`** on the parsed body.
+8. **Handle special status codes:**
+   - **401**: attempt a single one-shot `POST /api/auth/refresh` using
+     `getRefreshToken()`. If the refresh succeeds, retry the original request
+     _once_ with the new token. If refresh fails → `session.clear()` +
+     call `onUnauthorized()` (redirect to login). The "one-shot" guard
+     prevents infinite loops on a stale token.
+   - **403 with `code === 'ACCOUNT_UNVERIFIED'` or `requiresVerification`** → call
+     `onRequiresVerification(email)` (navigate to OTP screen).
+   - **429** → read `Retry-After` header, throw `ApiError` with `retryAfter`
+     property + call `options.onRateLimit(retryAfter)`.
+   - **network error / timeout** → return `{ ok: false, error: { message }, timedOut }`.
+9. **Return** `{ ok, status, data, meta, error }` — the exact same shape
+   `unwrap()` produces.
+
+### `app.js` → `window.AniStrimClient`
+
+Convenience wrapper that creates BOTH a session and an http instance wired
+together, plus the `onUnauthorized` / `onRequiresVerification` callbacks.
+Used by the Desktop renderer.
+
+---
+
+## 6. Per-Client Settings Resolution (B7)
+
+### The problem
+
+The old code had:
+
+```js
+const resetPath = clientAgnostic.PASSWORD_RESET_PATH; // single global value
+```
+
+With mobile + web + desktop alive, a password-reset email can only ever
+return to ONE client. Mobile users get sent to `/reset-password`, web users
+to `/reset-password`, etc. — all pointing to the same place.
+
+### The fix — how `getPasswordResetPath(client, requestedPath)` works
+
+```js
+// 1. Parse allow-list from env RESET_PATHS_JSON =
+//   JSON.stringify({"mobile":"reset","web":"reset","desktop":"reset","admin":"reset"})
+// If a caller requests a path via ?resetPath=foo, it's only used if "foo" is in the allow-list.
+
+// 2. Per-client map from env GOOGLE_RETURN_TARGETS_JSON:
+//   {"mobile":"anistrim://auth","web":"https://anistrim.com/reset","...":"desktop":"anistrim-desktop://reset"}
+
+const getPasswordResetPath = (client, requestedPath) => {
+  if (requestedPath && RESET_PATH_ALLOW_LIST.has(requestedPath))
+    return requestedPath;
+  if (resetPaths[client]) return resetPaths[client];
+  return resetPaths.mobile; // fallback
+};
+```
+
+Rules:
+
+- **`client`** comes from `req.headers['x-client']` (default `'mobile'`).
+- **`requestedPath`** from `req.query.resetPath` — accepted ONLY if in the
+  strict `RESET_PATH_ALLOW_LIST` set. Otherwise ignored and the
+  per-client default is used.
+- Never reflect a caller-supplied URL — only values that passed the
+  allow-list reach the email link.
+
+`getGoogleReturnTarget(client, requestedTarget)` has the identical pattern
+using `GOOGLE_RETURN_TARGETS_JSON` + `GOOGLE_RETURN_ALLOW_LIST`.
+
+### Where it's called
+
+- `controllers/authController.js` `forgotPassword` — resolves the reset path.
+- `controllers/googleAuthController.js` `googleCallback` (the `?client=api`
+  branch) — resolves the deep link.
+
+### Google redirect URIs
+
+The prompt instructs: **register every Google redirect URI you use** in the
+Google Cloud Console. Currently the only one is:
+`${BACKEND_URL}/api/auth/google/callback`. Any new client that uses the
+GIS (Google Identity Services) redirect flow must have its URI pre-registered.
+
+---
+
+## 7. Token Storage & Session Isolation (B8)
+
+### The problem
+
+- Mobile app uses keys: `token`, `refresh_token`, `session_token`.
+- Web app uses keys: `web_token`, `web_refresh_token`.
+- If Web/ is served from the same origin as Frontend/ (e.g. at `/web`),
+  both share the same `localStorage`. A user could be logged in on mobile
+  and logged out on web (or vice versa) because the apps read/write
+  different key names.
+
+### The fix — how `session.js` works
+
+```js
+AniStrimSession.create("mobile"); // → prefix 'anistrim.mobile.'
+AniStrimSession.create("web"); // → prefix 'anistrim.web.'
+AniStrimSession.create("desktop"); // → prefix 'anistrim.desktop.'
+
+// Keys written:
+localStorage["anistrim.mobile.token"]; // mobile access token
+localStorage["anistrim.web.token"]; // web access token
+localStorage["anistrim.desktop.token"]; // desktop access token
+```
+
+Each client reads **only its own prefixed keys**, so two sessions on the
+same origin never collide.
+
+### Legacy migration (backward compatibility)
+
+On the **first read** of a token, if the prefixed key is missing, the
+session module checks the legacy keys:
+
+- `token` / `refresh_token` → migrates to `anistrim.{client}.token` / `.refreshToken`
+- `web_token` / `web_refresh_token` → migrates to `anistrim.web.token` / `.refreshToken`
+
+After migration the legacy key is **cleared** so there's only ever one
+canonical key set per client. This lets existing logged-in users stay
+logged in when the code updates.
+
+### Desktop specifics
+
+Electron `file://` pages send **no Origin header**, so they are already
+allowed by the no-origin branch of the CORS origin function. No wildcard
+CORS is needed or added — the Desktop app connects to the same API base
+with `X-Client: desktop` and its scoped token keys.
+
+---
+
+## 8. Envelope Consistency (B10)
+
+### The problem
+
+- Backend: `utils/response.js` → `{ success, data, meta }` for success and
+  `utils/apiError.js` → `{ success:false, error:{code,message,status,requestId} }`
+  for errors. Consistent.
+- BUT `controllers/adsController.js` called `res.json({ads, session})` (6
+  sites) — those responses did NOT have the `{success, data, meta}` wrapper.
+  So the ads API returned a different shape than every other endpoint.
+
+### The fix
+
+All 6 success paths in `adsController.js` now use `sendSuccess(res, payload, meta)`:
+
+| Before                                      | After                                           |
+| ------------------------------------------- | ----------------------------------------------- |
+| `res.json({ success: true, ads, session })` | `sendSuccess(res, { ads, session, isPremium })` |
+| `res.json({ config })`                      | `sendSuccess(res, config)`                      |
+| `res.json({ ads: [], session: null })`      | `sendSuccess(res, { ads: [], session: null })`  |
+
+`sendSuccess` always produces `{ success: true, data: payload, meta: {} }`.
+Error responses were not touched (they already used `sendError`/`ApiError`).
+
+Every `/api/*` endpoint now returns a uniform envelope. No client needs a
+special case for ads.
+
+---
+
+## 9. Desktop Electron App (B6)
+
+### File map
+
+```
+Desktop/
+├── package.json          # Electron scripts + electron-builder config
+├── main.js               # Main process (CommonJS)
+├── preload.js            # contextBridge bridge → window.anistrim
+├── index.html            # Browser window HTML
+├── js/renderer.js        # SPA renderer (uses shared/client-contract/*)
+└── css/styles.css        # Desktop-density styles
+```
+
+### Main process security posture (`main.js`)
+
+| setting                | value                       | why                                                                                                                                               |
+| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contextIsolation`     | `true`                      | renderer cannot access Node APIs directly                                                                                                         |
+| `nodeIntegration`      | `false`                     | no `require()` in renderer DOM                                                                                                                    |
+| `sandbox`              | `true`                      | OS-level sandbox on renderer process                                                                                                              |
+| `webSecurity`          | `true`                      | blocks insecure content                                                                                                                           |
+| CSP header             | strict                      | `default-src 'self'`, `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `media-src 'self' blob: https:`, `connect-src 'self' https: http:` |
+| `setWindowOpenHandler` | deny + `shell.openExternal` | external links open in system browser                                                                                                             |
+
+### Window state persistence
+
+`main.js` reads/writes `userData/window-state.json` (x, y, width, height,
+isMaximized) so the app reopens at the same size and position. No third-party
+library needed.
+
+### Menu + media keys
+
+- Menu bar: File / View / Playback / Window / Help
+- Playback menu accelerators: Space (play/pause), CmdOrCtrl+M (mute),
+  Shift+→ (skip intro), Shift+↓ (next episode)
+- Global media keys: `MediaPlayPause`, `MediaNextTrack`, `MediaPreviousTrack`
+  → send IPC messages to the renderer.
+
+### Preload bridge (`window.anistrim`)
+
+The renderer never touches `ipcRenderer` or `electron` directly. The only
+exposed API:
+
+```js
+window.anistrim = {
+  platform: 'win32',
+  versions: { electron, chrome, node },
+  onNavigate(callback),   // menu nav → callback('/browse')
+  onMediaCommand(callback), // callback('play-pause') | 'mute' | 'skip-intro' | ...
+  minimize(), maximize(), close(),
+}
+```
+
+### Renderer (`renderer.js`)
+
+1. Creates `AniStrimSession.create('desktop')` (scoped tokens).
+2. Creates `AniStrimHttp.create({ client: 'desktop', ... })`.
+3. Hash-based router: `#/` → home, `#/browse`, `#/anime/:id`, `#/watchlist`,
+   `#/profile`.
+4. If no session → shows login (email/password form → `POST /api/auth/login`).
+5. If signup → `/api/auth/signup` → OTP flow → `/api/auth/verify-otp`.
+6. Calls `/api/home/sections` for home, `/api/anime/latest` for browse,
+   `/api/anime/:id` for detail, `/api/watchlist`, `/api/auth/me`/`/logout`.
+
+### Offline download queue (pending)
+
+The renderer references `POST /api/stream/offline-download` in its comment
+block but the actual implementation (hls.js download queue, local file
+storage) is NOT yet wired. This is a TODO for the next agent.
+
+### Auto-update stub
+
+`main.js` tries to `require('electron-updater')`. If it's not installed
+(desktop `package.json` only declares it as devDependencies), the `try/catch`
+silently stubs it. When `electron-updater` is added to the build, the stub
+will activate automatically.
+
+### Build scripts
+
+| script                        | target                |
+| ----------------------------- | --------------------- |
+| `npm run desktop:dev`         | launches `electron .` |
+| `npm run desktop:build:win`   | NSIS installer        |
+| `npm run desktop:build:mac`   | DMG                   |
+| `npm run desktop:build:linux` | AppImage              |
+
+Build config in `package.json` under `"build"` key with appId
+`com.anistrim.desktop`.
+
+---
+
+## 10. Request Flow Examples (Walkthrough)
+
+### Flow A: Mobile app fetches anime detail (the common case)
+
+```
+1.  Mobile Capacitor WebView
+    → fetch('https://anistrimbackend.onrender.com/api/anime/123',
+       headers: { 'Authorization': 'Bearer <mobile token>',
+                  'X-Client': 'mobile' })
+       NOTE: no CapacitorHttp engine involved — standard browser fetch.
+
+2.  CORS middleware (config/cors.js)
+    → Origin = capacitor://localhost
+    → isOriginAllowed → YES (in allow-list, env-independent)
+    → sets Access-Control-Allow-Origin: capacitor://localhost
+    → credentials: false, so no cookie headers
+
+3.  server.js API 404 guard
+    → /api/anime/123 doesn't hit the 404 catch (animeRoutes handles it)
+
+4.  controllers/animeController.js
+    → queries DB, returns sendSuccess(res, { id, title, ... })
+
+5.  Mobile fetch receives response
+    → res.json() = { success: true, data: { ... } }
+    → AniStrimEnvelope.unwrap → { ok: true, data: {...} }
+```
+
+### Flow B: Web browser deep-link /web/anime/123
+
+```
+1.  User navigates to https://anistrim.com/web/anime/123
+    (or clicks a link inside the Web SPA)
+
+2.  server.js static serving chain
+    → doesn't match /api/...
+    → doesn't match /shared/...
+    → doesn't match /admin/...
+    → matches /web/ mount (WEB_MOUNT_PATH = '/web')
+    → express.static(Web/) looks for /web/anime/123 → NOT a real file
+    → falls through to SPA fallback regex → serves Web/index.html
+
+3.  Browser loads index.html → router.js reads URL
+    → route = /anime/123 → calls api.js → GET /api/anime/123
+
+4.  Same API flow as Flow A, but with X-Client: web
+    and token keys prefixed anistrim.web.*
+
+5.  Browser gets { success:true, data:{...} }
+    → Web ui.js renders the anime detail page.
+```
+
+### Flow C: Forgotten password on desktop
+
+```
+1.  User clicks "forgot password" in the Electron app.
+
+2.  Frontend calls POST /api/auth/forgot-password
+    headers: { 'X-Client': 'desktop' }
+    body: { email: 'user@example.com' }
+
+3.  authController.forgotPassword
+    → client = req.headers['x-client'] = 'desktop'
+    → resetPath = getPasswordResetPath('desktop', undefined)
+                 = resetPaths['desktop']   // e.g. 'reset'
+                 = 'reset'
+
+4.  In dev mode (NODE_ENV !== 'production'):
+    → response includes resetUrl = 'https://anistrim.com/reset?token=<jwt>'
+
+5.  User clicks link → desktop browser or web browser
+    → token is verified server-side, new password set.
+```
+
+### Flow D: Unknown API path
+
+```
+1.  fetch('https://anistrimbackend.onrender.com/api/no-such-route')
+
+2.  server.js: matches /api/* → hits api404 middleware FIRST
+    → returns JSON { success:false, error:{ code:'NOT_FOUND', ... } }
+
+3.  Client unwrap → { ok: false, error: { code, message, status, requestId } }
+    → http.js throws ApiError or the caller handles res.ok === false
+```
+
+### Flow E: CORS rejection (new observability)
+
+```
+1.  fetch('https://anistrimbackend.onrender.com/api/anime/1')
+    Origin: https://evil-site.com
+
+2.  config/cors.js origin()
+    → origin NOT in allowed set
+    → console.warn('[cors] blocked origin', 'https://evil-site.com')
+    → callback(null, false) → browser blocks the response
+
+3.  Developer sees the console.warn in server logs → can immediately
+    diagnose "someone is calling the API from a non-allow-listed origin."
+```
+
+---
+
+## 11. Environment Variables
+
+### .env.example (authoritative list — copy to real `.env` and Render dashboard)
+
+| variable                     | purpose                                         | example                                         |
+| ---------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| `API_ALLOWED_ORIGINS`        | Extra web origins allowed in dev                | `https://anistrim.com,https://www.anistrim.com` |
+| `DESKTOP_ORIGINS`            | Electron custom schemes (prod)                  | `app://anistrim-desktop`                        |
+| `SERVE_WEB`                  | Mount Web/ static root (bool)                   | `true`                                          |
+| `WEB_DIR`                    | Web directory                                   | `Web`                                           |
+| `WEB_MOUNT_PATH`             | URL prefix for Web client                       | `/web`                                          |
+| `SERVE_DESKTOP_PREVIEW`      | Mount Desktop/ at /desktop-preview              | `false`                                         |
+| `DESKTOP_DIR`                | Desktop directory                               | `Desktop`                                       |
+| `PRIMARY_HOST_WEB`           | Host header → serve Web at /                    | (empty = both share /)                          |
+| `PRIMARY_HOST_MOBILE`        | Host header → serve Frontend at /               | (empty = both share /)                          |
+| `RESET_PATHS_JSON`           | Per-client reset paths allow-list               | `{"mobile":"reset","web":"reset"}`              |
+| `GOOGLE_RETURN_TARGETS_JSON` | Per-client Google deep-link targets             | `{"mobile":"anistrim://auth"}`                  |
+| `FRONTEND_URL`               | Base URL for frontend (used in forgot-password) | `https://anistrim.com`                          |
+| `BACKEND_URL`                | This server's URL                               | `https://anistrimbackend.onrender.com`          |
+| `JWT_SECRET`                 | (existing)                                      | —                                               |
+
+**Capacitor origins** (`capacitor://localhost`, `https://localhost`, etc.)
+are ALWAYS allowed and do NOT need to be in `API_ALLOWED_ORIGINS`.
+
+---
+
+## 12. Testing & Verification
+
+### Unit tests (24 total, all green)
+
+```
+node --test test/cors.test.js test/routeServing.test.js
+```
+
+**test/cors.test.js (20 tests):**
+
+- parseOrigins handles empty/undefined/whitespace/filter
+- buildAllowedOrigins: native webview origins always in prod, env origins,
+  desktop origins, dev-localhost origins
+- isOriginAllowed: no-origin, explicit allow, blocks unknown, capacitor in
+  prod, https://localhost in prod
+- buildCorsOptions: PATCH method, X-Client header, credentials:false,
+  origin callback (capacitor allowed/blocked/no-origin)
+
+**test/routeServing.test.js (5 tests):**
+
+- GET / → mobile HTML
+- GET /web/ → web HTML
+- GET /web/anime/123 → web HTML (NOT mobile shell)
+- GET /admin/settings → admin HTML
+- GET /api/does-not-exist → JSON 404
+
+### Smoke test
+
+```
+node scripts/smoke-test.js [BASE_URL] [WEB_ORIGIN]
+```
+
+Hits 7 API endpoints with 4 Origin variants and asserts
+`Access-Control-Allow-Origin` is present. Run against your deployed backend
+to confirm CORS is live in production.
+
+### Manual checklist (for the next person to sign off)
+
+1. Android APK: signup → OTP → browse → search → play (with resume) →
+   watchlist → upgrade → logout.
+2. iOS build: same flow.
+3. Chrome/Safari/Firefox: visit `https://anistrim.com/web/`, verify
+   routing and that `/web/anime/123` returns the web shell not mobile.
+4. Desktop: `cd Desktop && npm install && npm run desktop:dev` →
+   sign in → browse → play.
+5. Confirm a blocked origin shows `console.warn('[cors] blocked origin ...')`.
+
+---
+
+## END
+
+To hand this to the next agent: paste this entire document. It fully
+specifies how every piece works — CORS, mobile transport, static serving,
+shared contract layer, per-client settings, token scoping, envelope
+consistency, and the Desktop app architecture.
