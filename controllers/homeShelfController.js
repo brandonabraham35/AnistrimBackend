@@ -5,6 +5,7 @@
 // classics) as a single cached payload, plus an admin-only refresh endpoint.
 
 const homeShelf = require('../services/homeShelfService');
+const { sendSuccess } = require('../utils/response');
 
 /**
  * GET /api/home/sections
@@ -13,7 +14,7 @@ const homeShelf = require('../services/homeShelfService');
 exports.getSections = async (req, res) => {
   try {
     const shelf = await homeShelf.getHomeShelf();
-    res.json(shelf);
+    return sendSuccess(res, shelf);
   } catch (error) {
     console.error('[HomeShelf] getSections error:', error.message);
     res.status(500).json({ message: 'Failed to load home sections.' });
@@ -28,7 +29,7 @@ exports.getSections = async (req, res) => {
 exports.refresh = async (req, res) => {
   try {
     const shelf = await homeShelf.refreshHomeShelf();
-    res.json({ message: 'Home sections refreshed.', ...shelf });
+    return sendSuccess(res, shelf, { message: 'Home sections refreshed.' });
   } catch (error) {
     console.error('[HomeShelf] refresh error:', error.message);
     res.status(500).json({ message: 'Failed to refresh home sections.' });

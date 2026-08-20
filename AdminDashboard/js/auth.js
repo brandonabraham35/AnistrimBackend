@@ -70,7 +70,9 @@ async function sendAdminIdTokenToBackend(idToken, baseUrl) {
       body: JSON.stringify({ idToken })
     });
 
-    const data = await res.json();
+    const raw = await res.json();
+    // Standard envelope: { success:true, data:{ token, user } } — unwrap.
+    const data = (raw && raw.success === true && raw.data) ? raw.data : raw;
 
     if (res.ok && data.token && data.user) {
       // Check if user is admin
@@ -142,10 +144,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 // Pass a raw JavaScript object; the apiRequest helper will handle serialization.
-                const data = await window.apiRequest('/api/auth/login', {
+                const raw = await window.apiRequest('/api/auth/login', {
                     method: 'POST',
                     body: { email, password }
                 });
+                // window.apiRequest already unwraps via unwrapAdminEnvelope.
+                const data = raw;
 
                 const u = data?.user;
                 // Simplified, robust check for admin status, handles various formats (boolean, number, buffer)

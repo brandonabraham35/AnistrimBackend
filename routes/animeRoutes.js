@@ -8,6 +8,7 @@ const { ConsumetProvider } = require('../services/consumetProvider');
 const { protect, optionalAuth } = require('../middleware/auth');
 const { PUBLIC_EPISODE_FILTER } = require('../utils/contentVisibility');
 const episodeAccess = require('../utils/episodeAccess');
+const { sendSuccess } = require('../utils/response');
 
 const consumet = new ConsumetProvider();
 
@@ -36,10 +37,7 @@ router.get('/kitsu/:kitsuId/episodes', async (req, res) => {
         // 2. Fetch episodes from Consumet (in-memory, no HTTP call)
         const episodes = await consumet.getEpisodes(slug);
 
-        return res.json({
-            success: true,
-            episodes: episodes || []
-        });
+        return sendSuccess(res, { episodes: episodes || [] });
 
     } catch (error) {
         console.error('[Episode Fetch Error]:', error.message);
@@ -58,8 +56,13 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
         const { animeId } = req.params;
 
         // Fetch only published + available episodes (Phase 5 publication filter).
+        // Explicit column whitelist — never SELECT *, so provider/internal fields
+        // (cloudinary_public_id, animeheaven_episode_key, etc.) cannot leak.
         const [episodes] = await pool.query(
-            `SELECT e.* FROM episodes e
+            `SELECT e.id, e.anime_id, e.episode_number, e.season, e.season_number, e.title, e.description,
+                    e.thumbnail_url, e.video_url, e.duration_sec, e.view_count, e.is_premium,
+                    e.access_tier, e.premium_until, e.created_at, e.updated_at
+             FROM episodes e
              JOIN anime a ON a.id = e.anime_id
              WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER}
              ORDER BY e.episode_number ASC`,
@@ -91,7 +94,7 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
             accessState: m.accessState,
         }));
 
-        return res.json(mapped);
+        return sendSuccess(res, mapped);
     } catch (error) {
         console.error('[Local Episode Fetch Error]:', error.message);
         return res.status(500).json({ error: 'Failed to fetch episodes from database' });

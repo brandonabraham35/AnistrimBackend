@@ -132,6 +132,7 @@
           })
           .then(function (data) {
             clearTimeout(timeoutId);
+            data = (data && data.success === true && data.data) ? data.data : data;
             if (data && data.clientId && typeof data.clientId === 'string' && data.clientId.length > 0) {
               resolve(data.clientId);
             } else {
@@ -568,7 +569,9 @@
     showOverlay('Signing you in...');
     try {
       var res  = await fetch(BACKEND_DL + '/api/auth/google/token?code=' + encodeURIComponent(code));
-      var data = await res.json();
+      var raw  = await res.json();
+      // Standard envelope: { success:true, data:{ token, user } } — unwrap.
+      var data = (raw && raw.success === true && raw.data) ? raw.data : raw;
       if (!res.ok || !data.token || !data.user) {
         hideOverlay();
         showDLError('Sign-in failed. Please try again.');

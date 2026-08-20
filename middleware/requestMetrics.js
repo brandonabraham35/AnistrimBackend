@@ -18,11 +18,14 @@ function requestMetrics(req, res, next) {
   res.on('finish', () => {
     const latencyMs = Date.now() - started;
     const path = (req.originalUrl || req.url || '').split('?')[0].slice(0, 255);
+    // Include the per-request requestId (set by middleware/requestId) so each
+    // api_request_log row can be correlated with error/observability logs.
+    const requestId = req.requestId || null;
     // Fire-and-forget; the INSERT is independent of the response lifecycle.
     // Swallow/log any failure — request timing must never break the request.
     db.query(
-      'INSERT INTO api_request_log (method, path, status_code, latency_ms) VALUES (?, ?, ?, ?)',
-      [req.method, path, res.statusCode, latencyMs]
+      'INSERT INTO api_request_log (request_id, method, path, status_code, latency_ms) VALUES (?, ?, ?, ?, ?)',
+      [requestId, req.method, path, res.statusCode, latencyMs]
     ).catch(err => {
       if (process.env.NODE_ENV !== 'production') {
         // Avoid flooding prod logs on every request; surface in dev only.

@@ -147,7 +147,8 @@ async function handleAppUrlOpen(data) {
     const code = url.searchParams.get('code');
     if (code) {
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
-      const data2 = await res.json();
+      const raw2 = await res.json();
+      const data2 = (raw2 && raw2.success === true && raw2.data) ? raw2.data : raw2;
       if (res.ok && data2.token) {
         if (window.setAuthTokens) window.setAuthTokens(data2.token, data2.refreshToken);
         else { localStorage.setItem('session_token', data2.token); localStorage.setItem('token', data2.token); }

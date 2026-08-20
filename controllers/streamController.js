@@ -22,6 +22,7 @@ const db = require('../config/db');
 const streamingService = require('../services/streamingService');
 const logger = require('../utils/logger');
 const streamProxy = require('../utils/streamProxy');
+const { sendSuccess } = require('../utils/response');
 
 /**
  * Resolve the DB episode id + authoritative premium status for an
@@ -293,8 +294,7 @@ logger.debugStream(`[StreamController] RESOLVED: "${animeTitle}" → Ep ${episod
 
     logger.info('[PLAYBACK]', { event: 'sourceReturned', animeTitle, episode: episodeNumber, provider: publicResult.provider, latencyMs: elapsed });
 
-    res.json({
-      success: true,
+    return sendSuccess(res, {
       ...publicResult,
       episodeNumber,
       resolvedFrom,
@@ -386,10 +386,7 @@ exports.listProviders = async (req, res) => {
       metadataOnly: true,
     }];
 
-    res.json({
-      success: true,
-      providers,
-    });
+    return sendSuccess(res, { providers });
   } catch (err) {
     logger.error('[StreamController] listProviders error', { animeTitle, episodeNumber, error: err.message });
     res.status(502).json({
@@ -450,8 +447,7 @@ const result = await streamingService.resolveStream(animeTitle, episodeNumber, {
     // context the scraper established (and never expose it to the client).
     const publicResult = streamProxy.rewriteResultToProxy(result, req.user?.id || null) || result;
 
-    res.json({
-      success: true,
+    return sendSuccess(res, {
       authorized: true,
       streamUrl: publicResult.streamUrl,
       quality: publicResult.bestQuality,
@@ -688,7 +684,7 @@ exports.authorizeStream = async (req, res) => {
       return { streamId, token, url, expiresIn: Math.round(TTL_MS / 1000) };
     });
 
-    return res.json({
+    return sendSuccess(res, {
       token: streams[0].token,          // primary token (backwards-compatible)
       streamId: streams[0].streamId,    // primary streamId (backwards-compatible)
       streams,

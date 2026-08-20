@@ -4,6 +4,7 @@ const authController = require('../controllers/authController');
 const googleVerifyController = require('../controllers/googleVerifyController');
 const googleAuthController = require('../controllers/googleAuthController');
 const authMiddleware = require('../middleware/auth');
+const { sendSuccess } = require('../utils/response');
 const {
   loginLimiter,
   otpLimiter,
@@ -136,7 +137,7 @@ router.get('/google/client-id', (req, res) => {
   if (!clientId) {
     return res.status(404).json({ message: 'Google Client ID not configured.' });
   }
-  res.json({ clientId });
+  return sendSuccess(res, { clientId });
 });
 
 // ── Google OAuth redirect flow (Capacitor / mobile deep-link) ──

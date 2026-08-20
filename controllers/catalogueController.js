@@ -2,6 +2,7 @@ const catalogue = require('../services/catalogueService');
 const cache = require('../utils/cacheService');
 const { KitsuProvider } = require('../services/kitsuProvider');
 const { ConsumetProvider } = require('../services/consumetProvider');
+const { sendSuccess } = require('../utils/response');
 const kitsu = new KitsuProvider();
 const consumet = new ConsumetProvider();
 
@@ -33,7 +34,7 @@ exports.search = async (req, res) => {
       results = results.map(item => ({ ...item, id: item.kitsu_id }));
       await cache.set(cacheKey, results, 24 * 60 * 60);
     }
-    res.json(results);
+    return sendSuccess(res, results);
   }
   catch (error) { console.error('Catalogue search failed:', error.message); res.status(502).json({ message: 'Catalogue search is temporarily unavailable.' }); }
 };
@@ -79,7 +80,7 @@ exports.advancedSearch = async (req, res) => {
       sort: sortArray,
     });
 
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (error) {
     console.error('[CatalogueController] advancedSearch error:', error.message);
     res.status(502).json({ message: 'Advanced search is temporarily unavailable.', error: error.message });
@@ -102,12 +103,12 @@ exports.getTrendingAnime = async (req, res) => {
     // 1. Try Redis-backed cache first (5 min TTL)
     const cachedResult = await cache.get(cacheKey);
     if (cachedResult) {
-      return res.json(cachedResult);
+      return sendSuccess(res, cachedResult);
     }
 
     // 2. Check in-memory cache (also acts as stale fallback)
     if (isCacheFresh(memoryCache.trending)) {
-      return res.json(memoryCache.trending.data);
+      return sendSuccess(res, memoryCache.trending.data);
     }
 
     // 3. Fetch from external API
@@ -117,7 +118,7 @@ exports.getTrendingAnime = async (req, res) => {
     await cache.set(cacheKey, result, 5 * 60); // Redis: 5 min
     memoryCache.trending = { data: result, timestamp: Date.now() };
 
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (error) {
     // Graceful handling for 429 (rate limit) or any network error
     console.warn(`[CatalogueController] getTrendingAnime error: ${error.message}`);
@@ -125,7 +126,7 @@ exports.getTrendingAnime = async (req, res) => {
     // Return stale in-memory cache if available (even if expired)
     if (memoryCache.trending.data) {
       console.log('[CatalogueController] Returning stale trending cache due to upstream error');
-      return res.json(memoryCache.trending.data);
+      return sendSuccess(res, memoryCache.trending.data);
     }
 
     res.status(502).json({
@@ -151,12 +152,12 @@ exports.getPopularAnime = async (req, res) => {
     // 1. Try Redis-backed cache first (5 min TTL)
     const cachedResult = await cache.get(cacheKey);
     if (cachedResult) {
-      return res.json(cachedResult);
+      return sendSuccess(res, cachedResult);
     }
 
     // 2. Check in-memory cache (also acts as stale fallback)
     if (isCacheFresh(memoryCache.popular)) {
-      return res.json(memoryCache.popular.data);
+      return sendSuccess(res, memoryCache.popular.data);
     }
 
     // 3. Fetch from external API
@@ -166,7 +167,7 @@ exports.getPopularAnime = async (req, res) => {
     await cache.set(cacheKey, result, 5 * 60); // Redis: 5 min
     memoryCache.popular = { data: result, timestamp: Date.now() };
 
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (error) {
     // Graceful handling for 429 (rate limit) or any network error
     console.warn(`[CatalogueController] getPopularAnime error: ${error.message}`);
@@ -174,7 +175,7 @@ exports.getPopularAnime = async (req, res) => {
     // Return stale in-memory cache if available (even if expired)
     if (memoryCache.popular.data) {
       console.log('[CatalogueController] Returning stale popular cache due to upstream error');
-      return res.json(memoryCache.popular.data);
+      return sendSuccess(res, memoryCache.popular.data);
     }
 
     res.status(502).json({
@@ -184,7 +185,7 @@ exports.getPopularAnime = async (req, res) => {
   }
 };
 
-exports.getEpisodes = async (req, res) => { try { res.json(await catalogue.getEpisodes(Number(req.params.id))); } catch (error) { console.error('Episode lookup failed:', error.message); res.status(502).json({ message: 'Episodes are temporarily unavailable.' }); } };
+exports.getEpisodes = async (req, res) => { try { return sendSuccess(res, await catalogue.getEpisodes(Number(req.params.id))); } catch (error) { console.error('Episode lookup failed:', error.message); res.status(502).json({ message: 'Episodes are temporarily unavailable.' }); } };
 exports.getStream = async (req, res) => {
   try {
     const animeId = Number(req.params.id);
@@ -218,7 +219,7 @@ exports.getStream = async (req, res) => {
 
     const stream = await catalogue.getStream(animeId, episodeParam);
     if (!stream?.video_url) return res.status(404).json({ message: 'No stream is currently available for this episode.' });
-    res.json(stream);
+    return sendSuccess(res, stream);
   } catch (error) {
     console.error('Stream lookup failed:', error.message);
     res.status(502).json({ message: 'Streaming source is temporarily unavailable.' });

@@ -86,26 +86,19 @@ try {
 }
 
 // ─── CORS Configuration ────────────────────────────────────
-const allowedOrigins = new Set([
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://10.5.50.55:3000',
-  ...(process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean),
-]);
-// Private-LAN origins are only allowed in non-production (dev) environments.
-const localDevOrigin = process.env.NODE_ENV === 'production'
-  ? /^$/
-  : /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$/;
+// Environment-driven CORS from config/cors.js:
+//   - API_ALLOWED_ORIGINS env var (comma-separated) for Web, Admin,
+//     Capacitor (mobile), and future desktop origins.
+//   - Development localhost/private-LAN origins auto-enabled in dev.
+//   - credentials:false because auth uses Bearer JWT (Authorization header),
+//     not cookies.
+const corsOptions = require('./config/cors').buildCorsOptions();
+app.use(cors(corsOptions));
 
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin) || localDevOrigin.test(origin)) return callback(null, true);
-    return callback(null, false);
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  credentials: true,
-}));
+// ─── Request ID ────────────────────────────────────────────
+// Assigns a unique request ID (req.requestId) and echoes it in the
+// X-Request-Id response header. Used by the error handler in every error body.
+app.use(require('./middleware/requestId'));
 
 // ─── Standard Middleware ───────────────────────────────────
 // Webhook route MUST come before express.json() so it gets raw body
@@ -146,6 +139,11 @@ app.use('/api/stream-proxy', require('./routes/streamProxyRoutes'));
 app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/home', require('./routes/homeShelfRoutes'));
+
+// ─── Centralized Error Handler ─────────────────────────────
+// Must be registered AFTER all routes so it catches any errors thrown from
+// controllers, and BEFORE the SPA fallback so API errors stay JSON.
+app.use(require('./middleware/errorHandler'));
 
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
 try {

@@ -8,6 +8,7 @@
 const pool = require('../config/db');
 const { getPreferences, upsertPreferences } = require('../services/preferencesService');
 const { buildUserDto } = require('../services/userDtoService');
+const { sendSuccess } = require('../utils/response');
 const watchController = require('./watchController');
 
 // ── Username uniqueness check ──────────────────────────────
@@ -28,7 +29,7 @@ exports.checkUsername = async (req, res) => {
     const userId = req.userId ?? req.user?.id;
     const [rows] = await pool.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, userId || 0]);
     const available = rows.length === 0;
-    return res.json({ available, username });
+    return sendSuccess(res, { available, username });
   } catch (error) {
     console.error('[PROFILE] username check error:', error.message);
     return res.status(500).json({ available: false, message: 'Server error checking username.' });
@@ -58,7 +59,7 @@ exports.setUsername = async (req, res) => {
       return res.status(409).json({ message: 'This username is already taken.' });
     }
     await pool.query('UPDATE users SET username = ?, updated_at = NOW() WHERE id = ?', [normalized, userId]);
-    return res.json({ success: true, username: normalized, message: 'Username updated.' });
+    return sendSuccess(res, { username: normalized }, { message: 'Username updated.' });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'This username is already taken.' });
@@ -131,7 +132,7 @@ exports.onboard = async (req, res) => {
     // Refresh the user row to return the updated DTO.
     const [freshRows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
     const dto = await buildUserDto(freshRows[0]);
-    return res.json({ success: true, user: dto, message: 'Onboarding complete.' });
+    return sendSuccess(res, { user: dto }, { message: 'Onboarding complete.' });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: 'This username is already taken.' });
@@ -147,7 +148,7 @@ exports.getPreferences = async (req, res) => {
   if (!userId) return res.status(401).json({ message: 'Not authenticated.' });
   try {
     const prefs = await getPreferences(userId);
-    return res.json({ preferences: prefs });
+    return sendSuccess(res, { preferences: prefs });
   } catch (error) {
     console.error('[PROFILE] getPreferences error:', error.message);
     return res.status(500).json({ message: 'Server error reading preferences.' });
@@ -229,7 +230,7 @@ exports.updatePreferences = async (req, res) => {
     // FIX 8: re-read from the DB so the response reflects server state,
     // not the merged in-memory object.
     const freshPrefs = await getPreferences(userId);
-    return res.json({ success: true, preferences: freshPrefs });
+    return sendSuccess(res, { preferences: freshPrefs });
   } catch (error) {
     console.error('[PROFILE] updatePreferences error:', error.message);
     return res.status(500).json({ message: 'Server error updating preferences.' });

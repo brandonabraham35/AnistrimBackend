@@ -10,6 +10,7 @@
 const { resolveGoogleIdentity } = require('../services/googleIdentityService');
 const sessionService = require('../services/sessionService');
 const { buildUserDto } = require('../services/userDtoService');
+const { sendAuth } = require('../utils/response');
 
 // ── Google LOGIN (existing account only) ───────────────────
 exports.verifyGoogleToken = function (req, res) {
@@ -26,13 +27,7 @@ exports.verifyGoogleToken = function (req, res) {
       // Build the canonical user DTO.
       const dto = await buildUserDto(user);
 
-      return res.json({
-        token: accessToken,
-        refreshToken,
-        sessionId,
-        user: dto,
-        message: 'Welcome back!',
-      });
+      return sendAuth(res, { token: accessToken, refreshToken, sessionId, user: dto, extra: { message: 'Welcome back!' } });
     } catch (err) {
       console.error('Google login (verify) error:', err.message);
       if (err.status === 400) {
@@ -72,13 +67,7 @@ exports.googleSignup = function (req, res) {
       // Build the canonical user DTO.
       const dto = await buildUserDto(user);
 
-      return res.status(201).json({
-        token: accessToken,
-        refreshToken,
-        sessionId,
-        user: dto,
-        message: 'Account created. Welcome!',
-      });
+      return sendAuth(res, { token: accessToken, refreshToken, sessionId, user: dto, extra: { message: 'Account created. Welcome!' } }, undefined, 201);
     } catch (err) {
       console.error('Google signup error:', err.message);
       if (err.status === 400) {

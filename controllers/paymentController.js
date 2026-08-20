@@ -2,6 +2,7 @@
 const axios = require('axios');
 const db = require('../config/db');
 const pesapal = require('../services/pesapalService');
+const { sendSuccess } = require('../utils/response');
 require('dotenv').config();
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
@@ -164,12 +165,11 @@ exports.initializeCheckout = async (req, res) => {
       `✅ Checkout complete: ref=${reference}, trackingId=${orderResult.order_tracking_id}`
     );
 
-    res.status(200).json({
-      message: 'Payment link created.',
+    return sendSuccess(res, {
       payment_link: orderResult.redirect_url,
       tx_ref: reference,
       order_tracking_id: orderResult.order_tracking_id,
-    });
+    }, { message: 'Payment link created.' });
   } catch (err) {
     console.error('❌ initializeCheckout error:', err.response?.data || err.message);
     res.status(500).json({
@@ -195,7 +195,7 @@ exports.handlePesapalIPN = async (req, res) => {
 
   if (!OrderTrackingId || !OrderMerchantReference) {
     console.error('❌ IPN missing required params');
-    return res.status(200).json({ status: 200 }); // Return 200 to acknowledge
+    return sendSuccess(res, { status: 200 }); // Return 200 to acknowledge
   }
 
   try {
@@ -217,7 +217,7 @@ exports.handlePesapalIPN = async (req, res) => {
       console.warn(
         `⚠️ IPN: No subscription found for ref=${OrderMerchantReference}`
       );
-      return res.status(200).json({ status: 200 });
+      return sendSuccess(res, { status: 200 });
     }
 
     const subscription = subs[0];
@@ -237,14 +237,14 @@ exports.handlePesapalIPN = async (req, res) => {
         status: txnStatus.status,
         order_tracking_id: OrderTrackingId,
       });
-      return res.status(200).json({ status: 200 });
+      return sendSuccess(res, { status: 200 });
     }
 
     // 5. Payment is COMPLETED — resolve plan + compute expiry.
     const planRow = await resolvePlan(subscription.plan);
     if (!planRow) {
       console.error(`❌ IPN: Plan not found for key "${subscription.plan}"`);
-      return res.status(200).json({ status: 200 });
+      return sendSuccess(res, { status: 200 });
     }
     const startsAt = new Date();
     const endsAt = planEndsAt(planRow);
@@ -291,11 +291,11 @@ exports.handlePesapalIPN = async (req, res) => {
       `🎉 Premium granted to user ${subscription.user_id} until ${endsAt}`
     );
 
-    res.status(200).json({ status: 200 });
+    return sendSuccess(res, { status: 200 });
   } catch (err) {
     console.error('❌ IPN processing error:', err.message);
     // Always return 200 so Pesapal knows we received it
-    res.status(200).json({ status: 200 });
+    return sendSuccess(res, { status: 200 });
   }
 };
 
@@ -322,7 +322,7 @@ exports.refundSubscription = async (req, res) => {
     await refreshUserPremiumCache(sub.user_id);
     await logPaymentEvent(sub.id, reference, 'refunded', { by: req.user?.id || null });
 
-    res.json({ message: 'Subscription refunded.' });
+    return sendSuccess(res, null, { message: 'Subscription refunded.' });
   } catch (err) {
     console.error('❌ Refund error:', err.message);
     res.status(500).json({ message: 'Refund failed.' });
@@ -352,7 +352,7 @@ exports.cancelSubscription = async (req, res) => {
     await refreshUserPremiumCache(sub.user_id);
     await logPaymentEvent(sub.id, reference, 'cancelled', { by: req.user?.id || null });
 
-    res.json({ message: 'Subscription cancelled.' });
+    return sendSuccess(res, null, { message: 'Subscription cancelled.' });
   } catch (err) {
     console.error('❌ Cancel error:', err.message);
     res.status(500).json({ message: 'Cancel failed.' });
@@ -400,7 +400,7 @@ exports.verifySubscriptionPayment = async (req, res) => {
     }
 
     const sub = rows[0];
-    res.json({
+    return sendSuccess(res, {
       status: sub.status,           // 'PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED'
       state: sub.state,             // 'pending', 'active', 'expired', 'refunded', 'cancelled'
       plan: sub.plan,
@@ -439,7 +439,7 @@ exports.getSubscriptionRevenueStats = async (req, res) => {
       ORDER BY s.created_at DESC
       LIMIT 20`);
 
-    res.json({ stats: stats[0], recent });
+    return sendSuccess(res, { stats: stats[0], recent });
   } catch (err) {
     console.error('❌ getSubscriptionRevenueStats error:', err.message);
     res.status(500).json({ message: 'Could not fetch subscription revenue stats.' });

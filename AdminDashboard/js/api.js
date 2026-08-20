@@ -67,7 +67,8 @@ if (token) {
       throw new Error(`API Error: ${message} (Status: ${response.status})`);
     }
 
-    return await response.json();
+    const body = await response.json();
+    return unwrapAdminEnvelope(body);
 
   } catch (error) {
     if (retries > 0) {
@@ -82,5 +83,37 @@ if (token) {
   }
 }
 
+// ── Standard envelope compatibility shim ──────────────────────
+// The backend standardizes SUCCESS responses to
+//   { success:true, data:{...}, meta?:{...} }
+// List endpoints use { success:true, data:[...], meta:{ pagination:{...} } }.
+// This shim unwraps the inner payload back so every existing admin page reading
+// `data.<field>` / `data.rows` / `data.pagination` keeps working identically
+// regardless of whether the endpoint has been migrated. Non-envelope responses
+// (plain arrays/objects) pass through untouched.
+function unwrapAdminEnvelope(body) {
+  if (!body || typeof body !== 'object') return body;
+  // { success:true, data: {...} } → return the inner data, plus meta merged.
+  if (body.success === true && Object.prototype.hasOwnProperty.call(body, 'data')) {
+    const inner = body.data;
+    // { success:true, data:[...], meta:{pagination} } → expose
+    // { items, rows, pagination } at the top so `data.items` / `data.rows` /
+    // `data.pagination` both work.
+    if (Array.isArray(inner)) {
+      const merged = { items: inner, rows: inner };
+      if (body.meta && typeof body.meta === 'object') Object.assign(merged, body.meta);
+      return merged;
+    }
+    if (typeof inner === 'object' && inner !== null) {
+      const merged = Object.assign({}, inner);
+      if (body.meta && typeof body.meta === 'object') Object.assign(merged, body.meta);
+      return merged;
+    }
+    return inner;
+  }
+  return body;
+}
+
 // Expose the function globally for other scripts (auth.js, anime.js, etc.)
 window.apiRequest = apiFetch;
+window.unwrapAdminEnvelope = unwrapAdminEnvelope;

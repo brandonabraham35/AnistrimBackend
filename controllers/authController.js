@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { sendEmail } = require('../utils/mailer');
 const sessionService = require('../services/sessionService');
 const { buildUserDto } = require('../services/userDtoService');
+const { sendSuccess, sendAuth } = require('../utils/response');
 
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
@@ -214,12 +215,7 @@ exports.login = async (req, res) => {
 
         log(`Login successful: ${email} (admin: ${dto.isAdmin})`);
 
-        res.json({
-            token: accessToken,
-            refreshToken,
-            sessionId,
-            user: dto,
-        });
+        return sendAuth(res, { token: accessToken, refreshToken, sessionId, user: dto });
 
     } catch (error) {
         log(`CRITICAL ERROR during login: ${error.message}`);
@@ -326,12 +322,7 @@ exports.signup = async (req, res) => {
 
         log(`Signup successful (pending verification): ${email}`);
 
-        res.status(201).json({
-            success: true,
-            requiresVerification: true,
-            emailSent: true,
-            message: 'Account created. Please enter the verification code sent to your email.',
-        });
+        return sendSuccess(res, { requiresVerification: true, emailSent: true }, { message: 'Account created. Please enter the verification code sent to your email.' }, 201);
 
     } catch (error) {
         log(`CRITICAL ERROR during signup: ${error.message}`);
@@ -426,13 +417,7 @@ exports.verifyEmailToken = async (req, res) => {
 
         log(`Email verified for: ${email}`);
 
-        return res.json({
-            success: true,
-            token: accessToken,
-            refreshToken,
-            sessionId,
-            user: dto,
-        });
+        return sendAuth(res, { token: accessToken, refreshToken, sessionId, user: dto });
     } catch (error) {
         log(`CRITICAL ERROR during verifyEmailToken: ${error.message}`);
         console.error(error);
@@ -478,7 +463,7 @@ exports.resendVerification = async (req, res) => {
 
         // Neutral — never reveal whether the account exists.
         if (rows.length === 0 || rows[0].is_verified) {
-            return res.json({ success: true, emailSent: false, message: 'If your account needs verification, a new code has been sent.' });
+            return sendSuccess(res, { emailSent: false }, { message: 'If your account needs verification, a new code has been sent.' });
         }
 
         const user = rows[0];
@@ -503,11 +488,7 @@ exports.resendVerification = async (req, res) => {
             subText: 'Here is your new AniStrim verification code.',
         });
 
-        return res.json({
-            success: true,
-            emailSent: result.sent,
-            message: 'If your account needs verification, a new code has been sent.',
-        });
+        return sendSuccess(res, { emailSent: result.sent }, { message: 'If your account needs verification, a new code has been sent.' });
     } catch (error) {
         log(`CRITICAL ERROR during resendVerification: ${error.message}`);
         console.error(error);
@@ -533,7 +514,7 @@ exports.getMe = async (req, res) => {
 
         const user = rows[0];
         const dto = await buildUserDto(user);
-        res.json(dto);
+        return sendSuccess(res, dto);
     } catch (error) {
         log(`CRITICAL ERROR during getMe: ${error.message}`);
         console.error(error);
@@ -584,7 +565,7 @@ exports.setPassword = async (req, res) => {
             [passwordHash, user.id]
         );
 
-        return res.json({ success: true, message: 'Password set successfully. You can now also sign in with your email and password.' });
+        return sendSuccess(res, null, { message: 'Password set successfully. You can now also sign in with your email and password.' });
     } catch (error) {
         log(`CRITICAL ERROR during setPassword: ${error.message}`);
         console.error(error);
@@ -604,9 +585,7 @@ exports.forgotPassword = async (req, res) => {
         const [rows] = await pool.query('SELECT id, email FROM users WHERE email = ?', [email]);
 
         if (rows.length === 0) {
-            return res.status(200).json({
-                message: 'If an account exists for that email, a reset link has been sent.'
-            });
+            return sendSuccess(res, null, { message: 'If an account exists for that email, a reset link has been sent.' });
         }
 
         const token = jwt.sign(
@@ -629,7 +608,7 @@ exports.forgotPassword = async (req, res) => {
             response.dev_link = devLink;
         }
 
-        return res.status(200).json(response);
+        return sendSuccess(res, response);
     } catch (error) {
         log(`CRITICAL ERROR during forgotPassword: ${error.message}`);
         console.error(error);
@@ -669,7 +648,7 @@ exports.resetPassword = async (req, res) => {
         );
         await sessionService.logEvent(rows[0].id, 'password_reset', 'password', req).catch(() => {});
 
-        return res.json({ message: 'Password reset successfully.' });
+        return sendSuccess(res, null, { message: 'Password reset successfully.' });
     } catch (error) {
         if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError') {
             return res.status(400).json({ message: 'Invalid or expired reset link.' });
@@ -691,12 +670,7 @@ exports.refresh = async (req, res) => {
     try {
         const result = await sessionService.rotateRefresh(refreshToken, req);
         const dto = await buildUserDto(result.user);
-        return res.json({
-            token: result.accessToken,
-            refreshToken: result.refreshToken,
-            sessionId: result.sessionId,
-            user: dto,
-        });
+        return sendAuth(res, { token: result.accessToken, refreshToken: result.refreshToken, sessionId: result.sessionId, user: dto });
     } catch (err) {
         const status = err.status || 401;
         return res.status(status).json({ code: err.code || 'REFRESH_FAILED', message: err.message });
@@ -713,7 +687,7 @@ exports.logout = async (req, res) => {
             await sessionService.revokeSession(sid, userId);
             await sessionService.logEvent(userId, 'logout', null, req).catch(() => {});
         }
-        return res.json({ success: true, message: 'Logged out.' });
+        return sendSuccess(res, null, { message: 'Logged out.' });
     } catch (error) {
         log(`CRITICAL ERROR during logout: ${error.message}`);
         return res.status(500).json({ message: 'Server error during logout.' });
@@ -729,7 +703,7 @@ exports.logoutAll = async (req, res) => {
 
         await pool.query('UPDATE users SET token_version = token_version + 1 WHERE id = ?', [userId]);
         await sessionService.revokeAllSessions(userId, 'logout');
-        return res.json({ success: true, message: 'All sessions revoked.' });
+        return sendSuccess(res, null, { message: 'All sessions revoked.' });
     } catch (error) {
         log(`CRITICAL ERROR during logoutAll: ${error.message}`);
         return res.status(500).json({ message: 'Server error during logout-all.' });
@@ -756,7 +730,7 @@ exports.listSessions = async (req, res) => {
             revokedAt: s.revoked_at,
             current: s.id === currentSid,
         }));
-        return res.json({ sessions: mapped });
+        return sendSuccess(res, { sessions: mapped });
     } catch (error) {
         log(`CRITICAL ERROR during listSessions: ${error.message}`);
         return res.status(500).json({ message: 'Server error while listing sessions.' });
@@ -774,7 +748,7 @@ exports.revokeSession = async (req, res) => {
 
         await sessionService.revokeSession(sessionId, userId);
         await sessionService.logEvent(userId, 'session_revoked', null, req).catch(() => {});
-        return res.json({ success: true, message: 'Session revoked.' });
+        return sendSuccess(res, null, { message: 'Session revoked.' });
     } catch (error) {
         log(`CRITICAL ERROR during revokeSession: ${error.message}`);
         return res.status(500).json({ message: 'Server error while revoking session.' });
@@ -825,14 +799,9 @@ exports.changePassword = async (req, res) => {
         const freshUser = { ...user, password_hash: passwordHash, token_version: Number(user.token_version) + 1 };
         const { accessToken, refreshToken, sessionId } = await sessionService.createSession(freshUser, req);
         await sessionService.logEvent(userId, 'password_changed', null, req).catch(() => {});
+        const dto = await buildUserDto(freshUser);
 
-        return res.json({
-            success: true,
-            token: accessToken,
-            refreshToken,
-            sessionId,
-            message: 'Password changed successfully. Other devices have been signed out.',
-        });
+        return sendAuth(res, { token: accessToken, refreshToken, sessionId, user: dto }, { message: 'Password changed successfully. Other devices have been signed out.' });
     } catch (error) {
         log(`CRITICAL ERROR during changePassword: ${error.message}`);
         return res.status(500).json({ message: 'Server error while changing password.' });
@@ -894,7 +863,7 @@ exports.changeEmail = async (req, res) => {
             log(`WARN: change-email OTP failed for ${normalized}: ${mailError.message}`);
         }
 
-        return res.json({ success: true, emailSent, requestId, message: 'Verification code sent to your new email.' });
+        return sendSuccess(res, { emailSent, requestId }, { message: 'Verification code sent to your new email.' });
     } catch (error) {
         log(`CRITICAL ERROR during changeEmail: ${error.message}`);
         return res.status(500).json({ message: 'Server error while changing email.' });
@@ -946,7 +915,7 @@ exports.confirmChangeEmail = async (req, res) => {
         );
         await sessionService.logEvent(userId, 'email_changed', null, req).catch(() => {});
 
-        return res.json({ success: true, message: 'Email updated successfully.' });
+        return sendSuccess(res, null, { message: 'Email updated successfully.' });
     } catch (error) {
         log(`CRITICAL ERROR during confirmChangeEmail: ${error.message}`);
         return res.status(500).json({ message: 'Server error while confirming email change.' });
@@ -965,7 +934,7 @@ exports.deactivateAccount = async (req, res) => {
             [userId]
         );
         await sessionService.revokeAllSessions(userId, 'account_deactivated');
-        return res.json({ success: true, message: 'Account deactivated.' });
+        return sendSuccess(res, null, { message: 'Account deactivated.' });
     } catch (error) {
         log(`CRITICAL ERROR during deactivateAccount: ${error.message}`);
         return res.status(500).json({ message: 'Server error while deactivating account.' });
@@ -1021,7 +990,7 @@ exports.deleteAccount = async (req, res) => {
             [anonymisedEmail, userId]
         );
         await sessionService.revokeAllSessions(userId, 'account_deleted');
-        return res.json({ success: true, message: 'Account deleted. This action is irreversible.' });
+        return sendSuccess(res, null, { message: 'Account deleted. This action is irreversible.' });
     } catch (error) {
         log(`CRITICAL ERROR during deleteAccount: ${error.message}`);
         return res.status(500).json({ message: 'Server error while deleting account.' });

@@ -1,17 +1,37 @@
 // controllers/animeController.js
 const db = require('../config/db');
 const { PUBLIC_ANIME_FILTER, PUBLIC_EPISODE_FILTER } = require('../utils/contentVisibility');
+const { internal, notFound, badRequest } = require('../utils/apiError');
+const { sendSuccess, sendPaginated } = require('../utils/response');
+const dto = require('../services/apiDtoService');
+
+// PUBLIC_ANIME_COLUMNS — explicit whitelist for public anime rows. Never SELECT *,
+// so internal/provider fields (cover_public_id, banner_public_id, anime_mappings,
+// mal_id, consumet_id, etc.) can never leak into the response.
+const PUBLIC_ANIME_COLUMNS = [
+  'id', 'title', 'title_japanese', 'description', 'cover_image', 'banner_image',
+  'rating', 'year', 'studio', 'status', 'is_premium', 'is_featured', 'view_count',
+  'created_at', 'updated_at', 'media_type', 'tags', 'access_tier',
+];
 
 // Keep the public catalogue contract stable for both the current client
-// (cover_image) and older React clients (poster_url/thumbnail_url).
+// (cover_image) and older React clients (poster_url/thumbnail_url), while also
+// emitting the canonical camelCase fields (coverImage). Only safe public fields
+// are returned — internal/sensitive fields are stripped.
 function publicAnime(anime) {
   const cover = anime.cover_image || anime.poster_url || anime.thumbnail_url || null;
   return {
     ...anime,
+    // Canonical camelCase
+    coverImage: cover,
+    posterUrl: cover,
+    thumbnailUrl: cover,
+    bannerUrl: anime.banner_image || anime.banner_url || null,
+    // Legacy snake_case aliases
     cover_image: cover,
     poster_url: cover,
     thumbnail_url: cover,
-    banner_url: anime.banner_image || null,
+    banner_url: anime.banner_image || anime.banner_url || null,
   };
 }
 
@@ -35,7 +55,7 @@ async function attachGenres(animeList) {
 // GET /api/anime/genres — active genres, ordered (Bug 3).
 // Returns the list of genre names the onboarding genre picker uses. Only
 // genres that are actually attached to catalogue titles are surfaced.
-exports.getGenres = async (req, res) => {
+exports.getGenres = async (req, res, next) => {
   try {
     const [rows] = await db.query(
       `SELECT DISTINCT g.name
@@ -44,10 +64,10 @@ exports.getGenres = async (req, res) => {
        ORDER BY g.name ASC`
     );
     const names = rows.map(r => r.name).filter(Boolean);
-    return res.json(names);
+    return sendSuccess(res, names);
   } catch (error) {
     console.error('[AnimeController] getGenres error:', error.message);
-    return res.status(500).json({ message: 'Failed to fetch genres.' });
+    return next(internal('ANIME_GENRES_FETCH_FAILED', 'Failed to fetch genres.'));
   }
 };
 
@@ -70,7 +90,10 @@ exports.getTrending = async (req, res) => {
       [perPage, offset]
     );
     const result = await attachGenres(rows);
-    res.json(result);
+    const [countRows] = await db.query(
+      `SELECT COUNT(*) AS total FROM anime a WHERE ${PUBLIC_ANIME_FILTER}`
+    );
+    return sendPaginated(res, result, { page, perPage, totalItems: countRows[0]?.total || 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch anime.' });
@@ -89,7 +112,7 @@ exports.getLatest = async (req, res) => {
        FROM anime a WHERE ${PUBLIC_ANIME_FILTER} ORDER BY created_at DESC, id DESC LIMIT ?`,
       [limit]
     );
-    res.json(await attachGenres(rows));
+    return sendSuccess(res, await attachGenres(rows));
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch latest anime.' });
@@ -114,7 +137,7 @@ exports.getRecommendations = async (req, res) => {
        LIMIT 12`,
       [id, id, id]
     );
-    res.json(await attachGenres(rows));
+    return sendSuccess(res, await attachGenres(rows));
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch recommendations.' });
@@ -130,7 +153,7 @@ exports.getFeatured = async (req, res) => {
        FROM anime a WHERE is_featured = 1 AND ${PUBLIC_ANIME_FILTER} ORDER BY rating DESC LIMIT 6`
     );
     const result = await attachGenres(rows);
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch featured anime.' });
   }
@@ -161,7 +184,7 @@ exports.search = async (req, res) => {
 
     const [rows] = await db.query(sql, params);
     const result = await attachGenres(rows);
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Search failed.' });
@@ -185,7 +208,7 @@ exports.resolveStream = async (req, res) => {
     const cached = await cache.get(cacheKey);
     if (cached) {
       console.log(`[resolveStream CACHE HIT] ${animeTitle} Episode ${episodeNumber}`);
-      return res.json(cached);
+      return sendSuccess(res, cached);
     }
 
     console.log(`[resolveStream CACHE MISS] ${animeTitle} Episode ${episodeNumber} — fetching from provider...`);
@@ -197,7 +220,7 @@ exports.resolveStream = async (req, res) => {
     await cache.set(cacheKey, result, STREAM_CACHE_TTL);
     console.log(`[resolveStream CACHED] ${animeTitle} Episode ${episodeNumber} for ${STREAM_CACHE_TTL}s`);
 
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (err) {
     console.error('[resolveStream Error]:', err.message);
     res.status(502).json({ error: `Stream resolution failed: ${err.message}` });
@@ -210,17 +233,26 @@ exports.getById = async (req, res) => {
     const animeId = Number(req.params.id);
     if (!Number.isInteger(animeId)) return res.status(400).json({ error: 'Invalid anime ID' });
 
-    // 1. Fetch the anime details
-    const [animeRows] = await db.query(`SELECT * FROM anime a WHERE a.id = ? AND ${PUBLIC_ANIME_FILTER}`, [animeId]);
+    // 1. Fetch the anime details (explicit column whitelist — no SELECT *).
+    const [animeRows] = await db.query(
+      `SELECT a.id, a.title, a.title_japanese, a.description, a.cover_image, a.banner_image,
+              a.rating, a.year, a.studio, a.status, a.is_premium, a.is_featured,
+              a.view_count, a.media_type, a.access_tier, a.tags, a.created_at, a.updated_at
+       FROM anime a WHERE a.id = ? AND ${PUBLIC_ANIME_FILTER}`,
+      [animeId]
+    );
     if (animeRows.length === 0) return res.status(404).json({ error: 'Anime not found' });
     const [anime] = await attachGenres(animeRows);
 
     // 2. Increment view counters (lifetime + daily for Viral Threshold premium automation)
     await db.query('UPDATE anime SET view_count = view_count + 1, daily_views = daily_views + 1 WHERE id = ?', [animeId]);
 
-    // 3. FETCH THE EPISODES from the local database
+    // 3. FETCH THE EPISODES from the local database (explicit column whitelist).
     const [episodeRows] = await db.query(
-      `SELECT * FROM episodes e WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER} ORDER BY e.episode_number ASC`,
+      `SELECT e.id, e.anime_id, e.episode_number, e.season, e.season_number, e.title, e.description,
+              e.thumbnail_url, e.video_url, e.duration_sec, e.view_count, e.is_premium,
+              e.access_tier, e.premium_until, e.created_at, e.updated_at
+       FROM episodes e WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER} ORDER BY e.episode_number ASC`,
       [animeId]
     );
 
@@ -236,24 +268,57 @@ exports.getById = async (req, res) => {
     anime.episodes = masked.map(ep => ({
       id: ep.id,
       number: ep.episode_number,
-      season: ep.season || 1,
+      season: ep.season || ep.season_number || 1,
       title: ep.title,
       description: ep.description,
+      thumbnailUrl: ep.thumbnail_url,
       thumbnail_url: ep.thumbnail_url,
+      videoUrl: ep.video_url || null,
       video_url: ep.video_url || null,
+      durationSec: ep.duration_sec,
       duration_sec: ep.duration_sec,
+      isPremium: ep.premium || Boolean(ep.is_premium),
       is_premium: ep.premium || Boolean(ep.is_premium),
-      effective_tier: ep.effectiveTier,
       effectiveTier: ep.effectiveTier,
       locked: ep.locked,
       availableAt: ep.availableAt,
       accessState: ep.accessState,
-      access_tier: ep.access_tier || 'inherit',
+      accessTier: ep.access_tier || 'inherit',
+      viewCount: ep.view_count,
       view_count: ep.view_count,
     }));
 
-    // 5. Send the combined payload
-    res.json(anime);
+    // 5. Strip internal/sensitive fields (cover_public_id, banner_public_id,
+    //    mal_id, consumet_id, etc.) before sending. The DTO utility whitelists
+    //    only safe public anime fields and adds camelCase keys.
+    const publicAnimeDto = {
+      id: anime.id,
+      title: anime.title,
+      titleJapanese: anime.title_japanese || null,
+      description: anime.description || null,
+      coverImage: anime.cover_image || null,
+      bannerUrl: anime.banner_image || null,
+      rating: anime.rating,
+      year: anime.year,
+      studio: anime.studio || null,
+      status: anime.status || 'unknown',
+      viewCount: anime.view_count,
+      genres: anime.genres || [],
+      mediaType: anime.media_type || null,
+      tags: anime.tags || null,
+      accessTier: anime.access_tier || 'free',
+      isPremium: Boolean(anime.is_premium),
+      isFeatured: Boolean(anime.is_featured),
+      createdAt: anime.created_at || null,
+      updatedAt: anime.updated_at || null,
+      episodes: anime.episodes,
+      // Legacy snake_case aliases
+      cover_image: anime.cover_image || null,
+      poster_url: anime.poster_url || anime.cover_image || null,
+      thumbnail_url: anime.thumbnail_url || anime.cover_image || null,
+      banner_url: anime.banner_url || anime.banner_image || null,
+    };
+    return sendSuccess(res, publicAnimeDto);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch anime details.' });

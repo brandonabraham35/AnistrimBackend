@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { hasRole } = require('../utils/hasRole');
+const { buildErrorBody } = require('../utils/apiError');
 
 // Shared bearer-token verification. Loads the user fresh from the DB
 // (authoritative for status, token_version) and enforces:
@@ -96,7 +97,19 @@ exports.protect = async (req, res, next) => {
     req.tokenClaims = result.tokenClaims;
     return next();
   }
-  return res.status(result.status).json(result.body);
+  // Render the auth failure through the centralized error contract:
+  //   { success:false, error: { code, message, details, requestId } }
+  // Preserves existing machine-readable codes (e.g. ACCOUNT_SUSPENDED,
+  // TOKEN_VERSION_MISMATCH) and adds requestId.
+  const body = result.body || {};
+  const err = result._apiError || {
+    status: result.status,
+    code: body.code || 'UNAUTHORIZED',
+    message: body.message || 'Not authenticated.',
+    isApiError: true,
+  };
+  const errorBody = buildErrorBody(err, req, { exposeDetails: true });
+  return res.status(result.status).json(errorBody);
 };
 
 // Optional auth — attaches user context (full DB reload + status / token_version

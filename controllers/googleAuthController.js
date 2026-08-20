@@ -12,6 +12,7 @@ const { OAuth2Client } = require('google-auth-library');
 const { resolveGoogleIdentity } = require('../services/googleIdentityService');
 const sessionService = require('../services/sessionService');
 const { buildUserDto } = require('../services/userDtoService');
+const { sendSuccess } = require('../utils/response');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
@@ -128,7 +129,7 @@ exports.exchangeLoginCode = (req, res) => {
     return res.status(400).json({ message: 'Login code is invalid or expired. Please try Google sign-in again.' });
   }
 
-  return res.json({ token: record.token, user: record.user, intent: record.intent });
+  return sendSuccess(res, { token: record.token, user: record.user, intent: record.intent });
 };
 
 function successPage(code) {

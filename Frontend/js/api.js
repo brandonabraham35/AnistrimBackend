@@ -114,7 +114,10 @@
     }).then(function (res) {
       if (!res.ok) return null;
       return res.json().catch(function () { return null; });
-    }).then(function (data) {
+    }).then(function (body) {
+      // Support BOTH the legacy raw body ({ token }) and the standardized
+      // envelope ({ success:true, data:{ token } }) for the refresh endpoint.
+      var data = (body && body.success === true && body.data) ? body.data : body;
       if (!data || !data.token) return null;
       setTokens(data.token, data.refreshToken || refreshToken);
       return data;
@@ -234,7 +237,50 @@
 
     // Envelope on success AND any other failure — pages never need try/catch
     // for HTTP status.
-    return { ok: res.ok, status: res.status, data: data };
+    return unwrapEnvelope({ ok: res.ok, status: res.status, data: data });
+  }
+
+  // ── Response envelope compatibility shim ──────────────────
+  // The backend standardized SUCCESS responses to
+  //   { success:true, data:{...}, meta:{...} }
+  // (see utils/response.js). To keep every existing page reading
+  // `result.data.<field>` working unchanged, we unwrap the inner payload back
+  // into `result.data`, and merge `meta` (e.g. pagination) alongside it so
+  // list consumers still see `result.data.rows` / `result.data.pagination`.
+  // Errors (no `data` key / `success:false`) and any response that does NOT
+  // use the envelope (plain arrays / objects) pass through untouched, so
+  // unmigrated endpoints keep working exactly as before.
+  function unwrapEnvelope(envelope) {
+    if (!envelope || !envelope.data || typeof envelope.data !== 'object') {
+      return envelope;
+    }
+    var body = envelope.data;
+    // Paginated list: { success, data:[...], meta:{pagination} } — expose
+    // items + pagination at the top level of `data` so `result.data.items`
+    // and `result.data.pagination` both work, plus `result.data.rows` alias.
+    // This must be checked BEFORE the single-resource branch so arrays are not
+    // coerced through the object path.
+    if (body.success === true &&
+        Object.prototype.hasOwnProperty.call(body, 'data') &&
+        Array.isArray(body.data)) {
+      var arr = body.data;
+      return {
+        ok: envelope.ok,
+        status: envelope.status,
+        data: Object.assign({ items: arr, rows: arr }, body.meta),
+      };
+    }
+    // Only unwrap when the backend actually used the standard envelope.
+    if (body.success === true && Object.prototype.hasOwnProperty.call(body, 'data')) {
+      var inner = body.data;
+      var result = (typeof inner === 'object' && inner !== null) ? Object.assign({}, inner) : inner;
+      if (body.meta && typeof body.meta === 'object' && result !== null && typeof result === 'object') {
+        result = Object.assign(result, body.meta);
+      }
+      if (result === null || result === undefined) result = {};
+      return { ok: envelope.ok, status: envelope.status, data: result };
+    }
+    return envelope;
   }
 
   window.apiFetch = apiFetch;

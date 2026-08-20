@@ -12,6 +12,7 @@ const multer = require('multer');
 const pool = require('../config/db');
 const authMiddleware = require('../middleware/auth');
 const { uploadAvatarForUser, MAX_AVATAR_FILE_SIZE } = require('../services/avatarService');
+const { sendSuccess } = require('../utils/response');
 
 const router = express.Router();
 
@@ -51,7 +52,7 @@ router.post('/avatar', authMiddleware.protect, (req, res) => {
 
       await pool.query('UPDATE users SET avatar_url = ?, updated_at = NOW() WHERE id = ?', [newAvatarUrl, userId]);
 
-      return res.json({ success: true, avatar_url: newAvatarUrl, message: 'Avatar updated.' });
+      return sendSuccess(res, { avatar_url: newAvatarUrl }, { message: 'Avatar updated.' });
     } catch (e) {
       console.error('[AVATAR] Upload error:', e.message);
       const status = e.status || 502;

@@ -6,6 +6,7 @@ const { uploadBufferToCloudinary, hasCloudinaryConfig } = require('../utils/bunn
 const { PROVIDER_IDS } = require('../services/providerRegistry');
 const animeHeavenImportService = require('../services/animeHeavenImportService');
 const animeHeavenCatalogService = require('../services/animeHeavenCatalogService');
+const { sendSuccess } = require('../utils/response');
 
 const consumet = new ConsumetProvider();
 let cloudinaryColumnsPromise = null;
@@ -181,8 +182,7 @@ exports.importAnime = async (req, res) => {
     await bulkInsertEpisodes(animeId, episodes);
     console.log(`[IMPORT SUCCESS] Saved ${episodesCount} new episodes to MySQL database.`);
 
-    return res.status(201).json({
-      success: true,
+    return sendSuccess(res, {
       message: `Successfully imported anime and saved ${episodesCount} episodes via Kitsu API.`,
       anime: result.anime,
       mapping: result.mapping,
@@ -191,7 +191,7 @@ exports.importAnime = async (req, res) => {
         total: episodesCount,
         source: PROVIDER_IDS.KITSU
       }
-    });
+    }, null, 201);
 
   } catch (error) {
     console.error('[IMPORT ERROR]', error);
@@ -209,7 +209,7 @@ exports.searchConsumet = async (req, res) => {
   if (!query) return res.status(400).json({ message: 'A search query is required.' });
   try {
     const results = await consumet.searchAnime(query, 12);
-    res.json(results.map(item => ({
+    return sendSuccess(res, results.map(item => ({
       id: String(item.id),
       title: titleOf(item.title),
       year: item.releaseDate || item.year || null,
@@ -259,7 +259,7 @@ exports.importConsumetAnime = async (req, res) => {
     }
     await bulkInsertEpisodes(animeId, metadata.episodes.map((episode, index) => ({ number: Number(episode.number) || index + 1, title: episode.title || `Episode ${index + 1}` })));
     const [rows] = await db.query('SELECT * FROM anime WHERE id = ?', [animeId]);
-    res.status(existing.length ? 200 : 201).json({ success: true, anime: rows[0], episodesImported: metadata.episodes.length });
+    return sendSuccess(res, { anime: rows[0], episodesImported: metadata.episodes.length }, null, existing.length ? 200 : 201);
   } catch (error) {
     console.error('Consumet import failed:', error.message);
     res.status(502).json({ success: false, message: 'Unable to import anime from Consumet.' });
@@ -288,7 +288,7 @@ exports.searchAnimeHeaven = async (req, res) => {
   if (!query) return res.status(400).json({ message: 'A search query is required.' });
   try {
     const results = await animeHeavenImportService.searchAnime(query);
-    res.json(results);
+    return sendSuccess(res, results);
   } catch (error) {
     console.error('AnimeHeaven search failed:', error.message);
     res.status(502).json({ message: 'AnimeHeaven search is temporarily unavailable.' });
@@ -305,7 +305,7 @@ exports.previewAnimeHeaven = async (req, res) => {
   try {
     const meta = await animeHeavenImportService.getAnime(identifier);
     if (!meta) return res.status(404).json({ message: 'AnimeHeaven returned no metadata for this identifier.' });
-    res.json({
+    return sendSuccess(res, {
       animeheaven_slug: meta.animeheaven_slug,
       title: meta.title,
       description: meta.description,
@@ -336,13 +336,12 @@ exports.importAnimeHeaven = async (req, res) => {
   if (!identifier) return res.status(400).json({ message: 'identifier is required.' });
   try {
     const result = await animeHeavenImportService.importAnime(identifier, { adminId: req.user?.id });
-    res.status(201).json({
-      success: true,
+    return sendSuccess(res, {
       message: `Imported "${result.anime.title}" with ${result.episodes.total} episodes from AnimeHeaven.`,
       anime: result.anime,
       slug: result.slug,
       episodes: result.episodes,
-    });
+    }, null, 201);
   } catch (error) {
     console.error('AnimeHeaven import failed:', error.message);
     res.status(502).json({ success: false, message: 'AnimeHeaven import failed.', error: error.message });
@@ -358,8 +357,7 @@ exports.syncAnimeHeaven = async (req, res) => {
   if (!Number.isInteger(animeId)) return res.status(400).json({ message: 'Invalid anime id.' });
   try {
     const result = await animeHeavenImportService.syncAnime(animeId, { adminId: req.user?.id });
-    res.json({
-      success: true,
+    return sendSuccess(res, {
       message: `Synced "${result.anime.title}" — ${result.episodes.inserted} inserted, ${result.episodes.updated} updated.`,
       anime: result.anime,
       episodes: result.episodes,
@@ -380,7 +378,7 @@ exports.getAnimeHeavenPlaybackReady = async (req, res) => {
   if (!Number.isInteger(animeId)) return res.status(400).json({ message: 'Invalid anime id.' });
   try {
     const readiness = await animeHeavenCatalogService.validatePlaybackReadiness(animeId);
-    res.json(readiness);
+    return sendSuccess(res, readiness);
   } catch (error) {
     console.error('AnimeHeaven playback readiness failed:', error.message);
     res.status(500).json({ message: 'Failed to validate playback readiness.' });
@@ -405,7 +403,7 @@ exports.getAnimeHeavenStatus = async (req, res) => {
       'SELECT COUNT(*) AS total, SUM(CASE WHEN animeheaven_episode_key IS NOT NULL THEN 1 ELSE 0 END) AS with_keys, SUM(CASE WHEN animeheaven_episode_url IS NOT NULL THEN 1 ELSE 0 END) AS with_urls FROM episodes WHERE anime_id = ?',
       [animeId]
     );
-    res.json({
+    return sendSuccess(res, {
       animeId: anime.id,
       title: anime.title,
       animeheavenSlug: anime.animeheaven_slug || null,
@@ -434,7 +432,7 @@ exports.getAnimeHeavenStatus = async (req, res) => {
 exports.getAnimeHeavenCatalogStatus = async (req, res) => {
   try {
     const status = await animeHeavenCatalogService.getCatalogStatus();
-    res.json(status);
+    return sendSuccess(res, status);
   } catch (error) {
     console.error('AnimeHeaven catalog status failed:', error.message);
     res.status(500).json({ message: 'Failed to fetch AnimeHeaven catalog status.' });
@@ -451,7 +449,7 @@ exports.bulkImportAnimeHeaven = async (req, res) => {
   if (!identifiers.length) return res.status(400).json({ message: 'identifiers[] is required.' });
   try {
     const result = await animeHeavenCatalogService.bulkImport(identifiers, { adminId: req.user?.id });
-    res.json({ success: true, ...result });
+    return sendSuccess(res, result);
   } catch (error) {
     console.error('AnimeHeaven bulk import failed:', error.message);
     res.status(502).json({ success: false, message: 'AnimeHeaven bulk import failed.', error: error.message });
@@ -468,7 +466,7 @@ exports.bulkSyncAnimeHeaven = async (req, res) => {
   if (!animeIds.length) return res.status(400).json({ message: 'animeIds[] is required.' });
   try {
     const result = await animeHeavenCatalogService.bulkSync(animeIds, { adminId: req.user?.id });
-    res.json({ success: true, ...result });
+    return sendSuccess(res, result);
   } catch (error) {
     console.error('AnimeHeaven bulk sync failed:', error.message);
     res.status(502).json({ success: false, message: 'AnimeHeaven bulk sync failed.', error: error.message });
@@ -482,7 +480,7 @@ exports.bulkSyncAnimeHeaven = async (req, res) => {
 exports.getAnimeHeavenMissing = async (req, res) => {
   try {
     const missing = await animeHeavenCatalogService.detectMissingEpisodes();
-    res.json(missing);
+    return sendSuccess(res, missing);
   } catch (error) {
     console.error('AnimeHeaven missing detection failed:', error.message);
     res.status(500).json({ message: 'Missing episode detection failed.' });
@@ -496,7 +494,7 @@ exports.getAnimeHeavenMissing = async (req, res) => {
 exports.runAnimeHeavenDailyRefresh = async (req, res) => {
   try {
     const result = await animeHeavenCatalogService.dailyRefresh({ adminId: req.user?.id });
-    res.json({ success: true, ...result });
+    return sendSuccess(res, result);
   } catch (error) {
     console.error('AnimeHeaven daily refresh failed:', error.message);
     res.status(502).json({ success: false, message: 'AnimeHeaven daily refresh failed.', error: error.message });

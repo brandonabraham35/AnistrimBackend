@@ -17,6 +17,7 @@ const {
   MAX_FILE_SIZE,
 } = require('../utils/bunnyUpload');
 const cloudinaryVideoController = require('../controllers/bunnyStreamController');
+const { sendSuccess } = require('../utils/response');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
@@ -59,7 +60,7 @@ function uploadTo(folderKey) {
 }
 
 router.get('/_ping', (_req, res) => {
-  res.json({
+  return sendSuccess(res, {
     ok: true,
     route: '/api/admin/upload',
     provider: 'cloudinary',
@@ -73,7 +74,7 @@ router.get('/_ping', (_req, res) => {
 });
 
 router.get('/_health', protect, (_req, res) => {
-  res.json({
+  return sendSuccess(res, {
     ok: true,
     provider: 'cloudinary',
     cloudinaryConfigured: hasCloudinaryConfig(),

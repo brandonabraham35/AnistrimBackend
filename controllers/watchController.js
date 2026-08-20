@@ -20,6 +20,7 @@ const db = require('../config/db');
 const { fetchSkipTimes } = require('../services/aniSkipService');
 const streamingService = require('../services/streamingService');
 const { getEntitlement } = require('../utils/episodeAccess');
+const { sendSuccess, sendPaginated } = require('../utils/response');
 
 // ── Helpers ─────────────────────────────────────────────────
 function clampPosition(position, duration) {
@@ -69,14 +70,14 @@ exports.saveProgress = async (req, res) => {
       [userId, episodeId]
     );
     if (!existing.length && position < 5) {
-      return res.json({ success: true, ignored: true, message: 'Progress too small to record.' });
+      return sendSuccess(res, { ignored: true }, { message: 'Progress too small to record.' });
     }
 
     // Out-of-order heartbeats: only update if the new position is >= existing
     // (MAX semantics) unless the event is 'seek' or 'ended' (authoritative).
     const isAuthoritative = event === 'seek' || event === 'ended' || event === 'exit';
     if (existing.length && !isAuthoritative && position < existing[0].position_sec) {
-      return res.json({ success: true, ignored: true, message: 'Out-of-order heartbeat ignored.' });
+      return sendSuccess(res, { ignored: true }, { message: 'Out-of-order heartbeat ignored.' });
     }
 
     const device = req.headers?.['user-agent']?.includes('Android') ? 'android'
@@ -97,7 +98,7 @@ exports.saveProgress = async (req, res) => {
       [userId, ep.anime_id, ep.id, ep.episode_number, position, duration, completed ? 1 : 0, completed ? new Date() : null, device]
     );
 
-    return res.json({ success: true, positionSec: position, completed });
+    return sendSuccess(res, { positionSec: position, completed });
   } catch (err) {
     console.error('[WatchController] saveProgress error:', err.message);
     return res.status(500).json({ message: 'Failed to save progress.' });
@@ -122,10 +123,10 @@ exports.getProgress = async (req, res) => {
     );
 
     if (!rows.length) {
-      return res.json({ positionSec: 0, durationSec: 0, percent: 0, completed: false });
+      return sendSuccess(res, { positionSec: 0, durationSec: 0, percent: 0, completed: false });
     }
 
-    return res.json({
+    return sendSuccess(res, {
       positionSec: rows[0].position_sec,
       durationSec: rows[0].duration_sec,
       percent: Number(rows[0].percent) || 0,
@@ -164,7 +165,7 @@ exports.getAnimeProgress = async (req, res) => {
       };
     });
 
-    return res.json(map);
+    return sendSuccess(res, map);
   } catch (err) {
     console.error('[WatchController] getAnimeProgress error:', err.message);
     return res.status(500).json({ message: 'Failed to fetch anime progress.' });
@@ -270,7 +271,7 @@ exports.getContinueWatching = async (req, res) => {
       });
     }
 
-    return res.json(result);
+    return sendSuccess(res, result);
   } catch (err) {
     console.error('[WatchController] getContinueWatching error:', err.message);
     return res.status(500).json({ message: 'Failed to fetch continue watching list.' });
@@ -292,7 +293,7 @@ exports.dismissContinueWatching = async (req, res) => {
       [userId, animeId]
     );
 
-    return res.json({ success: true, message: 'Removed from continue watching.' });
+    return sendSuccess(res, null, { message: 'Removed from continue watching.' });
   } catch (err) {
     console.error('[WatchController] dismissContinueWatching error:', err.message);
     return res.status(500).json({ message: 'Failed to dismiss.' });
@@ -318,7 +319,7 @@ exports.restartAnime = async (req, res) => {
       [userId, animeId]
     );
 
-    return res.json({ success: true, message: 'Progress reset. Starting over.' });
+    return sendSuccess(res, null, { message: 'Progress reset. Starting over.' });
   } catch (err) {
     console.error('[WatchController] restartAnime error:', err.message);
     return res.status(500).json({ message: 'Failed to restart.' });
@@ -355,24 +356,21 @@ exports.getHistory = async (req, res) => {
       [userId]
     );
 
-    return res.json({
-      items: rows.map(r => ({
-        episodeId: r.episode_id,
-        animeId: r.anime_id,
-        animeTitle: r.anime_title,
-        animeCoverImage: r.anime_cover_image,
-        episodeNumber: r.episode_number,
-        episodeTitle: r.episode_title || null,
-        positionSec: r.position_sec,
-        durationSec: r.duration_sec,
-        percent: Number(r.percent) || 0,
-        completed: !!r.completed,
-        updatedAt: r.updated_at,
-      })),
-      page,
-      limit,
-      total: countRows[0]?.total || 0,
-    });
+    const items = rows.map(r => ({
+      episodeId: r.episode_id,
+      animeId: r.anime_id,
+      animeTitle: r.anime_title,
+      animeCoverImage: r.anime_cover_image,
+      episodeNumber: r.episode_number,
+      episodeTitle: r.episode_title || null,
+      positionSec: r.position_sec,
+      durationSec: r.duration_sec,
+      percent: Number(r.percent) || 0,
+      completed: !!r.completed,
+      updatedAt: r.updated_at,
+    }));
+
+    return sendPaginated(res, items, { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
   } catch (err) {
     console.error('[WatchController] getHistory error:', err.message);
     return res.status(500).json({ message: 'Failed to fetch history.' });
@@ -389,7 +387,7 @@ exports.clearHistory = async (req, res) => {
     await db.query('DELETE FROM watch_progress WHERE user_id = ?', [userId]);
     await db.query('DELETE FROM watch_dismissed WHERE user_id = ?', [userId]);
 
-    return res.json({ success: true, message: 'Watch history cleared.' });
+    return sendSuccess(res, null, { message: 'Watch history cleared.' });
   } catch (err) {
     console.error('[WatchController] clearHistory error:', err.message);
     return res.status(500).json({ message: 'Failed to clear history.' });
@@ -425,7 +423,7 @@ exports.getBatchProgress = async (req, res) => {
       };
     });
 
-    return res.json(progressMap);
+    return sendSuccess(res, progressMap);
   } catch (err) {
     console.error('[WatchController] getBatchProgress error:', err.message);
     return res.status(500).json({ message: 'Failed to fetch batch progress.' });
@@ -445,7 +443,7 @@ exports.resolveNextEpisode = async (req, res) => {
 
     const [animeRows] = await db.query('SELECT id, title FROM anime WHERE id = ? LIMIT 1', [animeId]);
     if (!animeRows.length) {
-      return res.json({ success: true, hasNextEpisode: false, message: 'Anime not found in catalogue.' });
+      return sendSuccess(res, { hasNextEpisode: false }, { message: 'Anime not found in catalogue.' });
     }
     const animeTitle = animeRows[0].title;
 
@@ -455,7 +453,7 @@ exports.resolveNextEpisode = async (req, res) => {
     );
 
     if (!epRows.length) {
-      return res.json({ success: true, hasNextEpisode: false, message: `Episode ${targetEpisodeNumber} not found. This may be the final released episode.` });
+      return sendSuccess(res, { hasNextEpisode: false }, { message: `Episode ${targetEpisodeNumber} not found. This may be the final released episode.` });
     }
 
     const nextEpisode = epRows[0];
@@ -482,8 +480,7 @@ exports.resolveNextEpisode = async (req, res) => {
       animeheaven_episode_key: nextEpisode.animeheaven_episode_key || null,
     };
 
-    return res.json({
-      success: true,
+    return sendSuccess(res, {
       hasNextEpisode: true,
       episode: episodePayload,
       sources: {
@@ -579,7 +576,7 @@ exports.getEpisodeMarkers = async (req, res) => {
       console.warn('[WatchController] AniSkip skipped: no MAL id for anime', { animeId: ep.anime_id, episodeId: Number(episodeId) });
     }
 
-    return res.json({ success: true, episodeId: Number(episodeId), markers });
+    return sendSuccess(res, { episodeId: Number(episodeId), markers });
   } catch (err) {
     console.error('[WatchController] getEpisodeMarkers error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch markers.' });
@@ -607,10 +604,10 @@ exports.getEpisodeSkipTimes = async (req, res) => {
 
     try {
       const result = await fetchSkipTimes(effectiveMalId, episodeNumber);
-      return res.json(result);
+      return sendSuccess(res, result);
     } catch (skipErr) {
       console.warn(`[WatchController] AniSkip fetch failed (non-fatal): ${skipErr.message}`);
-      return res.json({ found: false });
+      return sendSuccess(res, { found: false });
     }
   } catch (err) {
     console.error('[WatchController] getEpisodeSkipTimes error (wrapper):', err.message);

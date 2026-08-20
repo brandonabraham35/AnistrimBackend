@@ -3,6 +3,7 @@
 // and administrators can review, resolve, or dismiss them.
 const db = require('../config/db');
 const logger = require('../utils/logger');
+const { sendSuccess } = require('../utils/response');
 
 /**
  * POST /api/reports/stream
@@ -27,7 +28,7 @@ exports.submitReport = async (req, res) => {
       [userId, animeId, episodeNumber, resolvedIssue]
     );
 
-    res.status(201).json({ message: 'Report submitted successfully. Thank you for your feedback!' });
+    return sendSuccess(res, null, { message: 'Report submitted successfully. Thank you for your feedback!' }, 201);
   } catch (err) {
     console.error('[ReportController] submitReport error:', err.message);
     res.status(500).json({ message: 'Failed to submit report.' });
@@ -48,7 +49,7 @@ exports.logClientEvent = async (req, res) => {
   // Use the structured logger for consistency.
   logger.info(`[PLAYBACK]`, { event, from: 'client', ...payload });
 
-  res.status(202).json({ message: 'Event logged.' });
+  return sendSuccess(res, null, { message: 'Event logged.' }, 202);
 };
 
 /**
@@ -74,7 +75,7 @@ exports.getPendingReports = async (req, res) => {
        ORDER BY sr.created_at ASC`
     );
 
-    res.json(rows);
+    return sendSuccess(res, rows);
   } catch (err) {
     console.error('[ReportController] getPendingReports error:', err.message);
     res.status(500).json({ message: 'Failed to fetch reports.' });
@@ -105,7 +106,7 @@ exports.updateReportStatus = async (req, res) => {
       return res.status(404).json({ message: 'Report not found.' });
     }
 
-    res.json({ message: `Report ${status.toLowerCase()} successfully.` });
+    return sendSuccess(res, null, { message: `Report ${status.toLowerCase()} successfully.` });
   } catch (err) {
     console.error('[ReportController] updateReportStatus error:', err.message);
     res.status(500).json({ message: 'Failed to update report status.' });

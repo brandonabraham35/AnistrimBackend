@@ -48,7 +48,14 @@ async function api(path, { method = 'GET', body, token } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => null);
-  return { status: res.status, data };
+  return { status: res.status, data: unwrapSuccess(data) };
+}
+
+function unwrapSuccess(data) {
+  if (data && data.success === true && Object.prototype.hasOwnProperty.call(data, 'data')) {
+    return data.data;
+  }
+  return data;
 }
 
 // ── Test helpers ──────────────────────────────────────────────

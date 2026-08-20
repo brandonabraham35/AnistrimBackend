@@ -2,6 +2,7 @@ const db = require('../config/db');
 const cloudinaryVideo = require('../utils/bunnyStream');
 const { deleteImage } = require('../utils/bunnyUpload');
 const cache = require('../utils/cacheService');
+const { sendSuccess, sendPaginated } = require('../utils/response');
 
 const toBool = value => value === true || value === 1 || value === '1' || (Buffer.isBuffer(value) && value[0] === 1);
 const numberOrNull = value => value === '' || value === undefined || value === null ? null : Number(value);
@@ -138,7 +139,7 @@ const adminController = {
       const content = results[1][0][0] || {};
       const episodes = results[2][0][0] || {};
       const activity = results[3][0][0] || {};
-      res.json({
+      return sendSuccess(res, {
         overview: {
           users: { total: Number(users.total) || 0, premium: Number(users.premium) || 0, activeToday: Number(activity.activeToday) || 0, banned: Number(users.banned) || 0 },
           content: { totalAnime: Number(content.totalAnime) || 0, totalEpisodes: Number(episodes.totalEpisodes) || 0, totalViews: (Number(content.totalViews) || 0) + (Number(episodes.episodeViews) || 0), dailyViews: Number(activity.dailyViews) || 0, avgRating: Number(content.avgRating) || 0 },
@@ -258,15 +259,7 @@ const adminController = {
         is_featured: toBool(row.is_featured),
       }));
 
-      res.json({
-        data,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+      return sendPaginated(res, data, { page, perPage: limit, totalItems: total });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -293,7 +286,7 @@ const adminController = {
       const [epViews] = await db.query('SELECT COALESCE(SUM(view_count), 0) AS views FROM episodes WHERE anime_id = ?', [anime.id]);
       anime.total_episode_views = epViews[0]?.views || 0;
 
-      res.json({
+      return sendSuccess(res, {
         ...anime,
         is_premium: toBool(anime.is_premium),
         is_featured: toBool(anime.is_featured),
@@ -314,7 +307,7 @@ const adminController = {
        await adminController.replaceGenres(result.insertId, genres);
        invalidateCatalogue(result.insertId);
       await logActivity(req, `Created anime: ${title.trim()}`, 'anime', result.insertId);
-      res.status(201).json({ id: result.insertId, message: 'Anime created.' });
+      return sendSuccess(res, { id: result.insertId }, { message: 'Anime created.' }, 201);
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -340,7 +333,7 @@ const adminController = {
       await logActivity(req, `Updated anime #${req.params.id}`, 'anime', req.params.id);
       // Phase 5.3 — record the before/after audit trail via logAdminAction.
       await logAdminAction(req, { action: 'anime.update', entityType: 'anime', entityId: req.params.id, before, after: values });
-      res.json({ message: 'Anime updated.' });
+      return sendSuccess(res, null, { message: 'Anime updated.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -358,7 +351,7 @@ const adminController = {
       for (const asset of episodeAssets) { if (asset.video_public_id) cloudinaryVideo.deleteVideo(asset.video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (asset.thumbnail_public_id) deleteImage(asset.thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); }
        await logActivity(req, `Deleted anime #${req.params.id}`, 'anime', req.params.id);
        invalidateCatalogue(req.params.id);
-      res.json({ message: 'Anime deleted.' });
+      return sendSuccess(res, null, { message: 'Anime deleted.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -368,13 +361,13 @@ const adminController = {
     if (ids.length) await db.query('INSERT IGNORE INTO anime_genres (anime_id, genre_id) VALUES ?', [ids.map(id => [animeId, id])]);
   },
 
-  async getAllGenres(req, res) { try { const [rows] = await db.query('SELECT id, name FROM genres ORDER BY name'); res.json(rows); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); res.status(201).json({ id: r.insertId, name: req.body.name.trim() }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : error.message }); } },
-  async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); res.json({ message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAllGenres(req, res) { try { const [rows] = await db.query('SELECT id, name FROM genres ORDER BY name'); return sendSuccess(res, rows); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); return sendSuccess(res, { id: r.insertId, name: req.body.name.trim() }, null, 201); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : error.message }); } },
+  async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); return sendSuccess(res, null, { message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); res.json(rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); res.json({ ...rows[0], is_premium: toBool(rows[0].is_premium) }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); return sendSuccess(res, rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); return sendSuccess(res, rows.map(row => ({ ...row, is_premium: toBool(row.is_premium) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); return sendSuccess(res, { ...rows[0], is_premium: toBool(rows[0].is_premium) }); } catch (error) { res.status(500).json({ message: error.message }); } },
   // P2: server-side premium timing. Maps an admin-chosen duration label to a
   // premium_until timestamp (server clock, not device clock). 'permanent'/null
   // means null (permanent).
@@ -395,7 +388,7 @@ const adminController = {
       const resolvedUntil = adminController.resolvePremiumUntil(resolvedTier, premium_duration, premium_until);
       const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, access_tier: resolvedTier, premium_until: resolvedUntil, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) });
       await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); invalidateCatalogue(animeId);
-      res.status(201).json({ id: r.insertId, message: 'Episode created.' });
+      return sendSuccess(res, { id: r.insertId }, { message: 'Episode created.' }, 201);
     } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
   async updateEpisode(req, res) {
@@ -408,16 +401,16 @@ const adminController = {
     }
     for (const field of fields) if (!['access_tier','premium_until'].includes(field) && hasColumn(schema, 'episodes', field) && hasReq(field)) { updates.push(`${field} = ?`); values.push(field === 'is_premium' ? (toBool(req.body[field]) ? 1 : 0) : ['duration_sec', 'episode_number', 'intro_start_time', 'intro_end_time'].includes(field) ? numberOrNull(req.body[field]) : req.body[field] || null); }
     if (!updates.length) return res.status(400).json({ message: 'No episode fields were supplied.' });
-    try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); res.json({ message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
+    try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); return sendSuccess(res, null, { message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
-  async deleteEpisode(req, res) { try { const schema = await getSchema(); const videoColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null; const thumbnailColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null; const [rows] = await db.query(`SELECT ${videoColumn || 'NULL AS video_public_id'}, ${thumbnailColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id = ?`, [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (rows[0].video_public_id) cloudinaryVideo.deleteVideo(rows[0].video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (rows[0].thumbnail_public_id) deleteImage(rows[0].thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); res.json({ message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async deleteEpisode(req, res) { try { const schema = await getSchema(); const videoColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null; const thumbnailColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null; const [rows] = await db.query(`SELECT ${videoColumn || 'NULL AS video_public_id'}, ${thumbnailColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id = ?`, [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (rows[0].video_public_id) cloudinaryVideo.deleteVideo(rows[0].video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (rows[0].thumbnail_public_id) deleteImage(rows[0].thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); return sendSuccess(res, null, { message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
   async getAllUsers(req, res) {
     try {
       const schema = await getSchema();
       const status = hasColumn(schema, 'users', 'status') ? 'status' : "'unavailable' AS status";
       const [rows] = await db.query(`SELECT id, name, email, is_admin, is_premium, premium_expires_at, ${status}, created_at FROM users ORDER BY created_at DESC`);
-      res.json(rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) })));
+      return sendSuccess(res, rows.map(row => ({ ...row, is_admin: toBool(row.is_admin), is_premium: toBool(row.is_premium) })));
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
   async updateUser(req, res) {
@@ -491,17 +484,17 @@ const adminController = {
         } catch (e) { console.warn('[Admin] premium cache refresh failed:', e.message); }
       }
       await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id);
-      res.json({ message: 'User updated.' });
+      return sendSuccess(res, null, { message: 'User updated.' });
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
-  async getSettings(req, res) { try { res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'cloudinary_cloud_name']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); res.json(settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getSettings(req, res) { try { return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'cloudinary_cloud_name']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); res.json(rows.map(row => ({ ...row, banner_url: row.image_url, frequency_minutes: row.frequency, is_active: toBool(row.is_active), target_free_only: toBool(row.target_free_only) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async createAd(req, res) { const { title, type = 'banner', image_url, banner_url, video_url, target_url, frequency, frequency_minutes, is_active = 1, target_free_only = 1 } = req.body; if (!title?.trim()) return res.status(400).json({ message: 'Ad title is required.' }); try { const [r] = await db.query('INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), type, image_url || banner_url || null, video_url || null, target_url || null, Number(frequency ?? frequency_minutes) || 1, toBool(is_active) ? 1 : 0, toBool(target_free_only) ? 1 : 0]); await logActivity(req, `Created advertisement: ${title.trim()}`, 'ad', r.insertId); res.status(201).json({ id: r.insertId, message: 'Advertisement created.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); res.json({ message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); res.json({ message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); return sendSuccess(res, rows.map(row => ({ ...row, banner_url: row.image_url, frequency_minutes: row.frequency, is_active: toBool(row.is_active), target_free_only: toBool(row.target_free_only) }))); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async createAd(req, res) { const { title, type = 'banner', image_url, banner_url, video_url, target_url, frequency, frequency_minutes, is_active = 1, target_free_only = 1 } = req.body; if (!title?.trim()) return res.status(400).json({ message: 'Ad title is required.' }); try { const [r] = await db.query('INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), type, image_url || banner_url || null, video_url || null, target_url || null, Number(frequency ?? frequency_minutes) || 1, toBool(is_active) ? 1 : 0, toBool(target_free_only) ? 1 : 0]); await logActivity(req, `Created advertisement: ${title.trim()}`, 'ad', r.insertId); return sendSuccess(res, { id: r.insertId }, { message: 'Advertisement created.' }, 201); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
   // ── GET /api/admin/dashboard/ads-metrics ────────────────────
   // Per-slot, per-day ad_events breakdown for the last 30 days, plus fill-rate
@@ -565,15 +558,15 @@ const adminController = {
         return { slot, perDay };
       });
 
-      return res.json({ days, slots, series });
+      return sendSuccess(res, { days, slots, series });
     } catch (error) {
       console.error('[Admin] getAdsMetrics error:', error.message);
       return res.status(500).json({ message: 'Unable to load ads metrics.' });
     }
   },
 
-  async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); res.json({ message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getVideoStatus(req, res) { try { const video = await cloudinaryVideo.getVideo(req.params.videoId); res.json({ success: true, ...video, status: 'ready', video_status: 'ready', encodeProgress: 100 }); } catch (error) { res.status(502).json({ message: error.message }); } },
+  async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); return sendSuccess(res, null, { message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getVideoStatus(req, res) { try { const video = await cloudinaryVideo.getVideo(req.params.videoId); return sendSuccess(res, { ...video, status: 'ready', video_status: 'ready', encodeProgress: 100 }); } catch (error) { res.status(502).json({ message: error.message }); } },
 
   // ─── Bulk Update Operations ─────────────────────────────────────
 
@@ -630,7 +623,7 @@ const adminController = {
 
       invalidateCatalogue();
 
-      res.json({ success: true, message: `Updated ${result.affectedRows} anime.`, affectedRows: result.affectedRows });
+      return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Updated ${result.affectedRows} anime.` });
     } catch (error) {
       try { await conn.rollback(); } catch (e) {}
       console.error('Bulk update anime error:', error);
@@ -679,7 +672,7 @@ const adminController = {
       await logActivity(req, `Bulk deleted ${result.affectedRows} anime`, 'anime', null, JSON.stringify(ids));
       invalidateCatalogue();
 
-      res.json({ success: true, message: `Successfully deleted ${result.affectedRows} anime.` });
+      return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Successfully deleted ${result.affectedRows} anime.` });
     } catch (error) {
       console.error('Bulk delete anime error:', error);
       res.status(500).json({ message: error.message });
@@ -710,7 +703,7 @@ const adminController = {
       await logActivity(req, `Bulk deleted ${result.affectedRows} episodes`, 'episode', null, JSON.stringify(ids));
       invalidateCatalogue();
 
-      res.json({ success: true, message: `Successfully deleted ${result.affectedRows} episodes.` });
+      return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Successfully deleted ${result.affectedRows} episodes.` });
     } catch (error) {
       console.error('Bulk delete episodes error:', error);
       res.status(500).json({ message: error.message });
@@ -753,14 +746,10 @@ if (search) {
         [...params, limitNum, offset]
       );
 
-      res.json({
-        data: rows.map(p => ({
-          ...p,
-          is_premium: toBool(p.is_premium),
-        })),
-        pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
-        summary: { total },
-      });
+      return sendPaginated(res, rows.map(p => ({
+        ...p,
+        is_premium: toBool(p.is_premium),
+      })), { page: pageNum, perPage: limitNum, totalItems: total }, { summary: { total } });
     } catch (error) {
       console.error('getPayments error:', error);
       res.status(500).json({ message: error.message });
@@ -779,7 +768,7 @@ if (search) {
 
       await logActivity(req, `Bulk deleted ${result.affectedRows} users`, 'user', null, JSON.stringify(safeIds));
 
-      res.json({ success: true, message: `Successfully deleted ${result.affectedRows} user(s).` });
+      return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Successfully deleted ${result.affectedRows} user(s).` });
     } catch (error) {
       console.error('Bulk delete users error:', error);
       res.status(500).json({ message: error.message });
@@ -791,7 +780,7 @@ async updateGenre(req, res) {
       const [r] = await db.query('UPDATE genres SET name = ? WHERE id = ?', [req.body.name.trim(), req.params.id]);
       if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' });
       await logActivity(req, `Updated genre #${req.params.id} to: ${req.body.name.trim()}`, 'genre', req.params.id);
-      res.json({ id: parseInt(req.params.id), name: req.body.name.trim(), message: 'Genre updated.' });
+      return sendSuccess(res, { id: parseInt(req.params.id), name: req.body.name.trim() }, { message: 'Genre updated.' });
     } catch (error) {
       res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre name already exists.' : error.message });
     }
@@ -811,7 +800,7 @@ async updateGenre(req, res) {
         is_admin: toBool(rows[0].is_admin),
         is_premium: toBool(rows[0].is_premium),
       };
-      res.json(user);
+      return sendSuccess(res, user);
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -819,7 +808,7 @@ async updateGenre(req, res) {
     try {
       const schema = await getSchema();
       if (!hasColumn(schema, 'watch_progress', 'user_id')) {
-        return res.json([]);
+        return sendSuccess(res, []);
       }
       const [rows] = await db.query(
         `SELECT wh.id, wh.episode_id, wh.position_sec AS progress_sec, wh.completed, wh.updated_at AS watched_at,
@@ -832,7 +821,7 @@ async updateGenre(req, res) {
          LIMIT 50`,
         [req.params.id]
       );
-      res.json(rows);
+      return sendSuccess(res, rows);
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -847,14 +836,14 @@ async updateGenre(req, res) {
            ORDER BY login_time DESC LIMIT 20`,
           [req.params.id, req.params.id]
         );
-        res.json(rows);
+        return sendSuccess(res, rows);
       } else {
         const [rows] = await db.query(
           `SELECT last_login AS login_time, 'login' AS method FROM users WHERE id = ? AND last_login IS NOT NULL
            ORDER BY login_time DESC LIMIT 20`,
           [req.params.id]
         );
-        res.json(rows);
+        return sendSuccess(res, rows);
       }
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
@@ -867,7 +856,7 @@ async updateGenre(req, res) {
         ? `SELECT a.action, a.created_at, a.ip_address, ${userNameExpr} user_name FROM activity_logs a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 50`
         : `SELECT a.action, a.created_at, NULL ip_address, ${userNameExpr} user_name FROM admin_logs a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 50`;
       const [rows] = await db.query(sql);
-      res.json(rows);
+      return sendSuccess(res, rows);
     } catch (error) { res.status(500).json({ message: error.message }); }
   },
 
@@ -902,7 +891,7 @@ async updateGenre(req, res) {
         if (anyDownOrDegraded) overall = 'degraded';
       }
 
-      res.json({
+      return sendSuccess(res, {
         status: overall,
         timestamp: new Date().toISOString(),
         checks: {
@@ -938,8 +927,7 @@ async updateGenre(req, res) {
             GROUP BY DATE(updated_at)
             ORDER BY date ASC
           `, [days]);
-          res.json({ labels: rows.map(r => r.date), values: rows.map(r => r.count) });
-          break;
+          return sendSuccess(res, { labels: rows.map(r => r.date), values: rows.map(r => r.count) });
         }
 
         case 'revenue': {
@@ -949,8 +937,7 @@ async updateGenre(req, res) {
             GROUP BY DATE_FORMAT(paid_at, '%Y-%m')
             ORDER BY month ASC
           `, [Math.ceil(days / 30)]);
-          res.json({ labels: rows.map(r => r.month), values: rows.map(r => r.total) });
-          break;
+          return sendSuccess(res, { labels: rows.map(r => r.month), values: rows.map(r => r.total) });
         }
 
         case 'anime-growth': {
@@ -964,8 +951,7 @@ async updateGenre(req, res) {
           // Cumulative
           let cumulative = 0;
           const values = rows.map(r => { cumulative += Number(r.count); return cumulative; });
-          res.json({ labels: rows.map(r => r.month), values });
-          break;
+          return sendSuccess(res, { labels: rows.map(r => r.month), values });
         }
 
         case 'episode-views': {
@@ -976,8 +962,7 @@ async updateGenre(req, res) {
             GROUP BY DATE(updated_at)
             ORDER BY date ASC
           `, [days]);
-          res.json({ labels: rows.map(r => r.date), values: rows.map(r => r.views) });
-          break;
+          return sendSuccess(res, { labels: rows.map(r => r.date), values: rows.map(r => r.views) });
         }
 
         case 'genre-distribution': {
@@ -989,8 +974,7 @@ async updateGenre(req, res) {
             ORDER BY count DESC
             LIMIT 10
           `);
-          res.json({ labels: rows.map(r => r.name), values: rows.map(r => r.count) });
-          break;
+          return sendSuccess(res, { labels: rows.map(r => r.name), values: rows.map(r => r.count) });
         }
 
 case 'provider-usage': {
@@ -1002,11 +986,10 @@ case 'provider-usage': {
           `);
           const hasVideo = rows.find(r => r.has_video == 1);
           const noVideo = rows.find(r => r.has_video == 0);
-          res.json({
+          return sendSuccess(res, {
             labels: ['With Video Source', 'No Video Source'],
             values: [(hasVideo?.count || 0), (noVideo?.count || 0)]
           });
-          break;
         }
 
         default:
@@ -1015,7 +998,7 @@ case 'provider-usage': {
     } catch (error) {
       console.error(`[Charts] Error fetching ${type}:`, error.message);
       // Return empty data on error so the frontend can handle it gracefully
-      res.json({ labels: [], values: [] });
+      return sendSuccess(res, { labels: [], values: [] });
     }
   },
 
@@ -1043,7 +1026,7 @@ case 'provider-usage': {
       // the overall point set.
       const degradedSince = metrics.degradedSince(history.points, component);
 
-      res.json({
+      return sendSuccess(res, {
         health: { ...history, degradedSince },
         latency: { p50: latency.p50, p95: latency.p95, samples: latency.samples, source: latency.source, hours: latency.hours },
         fivexx: { buckets: fivexx.buckets, source: fivexx.source, hours: fivexx.hours },
@@ -1085,7 +1068,7 @@ case 'provider-usage': {
           [limit, offset]
         );
         const [countRows] = await db.query('SELECT COUNT(*) AS total FROM admin_logs');
-        return res.json({ data: rows, pagination: { page, limit, total: countRows[0]?.total || 0, totalPages: Math.ceil((countRows[0]?.total || 0) / limit) } });
+        return sendPaginated(res, rows, { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
       }
 
       const userNameExpr = hasColumn(schema, 'users', 'name') ? 'u.name' : 'u.email';
@@ -1099,10 +1082,7 @@ case 'provider-usage': {
         `SELECT COUNT(*) AS total FROM admin_logs l ${whereClause}`,
         params
       );
-      return res.json({
-        data: rows,
-        pagination: { page, limit, total: countRows[0]?.total || 0, totalPages: Math.ceil((countRows[0]?.total || 0) / limit) },
-      });
+      return sendPaginated(res, rows, { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
     } catch (error) {
       console.error('[Admin] getAuditLogs error:', error.message);
       res.status(500).json({ message: error.message });
@@ -1160,10 +1140,10 @@ case 'provider-usage': {
       // Sort by created_at descending
       activities.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-      res.json(activities.slice(0, limit));
+      return sendSuccess(res, activities.slice(0, limit));
     } catch (error) {
       console.error('[Activity] Error fetching recent activity:', error.message);
-      res.json([]);
+      return sendSuccess(res, []);
     }
   },
 };

@@ -20,6 +20,7 @@ USE anistrim2;
 -- ── Per-request latency + status source ─────────────────────
 CREATE TABLE IF NOT EXISTS api_request_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(100) DEFAULT NULL,
   method VARCHAR(10)  NOT NULL,
   path   VARCHAR(255) NOT NULL,
   status_code INT NOT NULL,
@@ -28,6 +29,12 @@ CREATE TABLE IF NOT EXISTS api_request_log (
   INDEX idx_created_at (created_at),
   INDEX idx_status_time (status_code, created_at)
 ) ENGINE=InnoDB;
+
+-- Observability: carry the per-request requestId (req_<id>) on each record so
+-- api_request_log rows can be correlated with error logs. Idempotent — the
+-- migration runner skips ER_DUP_FIELDNAME, so re-running is safe.
+ALTER TABLE api_request_log
+  ADD COLUMN request_id VARCHAR(100) DEFAULT NULL AFTER id;
 
 -- ── Email delivery event log ────────────────────────────────
 CREATE TABLE IF NOT EXISTS email_events (

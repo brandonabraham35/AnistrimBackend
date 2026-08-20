@@ -2,6 +2,7 @@
 // Category-based anime watchlist — save, categorize, and manage shows.
 // Episode progress tracking has been moved to controllers/watchController.js.
 const db = require('../config/db');
+const { sendSuccess } = require('../utils/response');
 const watchCtrl = require('./watchController');
 
 /**
@@ -33,10 +34,10 @@ exports.addOrUpdateWatchlist = async (req, res) => {
       [userId, animeId, animeTitle || null, animeCover || null, resolvedStatus]
     );
 
-    res.json({ message: 'Watchlist updated successfully.' });
+    return sendSuccess(res, null, { message: 'Watchlist updated successfully.' });
   } catch (err) {
     console.error('[WatchlistController] addOrUpdateWatchlist error:', err.message);
-    res.status(500).json({ message: 'Failed to update watchlist.' });
+    return res.status(500).json({ message: 'Failed to update watchlist.' });
   }
 };
 
@@ -66,7 +67,7 @@ exports.addLegacyWatchlist = async (req, res) => {
     return exports.addOrUpdateWatchlist(req, res);
   } catch (err) {
     console.error('[WatchlistController] addLegacyWatchlist error:', err.message);
-    res.status(500).json({ message: 'Failed to update watchlist.' });
+    return res.status(500).json({ message: 'Failed to update watchlist.' });
   }
 };
 
@@ -93,7 +94,7 @@ exports.toggleWatchlist = async (req, res) => {
     );
     if (existing.length) {
       await db.query('DELETE FROM user_watchlists WHERE user_id = ? AND anime_id = ?', [userId, animeId]);
-      return res.json({ inList: false, status: null, message: 'Removed from My List.' });
+      return sendSuccess(res, { inList: false, status: null }, { message: 'Removed from My List.' });
     }
 
     // Not in the list → add it.
@@ -108,7 +109,7 @@ exports.toggleWatchlist = async (req, res) => {
       [userId, animeId, animeRows[0]?.title || `Anime-${animeId}`, animeRows[0]?.cover_image || null, resolvedStatus]
     );
 
-    return res.json({ inList: true, status: resolvedStatus, message: 'Added to My List.' });
+    return sendSuccess(res, { inList: true, status: resolvedStatus }, { message: 'Added to My List.' });
   } catch (err) {
     console.error('[WatchlistController] toggleWatchlist error:', err.message);
     return res.status(500).json({ message: 'Failed to toggle watchlist.' });
@@ -167,10 +168,10 @@ exports.getWatchlist = async (req, res) => {
         updatedAt: row.updated_at,
       });
     }
-    res.json(result);
+    return sendSuccess(res, result);
   } catch (err) {
     console.error('[WatchlistController] getWatchlist error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch watchlist.' });
+    return res.status(500).json({ message: 'Failed to fetch watchlist.' });
   }
 };
 
@@ -192,10 +193,10 @@ exports.removeFromWatchlist = async (req, res) => {
       [userId, animeId]
     );
 
-    res.json({ message: 'Removed from watchlist.' });
+    return sendSuccess(res, null, { message: 'Removed from watchlist.' });
   } catch (err) {
     console.error('[WatchlistController] removeFromWatchlist error:', err.message);
-    res.status(500).json({ message: 'Failed to remove from watchlist.' });
+    return res.status(500).json({ message: 'Failed to remove from watchlist.' });
   }
 };
 
@@ -218,7 +219,7 @@ exports.getWatchlistStats = async (req, res) => {
     );
 
     const statRow = rows[0] || {};
-    res.json({
+    return sendSuccess(res, {
       watching: Number(statRow.watching || 0),
       completed: Number(statRow.completed || 0),
       plan_to_watch: Number(statRow.plan_to_watch || 0),
@@ -226,7 +227,7 @@ exports.getWatchlistStats = async (req, res) => {
     });
   } catch (err) {
     console.error('[WatchlistController] getWatchlistStats error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch watchlist stats.' });
+    return res.status(500).json({ message: 'Failed to fetch watchlist stats.' });
   }
 };
 
@@ -246,7 +247,12 @@ exports.getLegacyContinueWatching = async (req, res) => {
       watchCtrl.getContinueWatching(uaReq, fakeRes);
     });
 
-    for (const item of canonicalResponse || []) {
+    // watchController.getContinueWatching now returns the standard envelope.
+    const items = canonicalResponse && canonicalResponse.data !== undefined
+      ? (Array.isArray(canonicalResponse.data) ? canonicalResponse.data : [])
+      : (Array.isArray(canonicalResponse) ? canonicalResponse : []);
+
+    for (const item of items) {
       legacyRows.push({
         anime_id: item.animeId,
         title: item.title || item.animeTitle,
@@ -258,10 +264,10 @@ exports.getLegacyContinueWatching = async (req, res) => {
       });
     }
 
-    return res.json(legacyRows);
+    return sendSuccess(res, legacyRows);
   } catch (err) {
     console.error('[WatchlistController] getLegacyContinueWatching error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch continue watching list.' });
+    return res.status(500).json({ message: 'Failed to fetch continue watching list.' });
   }
 };
 
@@ -291,11 +297,13 @@ exports.getLegacyProgress = async (req, res) => {
 
     const legacyRes = {
       json: (payload) => {
-        const completed = Number(payload?.progressSeconds || 0) > 0 && payload?.totalDurationSeconds > 0 && Number(payload.progressSeconds) >= Number(payload.totalDurationSeconds)
+        // watchController.getProgress now returns the standard envelope.
+        const inner = (payload && payload.data !== undefined) ? payload.data : payload;
+        const completed = Number(inner?.progressSeconds || 0) > 0 && inner?.totalDurationSeconds > 0 && Number(inner.progressSeconds) >= Number(inner.totalDurationSeconds)
           ? 1
           : 0;
-        return res.json({
-          progress_sec: Number(payload?.progressSeconds || 0),
+        return sendSuccess(res, {
+          progress_sec: Number(inner?.progressSeconds || 0),
           completed,
         });
       },
@@ -305,7 +313,7 @@ exports.getLegacyProgress = async (req, res) => {
     return watchCtrl.getProgress(legacyReq, legacyRes);
   } catch (err) {
     console.error('[WatchlistController] getLegacyProgress error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch progress.' });
+    return res.status(500).json({ message: 'Failed to fetch progress.' });
   }
 };
 
@@ -348,6 +356,6 @@ exports.saveLegacyProgress = async (req, res) => {
     return watchCtrl.saveProgress(req, res);
   } catch (err) {
     console.error('[WatchlistController] saveLegacyProgress error:', err.message);
-    res.status(500).json({ message: 'Failed to save progress.' });
+    return res.status(500).json({ message: 'Failed to save progress.' });
   }
 };
