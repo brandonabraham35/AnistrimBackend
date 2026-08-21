@@ -59,7 +59,7 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
         // Explicit column whitelist — never SELECT *, so provider/internal fields
         // (cloudinary_public_id, animeheaven_episode_key, etc.) cannot leak.
         const [episodes] = await pool.query(
-            `SELECT e.id, e.anime_id, e.episode_number, e.season, e.season_number, e.title, e.description,
+            `SELECT e.id, e.anime_id, e.episode_number, e.season, e.title, e.description,
                     e.thumbnail_url, e.video_url, e.duration_sec, e.view_count, e.is_premium,
                     e.access_tier, e.premium_until, e.created_at, e.updated_at
              FROM episodes e

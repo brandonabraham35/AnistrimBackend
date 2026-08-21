@@ -249,10 +249,10 @@ exports.getById = async (req, res) => {
 
     // 3. FETCH THE EPISODES from the local database (explicit column whitelist).
     const [episodeRows] = await db.query(
-      `SELECT e.id, e.anime_id, e.episode_number, e.season, e.season_number, e.title, e.description,
-              e.thumbnail_url, e.video_url, e.duration_sec, e.view_count, e.is_premium,
-              e.access_tier, e.premium_until, e.created_at, e.updated_at
-       FROM episodes e WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER} ORDER BY e.episode_number ASC`,
+      `SELECT e.id, e.anime_id, e.episode_number, e.season, e.title, e.description,
+               e.thumbnail_url, e.video_url, e.duration_sec, e.view_count, e.is_premium,
+               e.access_tier, e.premium_until, e.created_at, e.updated_at
+        FROM episodes e WHERE e.anime_id = ? AND ${PUBLIC_EPISODE_FILTER} ORDER BY e.episode_number ASC`,
       [animeId]
     );
 

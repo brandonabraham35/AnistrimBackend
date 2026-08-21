@@ -48,10 +48,10 @@ exports.saveProgress = async (req, res) => {
     if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
 
     // Resolve the episode to get anime_id + episode_number.
-    // NOTE: season_number is intentionally NOT selected/inserted here — it is
-    // not part of watch_progress's schema (the runtime error confirmed this).
+    // NOTE: episodes.season_number does not exist in the schema (the runtime
+    // error confirmed this); the canonical season column is episodes.season.
     // Episode number is sufficient for the progress row; season context is
-    // derived via the episodes join in read queries.
+    // derived via the episodes.season join in read queries.
     const [epRows] = await db.query(
       'SELECT id, anime_id, episode_number FROM episodes WHERE id = ?',
       [episodeId]
@@ -220,22 +220,22 @@ exports.getContinueWatching = async (req, res) => {
       // If the most recent row is completed → surface the NEXT episode.
       if (row.completed || percent >= 95) {
         const [nextEp] = await db.query(
-          `SELECT id, episode_number, season_number, title
+          `SELECT id, episode_number, season, title
            FROM episodes
-           WHERE anime_id = ? AND episode_number > ?
-           ORDER BY episode_number ASC
-           LIMIT 1`,
+            WHERE anime_id = ? AND episode_number > ?
+            ORDER BY episode_number ASC
+            LIMIT 1`,
           [row.anime_id, row.episode_number]
-        );
-        if (!nextEp.length) {
-          // Series finished — drop from the rail.
-          continue;
-        }
-        result.push({
-          animeId: row.anime_id,
-          title: row.anime_title,
-          poster: row.anime_cover_image,
-          seasonNumber: nextEp[0].season_number || 1,
+         );
+         if (!nextEp.length) {
+           // Series finished — drop from the rail.
+           continue;
+         }
+         result.push({
+           animeId: row.anime_id,
+           title: row.anime_title,
+           poster: row.anime_cover_image,
+           seasonNumber: nextEp[0].season || 1,
           episodeId: nextEp[0].id,
           episodeNumber: nextEp[0].episode_number,
           episodeTitle: nextEp[0].title || null,
