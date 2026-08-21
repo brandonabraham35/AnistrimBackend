@@ -15,6 +15,17 @@ const pool = require('../config/db');
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'sql');
 const MIGRATIONS_TABLE = 'schema_migrations';
 
+// Table presence alone cannot detect a historical CREATE TABLE IF NOT EXISTS
+// drift. These are the subscription columns used by checkout, IPN handling,
+// entitlement resolution, and admin grants.
+const CRITICAL_COLUMNS = {
+  subscriptions: [
+    'user_id', 'reference', 'amount', 'currency', 'status', 'plan',
+    'order_tracking_id', 'plan_id', 'starts_at', 'ends_at', 'state',
+    'source', 'auto_renew', 'paid_at', 'expires_at', 'created_at',
+  ],
+};
+
 // Critical tables that MUST exist before services that depend on them start.
 // Prompt 10: fail loudly — never silently fall back to a legacy path.
 const CRITICAL_TABLES = [
@@ -264,6 +275,25 @@ async function assertCriticalTables() {
     throw err;
   }
   console.log('✅ Critical tables verified:', CRITICAL_TABLES.join(', '));
+  const missingColumns = [];
+  for (const [table, requiredColumns] of Object.entries(CRITICAL_COLUMNS)) {
+    const placeholders = requiredColumns.map(() => '?').join(', ');
+    const [rows] = await pool.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+         AND COLUMN_NAME IN (${placeholders})`,
+      [table, ...requiredColumns]
+    );
+    const present = new Set(rows.map(row => row.COLUMN_NAME));
+    const absent = requiredColumns.filter(column => !present.has(column));
+    if (absent.length) missingColumns.push(`${table}.${absent.join(', ')}`);
+  }
+  if (missingColumns.length) {
+    throw new Error(
+      `Critical schema columns missing: ${missingColumns.join('; ')}. ` +
+      'Apply the pending reconciliation migrations before accepting traffic.'
+    );
+  }
 }
 
 /**
@@ -301,4 +331,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { runMigrations, assertCriticalTables, checkMigrations, CRITICAL_TABLES };
+module.exports = { runMigrations, assertCriticalTables, checkMigrations, CRITICAL_TABLES, CRITICAL_COLUMNS };

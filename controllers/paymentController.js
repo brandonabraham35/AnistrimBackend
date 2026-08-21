@@ -132,29 +132,53 @@ exports.initializeCheckout = async (req, res) => {
     // 3. Build callback URL (user lands here after payment)
     const callbackUrl = `${BACKEND_URL}/api/payments/callback?tx_ref=${encodeURIComponent(reference)}&client=${encodeURIComponent(client)}`;
 
-    // 4. Submit order to Pesapal
-    const orderResult = await pesapal.submitOrder(token, {
-      id: reference,
-      currency: 'UGX',
-      amount: amount,
-      description: label,
-      callback_url: callbackUrl,
-      notification_id: ipnId,
-      email: user.email,
-      firstName: user.name.split(' ')[0] || user.name,
-      lastName: user.name.split(' ').slice(1).join(' ') || '',
-    });
-
-    // 5. Save a PENDING subscription record.
-    // Prompt 3: state='pending' (NOT the v35 default 'active'), plan_id,
-    // starts_at, source='payment'. ends_at stays NULL until payment confirms.
+    // 4. Persist the pending row before the external side effect. If Pesapal
+    // accepts the order but the tracking-ID update is interrupted, IPN can
+    // still find this row by its merchant reference and reconcile it.
     const [insertResult] = await db.query(
       `INSERT INTO subscriptions
         (user_id, reference, amount, currency, status, plan, order_tracking_id,
          plan_id, starts_at, state, source)
-       VALUES (?, ?, ?, 'UGX', 'PENDING', ?, ?, ?, NOW(), 'pending', 'payment')`,
-      [userId, reference, amount, plan, orderResult.order_tracking_id, planRow.id]
+       VALUES (?, ?, ?, 'UGX', 'PENDING', ?, NULL, ?, NOW(), 'pending', 'payment')`,
+      [userId, reference, amount, plan, planRow.id]
     );
+
+    // 5. Submit the external order only after the local pending record exists.
+    let orderResult;
+    try {
+      orderResult = await pesapal.submitOrder(token, {
+        id: reference,
+        currency: 'UGX',
+        amount: amount,
+        description: label,
+        callback_url: callbackUrl,
+        notification_id: ipnId,
+        email: user.email,
+        firstName: user.name.split(' ')[0] || user.name,
+        lastName: user.name.split(' ').slice(1).join(' ') || '',
+      });
+    } catch (submitError) {
+      // The reference was never presented to the customer, but retaining a
+      // failed audit row prevents a retry from being mistaken for a completed
+      // payment and does not create a second charge.
+      await db.query(
+        `UPDATE subscriptions SET status = 'FAILED', state = 'expired' WHERE id = ?`,
+        [insertResult.insertId]
+      );
+      throw submitError;
+    }
+
+    try {
+      await db.query(
+        `UPDATE subscriptions SET order_tracking_id = ? WHERE id = ?`,
+        [orderResult.order_tracking_id, insertResult.insertId]
+      );
+    } catch (trackingError) {
+      // Do not ask the customer to retry a submitted order: the pending row is
+      // already durable by reference, and the callback/IPN path can attach the
+      // tracking ID later without creating another charge.
+      console.error('[Payments] Pending tracking-ID update failed:', trackingError.message);
+    }
 
     await logPaymentEvent(insertResult.insertId, reference, 'pending', {
       plan: plan,

@@ -32,12 +32,10 @@
 --      MODIFY only runs when the column exists but lacks the needed value.
 -- ============================================================
 
-USE anistrim2;
-
 -- ── 1. Fresh-install table (current canonical schema contract) ──
 CREATE TABLE IF NOT EXISTS subscriptions (
   id                INT AUTO_INCREMENT PRIMARY KEY,
-  user_id           INT NOT             NOT NULL,
+  user_id           INT                 NOT NULL,
   reference         VARCHAR(191)        NOT NULL UNIQUE,
   amount            DECIMAL(10,2)       NOT NULL,
   currency          VARCHAR(10)         NOT NULL DEFAULT 'UGX',
@@ -63,14 +61,21 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 -- ── 2. Reconcile missing columns on pre-existing tables ──
 -- The migration runner strips IF NOT EXISTS (MariaDB syntax) from
 -- ADD COLUMN and catches ER_DUP_FIELDNAME — making these re-runs safe.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS user_id INT DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reference VARCHAR(191) DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'UGX';
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS order_tracking_id VARCHAR(191) DEFAULT NULL;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(80) DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS paid_at DATETIME DEFAULT NULL;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at DATETIME DEFAULT NULL;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_id INT DEFAULT NULL;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS starts_at DATETIME DEFAULT NULL;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS ends_at DATETIME DEFAULT NULL;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS state ENUM('pending','trialing','active','grace','expired','cancelled','refunded') NOT NULL DEFAULT 'pending';
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS source ENUM('payment','admin_grant','promo','trial') NOT NULL DEFAULT 'payment';
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 -- ── 3. Reconcile `plan` column (PRIMARY BUG FIX) ──
 -- If the column does not exist (v15 CREATE TABLE was a no-op on a
