@@ -17,6 +17,9 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
   const url = `${BASE_URL}${endpoint}`;
   const token = localStorage.getItem('admin_token');
   const headers = { ...options.headers };
+  // Required by backend client-specific redirect and deep-link handling.
+  // This works for JSON and FormData without forcing a Content-Type.
+  headers['X-Client'] = 'admin';
   const method = options.method || 'GET';
 
 // Only set Content-Type for JSON. Let the browser handle it for FormData.

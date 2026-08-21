@@ -62,7 +62,7 @@
     if (!refresh) return Promise.resolve(null);
     return fetch(API + '/api/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Client': 'web' },
       body: JSON.stringify({ refreshToken: refresh }),
     }).then(function (r) { return r.json(); })
       .then(function (body) { return unwrap(body); })
@@ -82,6 +82,9 @@
   async function request(path, options) {
     options = options || {};
     var headers = Object.assign({}, options.headers || {});
+    // Identify this client for backend-owned redirect and deep-link decisions.
+    // Set after caller headers so this identity cannot be accidentally overridden.
+    headers['X-Client'] = 'web';
     var body = options.body;
     var isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     var isUrlEncoded = typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams;

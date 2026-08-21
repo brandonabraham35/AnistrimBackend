@@ -83,7 +83,10 @@
 
                 const data = await window.apiRequest(endpoint, {
                     method: 'POST',
-                    body: fd
+                    body: fd,
+                    // apiRequest preserves this header and leaves the browser
+                    // to supply the multipart Content-Type boundary.
+                    headers: { 'X-Client': 'admin' }
                 });
 
                 const uploadedUrl = data.url;

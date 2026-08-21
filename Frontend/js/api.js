@@ -109,7 +109,7 @@
     if (!refreshToken) return Promise.resolve(null);
     return fetch(API_BASE + '/api/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Client': 'mobile' },
       body: JSON.stringify({ refreshToken: refreshToken })
     }).then(function (res) {
       if (!res.ok) return null;
@@ -140,6 +140,9 @@
   async function apiFetch(path, options) {
     options = options || {};
     var headers = Object.assign({}, options.headers || {});
+    // Send a stable client identity on JSON, URL-encoded, and FormData requests.
+    // Set after caller headers so it cannot be overridden unintentionally.
+    headers['X-Client'] = 'mobile';
     var body = options.body;
     var isFormData = (typeof FormData !== 'undefined') && (body instanceof FormData);
     if (!isFormData && !(body instanceof URLSearchParams)) {
@@ -225,7 +228,7 @@
         try {
           await fetch(API_BASE + '/api/auth/resend-otp', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Client': 'mobile' },
             body: JSON.stringify({ email: email })
           });
         } catch (e) { /* ignore */ }
@@ -338,7 +341,7 @@
 
     fetch(API_BASE + '/api/health', {
       method: 'GET',
-      headers: { 'Accept': 'application/json' },
+      headers: { 'Accept': 'application/json', 'X-Client': 'mobile' },
       signal: controller ? controller.signal : undefined
     }).then(function (res) {
       if (timeoutId) clearTimeout(timeoutId);
