@@ -52,10 +52,11 @@ test('always includes native WebView origins in production (B1 fix)', () => {
 
 test('includes env origins from API_ALLOWED_ORIGINS', () => {
   process.env.NODE_ENV = 'production';
-  process.env.API_ALLOWED_ORIGINS = 'https://web.anistrim.com,https://admin.anistrim.com';
+  process.env.API_ALLOWED_ORIGINS = 'https://web.anistrim.com,https://admin.anistrim.com,https://anistrim-one.vercel.app';
   const set = corsConfig.buildAllowedOrigins();
   assert.equal(set.has('https://web.anistrim.com'), true);
   assert.equal(set.has('https://admin.anistrim.com'), true);
+  assert.equal(set.has('https://anistrim-one.vercel.app'), true);
 });
 
 test('includes DESKTOP_ORIGINS from env', () => {
@@ -150,6 +151,16 @@ test('origin callback blocks unknown origin in production', () => {
 test('origin callback allows no origin (Electron file://)', () => {
   const options = corsConfig.buildCorsOptions();
   options.origin(undefined, (err, allow) => {
+    assert.equal(err, null);
+    assert.equal(allow, true);
+  });
+});
+
+test('origin callback allows the production Vercel web origin', () => {
+  process.env.NODE_ENV = 'production';
+  process.env.API_ALLOWED_ORIGINS = 'https://anistrim-one.vercel.app';
+  const options = corsConfig.buildCorsOptions();
+  options.origin('https://anistrim-one.vercel.app', (err, allow) => {
     assert.equal(err, null);
     assert.equal(allow, true);
   });
