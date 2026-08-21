@@ -56,6 +56,7 @@
     var path = parseHash();
     var previousPath = currentPath;
     if (previousPath.indexOf('/watch') === 0 && path.indexOf('/watch') !== 0 && window.AniStrimPlayer) {
+      if (window.AniStrimUI && window.AniStrimUI.stopWatchProgress) window.AniStrimUI.stopWatchProgress();
       window.AniStrimPlayer.destroy();
     }
     currentPath = path;

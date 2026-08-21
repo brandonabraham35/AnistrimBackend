@@ -185,12 +185,15 @@
     continueWatching: function () { return request('/api/watch/continue-watching'); },
     watchHistory: function (page, perPage) {
       var p = new URLSearchParams();
-      p.set('page', page || 1); p.set('perPage', perPage || 20);
+      p.set('page', page || 1); p.set('limit', perPage || 20);
       return request('/api/watch/history?' + p.toString());
     },
     clearHistory: function () { return request('/api/watch/history', { method: 'DELETE' }); },
-    saveProgress: function (episodeId, positionSec, durationSec) {
-      return request('/api/watch/progress', { method: 'PUT', body: { episodeId: episodeId, positionSec: positionSec, durationSec: durationSec } });
+    saveProgress: function (episodeId, positionSec, durationSec, event) {
+      return request('/api/watch/progress', { method: 'PUT', body: {
+        episodeId: episodeId, positionSec: positionSec, durationSec: durationSec,
+        event: event || 'heartbeat',
+      } });
     },
     getEpisodeProgress: function (episodeId) { return request('/api/watch/progress/' + episodeId); },
 

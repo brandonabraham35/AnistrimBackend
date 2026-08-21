@@ -471,11 +471,77 @@
 
   var trackTimer = null;
   var progressCleanup = null;
+  var progressSeekTimer = null;
+  var progressLastPosition = null;
+  var PROGRESS_QUEUE_KEY = 'anistrim.web.pendingProgress';
+  var PROGRESS_INTERVAL_MS = 15000;
+  var PROGRESS_MIN_MOVE_SEC = 5;
+
+  function pendingProgress() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(PROGRESS_QUEUE_KEY) || '{}');
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch (e) { return {}; }
+  }
+  function queueProgress(payload) {
+    // Keep only the newest state for each episode; this bounds storage and
+    // prevents an offline session from replaying an unbounded write backlog.
+    var queue = pendingProgress();
+    queue[String(payload.episodeId)] = payload;
+    var keys = Object.keys(queue);
+    if (keys.length > 20) {
+      keys.sort(function (a, b) { return (queue[a].queuedAt || 0) - (queue[b].queuedAt || 0); })
+        .slice(0, keys.length - 20).forEach(function (key) { delete queue[key]; });
+    }
+    try { localStorage.setItem(PROGRESS_QUEUE_KEY, JSON.stringify(queue)); } catch (e) { /* quota/private mode */ }
+  }
+  function removeQueuedProgress(episodeId, acknowledgedAt) {
+    var queue = pendingProgress();
+    if (acknowledgedAt && queue[String(episodeId)] && queue[String(episodeId)].queuedAt > acknowledgedAt) return;
+    delete queue[String(episodeId)];
+    try { localStorage.setItem(PROGRESS_QUEUE_KEY, JSON.stringify(queue)); } catch (e) { /* ignore */ }
+  }
+  function flushProgressQueue() {
+    if (!Auth.state.isLoggedIn || !navigator.onLine) return Promise.resolve();
+    var queue = pendingProgress();
+    var entries = Object.keys(queue).map(function (key) { return queue[key]; });
+    return entries.reduce(function (chain, payload) {
+      return chain.then(function () {
+        return API.saveProgress(payload.episodeId, payload.positionSec, payload.durationSec, payload.event)
+          .then(function () { removeQueuedProgress(payload.episodeId, payload.queuedAt); })
+          .catch(function () { /* retain the newest payload for a later retry */ });
+      });
+    }, Promise.resolve());
+  }
+  function queueAndSendProgress(payload, useKeepalive) {
+    if (!payload || !payload.episodeId || payload.positionSec <= 0 || !Auth.state.isLoggedIn) return;
+    payload.queuedAt = Date.now();
+    if (useKeepalive) {
+      // Persist before the best-effort unload request, since browsers may stop
+      // fetches during teardown. The ordinary online flush removes it on ACK.
+      queueProgress(payload);
+      try {
+        fetch(API.API_BASE + '/api/watch/progress', {
+          method: 'PUT', keepalive: true,
+          headers: { 'Content-Type': 'application/json', 'X-Client': 'web', 'Authorization': 'Bearer ' + API.getToken() },
+          body: JSON.stringify(payload),
+        }).then(function (res) { if (res.ok) removeQueuedProgress(payload.episodeId, payload.queuedAt); }).catch(function () {});
+      } catch (e) { /* queued above */ }
+      return;
+    }
+    if (!navigator.onLine) { queueProgress(payload); return; }
+    API.saveProgress(payload.episodeId, payload.positionSec, payload.durationSec, payload.event)
+      .then(function () { removeQueuedProgress(payload.episodeId, payload.queuedAt); })
+      .catch(function () { queueProgress(payload); });
+  }
   function stopProgressTracking() {
     if (trackTimer) clearInterval(trackTimer);
     trackTimer = null;
+    if (progressSeekTimer) clearTimeout(progressSeekTimer);
+    progressSeekTimer = null;
     if (progressCleanup) progressCleanup();
     progressCleanup = null;
+    progressLastPosition = null;
   }
   function startProgressTracking(video, episodeId) {
     stopProgressTracking();
@@ -486,22 +552,52 @@
       restored = true;
       API.getEpisodeProgress(episodeId).then(function (progress) {
         var position = progress && Number(progress.positionSec);
-        if (position > 10 && isFinite(video.duration) && position < video.duration * 0.95) video.currentTime = position;
+        var savedDuration = progress && Number(progress.durationSec);
+        var duration = savedDuration > 0 ? savedDuration : video.duration;
+        if (progress && !progress.completed && position > 10 &&
+            (!isFinite(duration) || duration <= 0 || position < duration * 0.95)) {
+          video.currentTime = position;
+        }
       }).catch(function () { /* progress must never block playback */ });
     }
     if (video.readyState >= 1) restore();
     else video.addEventListener('loadedmetadata', restore, { once: true });
-    function save(final) {
+    function save(event, keepalive) {
       if (!video || !isFinite(video.currentTime) || video.currentTime <= 0) return;
-      API.saveProgress(episodeId, Math.round(video.currentTime), Math.round(video.duration || 0)).catch(function () {});
+      var position = Math.round(video.currentTime);
+      var duration = Math.round(video.duration || 0);
+      if (event === 'heartbeat' && progressLastPosition !== null && Math.abs(position - progressLastPosition) < PROGRESS_MIN_MOVE_SEC) return;
+      progressLastPosition = position;
+      queueAndSendProgress({ episodeId: episodeId, positionSec: position, durationSec: duration, event: event || 'heartbeat' }, keepalive);
     }
-    trackTimer = setInterval(save, 10000);
-    video.addEventListener('ended', save, { once: true });
-    window.addEventListener('pagehide', save, { once: true });
+    function heartbeat() { if (!video.paused && !video.ended) save('heartbeat'); }
+    function pause() { if (!video.ended) save('pause'); }
+    function seeked() {
+      if (progressSeekTimer) clearTimeout(progressSeekTimer);
+      progressSeekTimer = setTimeout(function () { save('seek'); }, 1500);
+    }
+    function onVisibility() { if (document.visibilityState === 'hidden') save('exit', true); }
+    function onPageHide() { save('exit', true); }
+    function ended() { save('ended'); }
+    trackTimer = setInterval(heartbeat, PROGRESS_INTERVAL_MS);
+    video.addEventListener('pause', pause);
+    video.addEventListener('seeked', seeked);
+    video.addEventListener('ended', ended, { once: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onPageHide);
+    window.addEventListener('online', flushProgressQueue);
     progressCleanup = function () {
-      video.removeEventListener('ended', save);
-      window.removeEventListener('pagehide', save);
+      save('exit', true);
+      video.removeEventListener('pause', pause);
+      video.removeEventListener('seeked', seeked);
+      video.removeEventListener('ended', ended);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onPageHide);
+      window.removeEventListener('online', flushProgressQueue);
     };
+    flushProgressQueue();
   }
   async function loadWatch(id, ep, epId) {
     var video = document.getElementById('animePlayer');
@@ -556,7 +652,10 @@
           if (errEl) { errEl.textContent = err2.message || 'Playback could not be started.'; errEl.style.display = 'block'; }
         }
       );
-    } catch (e) { if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; } }
+    } catch (e) {
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    }
   }
 
   // ── Watchlist / History ─────────────────────────────────
@@ -587,7 +686,16 @@
     el.innerHTML = '<div class="grid-loading">Loading...</div>';
     try {
       var list = norm(await API.watchHistory(1, 30));
-      el.innerHTML = list.length ? grid(list.map(function (h) { return h.anime || h; })) : '<div class="empty">No watch history.</div>';
+      // History is backed by watch_progress rows, not full anime DTOs. Adapt
+      // the documented response shape so cards retain their real title, art,
+      // and navigation target instead of rendering an empty placeholder.
+      el.innerHTML = list.length ? grid(list.map(function (h) {
+        return h.anime || {
+          id: h.animeId,
+          title: h.animeTitle || h.title || 'Anime',
+          cover_image: h.animeCoverImage || h.cover_image || '',
+        };
+      })) : '<div class="empty">No watch history.</div>';
     } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
   }
   async function clearHistory() {
@@ -696,7 +804,7 @@
     doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doForgotPassword: doForgotPassword, doResetPassword: doResetPassword,
     doGoogleLogin: function () { gAuth('login'); }, doGoogleSignup: function () { gAuth('signup'); },
     reloadBrowse: reloadBrowse, doSearch: doSearch,
-    loadAnime: loadAnime, loadWatch: loadWatch,
+    loadAnime: loadAnime, loadWatch: loadWatch, stopWatchProgress: stopProgressTracking,
     loadWatchlist: loadWatchlist, loadHistory: loadHistory, clearHistory: clearHistory,
     saveProfile: saveProfile, uploadAvatar: uploadAvatar, doAvatarUpload: doAvatarUpload,
     checkout: checkout, renderHeader: renderHeader,
