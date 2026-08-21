@@ -73,7 +73,8 @@ function episodeDto(row) {
   return {
     id: row.id,
     number: row.episode_number,
-    season: row.season || row.season_number || 1,
+    season: row.season || 1,
+    seasonNumber: row.season || 1,
     title: row.title || null,
     description: row.description || null,
     thumbnailUrl: row.thumbnail_url || null,

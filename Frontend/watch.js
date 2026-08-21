@@ -3532,7 +3532,7 @@ function buildSeasonGroups(episodes) {
   var groups = {};
   if (!episodes || !episodes.length) return groups;
   episodes.forEach(function(ep) {
-    var s = ep.season || ep.season_number || 1;
+    var s = ep.season || 1;
     if (!groups[s]) groups[s] = [];
     groups[s].push(ep);
   });

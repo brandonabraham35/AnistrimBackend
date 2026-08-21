@@ -48,8 +48,8 @@ exports.saveProgress = async (req, res) => {
     if (!episodeId) return res.status(400).json({ message: 'episodeId is required.' });
 
     // Resolve the episode to get anime_id + episode_number.
-    // NOTE: episodes.season_number does not exist in the schema (the runtime
-    // error confirmed this); the canonical season column is episodes.season.
+    // The canonical episode season column is episodes.season; no secondary
+    // episode-season column is required for progress writes.
     // Episode number is sufficient for the progress row; season context is
     // derived via the episodes.season join in read queries.
     const [epRows] = await db.query(
@@ -199,6 +199,7 @@ exports.getContinueWatching = async (req, res) => {
            a.title       AS anime_title,
            a.cover_image AS anime_cover_image,
            e.title       AS episode_title,
+           e.season      AS episode_season,
            ROW_NUMBER() OVER (PARTITION BY wp.anime_id ORDER BY wp.updated_at DESC, wp.episode_id DESC) AS rn
          FROM watch_progress wp
          JOIN anime a ON a.id = wp.anime_id
@@ -235,6 +236,7 @@ exports.getContinueWatching = async (req, res) => {
            animeId: row.anime_id,
            title: row.anime_title,
            poster: row.anime_cover_image,
+           season: nextEp[0].season || 1,
            seasonNumber: nextEp[0].season || 1,
           episodeId: nextEp[0].id,
           episodeNumber: nextEp[0].episode_number,
@@ -254,7 +256,10 @@ exports.getContinueWatching = async (req, res) => {
         animeId: row.anime_id,
         title: row.anime_title,
         poster: row.anime_cover_image,
-        seasonNumber: 1,
+        // Preserve the historical camel-case field while sourcing it from
+        // the canonical episodes.season column.
+        season: row.episode_season || 1,
+        seasonNumber: row.episode_season || 1,
         episodeId: row.episode_id,
         episodeNumber: row.episode_number,
         episodeTitle: row.episode_title || null,
@@ -335,7 +340,8 @@ exports.getHistory = async (req, res) => {
          wp.episode_id, wp.anime_id, wp.episode_number,
          wp.position_sec, wp.duration_sec, wp.percent, wp.completed, wp.updated_at,
          a.title AS anime_title, a.cover_image AS anime_cover_image,
-         e.title AS episode_title
+         e.title AS episode_title,
+         e.season AS episode_season
        FROM watch_progress wp
        JOIN anime a ON a.id = wp.anime_id
        LEFT JOIN episodes e ON e.id = wp.episode_id
@@ -355,6 +361,8 @@ exports.getHistory = async (req, res) => {
       animeId: r.anime_id,
       animeTitle: r.anime_title,
       animeCoverImage: r.anime_cover_image,
+      season: r.episode_season || 1,
+      seasonNumber: r.episode_season || 1,
       episodeNumber: r.episode_number,
       episodeTitle: r.episode_title || null,
       positionSec: r.position_sec,

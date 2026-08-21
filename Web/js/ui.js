@@ -660,7 +660,7 @@
     if (overlay) overlay.style.display = 'none';
   }
   function episodeNumber(ep) { return Number(ep && (ep.number || ep.episode_number)) || 0; }
-  function episodeSeason(ep) { return Number(ep && (ep.season || ep.season_number)) || 1; }
+  function episodeSeason(ep) { return Number(ep && ep.season) || 1; }
   function orderedEpisodes(episodes) {
     return (episodes || []).slice().sort(function (a, b) {
       var seasonDelta = episodeSeason(a) - episodeSeason(b);

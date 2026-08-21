@@ -268,7 +268,9 @@ exports.getById = async (req, res) => {
     anime.episodes = masked.map(ep => ({
       id: ep.id,
       number: ep.episode_number,
-      season: ep.season || ep.season_number || 1,
+      season: ep.season || 1,
+      // Camel-case compatibility without requiring a second DB column.
+      seasonNumber: ep.season || 1,
       title: ep.title,
       description: ep.description,
       thumbnailUrl: ep.thumbnail_url,

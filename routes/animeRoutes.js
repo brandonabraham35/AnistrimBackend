@@ -80,7 +80,8 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
         const mapped = masked.map(m => ({
             id: m.id,
             number: m.episode_number,
-            season: m.season || m.season_number || 1,
+            season: m.season || 1,
+            seasonNumber: m.season || 1,
             title: m.title,
             description: m.description,
             thumbnailUrl: m.thumbnail_url,
