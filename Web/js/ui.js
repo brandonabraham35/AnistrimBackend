@@ -54,6 +54,28 @@
     return (list && (list.rows || list.items || list.data || list.watchlist || list.history)) || [];
   }
 
+  // Keep one server-derived watchlist snapshot for controls rendered on detail
+  // and watchlist pages. Mutations update it only from the API response.
+  var watchlistIds = new Set();
+  var watchlistLoaded = false;
+  var watchlistRequests = {};
+  function refreshWatchlistState() {
+    if (!Auth.state.isLoggedIn) { watchlistIds = new Set(); watchlistLoaded = false; return Promise.resolve([]); }
+    return API.watchlist().then(function (rows) {
+      var list = norm(rows);
+      watchlistIds = new Set(list.map(function (item) { return String(item.animeId || (item.anime && item.anime.id) || item.id); }));
+      watchlistLoaded = true;
+      return list;
+    });
+  }
+  function syncWatchlistButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-watchlist-id]'), function (button) {
+      var inList = watchlistIds.has(String(button.getAttribute('data-watchlist-id')));
+      button.textContent = inList ? 'Remove from List' : 'My List';
+      button.setAttribute('aria-pressed', inList ? 'true' : 'false');
+    });
+  }
+
   // Episode access is supplied by the API.  Do not infer entitlement from a
   // user profile, a JWT, or the legacy `is_premium` fields: those are not the
   // server's playback contract.
@@ -511,7 +533,7 @@
         '<div class="genres">' + genres.map(function (g) { return '<span class="genre-pill">' + esc(g) + '</span>'; }).join('') + '</div>' +
         '<p class="desc">' + esc(anime && anime.description) + '</p>' +
         '<div class="hero-actions"><a class="btn-primary play" onclick="AniStrimUI.playFirst(\'' + esc(id) + '\')">▶ Watch Now</a>' +
-        '<button class="btn-outline" onclick="AniStrimUI.toggleWatchlist(\'' + esc(id) + '\')">My List</button></div></div></div></div>' +
+        '<button class="btn-outline" data-watchlist-id="' + esc(id) + '" onclick="AniStrimUI.toggleWatchlist(\'' + esc(id) + '\')">My List</button></div></div></div></div>' +
         '<div class="container"><div class="episodes-section"><h2>Episodes</h2><div class="episode-grid">' +
         eps.map(function (ep, i) {
           var num = ep && (ep.number || ep.episode_number);
@@ -520,6 +542,9 @@
             (ep.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
         }).join('') + '</div></div>' +
         (recs.length ? '<div class="recommend-section">' + section('Recommended') + grid(recs) + '</div>' : '') + '</div>';
+      if (Auth.state.isLoggedIn) {
+        refreshWatchlistState().then(syncWatchlistButtons).catch(function () {});
+      }
     } catch (e) { root.innerHTML = '<div class="empty">Could not load this anime. ' + retryButton('loadAnime(\'' + esc(id) + '\')', 'Try again') + '<p>' + esc(e.message) + '</p></div>'; }
   }
 
@@ -919,9 +944,13 @@
     if (!el) return;
     el.innerHTML = '<div class="grid-loading">Loading...</div>';
     try {
-      var list = norm(await API.watchlist());
-      el.innerHTML = list.length ? grid(list.map(function (w) { return w.anime || w; })) : '<div class="empty">Your watchlist is empty.</div>';
-    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+      var list = await refreshWatchlistState();
+      el.innerHTML = list.length ? '<div class="anime-grid">' + list.map(function (w) {
+        var animeId = w.animeId || (w.anime && w.anime.id) || w.id;
+        var anime = w.anime || { animeId: animeId, title: w.title, poster: w.poster };
+        return '<div class="watchlist-entry">' + card(anime) + '<button class="btn-ghost" onclick="AniStrimUI.removeWatchlist(\'' + esc(animeId) + '\')">Remove</button></div>';
+      }).join('') + '</div>' : '<div class="empty">Your watchlist is empty.</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">Could not load your watchlist. ' + retryButton('loadWatchlist()', 'Try again') + '<p>' + esc(e.message) + '</p></div>'; }
   }
   function historyView() {
     renderHeader();
@@ -939,14 +968,14 @@
       // History is backed by watch_progress rows, not full anime DTOs. Adapt
       // the documented response shape so cards retain their real title, art,
       // and navigation target instead of rendering an empty placeholder.
-      el.innerHTML = list.length ? grid(list.map(function (h) {
-        return h.anime || {
-          id: h.animeId,
-          title: h.animeTitle || h.title || 'Anime',
-          cover_image: h.animeCoverImage || h.cover_image || '',
-        };
-      })) : '<div class="empty">No watch history.</div>';
-    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+      el.innerHTML = list.length ? '<div class="history-list">' + list.map(function (h) {
+        var title = h.animeTitle || h.title || 'Anime';
+        var episode = h.episodeNumber || 1;
+        var percent = Math.max(0, Math.min(100, Number(h.percent) || 0));
+        return '<div class="history-entry"><div><strong>' + esc(title) + '</strong><div class="muted">Episode ' + esc(episode) + (h.episodeTitle ? ': ' + esc(h.episodeTitle) : '') + ' · ' + Math.round(percent) + '% watched</div></div>' +
+          '<button class="btn-outline" onclick="AniStrimUI.resumeHistory(\'' + esc(h.animeId) + '\',' + Number(episode) + ',\'' + esc(h.episodeId) + '\')">' + (h.completed ? 'Watch again' : 'Resume') + '</button></div>';
+      }).join('') + '</div>' : '<div class="empty">No watch history.</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">Could not load watch history. ' + retryButton('loadHistory()', 'Try again') + '<p>' + esc(e.message) + '</p></div>'; }
   }
   async function clearHistory() {
     try { await API.clearHistory(); toast('History cleared.'); loadHistory(); } catch (e) { toast(e.message, 'error'); }
@@ -959,7 +988,7 @@
     var user = Auth.state.user;
     return '<div class="page"><div class="container"><div class="profile-grid">' +
       '<div class="profile-card"><div class="avatar-wrap"><img id="profile-avatar" class="avatar" src="" alt="avatar"></div>' +
-      '<h2>' + esc(user && (user.displayName || user.name)) + '</h2><p class="muted">' + esc(user && user.email) + '</p>' +
+      '<h2 id="profile-display-name">' + esc(user && (user.displayName || user.name)) + '</h2><p class="muted" id="profile-email">' + esc(user && user.email) + '</p>' +
       '<div class="profile-meta">' + (Auth.state.isPremium ? '<span class="badge-premium">👑 Premium</span>' : '<a href="#/upgrade" class="btn-outline">Upgrade</a>') + '</div>' +
       '<button class="btn-ghost btn-block" onclick="AniStrimUI.uploadAvatar()">Change Avatar</button>' +
       '<input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="AniStrimUI.doAvatarUpload(event)">' +
@@ -967,21 +996,47 @@
       '<div class="profile-settings"><div class="settings-card"><h3>Preferences</h3>' +
       '<label class="checkbox"><input type="checkbox" id="pref-auto-skip"> Auto-skip intros</label>' +
       '<label class="checkbox"><input type="checkbox" id="pref-auto-play"> Auto-play next</label>' +
+      '<label>Autoplay delay <select id="pref-auto-countdown"><option value="0">Start immediately</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select></label>' +
+      '<label>Default quality <select id="pref-quality"><option value="auto">Auto</option><option value="360">360p</option><option value="480">480p</option><option value="720">720p</option><option value="1080">1080p</option></select></label>' +
+      '<label>Subtitles <select id="pref-subtitles"><option value="on">On</option><option value="off">Off</option></select></label>' +
+      '<label>Subtitle language <select id="pref-subtitle-lang"><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="pt">Portuguese</option><option value="ja">Japanese</option><option value="ar">Arabic</option><option value="none">None</option></select></label>' +
+      '<label>Playback speed <select id="pref-playback-rate"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>' +
+      '<label class="checkbox"><input type="checkbox" id="pref-reduce-motion"> Reduce motion</label>' +
       '<label>Username<input id="pref-username" placeholder="Set username"></label>' +
       '<button class="btn-primary" onclick="AniStrimUI.saveProfile()">Save</button></div></div></div></div></div>';
   }
-  function afterProfile() {
+  async function afterProfile() {
+    await Auth.refreshMe();
     var user = Auth.state.user;
     var av = document.getElementById('profile-avatar');
     if (av) av.src = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || fallback(user && (user.name || 'A'));
+    var displayName = document.getElementById('profile-display-name');
+    if (displayName) displayName.textContent = (user && (user.displayName || user.name || user.username)) || 'Profile';
+    var email = document.getElementById('profile-email');
+    if (email) email.textContent = (user && user.email) || '';
     var u = document.getElementById('pref-username');
     if (u && user && user.username) u.value = user.username;
-    API.profilePreferences().then(function (data) {
+    var preferencesRequest = user && user.preferences
+      ? Promise.resolve({ preferences: user.preferences })
+      : API.profilePreferences();
+    preferencesRequest.then(function (data) {
       var prefs = data && (data.preferences || data);
       var skip = document.getElementById('pref-auto-skip');
       var autoplay = document.getElementById('pref-auto-play');
       if (skip) skip.checked = !!(prefs && prefs.skipIntroAuto);
       if (autoplay) autoplay.checked = !!(prefs && prefs.autoplayNext);
+      var countdown = document.getElementById('pref-auto-countdown');
+      var quality = document.getElementById('pref-quality');
+      var subtitles = document.getElementById('pref-subtitles');
+      var language = document.getElementById('pref-subtitle-lang');
+      var rate = document.getElementById('pref-playback-rate');
+      var motion = document.getElementById('pref-reduce-motion');
+      if (countdown) countdown.value = String((prefs && prefs.autoplayCountdown) || 10);
+      if (quality) quality.value = (prefs && prefs.defaultQuality) || 'auto';
+      if (subtitles) subtitles.value = prefs && prefs.subtitlesOn === false ? 'off' : 'on';
+      if (language) language.value = (prefs && prefs.subtitleLang) || 'en';
+      if (rate) rate.value = String((prefs && prefs.playbackRate) || 1);
+      if (motion) motion.checked = !!(prefs && prefs.reduceMotion);
     }).catch(function () { /* preferences are non-critical on the profile page */ });
   }
   async function saveProfile() {
@@ -989,18 +1044,32 @@
       var u = document.getElementById('pref-username') ? document.getElementById('pref-username').value : '';
       var skip = document.getElementById('pref-auto-skip') ? document.getElementById('pref-auto-skip').checked : false;
       var play = document.getElementById('pref-auto-play') ? document.getElementById('pref-auto-play').checked : false;
+      var countdown = Number(document.getElementById('pref-auto-countdown').value);
+      var quality = document.getElementById('pref-quality').value;
+      var subtitles = document.getElementById('pref-subtitles').value === 'on';
+      var language = document.getElementById('pref-subtitle-lang').value;
+      var rate = Number(document.getElementById('pref-playback-rate').value);
+      var motion = document.getElementById('pref-reduce-motion').checked;
       if (u) await API.profileSetUsername(u);
-      await API.profileUpdatePreferences({ skipIntroAuto: skip, autoplayNext: play });
-      toast('Saved'); await Auth.refreshMe(); renderHeader();
+      await API.profileUpdatePreferences({ skipIntroAuto: skip, autoplayNext: play, autoplayCountdown: countdown, defaultQuality: quality, subtitlesOn: subtitles, subtitleLang: language, playbackRate: rate, reduceMotion: motion });
+      await Auth.refreshMe();
+      renderHeader();
+      toast('Saved');
     } catch (e) { toast(e.message, 'error'); }
   }
   function uploadAvatar() { var i = document.getElementById('avatar-input'); if (i) i.click(); }
   async function doAvatarUpload(e) {
     var file = e.target && e.target.files && e.target.files[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast('Image too large. Max 5 MB.', 'error'); return; }
+    if (!String(file.type || '').startsWith('image/')) { toast('Choose an image file.', 'error'); return; }
     try {
       await API.uploadAvatar(file);
-      await Auth.refreshMe(); renderHeader(); toast('Avatar updated');
+      await Auth.refreshMe();
+      var avatar = document.getElementById('profile-avatar');
+      var user = Auth.state.user;
+      if (avatar && user && user.avatarUrl) avatar.src = user.avatarUrl + (user.avatarUrl.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+      renderHeader(); toast('Avatar updated');
     } catch (err) { toast(err.message, 'error'); }
   }
 
@@ -1092,7 +1161,37 @@
     },
     toggleWatchlist: async function (id) {
       if (!Auth.state.isLoggedIn) { Router.navigate('/login'); return; }
-      try { await API.toggleWatchlist(id); toast('Watchlist updated'); } catch (e) { toast(e.message, 'error'); }
+      var key = String(id);
+      if (watchlistRequests[key]) return;
+      watchlistRequests[key] = true;
+      try {
+        var result = await API.toggleWatchlist(id);
+        if (result && result.inList === true) watchlistIds.add(key);
+        else if (result && result.inList === false) watchlistIds.delete(key);
+        else await refreshWatchlistState();
+        watchlistLoaded = true;
+        syncWatchlistButtons();
+        toast(result && result.inList === false ? 'Removed from My List.' : 'Added to My List.');
+        if (Router.currentPath() === '/watchlist') loadWatchlist();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { delete watchlistRequests[key]; }
+    },
+    removeWatchlist: async function (id) {
+      var key = String(id);
+      if (watchlistRequests[key]) return;
+      watchlistRequests[key] = true;
+      try {
+        await API.removeWatchlist(id);
+        watchlistIds.delete(key); watchlistLoaded = true;
+        syncWatchlistButtons();
+        toast('Removed from My List.');
+        loadWatchlist();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { delete watchlistRequests[key]; }
+    },
+    resumeHistory: function (animeId, episodeNumber, episodeId) {
+      if (!animeId || !episodeId) { toast('This history entry cannot be resumed.', 'error'); return; }
+      AniStrimUI.watch(animeId, episodeNumber || 1, episodeId);
     },
     logout: async function () { await Auth.logout(); renderHeader(); Router.navigate('/'); },
     doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doForgotPassword: doForgotPassword, doResetPassword: doResetPassword,
