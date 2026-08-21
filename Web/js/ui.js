@@ -129,7 +129,7 @@
       '<label>Password<input type="password" id="login-password" required></label>' +
       '<button class="btn-primary btn-block" type="submit">Sign In</button></form>' +
       '<div class="auth-alt"><span>or</span></div><button class="btn-google" onclick="AniStrimUI.doGoogleLogin()">Continue with Google</button>' +
-      '<p class="auth-switch">New here? <a href="#/signup">Create an account</a></p></div></div>';
+      '<p class="auth-switch"><a href="#/forgot-password">Forgot password?</a> · New here? <a href="#/signup">Create an account</a></p></div></div>';
   }
   function signupView() {
     renderHeader();
@@ -149,6 +149,14 @@
       '<label>Code<input type="text" id="verify-otp" required inputmode="numeric"></label>' +
       '<button class="btn-primary btn-block" type="submit">Verify</button></form>' +
       '<button class="btn-ghost btn-block" onclick="AniStrimUI.resendOtp()">Resend code</button></div></div>';
+  }
+  function forgotPasswordView() {
+    renderHeader();
+    return authShell('Reset your password') +
+      '<p class="auth-switch">Enter your account email and we will send a reset link.</p>' +
+      '<form onsubmit="return AniStrimUI.doForgotPassword(event)"><label>Email<input type="email" id="forgot-email" required autocomplete="email"></label>' +
+      '<button class="btn-primary btn-block" type="submit">Send Reset Link</button></form>' +
+      '<p class="auth-switch"><a href="#/login">Back to sign in</a></p></div></div>';
   }
   function resetPasswordView(params, query) {
     renderHeader();
@@ -177,7 +185,7 @@
     try {
       var data = await Auth.login(document.getElementById('login-email').value, document.getElementById('login-password').value);
       renderHeader();
-      Router.navigate(data.user && data.user.emailVerified === false ? '/verify' : '/');
+      Router.navigate(data.user && data.user.emailVerified === false ? '/verify' : postAuthRoute());
     } catch (e2) { if (err) err.textContent = e2.message; }
     return false;
   }
@@ -206,6 +214,21 @@
   }
   async function resendOtp() {
     try { await API.resendOtp(document.getElementById('verify-email').value); toast('Code resent.'); } catch (e) { toast(e.message, 'error'); }
+  }
+  async function doForgotPassword(e) {
+    e.preventDefault();
+    var err = document.getElementById('auth-error');
+    try {
+      await API.forgotPassword(document.getElementById('forgot-email').value);
+      if (err) { err.textContent = 'If an account exists for that email, a reset link has been sent.'; }
+    } catch (e2) { if (err) err.textContent = e2.message || 'Could not request a reset link.'; }
+    return false;
+  }
+  function postAuthRoute() {
+    var requested = Router.query().redirect || '';
+    // Hash routes only; reject external URLs and unknown top-level destinations.
+    if (/^\/(?:watch|anime|browse|search|watchlist|history|profile|settings|upgrade)(?:\/|\?|$)/.test(requested)) return requested;
+    return '/';
   }
   async function doResetPassword(e) {
     e.preventDefault();
@@ -244,7 +267,9 @@
       // Persist the scoped session and user state before returning home.
       Auth.state.save(data);
       renderHeader();
-      Router.navigate('/');
+      var pendingRoute = sessionStorage.getItem('anistrim.web.postAuthRoute') || postAuthRoute();
+      sessionStorage.removeItem('anistrim.web.postAuthRoute');
+      Router.navigate(pendingRoute);
     } catch (e) {
       if (err) err.textContent = e.message || 'Google sign-in could not be completed.';
     }
@@ -273,6 +298,9 @@
         } catch (e) { reject(e); }
         tc.requestAccessToken();
       });
+      // OAuth leaves this page for Google, so retain a previously requested
+      // guarded hash route until the callback returns to this Web client.
+      sessionStorage.setItem('anistrim.web.postAuthRoute', postAuthRoute());
       // Redirect to backend Google OAuth flow (documented endpoint).
       window.location.href = API.API_BASE + '/api/auth/google/start?intent=' + intent + '&client=web';
     } catch (err) { toast(err.message || 'Google sign-in failed.', 'error'); }
@@ -304,6 +332,14 @@
       '<input id="search-input" placeholder="Search anime..." onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
       '<button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
       '<div id="search-results" class="grid-loading">Enter a search term or pick a genre.</div></div></div>';
+  }
+  function afterSearch(root, params, query) {
+    var q = query && query.q;
+    var input = document.getElementById('search-input');
+    if (input && q) {
+      input.value = q;
+      doSearch();
+    }
   }
   async function doSearch() {
     var q = document.getElementById('search-input') ? document.getElementById('search-input').value : '';
@@ -364,7 +400,11 @@
       '<div class="watch-back"><a href="#/anime/' + esc(params.id) + '" class="btn-ghost">← Back to Anime</a></div>' +
       '</div></div>';
   }
-  function afterWatch(root, params) { loadWatch(params.id, params.ep || params.episode || 1, params.epId || ''); }
+  function afterWatch(root, params, query) {
+    // epId is intentionally carried in the hash query, not the path. Prefer it
+    // over episode number when selecting the exact backend episode record.
+    loadWatch(params.id, params.ep || params.episode || 1, (query && query.epId) || '');
+  }
 
   var trackTimer = null;
   async function loadWatch(id, ep, epId) {
@@ -372,7 +412,7 @@
     var titleEl = document.getElementById('watch-title');
     var listEl = document.getElementById('watch-episodes');
     var errEl = document.getElementById('player-error');
-    if (!Auth.state.isLoggedIn) { Router.navigate('/login'); return; }
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/watch/' + encodeURIComponent(id) + '/' + encodeURIComponent(ep) + (epId ? ('?epId=' + encodeURIComponent(epId)) : '') }); return; }
     Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
     try {
       var anime = await API.anime(id);
@@ -415,6 +455,7 @@
   // ── Watchlist / History ─────────────────────────────────
   function watchlistView() {
     renderHeader();
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/watchlist' }); return ''; }
     return '<div class="page"><div class="container"><h1>My Watchlist</h1><div id="watchlist-grid" class="grid-loading">Loading...</div></div></div>';
   }
   async function loadWatchlist() {
@@ -428,6 +469,7 @@
   }
   function historyView() {
     renderHeader();
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/history' }); return ''; }
     return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Watch History</h1>' +
       '<button class="btn-outline" onclick="AniStrimUI.clearHistory()">Clear</button></div>' +
       '<div id="history-list"><div class="grid-loading">Loading...</div></div></div></div>';
@@ -448,7 +490,7 @@
   // ── Profile ─────────────────────────────────────────────
   function profileView() {
     renderHeader();
-    if (!Auth.state.isLoggedIn) { Router.navigate('/login'); return ''; }
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/profile' }); return ''; }
     var user = Auth.state.user;
     return '<div class="page"><div class="container"><div class="profile-grid">' +
       '<div class="profile-card"><div class="avatar-wrap"><img id="profile-avatar" class="avatar" src="" alt="avatar"></div>' +
@@ -506,12 +548,30 @@
       toast('Could not start checkout', 'error');
     } catch (e) { toast(e.message, 'error'); }
   }
+  function paymentReturnView() {
+    renderHeader();
+    return '<div class="page"><div class="container"><div class="card premium-card"><h1>Verifying payment…</h1><p id="payment-return-status" class="muted">Please wait while we confirm your subscription.</p></div></div></div>';
+  }
+  async function afterPaymentReturn(root, params, query) {
+    var status = document.getElementById('payment-return-status');
+    var reference = query && (query.reference || query.tx_ref || query.OrderMerchantReference);
+    if (!reference) { if (status) status.textContent = 'Missing payment reference. Please contact support if you were charged.'; return; }
+    try {
+      var result = await API.verifySubscription(reference);
+      if (status) status.textContent = (result && (result.message || result.status)) || 'Payment status updated.';
+      await Auth.refreshMe();
+      renderHeader();
+    } catch (e) { if (status) status.textContent = e.message || 'Could not verify this payment yet.'; }
+  }
 
   // ── Public API ──────────────────────────────────────────
   window.AniStrimUI = {
     fallback: fallback,
-    goAnime: function (id) { Router.navigate('/anime/' + id); },
-    watch: function (id, ep, epId) { Router.navigate('/watch/' + id + '/' + (ep || 1) + (epId ? ('?epId=' + epId) : '')); },
+    goAnime: function (id) { Router.navigate('/anime/' + encodeURIComponent(id)); },
+    watch: function (id, ep, epId) {
+      var path = '/watch/' + encodeURIComponent(id) + '/' + encodeURIComponent(ep || 1);
+      Router.navigate(path, epId ? { epId: epId } : null);
+    },
     playFirst: function (id) {
       API.episodes(id).then(function (eps) {
         var list = norm(eps);
@@ -524,7 +584,7 @@
       try { await API.toggleWatchlist(id); toast('Watchlist updated'); } catch (e) { toast(e.message, 'error'); }
     },
     logout: async function () { await Auth.logout(); renderHeader(); Router.navigate('/'); },
-    doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doResetPassword: doResetPassword,
+    doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doForgotPassword: doForgotPassword, doResetPassword: doResetPassword,
     doGoogleLogin: function () { gAuth('login'); }, doGoogleSignup: function () { gAuth('signup'); },
     reloadBrowse: reloadBrowse, doSearch: doSearch,
     loadAnime: loadAnime, loadWatch: loadWatch,
@@ -534,13 +594,14 @@
   };
 
   window.AniStrimViews = {
-    home: homeView, login: loginView, signup: signupView, verify: verifyView,
+    home: homeView, login: loginView, signup: signupView, verify: verifyView, forgotPassword: forgotPasswordView,
     resetPassword: resetPasswordView, googleCallback: googleCallbackView,
-    browse: browseView, afterBrowse: reloadBrowse, search: searchView,
+    browse: browseView, afterBrowse: reloadBrowse, search: searchView, afterSearch: afterSearch,
     anime: animeView, afterAnime: afterAnime, watch: watchView, afterWatch: afterWatch,
     watchlist: watchlistView, afterWatchlist: loadWatchlist,
     history: historyView, afterHistory: loadHistory,
     profile: profileView, afterProfile: afterProfile, upgrade: upgradeView,
+    paymentReturn: paymentReturnView, afterPaymentReturn: afterPaymentReturn,
   };
 
   Auth.state.onChange(renderHeader);

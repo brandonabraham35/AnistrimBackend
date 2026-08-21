@@ -6,6 +6,10 @@
   var routes = [];
   var currentPath = '/';
 
+  function decode(value) {
+    try { return decodeURIComponent(value); } catch (e) { return value; }
+  }
+
   function parseHash() {
     var hash = window.location.hash || '#/';
     if (hash.charAt(0) === '#') hash = hash.slice(1);
@@ -30,7 +34,7 @@
         var m = path.match(r.regex);
         var params = {};
         if (r.keys) {
-          r.keys.forEach(function (k, idx) { params[k] = m[idx + 1]; });
+          r.keys.forEach(function (k, idx) { params[k] = decode(m[idx + 1]); });
         }
         return { route: r, params: params };
       }
