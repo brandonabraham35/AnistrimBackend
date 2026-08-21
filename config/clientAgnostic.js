@@ -67,6 +67,23 @@ const DEFAULT_GOOGLE_RETURN_TARGETS = {
 const resetPaths = parseJsonEnv('RESET_PATHS_JSON', DEFAULT_RESET_PATHS);
 const googleReturnTargets = parseJsonEnv('GOOGLE_RETURN_TARGETS_JSON', DEFAULT_GOOGLE_RETURN_TARGETS);
 
+// Deployment-owned maps may contain an absolute HTTPS URL for an independently
+// hosted client (for example the Vercel Web SPA).  The value is still strict:
+// it must be one of the configured map values, never an arbitrary URL supplied
+// in a request. Relative routes remain supported for local static serving.
+function isAbsoluteHttpsUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password;
+  } catch (e) {
+    return false;
+  }
+}
+
+function isConfiguredTarget(value, map) {
+  return Object.values(map || {}).includes(value) && isAbsoluteHttpsUrl(value);
+}
+
 // Strict allow-lists for validating client-supplied paths.
 // Only values in these lists are ever accepted — prevents open redirect attacks.
 const RESET_PATH_ALLOW_LIST = new Set([
@@ -97,13 +114,16 @@ const GOOGLE_RETURN_ALLOW_LIST = new Set([
 function getPasswordResetPath(client, requestedPath) {
   // If client requested a specific path, validate it against the allow-list
   if (requestedPath) {
-    if (RESET_PATH_ALLOW_LIST.has(requestedPath)) {
+    if (RESET_PATH_ALLOW_LIST.has(requestedPath) || isConfiguredTarget(requestedPath, resetPaths)) {
       return requestedPath;
     }
     console.warn(`[clientAgnostic] Rejected reset path (not in allow-list): ${requestedPath}`);
   }
-  // Fall back to per-client default, then mobile default
-  return resetPaths[client] || resetPaths.mobile || DEFAULT_RESET_PATHS.mobile;
+  // Fall back to a deployment-owned value only when it is also safe, then to
+  // the built-in client default.
+  const configured = resetPaths[client];
+  if (RESET_PATH_ALLOW_LIST.has(configured) || isConfiguredTarget(configured, resetPaths)) return configured;
+  return DEFAULT_RESET_PATHS[client] || DEFAULT_RESET_PATHS.mobile;
 }
 
 /**
@@ -115,13 +135,20 @@ function getPasswordResetPath(client, requestedPath) {
 function getGoogleReturnTarget(client, requestedTarget) {
   // If client requested a specific target, validate it against the allow-list
   if (requestedTarget) {
-    if (GOOGLE_RETURN_ALLOW_LIST.has(requestedTarget)) {
+    if (GOOGLE_RETURN_ALLOW_LIST.has(requestedTarget) || isConfiguredTarget(requestedTarget, googleReturnTargets)) {
       return requestedTarget;
     }
     console.warn(`[clientAgnostic] Rejected Google return target (not in allow-list): ${requestedTarget}`);
   }
-  // Fall back to per-client default, then mobile default
-  return googleReturnTargets[client] || googleReturnTargets.mobile || DEFAULT_GOOGLE_RETURN_TARGETS.mobile;
+  const configured = googleReturnTargets[client];
+  if (GOOGLE_RETURN_ALLOW_LIST.has(configured) || isConfiguredTarget(configured, googleReturnTargets)) return configured;
+  return DEFAULT_GOOGLE_RETURN_TARGETS[client] || DEFAULT_GOOGLE_RETURN_TARGETS.mobile;
+}
+
+function buildClientUrl(target, baseUrl) {
+  if (!target) return '';
+  if (isAbsoluteHttpsUrl(target)) return target;
+  return `${String(baseUrl || '').replace(/\/$/, '')}/${String(target).replace(/^\//, '')}`;
 }
 
 // ── Host-based routing (optional) ───────────────────────────
@@ -162,6 +189,7 @@ module.exports = {
   // ── Multi-client resolution functions (B7 fix) ────────────
   getPasswordResetPath,
   getGoogleReturnTarget,
+  buildClientUrl,
   RESET_PATH_ALLOW_LIST,
   GOOGLE_RETURN_ALLOW_LIST,
   resetPaths,

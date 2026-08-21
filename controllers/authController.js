@@ -601,18 +601,32 @@ exports.forgotPassword = async (req, res) => {
         const clientAgnostic = require('../config/clientAgnostic');
         const requestedPath = req.query && typeof req.query.resetPath === 'string' ? req.query.resetPath : '';
         const client = (req.headers && req.headers['x-client']) || 'mobile';
-        const resetPath = clientAgnostic.getPasswordResetPath(client, requestedPath || undefined).replace(/^\//, '');
+        const resetTarget = clientAgnostic.getPasswordResetPath(client, requestedPath || undefined);
         const frontendBase = process.env.FRONTEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
+        const resetUrl = clientAgnostic.buildClientUrl(resetTarget, frontendBase);
+        const separator = resetUrl.includes('?') ? '&' : '?';
+        const resetLink = `${resetUrl}${separator}token=${encodeURIComponent(token)}`;
+        const resetHtml = `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
+            <h2 style="margin:0 0 12px;color:#111827;">Reset your AniStrim password</h2>
+            <p style="color:#374151;line-height:1.5;">Use the link below to choose a new password. It expires in one hour.</p>
+            <p style="margin:24px 0;"><a href="${resetLink}" style="background:#6c2bd9;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;">Reset password</a></p>
+            <p style="color:#6b7280;font-size:0.85rem;line-height:1.5;">If you did not request a password reset, you can safely ignore this email.</p>
+          </div>`;
         const response = {
             message: 'If an account exists for that email, a reset link has been sent.',
         };
+
+        // Delivery is required for a usable reset flow. The target comes only
+        // from the server-owned client map; the signed token is never logged.
+        await sendEmail(rows[0].email, 'Reset your AniStrim password', resetHtml);
 
         // Expose the reset token/result so any client can complete the reset.
         if (process.env.NODE_ENV !== 'production') {
             response.resetToken = token;
             response.token = token;
-            if (resetPath) {
-                response.resetUrl = `${frontendBase.replace(/\/$/, '')}/${resetPath}?token=${encodeURIComponent(token)}`;
+            if (resetLink) {
+                response.resetUrl = resetLink;
             } else {
                 response.resetDestination = null;
                 response.resetPathRequired = true;

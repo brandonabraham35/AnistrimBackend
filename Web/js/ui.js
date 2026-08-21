@@ -190,6 +190,7 @@
   }
   function loginView() {
     renderHeader();
+    postAuthRoute();
     return authShell('Sign In') +
       '<form onsubmit="return AniStrimUI.doLogin(event)"><label>Email<input type="email" id="login-email" required></label>' +
       '<label>Password<input type="password" id="login-password" required></label>' +
@@ -199,6 +200,7 @@
   }
   function signupView() {
     renderHeader();
+    postAuthRoute();
     return authShell('Create Account') +
       '<form onsubmit="return AniStrimUI.doSignup(event)"><label>Name<input id="signup-name" required></label>' +
       '<label>Email<input type="email" id="signup-email" required></label>' +
@@ -250,8 +252,11 @@
     var err = document.getElementById('auth-error');
     try {
       var data = await Auth.login(document.getElementById('login-email').value, document.getElementById('login-password').value);
+      await Auth.refreshMe();
       renderHeader();
-      Router.navigate(data.user && data.user.emailVerified === false ? '/verify' : postAuthRoute());
+      if (data.user && data.user.emailVerified === false) {
+        Router.navigate('/verify', { email: data.user.email || document.getElementById('login-email').value, redirect: postAuthRoute() });
+      } else Router.navigate(consumePostAuthRoute());
     } catch (e2) { if (err) err.textContent = e2.message; }
     return false;
   }
@@ -264,8 +269,8 @@
         email: document.getElementById('signup-email').value,
         password: document.getElementById('signup-password').value,
       });
-      if (data && data.token) { renderHeader(); Router.navigate('/'); }
-      else Router.navigate('/verify?email=' + encodeURIComponent(document.getElementById('signup-email').value));
+      if (data && data.token) { await Auth.refreshMe(); renderHeader(); Router.navigate(consumePostAuthRoute()); }
+      else Router.navigate('/verify', { email: document.getElementById('signup-email').value, redirect: postAuthRoute() });
     } catch (e2) { if (err) err.textContent = e2.message; }
     return false;
   }
@@ -274,7 +279,8 @@
     var err = document.getElementById('auth-error');
     try {
       await Auth.verifyEmail(document.getElementById('verify-email').value, document.getElementById('verify-otp').value);
-      renderHeader(); Router.navigate('/');
+      await Auth.refreshMe();
+      renderHeader(); Router.navigate(consumePostAuthRoute());
     } catch (e2) { if (err) err.textContent = e2.message; }
     return false;
   }
@@ -290,11 +296,27 @@
     } catch (e2) { if (err) err.textContent = e2.message || 'Could not request a reset link.'; }
     return false;
   }
-  function postAuthRoute() {
-    var requested = Router.query().redirect || '';
+  var POST_AUTH_ROUTE_KEY = 'anistrim.web.postAuthRoute';
+  function safePostAuthRoute(requested) {
+    requested = String(requested || '');
     // Hash routes only; reject external URLs and unknown top-level destinations.
     if (/^\/(?:watch|anime|browse|search|watchlist|history|profile|settings|upgrade)(?:\/|\?|$)/.test(requested)) return requested;
+    return '';
+  }
+  function postAuthRoute() {
+    var requested = safePostAuthRoute(Router.query().redirect);
+    if (requested) {
+      try { sessionStorage.setItem(POST_AUTH_ROUTE_KEY, requested); } catch (e) { /* ignore */ }
+      return requested;
+    }
+    try { requested = safePostAuthRoute(sessionStorage.getItem(POST_AUTH_ROUTE_KEY)); } catch (e2) { requested = ''; }
+    if (requested) return requested;
     return '/';
+  }
+  function consumePostAuthRoute() {
+    var route = postAuthRoute();
+    try { sessionStorage.removeItem(POST_AUTH_ROUTE_KEY); } catch (e) { /* ignore */ }
+    return route;
   }
   async function doResetPassword(e) {
     e.preventDefault();
@@ -322,7 +344,9 @@
     var err = document.getElementById('auth-error');
     try {
       var data;
-      if (query.token) {
+      if (query.error) {
+        throw new Error(String(query.error));
+      } else if (query.token) {
         data = { token: query.token, refreshToken: query.refreshToken || '', user: null };
       } else if (query.code) {
         data = await API.request('/api/auth/google/token?code=' + encodeURIComponent(query.code));
@@ -332,10 +356,9 @@
       if (!data || !data.token) throw new Error('Google sign-in did not return a session.');
       // Persist the scoped session and user state before returning home.
       Auth.state.save(data);
+      await Auth.refreshMe();
       renderHeader();
-      var pendingRoute = sessionStorage.getItem('anistrim.web.postAuthRoute') || postAuthRoute();
-      sessionStorage.removeItem('anistrim.web.postAuthRoute');
-      Router.navigate(pendingRoute);
+      Router.navigate(consumePostAuthRoute());
     } catch (e) {
       if (err) err.textContent = e.message || 'Google sign-in could not be completed.';
     }
@@ -343,30 +366,9 @@
 
   async function gAuth(intent) {
     try {
-      var clientIdRes = await API.googleClientId();
-      var clientId = clientIdRes && clientIdRes.clientId;
-      if (!clientId) { toast('Google not configured', 'error'); return; }
-      if (typeof google === 'undefined' || !google.accounts) {
-        await new Promise(function (res, rej) {
-          var s = document.createElement('script');
-          s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
-          s.onload = res; s.onerror = function () { rej(new Error('Google lib failed')); };
-          document.head.appendChild(s);
-        });
-      }
-      await new Promise(function (resolve, reject) {
-        var tc;
-        try {
-          tc = google.accounts.oauth2.initTokenClient({
-            client_id: clientId, scope: 'openid email profile',
-            callback: function (r) { if (r && r.access_token) resolve(r); else reject(new Error('Cancelled')); },
-          });
-        } catch (e) { reject(e); }
-        tc.requestAccessToken();
-      });
       // OAuth leaves this page for Google, so retain a previously requested
       // guarded hash route until the callback returns to this Web client.
-      sessionStorage.setItem('anistrim.web.postAuthRoute', postAuthRoute());
+      sessionStorage.setItem(POST_AUTH_ROUTE_KEY, postAuthRoute());
       // Redirect to backend Google OAuth flow (documented endpoint).
       window.location.href = API.API_BASE + '/api/auth/google/start?intent=' + intent + '&client=web';
     } catch (err) { toast(err.message || 'Google sign-in failed.', 'error'); }

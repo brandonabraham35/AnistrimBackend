@@ -36,10 +36,11 @@ const client = new OAuth2Client(
   `${BACKEND_URL}/api/auth/google/callback`
 );
 
-function createLoginCode(token, user, intent) {
+function createLoginCode(token, refreshToken, user, intent) {
   const code = crypto.randomUUID();
   loginCodeStore.set(code, {
     token,
+    refreshToken,
     user,
     intent,
     expiresAt: Date.now() + LOGIN_CODE_TTL_MS,
@@ -94,8 +95,6 @@ exports.googleCallback = async (req, res) => {
     return res.send(errorPage(message));
   };
 
-  if (error || !code) return fail('Sign-in cancelled.', 'OAUTH_CANCELLED');
-
   let intent = 'login';
   let returnClient = '';
   try {
@@ -105,6 +104,20 @@ exports.googleCallback = async (req, res) => {
       returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(parsedState.client) ? parsedState.client : '';
     }
   } catch (e) { /* malformed state -> default login */ }
+
+  if (error || !code) {
+    // Web/desktop clients with a validated return target should land back in
+    // their own UI even when Google cancels or rejects consent. The message is
+    // intentionally generic and no credentials are placed in the URL.
+    if (!jsonMode && returnClient) {
+      const returnTarget = clientAgnostic.getGoogleReturnTarget(returnClient);
+      if (returnTarget) {
+        const separator = returnTarget.includes('?') ? '&' : '?';
+        return res.redirect(`${returnTarget}${separator}error=${encodeURIComponent('Sign-in cancelled.')}`);
+      }
+    }
+    return fail('Sign-in cancelled.', 'OAUTH_CANCELLED');
+  }
 
   try {
     const { tokens } = await client.getToken(code);
@@ -126,13 +139,13 @@ exports.googleCallback = async (req, res) => {
     const { user } = await resolveGoogleIdentity(profile, intent);
 
     // Create a session (access + refresh tokens).
-    const { accessToken, refreshToken, sessionId } = await sessionService.createSession(user, req);
+    const { accessToken, refreshToken } = await sessionService.createSession(user, req);
     await sessionService.logEvent(user.id, 'google_login', 'google', req);
 
     // Build the canonical user DTO.
     const dto = await buildUserDto(user);
 
-    const loginCode = createLoginCode(accessToken, dto, intent);
+    const loginCode = createLoginCode(accessToken, refreshToken, dto, intent);
 
     // Client-agnostic path: return structured result + suggested deep link.
     // B7 fix: per-client return target resolved from X-Client header with
@@ -187,7 +200,12 @@ exports.exchangeLoginCode = (req, res) => {
     return res.status(400).json({ message: 'Login code is invalid or expired. Please try Google sign-in again.' });
   }
 
-  return sendSuccess(res, { token: record.token, user: record.user, intent: record.intent });
+  return sendSuccess(res, {
+    token: record.token,
+    refreshToken: record.refreshToken,
+    user: record.user,
+    intent: record.intent,
+  });
 };
 
 function successPage(code) {

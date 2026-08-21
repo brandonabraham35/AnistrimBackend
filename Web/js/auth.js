@@ -46,9 +46,12 @@
     get user() { return readUser(); },
     get isLoggedIn() {
       var t = API.getToken();
-      if (!t) return false;
+      // A rotated/expired access token can still have a valid refresh token.
+      // Treat it as a restorable session so protected Web routes do not bounce
+      // the user to login before the first API call performs its single refresh.
+      if (!t) return Boolean(API.getRefreshToken());
       var exp = decodeExp(t);
-      if (exp !== null && exp < Date.now()) return false;
+      if (exp !== null && exp < Date.now()) return Boolean(API.getRefreshToken());
       return true;
     },
     get isPremium() {
@@ -149,6 +152,18 @@
     }
   }
 
+  async function restoreSession() {
+    if (!API.getToken() && !API.getRefreshToken()) return null;
+    try {
+      // API.me() retries once through the existing refresh-token flow when the
+      // 15-minute access token has expired, then refreshes profile/premium DTOs.
+      return await refreshMe();
+    } catch (e) {
+      Auth.clear();
+      return null;
+    }
+  }
+
   // ── Logout ─────────────────────────────────────────────
   async function logout() {
     try { if (Auth.isLoggedIn) await API.logout(); } catch (e) { /* ignore */ }
@@ -165,6 +180,12 @@
     googleSignup: function (idToken) { return API.googleSignup(idToken).then(persistAuth); },
     logout: logout,
     refreshMe: refreshMe,
+    restoreSession: restoreSession,
     state: Auth,
   };
+
+  // This module loads before the router. Start restoration as soon as the
+  // document is usable; route guards regard a refresh token as restorable
+  // while this one-time check is in flight.
+  document.addEventListener('DOMContentLoaded', function () { restoreSession(); });
 })();
