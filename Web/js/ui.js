@@ -457,8 +457,9 @@
     return '<div class="page watch-page"><div class="watch-container">' +
       '<div class="player-stage"><video id="animePlayer" class="video-element" controls playsinline></video>' +
       '<div class="player-loading" id="player-loading" aria-live="polite">Preparing playback…</div>' +
-      '<div class="player-error" id="player-error" style="display:none"></div></div>' +
-      '<div class="watch-meta"><h2 id="watch-title">Loading...</h2></div>' +
+      '<div class="player-error" id="player-error" style="display:none"></div>' +
+      '<div class="autoplay-next" id="autoplay-next" style="display:none"><span id="autoplay-next-text"></span><button class="btn-primary" onclick="AniStrimUI.playNextEpisode()">Play now</button><button class="btn-ghost" onclick="AniStrimUI.cancelAutoplay()">Cancel</button></div></div>' +
+      '<div class="watch-meta"><h2 id="watch-title">Loading...</h2><div class="watch-nav" id="watch-nav"></div><div class="season-nav" id="season-nav"></div></div>' +
       '<div class="episode-list" id="watch-episodes"><div class="grid-loading">Loading...</div></div>' +
       '<div class="watch-back"><a href="#/anime/' + esc(params.id) + '" class="btn-ghost">← Back to Anime</a></div>' +
       '</div></div>';
@@ -472,6 +473,9 @@
   var trackTimer = null;
   var progressCleanup = null;
   var progressSeekTimer = null;
+  var autoplayTimer = null;
+  var autoplayRemaining = 0;
+  var watchState = null;
   var progressLastPosition = null;
   var PROGRESS_QUEUE_KEY = 'anistrim.web.pendingProgress';
   var PROGRESS_INTERVAL_MS = 15000;
@@ -543,7 +547,102 @@
     progressCleanup = null;
     progressLastPosition = null;
   }
-  function startProgressTracking(video, episodeId) {
+  function clearAutoplay() {
+    if (autoplayTimer) clearInterval(autoplayTimer);
+    autoplayTimer = null;
+    var overlay = document.getElementById('autoplay-next');
+    if (overlay) overlay.style.display = 'none';
+  }
+  function episodeNumber(ep) { return Number(ep && (ep.number || ep.episode_number)) || 0; }
+  function episodeSeason(ep) { return Number(ep && (ep.season || ep.season_number)) || 1; }
+  function orderedEpisodes(episodes) {
+    return (episodes || []).slice().sort(function (a, b) {
+      var seasonDelta = episodeSeason(a) - episodeSeason(b);
+      return seasonDelta || episodeNumber(a) - episodeNumber(b);
+    });
+  }
+  function currentEpisodeIndex() {
+    if (!watchState) return -1;
+    return watchState.episodes.findIndex(function (item) { return String(item.id) === String(watchState.target.id); });
+  }
+  function neighborEpisode(direction) {
+    var index = currentEpisodeIndex();
+    return index >= 0 && watchState && watchState.episodes[index + direction] || null;
+  }
+  function episodePath(animeId, episode) {
+    return '/watch/' + encodeURIComponent(animeId) + '/' + encodeURIComponent(episodeNumber(episode) || 1) + '?epId=' + encodeURIComponent(episode.id);
+  }
+  function renderWatchNavigation() {
+    if (!watchState) return;
+    var nav = document.getElementById('watch-nav');
+    var seasonNav = document.getElementById('season-nav');
+    var previous = neighborEpisode(-1);
+    var next = neighborEpisode(1);
+    if (nav) {
+      nav.innerHTML = '<button class="btn-ghost" ' + (previous ? '' : 'disabled') + ' onclick="AniStrimUI.playPreviousEpisode()">← Previous</button>' +
+        '<button class="btn-ghost" ' + (next ? '' : 'disabled') + ' onclick="AniStrimUI.playNextEpisode()">Next →</button>';
+    }
+    var seasons = watchState.seasons;
+    if (seasonNav) {
+      seasonNav.innerHTML = seasons.length > 1
+        ? '<label>Season <select onchange="AniStrimUI.selectSeason(this.value)">' + seasons.map(function (season) {
+          return '<option value="' + season + '"' + (season === watchState.season ? ' selected' : '') + '>Season ' + season + '</option>';
+        }).join('') + '</select></label>'
+        : '';
+    }
+  }
+  function renderWatchEpisodes() {
+    var listEl = document.getElementById('watch-episodes');
+    if (!listEl || !watchState) return;
+    var visible = watchState.episodes.filter(function (episode) { return episodeSeason(episode) === watchState.season; });
+    if (!visible.length) visible = watchState.episodes;
+    listEl.innerHTML = '<div class="episode-grid">' + visible.map(function (item) {
+      var n = episodeNumber(item);
+      var active = String(item.id) === String(watchState.target.id) ? ' active' : '';
+      return '<button class="episode-item' + active + '" onclick="AniStrimUI.watch(\'' + esc(watchState.animeId) + '\',' + (n || 1) + ',\'' + esc(item.id) + '\')">' +
+        '<span class="ep-num">' + esc(n) + '</span><span class="ep-title">' + esc(item.title || 'Episode ' + n) + '</span>' +
+        (item.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+  function navigateEpisode(episode) {
+    if (!episode || !watchState) return;
+    var access = episodeAccess(episode);
+    if (!access.playable) {
+      showWatchAccess(document.getElementById('player-error'), document.getElementById('watch-episodes'), access, episodePath(watchState.animeId, episode), null);
+      return;
+    }
+    clearAutoplay();
+    Router.navigate(episodePath(watchState.animeId, episode));
+  }
+  function startAutoplay() {
+    var next = neighborEpisode(1);
+    if (!watchState || !watchState.autoplayNext || !next || !episodeAccess(next).playable) return;
+    clearAutoplay();
+    autoplayRemaining = Math.max(0, Number(watchState.autoplayCountdown) || 10);
+    var overlay = document.getElementById('autoplay-next');
+    var text = document.getElementById('autoplay-next-text');
+    function render() { if (text) text.textContent = 'Next episode in ' + autoplayRemaining + '…'; }
+    if (overlay) overlay.style.display = 'flex';
+    render();
+    autoplayTimer = setInterval(function () {
+      autoplayRemaining -= 1;
+      if (autoplayRemaining <= 0) { clearAutoplay(); navigateEpisode(next); return; }
+      render();
+    }, 1000);
+  }
+  function loadAutoplayPreference() {
+    if (!watchState) return;
+    // The persisted account preference is authoritative for signed-in users.
+    // Guests have no server preference, so no automatic transition is made.
+    if (!Auth.state.isLoggedIn) { watchState.autoplayNext = false; return; }
+    API.profilePreferences().then(function (data) {
+      if (!watchState) return;
+      var prefs = data && (data.preferences || data);
+      watchState.autoplayNext = !!(prefs && prefs.autoplayNext);
+      watchState.autoplayCountdown = Number(prefs && prefs.autoplayCountdown) || 10;
+    }).catch(function () { watchState.autoplayNext = false; });
+  }
+  function startProgressTracking(video, episodeId, onEnded) {
     stopProgressTracking();
     if (!Auth.state.isLoggedIn || !video || !episodeId) return;
     var restored = false;
@@ -578,7 +677,7 @@
     }
     function onVisibility() { if (document.visibilityState === 'hidden') save('exit', true); }
     function onPageHide() { save('exit', true); }
-    function ended() { save('ended'); }
+    function ended() { save('ended'); if (typeof onEnded === 'function') onEnded(); }
     trackTimer = setInterval(heartbeat, PROGRESS_INTERVAL_MS);
     video.addEventListener('pause', pause);
     video.addEventListener('seeked', seeked);
@@ -606,6 +705,7 @@
     var errEl = document.getElementById('player-error');
     var loadingEl = document.getElementById('player-loading');
     stopProgressTracking();
+    clearAutoplay();
     Player.destroy();
     Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
     Player.setStatusDisplay(function (m) {
@@ -620,15 +720,18 @@
       if (!target) { if (errEl) { errEl.textContent = 'Episode not found.'; errEl.style.display = 'block'; } return; }
       var access = episodeAccess(target);
       var returnPath = '/watch/' + encodeURIComponent(id) + '/' + encodeURIComponent(ep) + (epId ? ('?epId=' + encodeURIComponent(epId)) : '');
-      if (listEl) {
-        listEl.innerHTML = '<div class="episode-grid">' + eps.map(function (x) {
-          var n = x.number || x.episode_number;
-          var active = String(x.id) === String(target.id) ? ' active' : '';
-          return '<button class="episode-item' + active + '" onclick="AniStrimUI.watch(\'' + esc(id) + '\',' + (n || 1) + ',\'' + esc(x.id) + '\')">' +
-            '<span class="ep-num">' + esc(n) + '</span><span class="ep-title">' + esc(x.title || 'Episode ' + n) + '</span>' +
-            (x.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
-        }).join('') + '</div>';
-      }
+      watchState = {
+        animeId: id,
+        episodes: orderedEpisodes(eps),
+        target: target,
+        season: episodeSeason(target),
+        seasons: Array.from(new Set(eps.map(episodeSeason))).sort(function (a, b) { return a - b; }),
+        autoplayNext: false,
+        autoplayCountdown: 10,
+      };
+      renderWatchNavigation();
+      renderWatchEpisodes();
+      loadAutoplayPreference();
       // The episode DTO is the first access decision. A playable free episode
       // is allowed to reach the backend even for a guest; the backend remains
       // the final authority for entitlement and device restrictions.
@@ -644,7 +747,7 @@
             showWatchAccess(errEl, listEl, access, returnPath, err);
             return;
           } else {
-            startProgressTracking(video, target.id);
+            startProgressTracking(video, target.id, startAutoplay);
           }
         },
         function (err2) {
@@ -726,6 +829,13 @@
     if (av) av.src = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || fallback(user && (user.name || 'A'));
     var u = document.getElementById('pref-username');
     if (u && user && user.username) u.value = user.username;
+    API.profilePreferences().then(function (data) {
+      var prefs = data && (data.preferences || data);
+      var skip = document.getElementById('pref-auto-skip');
+      var autoplay = document.getElementById('pref-auto-play');
+      if (skip) skip.checked = !!(prefs && prefs.skipIntroAuto);
+      if (autoplay) autoplay.checked = !!(prefs && prefs.autoplayNext);
+    }).catch(function () { /* preferences are non-critical on the profile page */ });
   }
   async function saveProfile() {
     try {
@@ -733,7 +843,7 @@
       var skip = document.getElementById('pref-auto-skip') ? document.getElementById('pref-auto-skip').checked : false;
       var play = document.getElementById('pref-auto-play') ? document.getElementById('pref-auto-play').checked : false;
       if (u) await API.profileSetUsername(u);
-      await API.profileUpdatePreferences({ skip_intro_auto: skip, autoplay: play });
+      await API.profileUpdatePreferences({ skipIntroAuto: skip, autoplayNext: play });
       toast('Saved'); await Auth.refreshMe(); renderHeader();
     } catch (e) { toast(e.message, 'error'); }
   }
@@ -804,7 +914,19 @@
     doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doForgotPassword: doForgotPassword, doResetPassword: doResetPassword,
     doGoogleLogin: function () { gAuth('login'); }, doGoogleSignup: function () { gAuth('signup'); },
     reloadBrowse: reloadBrowse, doSearch: doSearch,
-    loadAnime: loadAnime, loadWatch: loadWatch, stopWatchProgress: stopProgressTracking,
+    loadAnime: loadAnime, loadWatch: loadWatch,
+    stopWatchProgress: function () { stopProgressTracking(); clearAutoplay(); watchState = null; },
+    playPreviousEpisode: function () { navigateEpisode(neighborEpisode(-1)); },
+    playNextEpisode: function () { navigateEpisode(neighborEpisode(1)); },
+    cancelAutoplay: clearAutoplay,
+    selectSeason: function (season) {
+      if (!watchState) return;
+      var selected = Number(season);
+      if (watchState.seasons.indexOf(selected) === -1) return;
+      watchState.season = selected;
+      renderWatchNavigation();
+      renderWatchEpisodes();
+    },
     loadWatchlist: loadWatchlist, loadHistory: loadHistory, clearHistory: clearHistory,
     saveProfile: saveProfile, uploadAvatar: uploadAvatar, doAvatarUpload: doAvatarUpload,
     checkout: checkout, renderHeader: renderHeader,
