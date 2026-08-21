@@ -56,6 +56,7 @@
 <div class="spinner" id="spinner"></div>
 <p id="status-text">Signing you in with Google...</p>
 
+<script src="/shared/client-contract/session.js"></script>
 <script>
 // This page receives ?token=xxx&user=xxx from the backend after Google login
 // It saves them to localStorage exactly the same way the email login does
@@ -94,7 +95,7 @@
   try {
     const user = JSON.parse(decodeURIComponent(userRaw));
 
-    localStorage.setItem('token', decodeURIComponent(token));
+    window.AniStrimSession.create('mobile').setTokens(decodeURIComponent(token));
     localStorage.setItem('user', JSON.stringify(user));
     localStorage.setItem('isFirstVisit', 'true');
 

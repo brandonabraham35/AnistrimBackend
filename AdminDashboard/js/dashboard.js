@@ -2,7 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const initializedSections = new Set();
 
   // Ensure admin token exists, otherwise redirect to login.
-  if (!localStorage.getItem('admin_token')) {
+  const adminSession = window.AniStrimSession.create('admin');
+  if (!adminSession.getToken()) {
     window.location.replace('index.html');
     return;
   }
@@ -504,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function logout() {
-    localStorage.removeItem('admin_token');
+    adminSession.clear();
     localStorage.removeItem('admin_user');
     window.location.replace('index.html');
   }

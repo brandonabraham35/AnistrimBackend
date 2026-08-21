@@ -207,16 +207,15 @@
   //                       the server (authoritative for isPremium/isVerified/
   //                       isAdmin/avatar/auth_provider/premium_expires_at)
   var Auth = window.Auth || (function () {
-    var TOKEN_KEY = 'token';
-    var SESSION_KEY = 'session_token';
-    var REFRESH_KEY = 'refresh_token';
+    var session = (window.AniStrimSession && window.AniStrimSession.create)
+      ? window.AniStrimSession.create('mobile') : null;
     var USER_KEY = 'user';
 
     function readUser() {
       try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch (e) { return null; }
     }
     function writeUser(u) { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
-    function readToken() { return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(SESSION_KEY) || ''; }
+    function readToken() { return session ? session.getToken() : ''; }
 
     function decodeExp(token) {
       try {
@@ -245,18 +244,15 @@
         return true;
       },
       save(token, user, refreshToken) {
-        if (token) { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(SESSION_KEY, token); }
-        if (refreshToken) { localStorage.setItem(REFRESH_KEY, refreshToken); }
+        if (session) session.setTokens(token, refreshToken);
         if (user) { writeUser(user); }
       },
-      get refreshToken() { return localStorage.getItem(REFRESH_KEY) || ''; },
-      set refreshToken(v) { if (v) localStorage.setItem(REFRESH_KEY, v); else localStorage.removeItem(REFRESH_KEY); },
+      get refreshToken() { return session ? session.getRefreshToken() : ''; },
+      set refreshToken(v) { if (session) { if (v) session.setTokens('', v); else session.storage.removeItem(session.prefix + 'refreshToken'); } },
       setUser(user) { if (user) writeUser(user); },
       getUser() { return readUser(); },
       clear() {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(SESSION_KEY);
-        localStorage.removeItem(REFRESH_KEY);
+        if (session) session.clear();
         localStorage.removeItem(USER_KEY);
         localStorage.removeItem('isFirstVisit');
         sessionStorage.removeItem('pendingEmail');

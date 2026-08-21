@@ -22,9 +22,8 @@
     ? window.getApiBaseUrl()
     : 'https://anistrimbackend.onrender.com';
 
-  var REFRESH_KEY = 'refresh_token';
-  var TOKEN_KEY = 'token';
-  var SESSION_KEY = 'session_token';
+  var session = (window.AniStrimSession && window.AniStrimSession.create)
+    ? window.AniStrimSession.create('mobile') : null;
 
   // Single-flight refresh promise so parallel 401s don't double-rotate.
   var refreshPromise = null;
@@ -38,27 +37,19 @@
   ApiError.prototype.constructor = ApiError;
 
   function getToken() {
-    return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(SESSION_KEY) || '';
+    return session ? session.getToken() : '';
   }
 
   function getRefreshToken() {
-    return localStorage.getItem(REFRESH_KEY) || '';
+    return session ? session.getRefreshToken() : '';
   }
 
   function setTokens(token, refreshToken) {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-      localStorage.setItem(SESSION_KEY, token);
-    }
-    if (refreshToken) {
-      localStorage.setItem(REFRESH_KEY, refreshToken);
-    }
+    if (session) session.setTokens(token, refreshToken);
   }
 
   function clearTokens() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    if (session) session.clear();
   }
 
   // ── Centralized post-authentication redirect ─────────────
@@ -75,15 +66,15 @@
   // location.replace() so the back-button can't return to the login page.
   // Callers must RETURN immediately after calling this.
   function redirectAfterAuthentication(user, token, refreshToken) {
-    var tok = token || (window.Auth ? window.Auth.token : '') || localStorage.getItem(TOKEN_KEY) || '';
+    var tok = token || (window.Auth ? window.Auth.token : '') || getToken();
     if (window.Auth) {
       if (tok && user) window.Auth.save(tok, user);
       else if (user) window.Auth.setUser(user);
     } else {
-      if (tok) localStorage.setItem(TOKEN_KEY, tok);
+      if (tok) setTokens(tok, refreshToken);
       if (user) localStorage.setItem('user', JSON.stringify(user));
     }
-    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
+    if (refreshToken) setTokens('', refreshToken);
     sessionStorage.removeItem('pendingEmail');
     sessionStorage.removeItem('otpEmailSent');
     localStorage.removeItem('pendingEmail');
@@ -202,7 +193,7 @@
       // Refresh failed or no refresh token — clear centralized auth state.
       clearTokens();
       if (window.Auth) window.Auth.clear();
-      else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(SESSION_KEY); }
+      else { clearTokens(); }
       if (options.global401Redirect !== false && options.skipAuthRedirect !== true) {
         window.location.href = 'login.html';
       }

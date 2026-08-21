@@ -2,7 +2,7 @@
 
 (function() {
     function getAuthToken() {
-        return localStorage.getItem('admin_token') || '';
+        return window.AniStrimSession.create('admin').getToken();
     }
 
     function getUploadEndpoint(targetId) {

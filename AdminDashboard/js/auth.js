@@ -13,6 +13,7 @@
 // → Backend verifies and returns JWT → Check isAdmin → Store token → Redirect
 
 let isGoogleAuthInProgress = false;
+const adminSession = window.AniStrimSession.create('admin');
 
 // Main handler called by the "Sign in with Google" button
 function googleLogin() {
@@ -85,7 +86,7 @@ async function sendAdminIdTokenToBackend(idToken, baseUrl) {
       }
 
       // Store admin session
-      localStorage.setItem('admin_token', data.token);
+      adminSession.setTokens(data.token, data.refreshToken);
       localStorage.setItem('admin_user', JSON.stringify(data.user));
 
       isGoogleAuthInProgress = false;
@@ -126,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentPath = window.location.pathname;
     const isLoginPage = currentPath.endsWith('index.html') || currentPath === '/' || currentPath.endsWith('/');
 
-    if (localStorage.getItem('admin_token') && isLoginPage) {
+    if (adminSession.getToken() && isLoginPage) {
         window.location.replace('dashboard.html');
         return;
     }
@@ -156,17 +157,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isAdmin = u && (u.isAdmin || u.is_admin == 1 || (u.is_admin?.data?.[0] === 1));
 
                 if (data?.token && isAdmin) {
-                    localStorage.setItem('admin_token', data.token);
+                    adminSession.setTokens(data.token, data.refreshToken);
                     localStorage.setItem('admin_user', JSON.stringify(u));
                     window.location.replace('dashboard.html');
                 } else if (data?.token) {
                     if (errorMsg) errorMsg.innerText = 'Access denied. Account is not configured as an administrator.';
-                    localStorage.removeItem('admin_token');
+                    adminSession.clear();
                 } else {
                     if (errorMsg) errorMsg.innerText = window._escapeHTML(data.message || 'Login failed.');
                 }
             } catch (err) {
-                localStorage.removeItem('admin_token');
+                adminSession.clear();
                 localStorage.removeItem('admin_user');
                 if (errorMsg) errorMsg.innerText = err.message;
             } finally {
@@ -178,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function logout() {
-    localStorage.removeItem('admin_token');
+    adminSession.clear();
     localStorage.removeItem('admin_user');
     window.location.replace('index.html');
 }

@@ -13,6 +13,7 @@
         <h2>Authenticating...</h2>
         <p>Please wait while we securely log you in.</p>
     </div>
+    <script src="/shared/client-contract/session.js"></script>
     <script>
         (function() {
             try {
@@ -24,7 +25,7 @@
                     const message = error === 'not_admin' ? 'Access Denied. This Google account is not an administrator.' : 'An unknown authentication error occurred.';
                     window.location.replace(`index.html?error=${encodeURIComponent(message)}`);
                 } else if (token) {
-                    localStorage.setItem('admin_token', token);
+                    window.AniStrimSession.create('admin').setTokens(token);
                     window.location.replace('dashboard.html');
                 } else {
                     window.location.replace(`index.html?error=${encodeURIComponent('Invalid authentication callback.')}`);

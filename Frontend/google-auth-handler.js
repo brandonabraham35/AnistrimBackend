@@ -577,7 +577,7 @@
         showDLError('Sign-in failed. Please try again.');
         return;
       }
-      localStorage.setItem('token', data.token);
+      if (window.AniStrimSession) window.AniStrimSession.create('mobile').setTokens(data.token, data.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isFirstVisit', 'true');
       window.history.replaceState({}, document.title, window.location.pathname);

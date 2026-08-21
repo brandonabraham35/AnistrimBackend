@@ -15,7 +15,9 @@ async function apiFetch(endpoint, options = {}, retries = 1) {
         : 'https://anistrimbackend.onrender.com');
 
   const url = `${BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('admin_token');
+  const session = window.AniStrimSession && window.AniStrimSession.create
+    ? window.AniStrimSession.create('admin') : null;
+  const token = session ? session.getToken() : '';
   const headers = { ...options.headers };
   // Required by backend client-specific redirect and deep-link handling.
   // This works for JSON and FormData without forcing a Content-Type.
@@ -53,7 +55,7 @@ if (token) {
       // If the token is expired or invalid, the API will return a 401.
       // We should clear the session and redirect to the login page.
       if (response.status === 401) {
-        localStorage.removeItem('admin_token');
+        if (session) session.clear();
         localStorage.removeItem('admin_user');
         window.location.replace('index.html');
         // Throw an error to prevent the rest of the code from executing

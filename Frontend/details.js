@@ -303,7 +303,7 @@ function handleEpisodeClick(event) {
 // ── Watchlist ────────────────────────────────────────────
 async function addToListFromDetails() {
   if (!currentAnime) return;
-  if (!localStorage.getItem('token')) { location.href = 'login.html'; return; }
+  if (!(window.Auth && window.Auth.token)) { location.href = 'login.html'; return; }
   try {
     // Use the centralized apiFetch helper (returns envelope)
     const { ok, data } = await apiFetch('/api/watchlist/add', {
