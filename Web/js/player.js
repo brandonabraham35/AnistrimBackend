@@ -101,6 +101,71 @@
     if (state.callbacks.onAccessDenied) state.callbacks.onAccessDenied(null, state.auth);
     if (state.callbacks.onReady) state.callbacks.onReady(state.auth);
   }
+  function externalSubtitleTracks() {
+    if (!videoEl || !videoEl.textTracks) return [];
+    var tracks = [];
+    for (var i = 0; i < videoEl.textTracks.length; i++) {
+      var track = videoEl.textTracks[i];
+      if (track.kind === 'subtitles' || track.kind === 'captions') tracks.push({ index: i, label: track.label || track.language || 'Subtitle ' + (tracks.length + 1), native: true });
+    }
+    return tracks;
+  }
+  function capabilities() {
+    var qualities = [{ value: -1, label: 'Auto' }];
+    var audio = [];
+    var subtitles = externalSubtitleTracks();
+    if (hlsInstance) {
+      (hlsInstance.levels || []).forEach(function (level, index) {
+        qualities.push({ value: index, label: level.height ? level.height + 'p' : 'Level ' + (index + 1) });
+      });
+      (hlsInstance.audioTracks || []).forEach(function (track, index) { audio.push({ value: index, label: track.name || track.lang || 'Track ' + (index + 1) }); });
+      (hlsInstance.subtitleTracks || []).forEach(function (track, index) { subtitles.push({ index: index, label: track.name || track.lang || 'Subtitle ' + (subtitles.length + 1), hls: true }); });
+    }
+    return { qualities: qualities, audioTracks: audio, subtitles: subtitles };
+  }
+  function reportCapabilities() { if (state && state.callbacks.onCapabilities) state.callbacks.onCapabilities(capabilities()); }
+  function attachSubtitles(subtitles) {
+    if (!videoEl || !Array.isArray(subtitles)) return;
+    Array.prototype.forEach.call(videoEl.querySelectorAll('track[data-anistrim]'), function (track) { track.remove(); });
+    subtitles.forEach(function (subtitle, index) {
+      if (!subtitle || !subtitle.url) return;
+      var track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.label = subtitle.lang || subtitle.label || 'Subtitle ' + (index + 1);
+      track.srclang = String(subtitle.lang || 'en').split('-')[0].toLowerCase();
+      track.src = subtitle.url;
+      track.setAttribute('data-anistrim', '1');
+      videoEl.appendChild(track);
+    });
+    // Browser track lists update asynchronously after insertion.
+    setTimeout(reportCapabilities, 0);
+  }
+  function setQuality(value) {
+    if (!hlsInstance || !hlsInstance.levels || !hlsInstance.levels.length) return false;
+    var level = Number(value);
+    hlsInstance.currentLevel = level;
+    hlsInstance.nextLevel = level;
+    return true;
+  }
+  function setAudioTrack(value) {
+    if (!hlsInstance || !hlsInstance.audioTracks || !hlsInstance.audioTracks.length) return false;
+    hlsInstance.audioTrack = Number(value);
+    return true;
+  }
+  function setSubtitleTrack(value) {
+    var selection = String(value);
+    var tracks = externalSubtitleTracks();
+    tracks.forEach(function (track) { videoEl.textTracks[track.index].mode = 'hidden'; });
+    if (hlsInstance && hlsInstance.subtitleTracks) hlsInstance.subtitleTrack = -1;
+    if (selection === 'off') return true;
+    if (selection.indexOf('native:') === 0) {
+      var nativeIndex = Number(selection.slice(7));
+      if (videoEl.textTracks[nativeIndex]) videoEl.textTracks[nativeIndex].mode = 'showing';
+      return true;
+    }
+    if (selection.indexOf('hls:') === 0 && hlsInstance) { hlsInstance.subtitleTrack = Number(selection.slice(4)); return true; }
+    return false;
+  }
   function reauthorizeAndReload(reason) {
     if (!state || state.reauthAttempts >= 1 || state.reauthorizing) return false;
     state.reauthAttempts += 1;
@@ -172,7 +237,9 @@
     addListener(videoEl, 'error', nativeError, { once: true });
     if (isHlsUrl(url) && typeof Hls !== 'undefined' && Hls.isSupported()) {
       hlsInstance = new Hls();
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, finishReady);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, function () { finishReady(); reportCapabilities(); });
+      if (Hls.Events.AUDIO_TRACKS_UPDATED) hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, reportCapabilities);
+      if (Hls.Events.SUBTITLE_TRACKS_UPDATED) hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, reportCapabilities);
       hlsInstance.on(Hls.Events.ERROR, function (event, data) { hlsError(data); });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(videoEl);
@@ -196,6 +263,16 @@
       if (!state) return null;
       applyAuthorization(auth);
       attachSource(state.url, 0);
+      // Stream metadata is non-critical to authorization, but the established
+      // /api/stream contract supplies external subtitle tracks. It is fetched
+      // after playback starts so a metadata failure never blocks a valid stream.
+      if (state.callbacks.animeTitle && state.callbacks.episodeNumber) {
+        API.getStream(state.callbacks.animeTitle, state.callbacks.episodeNumber).then(function (metadata) {
+          if (!state || !metadata) return;
+          attachSubtitles(metadata.subtitles || []);
+          if (state.callbacks.onMetadata) state.callbacks.onMetadata(metadata);
+        }).catch(function () { /* proxy stream remains playable without metadata */ });
+      }
       return auth;
     } catch (err) {
       fail(err, 'Stream authorization failed.');
@@ -209,5 +286,9 @@
     setErrorDisplay: function (fn) { onErrorDisplay = fn; },
     setStatusDisplay: function (fn) { onStatusDisplay = fn; },
     getCurrentEpisodeId: function () { return state && state.episodeId; },
+    getCapabilities: capabilities,
+    setQuality: setQuality,
+    setAudioTrack: setAudioTrack,
+    setSubtitleTrack: setSubtitleTrack,
   };
 })();

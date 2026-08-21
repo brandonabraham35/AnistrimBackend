@@ -196,6 +196,7 @@
       } });
     },
     getEpisodeProgress: function (episodeId) { return request('/api/watch/progress/' + episodeId); },
+    episodeMarkers: function (episodeId) { return request('/api/watch/markers/' + encodeURIComponent(episodeId)); },
 
     // Watchlist
     watchlist: function () { return request('/api/watchlist'); },

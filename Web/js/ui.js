@@ -458,8 +458,14 @@
       '<div class="player-stage"><video id="animePlayer" class="video-element" controls playsinline></video>' +
       '<div class="player-loading" id="player-loading" aria-live="polite">Preparing playback…</div>' +
       '<div class="player-error" id="player-error" style="display:none"></div>' +
+      '<div class="skip-actions" id="skip-actions"><button id="skip-intro" class="btn-ghost" style="display:none" onclick="AniStrimUI.skipMarker(\'intro\')">Skip intro</button><button id="skip-outro" class="btn-ghost" style="display:none" onclick="AniStrimUI.skipMarker(\'outro\')">Skip outro</button></div>' +
       '<div class="autoplay-next" id="autoplay-next" style="display:none"><span id="autoplay-next-text"></span><button class="btn-primary" onclick="AniStrimUI.playNextEpisode()">Play now</button><button class="btn-ghost" onclick="AniStrimUI.cancelAutoplay()">Cancel</button></div></div>' +
-      '<div class="watch-meta"><h2 id="watch-title">Loading...</h2><div class="watch-nav" id="watch-nav"></div><div class="season-nav" id="season-nav"></div></div>' +
+      '<div class="watch-meta"><h2 id="watch-title">Loading...</h2><div class="player-options" id="player-options">' +
+      '<label>Speed <select id="player-speed" onchange="AniStrimUI.setPlaybackSpeed(this.value)"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>' +
+      '<label id="quality-option" style="display:none">Quality <select id="player-quality" onchange="AniStrimUI.setQuality(this.value)"></select></label>' +
+      '<label id="audio-option" style="display:none">Audio <select id="player-audio" onchange="AniStrimUI.setAudioTrack(this.value)"></select></label>' +
+      '<label id="subtitle-option" style="display:none">Subtitles <select id="player-subtitle" onchange="AniStrimUI.setSubtitleTrack(this.value)"></select></label></div>' +
+      '<div class="watch-nav" id="watch-nav"></div><div class="season-nav" id="season-nav"></div></div>' +
       '<div class="episode-list" id="watch-episodes"><div class="grid-loading">Loading...</div></div>' +
       '<div class="watch-back"><a href="#/anime/' + esc(params.id) + '" class="btn-ghost">← Back to Anime</a></div>' +
       '</div></div>';
@@ -476,6 +482,7 @@
   var autoplayTimer = null;
   var autoplayRemaining = 0;
   var watchState = null;
+  var markerCleanup = null;
   var progressLastPosition = null;
   var PROGRESS_QUEUE_KEY = 'anistrim.web.pendingProgress';
   var PROGRESS_INTERVAL_MS = 15000;
@@ -546,6 +553,8 @@
     if (progressCleanup) progressCleanup();
     progressCleanup = null;
     progressLastPosition = null;
+    if (markerCleanup) markerCleanup();
+    markerCleanup = null;
   }
   function clearAutoplay() {
     if (autoplayTimer) clearInterval(autoplayTimer);
@@ -640,7 +649,66 @@
       var prefs = data && (data.preferences || data);
       watchState.autoplayNext = !!(prefs && prefs.autoplayNext);
       watchState.autoplayCountdown = Number(prefs && prefs.autoplayCountdown) || 10;
+      watchState.preferences = prefs || {};
+      applyPlayerPreferences();
     }).catch(function () { watchState.autoplayNext = false; });
+  }
+  function fillSelect(id, options, value, prefix) {
+    var select = document.getElementById(id);
+    var label = document.getElementById(id.replace('player-', '') + '-option');
+    if (!select || !label) return;
+    if (!options || !options.length) { label.style.display = 'none'; return; }
+    label.style.display = '';
+    select.innerHTML = options.map(function (option) {
+      return '<option value="' + esc((prefix || '') + option.value) + '"' + (String(option.value) === String(value) ? ' selected' : '') + '>' + esc(option.label) + '</option>';
+    }).join('');
+  }
+  function refreshPlayerControls(capabilities) {
+    capabilities = capabilities || Player.getCapabilities();
+    if (!capabilities) return;
+    fillSelect('player-quality', capabilities.qualities && capabilities.qualities.length > 1 ? capabilities.qualities : [], -1, '');
+    fillSelect('player-audio', capabilities.audioTracks && capabilities.audioTracks.length > 1 ? capabilities.audioTracks : [], 0, '');
+    var subtitles = [{ value: 'off', label: 'Off' }];
+    (capabilities.subtitles || []).forEach(function (track) {
+      subtitles.push({ value: (track.hls ? 'hls:' : 'native:') + track.index, label: track.label });
+    });
+    fillSelect('player-subtitle', subtitles.length > 1 ? subtitles : [], 'off', '');
+    applyPlayerPreferences();
+  }
+  function applyPlayerPreferences() {
+    if (!watchState) return;
+    var preferences = watchState.preferences || {};
+    var video = document.getElementById('animePlayer');
+    var speed = Number(preferences.playbackRate) || Number(localStorage.getItem('anistrim.web.playbackRate')) || 1;
+    var speedSelect = document.getElementById('player-speed');
+    if (video) video.playbackRate = speed;
+    if (speedSelect) speedSelect.value = String(speed);
+    if (preferences.defaultQuality && preferences.defaultQuality !== 'auto') Player.setQuality(Number(preferences.defaultQuality));
+    if (preferences.subtitlesOn === false) Player.setSubtitleTrack('off');
+  }
+  function loadEpisodeMarkers(video, episodeId) {
+    if (!Auth.state.isLoggedIn || !video || !episodeId) return;
+    API.episodeMarkers(episodeId).then(function (data) {
+      var markers = data && data.markers || {};
+      if (!watchState) return;
+      watchState.markers = markers;
+      function updateMarkerButtons() {
+        ['intro', 'outro'].forEach(function (kind) {
+          var marker = markers[kind];
+          var button = document.getElementById('skip-' + kind);
+          if (!button) return;
+          var active = marker && Number(marker.end) > Number(marker.start) && video.currentTime >= Number(marker.start) && video.currentTime < Number(marker.end);
+          button.style.display = active ? '' : 'none';
+          if (active && kind === 'intro' && watchState.preferences && watchState.preferences.skipIntroAuto) video.currentTime = Number(marker.end);
+        });
+      }
+      video.addEventListener('timeupdate', updateMarkerButtons);
+      markerCleanup = function () {
+        video.removeEventListener('timeupdate', updateMarkerButtons);
+        ['intro', 'outro'].forEach(function (kind) { var button = document.getElementById('skip-' + kind); if (button) button.style.display = 'none'; });
+      };
+      updateMarkerButtons();
+    }).catch(function () { /* markers are an optional playback enhancement */ });
   }
   function startProgressTracking(video, episodeId, onEnded) {
     stopProgressTracking();
@@ -748,11 +816,18 @@
             return;
           } else {
             startProgressTracking(video, target.id, startAutoplay);
+            loadEpisodeMarkers(video, target.id);
           }
         },
         function (err2) {
           if (loadingEl) loadingEl.style.display = 'none';
           if (errEl) { errEl.textContent = err2.message || 'Playback could not be started.'; errEl.style.display = 'block'; }
+        },
+        {
+          animeTitle: anime && anime.title,
+          episodeNumber: episodeNumber(target),
+          onCapabilities: refreshPlayerControls,
+          onMetadata: function () { refreshPlayerControls(); },
         }
       );
     } catch (e) {
@@ -926,6 +1001,28 @@
       watchState.season = selected;
       renderWatchNavigation();
       renderWatchEpisodes();
+    },
+    setPlaybackSpeed: function (value) {
+      var rate = Number(value);
+      var video = document.getElementById('animePlayer');
+      if (!video || !isFinite(rate) || rate < 0.25 || rate > 3) return;
+      video.playbackRate = rate;
+      try { localStorage.setItem('anistrim.web.playbackRate', String(rate)); } catch (e) { /* ignore */ }
+      if (Auth.state.isLoggedIn) API.profileUpdatePreferences({ playbackRate: rate }).catch(function () {});
+    },
+    setQuality: function (value) { Player.setQuality(Number(value)); },
+    setAudioTrack: function (value) { Player.setAudioTrack(Number(value)); },
+    setSubtitleTrack: function (value) {
+      Player.setSubtitleTrack(value);
+      if (Auth.state.isLoggedIn) {
+        var enabled = value !== 'off';
+        API.profileUpdatePreferences({ subtitlesOn: enabled }).catch(function () {});
+      }
+    },
+    skipMarker: function (kind) {
+      var marker = watchState && watchState.markers && watchState.markers[kind];
+      var video = document.getElementById('animePlayer');
+      if (marker && video && Number(marker.end) > Number(marker.start)) video.currentTime = Number(marker.end);
     },
     loadWatchlist: loadWatchlist, loadHistory: loadHistory, clearHistory: clearHistory,
     saveProfile: saveProfile, uploadAvatar: uploadAvatar, doAvatarUpload: doAvatarUpload,
