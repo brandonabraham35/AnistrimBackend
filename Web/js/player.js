@@ -59,8 +59,9 @@
     video.src = url;
   }
 
-  // Authorize then play (premium enforced by backend 403).
-  async function playEpisode(episodeId, video, onPremiumRequired, onError) {
+  // Authorize then play.  The API is authoritative for entitlement, device
+  // limits, and guest access; this layer only passes its decision to the UI.
+  async function playEpisode(episodeId, video, onAccessDenied, onError) {
     currentEpisodeId = episodeId;
     try {
       var auth = await API.authorizeStream(episodeId);
@@ -71,13 +72,18 @@
         url = API.API_BASE + url;
       }
       loadSource(url, video);
-      if (onPremiumRequired) onPremiumRequired(null, auth);
+      if (onAccessDenied) onAccessDenied(null, auth);
       return auth;
     } catch (err) {
-      if (err.code === 'PREMIUM_REQUIRED' || (err.status === 403 && /premium/i.test(err.message))) {
-        if (onPremiumRequired) onPremiumRequired(err, null);
+      // Keep authorization failures distinct from HLS/provider failures.  In
+      // particular, never retry an AUTH_REQUIRED, PREMIUM_REQUIRED, or device
+      // limit response from the browser.
+      if (err.status === 401 || err.status === 403 ||
+          err.code === 'AUTH_REQUIRED' || err.code === 'PREMIUM_REQUIRED' ||
+          err.code === 'DEVICE_LIMIT_REACHED' || err.code === 'ACCESS_UNKNOWN') {
+        if (onAccessDenied) onAccessDenied(err, null);
       } else if (onError) onError(err);
-      throw err;
+      return null;
     }
   }
 

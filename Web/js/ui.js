@@ -54,6 +54,68 @@
     return (list && (list.rows || list.items || list.data || list.watchlist || list.history)) || [];
   }
 
+  // Episode access is supplied by the API.  Do not infer entitlement from a
+  // user profile, a JWT, or the legacy `is_premium` fields: those are not the
+  // server's playback contract.
+  function episodeAccess(ep) {
+    ep = ep || {};
+    var state = String(ep.accessState || '').toLowerCase();
+    var tier = String(ep.effectiveTier || '').toLowerCase();
+    if (state === 'free' || state === 'premium' || state === 'in_grace') {
+      return { playable: ep.locked !== true, state: state, availableAt: ep.availableAt || null };
+    }
+    if (state === 'scheduled' || state === 'premium_required' || state === 'subscription_expired') {
+      return { playable: false, state: state, availableAt: ep.availableAt || null };
+    }
+    // Compatibility for an older API response which did not yet emit
+    // accessState. New responses always include it, and unknown data fails
+    // closed rather than exposing a stream.
+    if (!state && ep.locked === false && (tier === 'free' || !tier)) {
+      return { playable: true, state: 'free', availableAt: ep.availableAt || null };
+    }
+    return { playable: false, state: state || 'unknown', availableAt: ep.availableAt || null };
+  }
+
+  function accessMessage(access) {
+    if (access.state === 'scheduled') {
+      var date = access.availableAt ? new Date(access.availableAt) : null;
+      return date && !isNaN(date.getTime()) ? 'This episode is available on ' + date.toLocaleString() + '.' : 'This episode is not available yet.';
+    }
+    if (access.state === 'subscription_expired') return 'Your subscription has expired. Upgrade to continue watching.';
+    if (access.state === 'premium_required') return 'This episode requires Premium access.';
+    return 'This episode is currently unavailable.';
+  }
+
+  function showWatchAccess(errEl, listEl, access, returnPath, serverError) {
+    var message;
+    var action = '';
+    var code = serverError && serverError.code;
+    if (code === 'DEVICE_LIMIT_REACHED') {
+      message = serverError.message || 'Your device limit has been reached. Manage your active devices to continue.';
+    } else if (code === 'AUTH_REQUIRED' || code === 'UNAUTHORIZED' || (serverError && serverError.status === 401)) {
+      message = 'Sign in to watch this episode.';
+      action = '<a href="#/login?redirect=' + encodeURIComponent(returnPath) + '" class="btn-primary">Sign In</a>';
+    } else {
+      message = accessMessage(access);
+      if (access.state === 'premium_required' || access.state === 'subscription_expired' || code === 'PREMIUM_REQUIRED') {
+        action = Auth.state.isLoggedIn
+          ? '<a href="#/upgrade" class="btn-primary">Upgrade</a>'
+          : '<a href="#/login?redirect=' + encodeURIComponent(returnPath) + '" class="btn-primary">Sign In</a>';
+      }
+    }
+    if (errEl) { errEl.textContent = message; errEl.style.display = 'block'; }
+    if (listEl) {
+      var old = listEl.querySelector('.upgrade-banner');
+      if (old) old.remove();
+      if (action) {
+        var banner = document.createElement('div');
+        banner.className = 'upgrade-banner';
+        banner.innerHTML = '<span>' + esc(message) + '</span>' + action;
+        listEl.appendChild(banner);
+      }
+    }
+  }
+
   // ── Header / Footer ─────────────────────────────────────
   function renderHeader() {
     var h = document.getElementById('site-header');
@@ -412,7 +474,6 @@
     var titleEl = document.getElementById('watch-title');
     var listEl = document.getElementById('watch-episodes');
     var errEl = document.getElementById('player-error');
-    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/watch/' + encodeURIComponent(id) + '/' + encodeURIComponent(ep) + (epId ? ('?epId=' + encodeURIComponent(epId)) : '') }); return; }
     Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
     try {
       var anime = await API.anime(id);
@@ -421,6 +482,8 @@
       var target = eps.find(function (x) { return epId && String(x.id) === String(epId); }) ||
         eps.find(function (x) { return String(x.number || x.episode_number) === String(ep); });
       if (!target) { if (errEl) { errEl.textContent = 'Episode not found.'; errEl.style.display = 'block'; } return; }
+      var access = episodeAccess(target);
+      var returnPath = '/watch/' + encodeURIComponent(id) + '/' + encodeURIComponent(ep) + (epId ? ('?epId=' + encodeURIComponent(epId)) : '');
       if (listEl) {
         listEl.innerHTML = '<div class="episode-grid">' + eps.map(function (x) {
           var n = x.number || x.episode_number;
@@ -430,14 +493,18 @@
             (x.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
         }).join('') + '</div>';
       }
+      // The episode DTO is the first access decision. A playable free episode
+      // is allowed to reach the backend even for a guest; the backend remains
+      // the final authority for entitlement and device restrictions.
+      if (!access.playable) {
+        showWatchAccess(errEl, listEl, access, returnPath, null);
+        return;
+      }
       await Player.playEpisode(target.id, video,
         function (err, authData) {
           if (err) {
-            if (errEl) { errEl.textContent = 'This episode requires Premium. Upgrade to watch.'; errEl.style.display = 'block'; }
-            var up = document.createElement('div');
-            up.className = 'upgrade-banner';
-            up.innerHTML = '<span>🔒 Premium episode</span><a href="#/upgrade" class="btn-primary">Upgrade</a>';
-            if (listEl) listEl.appendChild(up);
+            showWatchAccess(errEl, listEl, access, returnPath, err);
+            return;
           } else {
             if (trackTimer) clearInterval(trackTimer);
             trackTimer = setInterval(function () {
@@ -447,7 +514,7 @@
             }, 10000);
           }
         },
-        function (err2) { if (errEl) { errEl.textContent = err2.message; errEl.style.display = 'block'; } }
+        function (err2) { if (errEl) { errEl.textContent = err2.message || 'Playback could not be started.'; errEl.style.display = 'block'; } }
       );
     } catch (e) { if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; } }
   }
@@ -575,7 +642,9 @@
     playFirst: function (id) {
       API.episodes(id).then(function (eps) {
         var list = norm(eps);
-        if (list.length) { var e = list[0]; AniStrimUI.watch(id, e.number || e.episode_number || 1, e.id); }
+        var e = list.find(function (episode) { return episodeAccess(episode).playable; });
+        if (e) { AniStrimUI.watch(id, e.number || e.episode_number || 1, e.id); }
+        else if (list.length) { toast(accessMessage(episodeAccess(list[0])), 'error'); }
         else toast('No episodes available.', 'error');
       }).catch(function (e) { toast(e.message, 'error'); });
     },
