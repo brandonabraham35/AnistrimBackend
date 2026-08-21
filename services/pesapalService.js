@@ -13,6 +13,24 @@ const PESAPAL_BASE = process.env.PESAPAL_ENV === 'sandbox'
   ? 'https://cybqa.pesapal.com/pesapalv3'
   : 'https://pay.pesapal.com/v3';
 
+// Environment configuration survives restarts. These process-local values
+// prevent repeated registration before configuration is persisted and collapse
+// simultaneous checkouts into one registration request.
+let cachedIpnId = null;
+let ipnRegistrationPromise = null;
+
+function configuredIpnId() {
+  return String(process.env.PESAPAL_IPN_ID || '').trim() || null;
+}
+
+function isIpnConflict(error) {
+  const body = error?.response?.data;
+  const detail = typeof body === 'string'
+    ? body
+    : JSON.stringify(body || error?.message || '');
+  return error?.response?.status === 409 || /conflict|already\s+(exists|registered)|duplicate/i.test(detail);
+}
+
 // ── OAuth 2.0: Get Bearer Token ─────────────────────────────
 // POST /api/Auth/RequestToken
 async function getToken() {
@@ -59,6 +77,51 @@ async function getToken() {
 // Registers your server's webhook endpoint with Pesapal so it
 // can send payment notifications.
 async function registerIPN(token, ipnUrl) {
+  const configured = configuredIpnId();
+  if (configured) {
+    console.log('Using existing Pesapal IPN ID from environment');
+    return configured;
+  }
+  if (cachedIpnId) {
+    console.log('Using process-cached Pesapal IPN ID');
+    return cachedIpnId;
+  }
+  if (ipnRegistrationPromise) {
+    console.log('Waiting for in-flight Pesapal IPN registration');
+    return ipnRegistrationPromise;
+  }
+  if (!ipnUrl) {
+    throw new Error('IPN URL is required to register with Pesapal');
+  }
+
+  ipnRegistrationPromise = registerNewIPN(token, ipnUrl)
+    .then(ipnId => {
+      cachedIpnId = ipnId;
+      console.log('Pesapal IPN registered and cached for this process');
+      return ipnId;
+    })
+    .catch(error => {
+      // A conflict is safe only if a configured or cached ID is available.
+      // Never guess an ID: surface the required configuration instead.
+      const knownId = configuredIpnId() || cachedIpnId;
+      if (knownId) return knownId;
+      if (isIpnConflict(error)) {
+        const conflictError = new Error(
+          'Pesapal reports this IPN URL is already registered. Configure PESAPAL_IPN_ID with the existing IPN ID.'
+        );
+        conflictError.code = 'PESAPAL_IPN_CONFLICT';
+        throw conflictError;
+      }
+      throw error;
+    })
+    .finally(() => {
+      ipnRegistrationPromise = null;
+    });
+
+  return ipnRegistrationPromise;
+}
+
+async function registerNewIPN(token, ipnUrl) {
   // If we already have an IPN ID saved, reuse it
   if (process.env.PESAPAL_IPN_ID) {
     console.log('✅ Using existing IPN ID from env:', process.env.PESAPAL_IPN_ID);

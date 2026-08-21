@@ -202,6 +202,11 @@ exports.initializeCheckout = async (req, res) => {
     }, { message: 'Payment link created.' });
   } catch (err) {
     console.error('❌ initializeCheckout error:', err.response?.data || err.message);
+    if (err.code === 'PESAPAL_IPN_CONFLICT') {
+      return res.status(503).json({
+        message: 'Payments are temporarily unavailable because the IPN configuration needs attention.',
+      });
+    }
     res.status(500).json({
       message: 'Could not initiate payment. Please try again.',
     });
