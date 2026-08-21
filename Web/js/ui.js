@@ -177,7 +177,11 @@
         var w = document.getElementById('hero-watch');
         if (w && t.id) { w.href = '#/anime/' + t.id; w.textContent = 'Watch Now'; }
       }
-    } catch (e) { wrap.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+    } catch (e) {
+      wrap.innerHTML = '<div class="empty">Could not load home sections. ' + retryButton('loadHome()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
+      var heroTitle = document.getElementById('hero-title');
+      if (heroTitle) heroTitle.textContent = 'Discover anime';
+    }
   }
 
   // ── Auth pages ──────────────────────────────────────────
@@ -369,49 +373,113 @@
   }
 
   // ── Browse / Search ─────────────────────────────────────
+  var browseRequest = 0;
+  var browseTimer = null;
+  var searchRequest = 0;
+  var searchTimer = null;
+  var browseState = { page: 1, items: [], hasNext: false };
+  var STATUS_FILTERS = ['airing', 'completed', 'upcoming'];
+
+  function retryButton(action, label) {
+    return '<button class="btn-outline" onclick="AniStrimUI.' + action + '">' + (label || 'Try again') + '</button>';
+  }
+  function filterOptions() { return '<option value="">All genres</option>'; }
+  function statusOptions() {
+    return '<option value="">All statuses</option>' + STATUS_FILTERS.map(function (status) {
+      return '<option value="' + status + '">' + esc(status.charAt(0).toUpperCase() + status.slice(1)) + '</option>';
+    }).join('');
+  }
+  function fillGenreSelect(id, selected) {
+    var select = document.getElementById(id);
+    if (!select) return Promise.resolve();
+    return API.genres().then(function (genres) {
+      var current = selected || select.value || '';
+      select.innerHTML = filterOptions() + norm(genres).map(function (genre) {
+        return '<option value="' + esc(genre) + '">' + esc(genre) + '</option>';
+      }).join('');
+      select.value = current;
+    }).catch(function () {});
+  }
   function browseView() {
     renderHeader();
     return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Browse</h1><div class="toolbar-controls">' +
-      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="trending">Trending</option><option value="popular">Popular</option>' +
-      '<option value="latest">Latest</option></select>' +
-      '<input id="browse-q" placeholder="Search..." onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div>' +
-      '<div id="browse-grid" class="grid-loading">Loading...</div></div></div>';
+      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="trending">Trending</option><option value="popular">Popular</option><option value="latest">Latest</option></select>' +
+      '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select><select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
+      '<input id="browse-q" placeholder="Search..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div>' +
+      '<div id="browse-grid" class="grid-loading">Loading...</div><div id="browse-more"></div></div></div>';
   }
-  async function reloadBrowse() {
+  function afterBrowse() { fillGenreSelect('browse-genre'); reloadBrowse(false); }
+  function debounceBrowse() { clearTimeout(browseTimer); browseTimer = setTimeout(function () { reloadBrowse(false); }, 350); }
+  async function reloadBrowse(loadMore) {
+    clearTimeout(browseTimer);
     var el = document.getElementById('browse-grid');
+    var more = document.getElementById('browse-more');
     if (!el) return;
-    el.innerHTML = '<div class="grid-loading">Loading...</div>';
     var sort = document.getElementById('browse-sort') ? document.getElementById('browse-sort').value : 'trending';
-    var q = document.getElementById('browse-q') ? document.getElementById('browse-q').value : '';
+    var q = document.getElementById('browse-q') ? document.getElementById('browse-q').value.trim() : '';
+    var genre = document.getElementById('browse-genre') ? document.getElementById('browse-genre').value : '';
+    var status = document.getElementById('browse-status') ? document.getElementById('browse-status').value : '';
+    var filtered = Boolean(q || genre || status);
+    var page = loadMore && !filtered && sort !== 'latest' ? browseState.page + 1 : 1;
+    var requestId = ++browseRequest;
+    if (!loadMore) el.innerHTML = '<div class="grid-loading">Loading catalogue...</div>';
+    if (more) more.innerHTML = loadMore ? '<div class="grid-loading">Loading more...</div>' : '';
     try {
-      var list = q ? norm(await API.search(q)) : sort === 'popular' ? norm(await API.popular()) : sort === 'latest' ? norm(await API.latest()) : norm(await API.trending());
-      el.innerHTML = list.length ? grid(list) : '<div class="empty">No results.</div>';
-    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+      var list, meta = {};
+      if (filtered) list = norm(await API.search(q, { genre: genre, status: status }));
+      else if (sort === 'latest') list = norm(await API.latest(50));
+      else {
+        var pageResult = sort === 'popular' ? await API.popular(page, 10) : await API.trending(page, 10);
+        list = norm(pageResult && pageResult.data);
+        meta = (pageResult && pageResult.meta && pageResult.meta.pagination) || {};
+      }
+      if (requestId !== browseRequest || !document.getElementById('browse-grid')) return;
+      browseState = { page: page, items: loadMore ? browseState.items.concat(list) : list, hasNext: Boolean(meta.hasNext) };
+      el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div class="empty">No anime matched those filters.</div>';
+      if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div class="empty">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
+    } catch (e) {
+      if (requestId !== browseRequest) return;
+      el.innerHTML = '<div class="empty">Could not load the catalogue. ' + retryButton('reloadBrowse()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
+      if (more) more.innerHTML = '';
+    }
   }
+  function loadMoreBrowse() { return reloadBrowse(true); }
   function searchView() {
     renderHeader();
-    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Search</h1><div class="search-bar">' +
-      '<input id="search-input" placeholder="Search anime..." onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
-      '<button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
-      '<div id="search-results" class="grid-loading">Enter a search term or pick a genre.</div></div></div>';
+    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Search</h1><div class="toolbar-controls">' +
+      '<input id="search-input" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceSearch()" onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
+      '<select id="search-genre" onchange="AniStrimUI.doSearch()">' + filterOptions() + '</select><select id="search-status" onchange="AniStrimUI.doSearch()">' + statusOptions() + '</select><button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
+      '<div id="search-results" class="empty">Enter a search term to find anime.</div></div></div>';
   }
   function afterSearch(root, params, query) {
     var q = query && query.q;
     var input = document.getElementById('search-input');
-    if (input && q) {
-      input.value = q;
-      doSearch();
-    }
+    var status = document.getElementById('search-status');
+    var genresReady = fillGenreSelect('search-genre', query && query.genre);
+    if (input && q) input.value = q;
+    if (status && query && query.status) status.value = query.status;
+    if (q || (query && (query.genre || query.status))) genresReady.then(doSearch);
   }
+  function debounceSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 350); }
   async function doSearch() {
-    var q = document.getElementById('search-input') ? document.getElementById('search-input').value : '';
+    clearTimeout(searchTimer);
+    var input = document.getElementById('search-input');
+    var q = input ? input.value.trim() : '';
+    var genre = document.getElementById('search-genre') ? document.getElementById('search-genre').value : '';
+    var status = document.getElementById('search-status') ? document.getElementById('search-status').value : '';
     var el = document.getElementById('search-results');
     if (!el) return;
+    if (!q && !genre && !status) { el.innerHTML = '<div class="empty">Enter a search term or choose a filter.</div>'; return; }
+    var requestId = ++searchRequest;
     el.innerHTML = '<div class="grid-loading">Searching...</div>';
     try {
-      var list = norm(await API.search(q));
-      el.innerHTML = list.length ? grid(list) : '<div class="empty">No results for "' + esc(q) + '".</div>';
-    } catch (e) { el.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+      var list = norm(await API.search(q, { genre: genre, status: status }));
+      if (requestId !== searchRequest || !document.getElementById('search-results')) return;
+      el.innerHTML = list.length ? grid(list) : '<div class="empty">No anime matched your search.</div>';
+    } catch (e) {
+      if (requestId !== searchRequest) return;
+      el.innerHTML = '<div class="empty">Search failed. ' + retryButton('doSearch()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
+    }
   }
 
   // ── Anime details ───────────────────────────────────────
@@ -426,7 +494,9 @@
     root.innerHTML = '<div class="grid-loading">Loading...</div>';
     try {
       var anime = await API.anime(id);
-      var eps = norm(await API.episodes(id));
+      // Current servers embed access-masked episodes in the detail response.
+      // Only ask the legacy endpoint when an older server omits that field.
+      var eps = Array.isArray(anime && anime.episodes) ? anime.episodes : norm(await API.episodes(id));
       var recs = [];
       try { recs = norm(await API.recommendations(id)); } catch (e) { recs = []; }
       var img = anime && (anime.banner_image || anime.cover_image || anime.poster);
@@ -448,7 +518,7 @@
             (ep.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
         }).join('') + '</div></div>' +
         (recs.length ? '<div class="recommend-section">' + section('Recommended') + grid(recs) + '</div>' : '') + '</div>';
-    } catch (e) { root.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+    } catch (e) { root.innerHTML = '<div class="empty">Could not load this anime. ' + retryButton('loadAnime(\'' + esc(id) + '\')', 'Try again') + '<p>' + esc(e.message) + '</p></div>'; }
   }
 
   // ── Watch / Player ──────────────────────────────────────
@@ -988,7 +1058,9 @@
     logout: async function () { await Auth.logout(); renderHeader(); Router.navigate('/'); },
     doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doForgotPassword: doForgotPassword, doResetPassword: doResetPassword,
     doGoogleLogin: function () { gAuth('login'); }, doGoogleSignup: function () { gAuth('signup'); },
-    reloadBrowse: reloadBrowse, doSearch: doSearch,
+    loadHome: loadHome,
+    reloadBrowse: reloadBrowse, loadMoreBrowse: loadMoreBrowse, debounceBrowse: debounceBrowse,
+    doSearch: doSearch, debounceSearch: debounceSearch,
     loadAnime: loadAnime, loadWatch: loadWatch,
     stopWatchProgress: function () { stopProgressTracking(); clearAutoplay(); watchState = null; },
     playPreviousEpisode: function () { navigateEpisode(neighborEpisode(-1)); },
@@ -1032,7 +1104,7 @@
   window.AniStrimViews = {
     home: homeView, login: loginView, signup: signupView, verify: verifyView, forgotPassword: forgotPasswordView,
     resetPassword: resetPasswordView, googleCallback: googleCallbackView,
-    browse: browseView, afterBrowse: reloadBrowse, search: searchView, afterSearch: afterSearch,
+    browse: browseView, afterBrowse: afterBrowse, search: searchView, afterSearch: afterSearch,
     anime: animeView, afterAnime: afterAnime, watch: watchView, afterWatch: afterWatch,
     watchlist: watchlistView, afterWatchlist: loadWatchlist,
     history: historyView, afterHistory: loadHistory,

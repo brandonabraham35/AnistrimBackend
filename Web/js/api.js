@@ -130,7 +130,14 @@
       e.details = (payload && payload.details) || null;
       throw e;
     }
-    return unwrap(data);
+    var unwrapped = unwrap(data);
+    // A few catalogue endpoints expose useful pagination metadata. Keep the
+    // default return value backwards-compatible, but allow those callers to
+    // opt in without teaching every UI module about the response envelope.
+    if (options.includeMeta === true && data && data.success === true) {
+      return { data: unwrapped, meta: data.meta || {} };
+    }
+    return unwrapped;
   }
 
   window.AniStrimApi = {
@@ -167,9 +174,17 @@
 
     // Anime
     homeSections: function () { return request('/api/home/sections'); },
-    trending: function () { return request('/api/anime/trending'); },
-    latest: function () { return request('/api/anime/latest?limit=20'); },
-    popular: function () { return request('/api/anime/popular'); },
+    trending: function (page, perPage) {
+      var p = new URLSearchParams();
+      p.set('page', page || 1); p.set('perPage', perPage || 10);
+      return request('/api/anime/trending?' + p.toString(), { includeMeta: true });
+    },
+    latest: function (limit) { return request('/api/anime/latest?limit=' + (limit || 20)); },
+    popular: function (page, perPage) {
+      var p = new URLSearchParams();
+      p.set('page', page || 1); p.set('perPage', perPage || 10);
+      return request('/api/anime/popular?' + p.toString(), { includeMeta: true });
+    },
     genres: function () { return request('/api/anime/genres'); },
     search: function (q, filters) {
       var params = new URLSearchParams();
