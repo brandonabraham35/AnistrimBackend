@@ -456,6 +456,7 @@
     renderHeader();
     return '<div class="page watch-page"><div class="watch-container">' +
       '<div class="player-stage"><video id="animePlayer" class="video-element" controls playsinline></video>' +
+      '<div class="player-loading" id="player-loading" aria-live="polite">Preparing playback…</div>' +
       '<div class="player-error" id="player-error" style="display:none"></div></div>' +
       '<div class="watch-meta"><h2 id="watch-title">Loading...</h2></div>' +
       '<div class="episode-list" id="watch-episodes"><div class="grid-loading">Loading...</div></div>' +
@@ -469,12 +470,51 @@
   }
 
   var trackTimer = null;
+  var progressCleanup = null;
+  function stopProgressTracking() {
+    if (trackTimer) clearInterval(trackTimer);
+    trackTimer = null;
+    if (progressCleanup) progressCleanup();
+    progressCleanup = null;
+  }
+  function startProgressTracking(video, episodeId) {
+    stopProgressTracking();
+    if (!Auth.state.isLoggedIn || !video || !episodeId) return;
+    var restored = false;
+    function restore() {
+      if (restored) return;
+      restored = true;
+      API.getEpisodeProgress(episodeId).then(function (progress) {
+        var position = progress && Number(progress.positionSec);
+        if (position > 10 && isFinite(video.duration) && position < video.duration * 0.95) video.currentTime = position;
+      }).catch(function () { /* progress must never block playback */ });
+    }
+    if (video.readyState >= 1) restore();
+    else video.addEventListener('loadedmetadata', restore, { once: true });
+    function save(final) {
+      if (!video || !isFinite(video.currentTime) || video.currentTime <= 0) return;
+      API.saveProgress(episodeId, Math.round(video.currentTime), Math.round(video.duration || 0)).catch(function () {});
+    }
+    trackTimer = setInterval(save, 10000);
+    video.addEventListener('ended', save, { once: true });
+    window.addEventListener('pagehide', save, { once: true });
+    progressCleanup = function () {
+      video.removeEventListener('ended', save);
+      window.removeEventListener('pagehide', save);
+    };
+  }
   async function loadWatch(id, ep, epId) {
     var video = document.getElementById('animePlayer');
     var titleEl = document.getElementById('watch-title');
     var listEl = document.getElementById('watch-episodes');
     var errEl = document.getElementById('player-error');
+    var loadingEl = document.getElementById('player-loading');
+    stopProgressTracking();
+    Player.destroy();
     Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
+    Player.setStatusDisplay(function (m) {
+      if (loadingEl) { loadingEl.textContent = m; loadingEl.style.display = m === 'Playing' ? 'none' : 'flex'; }
+    });
     try {
       var anime = await API.anime(id);
       var eps = norm(await API.episodes(id));
@@ -497,24 +537,24 @@
       // is allowed to reach the backend even for a guest; the backend remains
       // the final authority for entitlement and device restrictions.
       if (!access.playable) {
+        if (loadingEl) loadingEl.style.display = 'none';
         showWatchAccess(errEl, listEl, access, returnPath, null);
         return;
       }
       await Player.playEpisode(target.id, video,
         function (err, authData) {
           if (err) {
+            if (loadingEl) loadingEl.style.display = 'none';
             showWatchAccess(errEl, listEl, access, returnPath, err);
             return;
           } else {
-            if (trackTimer) clearInterval(trackTimer);
-            trackTimer = setInterval(function () {
-              if (video && !video.paused && video.currentTime > 0 && target.id) {
-                API.saveProgress(target.id, Math.round(video.currentTime), Math.round(video.duration || 0)).catch(function () {});
-              }
-            }, 10000);
+            startProgressTracking(video, target.id);
           }
         },
-        function (err2) { if (errEl) { errEl.textContent = err2.message || 'Playback could not be started.'; errEl.style.display = 'block'; } }
+        function (err2) {
+          if (loadingEl) loadingEl.style.display = 'none';
+          if (errEl) { errEl.textContent = err2.message || 'Playback could not be started.'; errEl.style.display = 'block'; }
+        }
       );
     } catch (e) { if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; } }
   }

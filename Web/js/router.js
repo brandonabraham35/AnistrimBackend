@@ -54,6 +54,10 @@
 
   function render() {
     var path = parseHash();
+    var previousPath = currentPath;
+    if (previousPath.indexOf('/watch') === 0 && path.indexOf('/watch') !== 0 && window.AniStrimPlayer) {
+      window.AniStrimPlayer.destroy();
+    }
     currentPath = path;
     var m = match(path);
     var main = document.getElementById('site-main');
