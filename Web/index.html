@@ -3,26 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- B1 (review) fix: anchor every relative URL to /web/ so deep links like
-       /web/anime/123 resolve assets to /web/css/styles.css / /web/js/config.js
-       instead of /anime/123/css/... (which 404 and render a blank page).
-       The backend SPA fallback serves this same index.html for every /web/*. -->
-  <base href="/web/">
   <title>AniStrim — Stream Anime Online</title>
   <meta name="description" content="AniStrim — browse and stream anime online. Trending, popular, latest, and your personal watchlist.">
-  <!-- Per-route <title>/<meta> are updated by Web/js/app.js (History/Hash API) for SEO. -->
-
-  <!-- Local dev helper: when served from localhost by the backend, use the
-       same origin (relative /api/...) so there is zero CORS. Removed by any
-       production build step; harmless elsewhere. -->
-  <script>
-    (function () {
-      var loc = window.location;
-      if (loc.hostname === 'localhost' || loc.hostname === '127.0.0.1') {
-        window.__ANISTRIM_API = ''; // relative => same-origin
-      }
-    })();
-  </script>
+  <meta name="anistrim-api" content="https://anistrimbackend.onrender.com">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -41,12 +24,9 @@
        The same local copy is referenced by Desktop/vendor/hls.min.js. -->
   <script src="js/vendor/hls.min.js"></script>
 
-  <!-- Shared client contract (served from /shared/client-contract/* by the backend).
-       Non-visual logic only: endpoints, envelope, session (scoped keys). -->
-  <script src="/shared/client-contract/endpoints.js"></script>
-  <script src="/shared/client-contract/envelope.js"></script>
-  <script src="/shared/client-contract/session.js"></script>
-  <script src="/shared/client-contract/http.js"></script>
+  <!-- Bundled copy: Web is independently deployable and does not rely on
+       backend static-file middleware for its scoped session contract. -->
+  <script src="js/vendor/shared/session.js"></script>
 
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
