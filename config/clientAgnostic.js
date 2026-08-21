@@ -51,7 +51,7 @@ const serveDesktopPreview = bool(process.env.SERVE_DESKTOP_PREVIEW, false);
 // Default reset paths per client (can be overridden via RESET_PATHS_JSON env)
 const DEFAULT_RESET_PATHS = {
   mobile: '/reset-password.html',           // Frontend/ (Capacitor WebView)
-  web: '/web/reset-password',               // Web/ SPA route
+  web: '/web/#/reset-password',             // Web/ hash-routed SPA route
   desktop: '/reset-password',               // Desktop app route
   admin: '/admin/reset-password',           // Admin dashboard (if needed)
 };
@@ -59,7 +59,7 @@ const DEFAULT_RESET_PATHS = {
 // Default Google OAuth return targets per client
 const DEFAULT_GOOGLE_RETURN_TARGETS = {
   mobile: 'anistrim://auth',                // Deep link scheme for Capacitor
-  web: '/web/auth/google/callback',         // Web SPA callback route
+  web: '/web/#/auth/google/callback',       // Web hash-routed SPA callback
   desktop: 'anistrim-desktop://auth',       // Desktop custom scheme
   admin: '/admin/google-callback.html',     // Admin dashboard callback
 };
@@ -83,6 +83,7 @@ const GOOGLE_RETURN_ALLOW_LIST = new Set([
   'anistrim://auth',
   'anistrim-desktop://auth',
   '/web/auth/google/callback',
+  '/web/#/auth/google/callback',  // hash-routed web callback (SPA)
   '/admin/google-callback.html',
   // Add custom targets here if needed
 ]);

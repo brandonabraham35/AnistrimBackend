@@ -150,6 +150,26 @@
       '<button class="btn-primary btn-block" type="submit">Verify</button></form>' +
       '<button class="btn-ghost btn-block" onclick="AniStrimUI.resendOtp()">Resend code</button></div></div>';
   }
+  function resetPasswordView(params, query) {
+    renderHeader();
+    var token = (query && query.token) || '';
+    if (!token) {
+      return authShell('Reset Password') +
+        '<p class="form-error">This reset link is invalid or incomplete. Please request a new one.</p></div></div>';
+    }
+    return authShell('Reset Password') +
+      '<p class="auth-switch">Choose a new password for your account.</p>' +
+      '<form onsubmit="return AniStrimUI.doResetPassword(event)">' +
+      '<label>New password<input type="password" id="reset-password" required minlength="6" autocomplete="new-password"></label>' +
+      '<label>Confirm password<input type="password" id="reset-password-confirm" required minlength="6" autocomplete="new-password"></label>' +
+      '<button class="btn-primary btn-block" type="submit">Reset Password</button></form></div></div>';
+  }
+  function googleCallbackView(params, query) {
+    renderHeader();
+    // Let the route render before the one-time code exchange begins.
+    setTimeout(function () { completeGoogleCallback(query || {}); }, 0);
+    return '<div class="page auth-page"><div class="auth-card"><h1>Completing sign-in…</h1><div id="auth-error" class="form-error"></div><p class="auth-switch">Please wait.</p></div></div>';
+  }
 
   async function doLogin(e) {
     e.preventDefault();
@@ -187,6 +207,48 @@
   async function resendOtp() {
     try { await API.resendOtp(document.getElementById('verify-email').value); toast('Code resent.'); } catch (e) { toast(e.message, 'error'); }
   }
+  async function doResetPassword(e) {
+    e.preventDefault();
+    var err = document.getElementById('auth-error');
+    var token = Router.query().token || '';
+    var password = document.getElementById('reset-password').value;
+    var confirm = document.getElementById('reset-password-confirm').value;
+    if (password !== confirm) {
+      if (err) err.textContent = 'Passwords do not match.';
+      return false;
+    }
+    try {
+      // The API contract calls this field newPassword; never put the reset
+      // token in a URL or persistent storage.
+      await API.request('/api/auth/reset-password', {
+        method: 'POST',
+        body: { token: token, newPassword: password },
+      });
+      toast('Password reset successfully. Please sign in.');
+      Router.navigate('/login');
+    } catch (e2) { if (err) err.textContent = e2.message || 'Could not reset password.'; }
+    return false;
+  }
+  async function completeGoogleCallback(query) {
+    var err = document.getElementById('auth-error');
+    try {
+      var data;
+      if (query.token) {
+        data = { token: query.token, refreshToken: query.refreshToken || '', user: null };
+      } else if (query.code) {
+        data = await API.request('/api/auth/google/token?code=' + encodeURIComponent(query.code));
+      } else {
+        throw new Error('Google sign-in did not return an authentication code.');
+      }
+      if (!data || !data.token) throw new Error('Google sign-in did not return a session.');
+      // Persist the scoped session and user state before returning home.
+      Auth.state.save(data);
+      renderHeader();
+      Router.navigate('/');
+    } catch (e) {
+      if (err) err.textContent = e.message || 'Google sign-in could not be completed.';
+    }
+  }
 
   async function gAuth(intent) {
     try {
@@ -212,8 +274,7 @@
         tc.requestAccessToken();
       });
       // Redirect to backend Google OAuth flow (documented endpoint).
-      window.location.href = API.API_BASE + '/api/auth/google/start?intent=' + intent + '&redirect=' +
-        encodeURIComponent(window.location.origin + window.location.pathname);
+      window.location.href = API.API_BASE + '/api/auth/google/start?intent=' + intent + '&client=web';
     } catch (err) { toast(err.message || 'Google sign-in failed.', 'error'); }
   }
 
@@ -463,7 +524,7 @@
       try { await API.toggleWatchlist(id); toast('Watchlist updated'); } catch (e) { toast(e.message, 'error'); }
     },
     logout: async function () { await Auth.logout(); renderHeader(); Router.navigate('/'); },
-    doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp,
+    doLogin: doLogin, doSignup: doSignup, doVerify: doVerify, resendOtp: resendOtp, doResetPassword: doResetPassword,
     doGoogleLogin: function () { gAuth('login'); }, doGoogleSignup: function () { gAuth('signup'); },
     reloadBrowse: reloadBrowse, doSearch: doSearch,
     loadAnime: loadAnime, loadWatch: loadWatch,
@@ -474,6 +535,7 @@
 
   window.AniStrimViews = {
     home: homeView, login: loginView, signup: signupView, verify: verifyView,
+    resetPassword: resetPasswordView, googleCallback: googleCallbackView,
     browse: browseView, afterBrowse: reloadBrowse, search: searchView,
     anime: animeView, afterAnime: afterAnime, watch: watchView, afterWatch: afterWatch,
     watchlist: watchlistView, afterWatchlist: loadWatchlist,

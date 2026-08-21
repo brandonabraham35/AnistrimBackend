@@ -66,11 +66,16 @@ setInterval(() => {
 //    survives the round-trip through Google. Defaults to 'login'.
 exports.googleRedirect = (req, res) => {
   const intent = req.query.intent === 'signup' ? 'signup' : 'login';
+  // The browser navigation to this endpoint cannot carry X-Client headers.
+  // Preserve a validated client target in OAuth state so the callback can
+  // return a browser client to its own route after Google completes.
+  const requestedClient = typeof req.query.client === 'string' ? req.query.client : '';
+  const returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(requestedClient) ? requestedClient : '';
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['openid', 'email', 'profile'],
     prompt: 'select_account',
-    state: JSON.stringify({ intent }),
+    state: JSON.stringify({ intent, client: returnClient }),
   });
   res.redirect(url);
 };
@@ -92,8 +97,13 @@ exports.googleCallback = async (req, res) => {
   if (error || !code) return fail('Sign-in cancelled.', 'OAUTH_CANCELLED');
 
   let intent = 'login';
+  let returnClient = '';
   try {
-    if (state) intent = (JSON.parse(state).intent === 'signup') ? 'signup' : 'login';
+    if (state) {
+      const parsedState = JSON.parse(state);
+      intent = (parsedState.intent === 'signup') ? 'signup' : 'login';
+      returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(parsedState.client) ? parsedState.client : '';
+    }
   } catch (e) { /* malformed state -> default login */ }
 
   try {
@@ -139,6 +149,17 @@ exports.googleCallback = async (req, res) => {
         deepLink,
         token: accessToken,
       }, { message: 'Google authentication successful.' });
+    }
+
+    // A browser client requested an explicit callback route before leaving for
+    // Google. Return only to the server-owned allow-listed target, carrying a
+    // short-lived one-time code rather than an access token in the URL.
+    if (returnClient) {
+      const returnTarget = clientAgnostic.getGoogleReturnTarget(returnClient);
+      if (returnTarget) {
+        const separator = returnTarget.includes('?') ? '&' : '?';
+        return res.redirect(`${returnTarget}${separator}code=${encodeURIComponent(loginCode)}&intent=${encodeURIComponent(intent)}`);
+      }
     }
 
     return res.send(successPage(loginCode));

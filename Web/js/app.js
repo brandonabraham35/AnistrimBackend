@@ -10,6 +10,8 @@
   Router.register('/login', V.login);
   Router.register('/signup', V.signup);
   Router.register('/verify', V.verify);
+  Router.register('/reset-password', V.resetPassword);
+  Router.register('/auth/google/callback', V.googleCallback);
   Router.register('/browse', V.browse, V.afterBrowse);
   Router.register('/search', V.search);
   Router.register('/anime/:id', V.anime, V.afterAnime);
