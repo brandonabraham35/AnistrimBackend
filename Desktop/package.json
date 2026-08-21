@@ -4,10 +4,11 @@
   "description": "AniStrim Desktop App",
   "main": "main.js",
   "scripts": {
-    "desktop:dev": "electron .",
-    "desktop:build:win": "electron-builder --win",
-    "desktop:build:mac": "electron-builder --mac",
-    "desktop:build:linux": "electron-builder --linux"
+    "prebuild": "node -e \"require('fs').cpSync('../shared/client-contract','vendor/shared',{recursive:true})\"",
+    "desktop:dev": "npm run prebuild && electron .",
+    "desktop:build:win": "npm run prebuild && electron-builder --win",
+    "desktop:build:mac": "npm run prebuild && electron-builder --mac",
+    "desktop:build:linux": "npm run prebuild && electron-builder --linux"
   },
   "author": "AniStrim",
   "license": "MIT",
@@ -23,7 +24,8 @@
       "preload.js",
       "index.html",
       "css/**/*",
-      "js/**/*"
+      "js/**/*",
+      "vendor/**/*"
     ],
     "win": {
       "target": "nsis"
