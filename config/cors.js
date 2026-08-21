@@ -122,7 +122,7 @@ function buildCorsOptions() {
       }
       // B9 fix: Log rejected origins so CORS failures are diagnosable.
       console.warn('[cors] blocked origin:', origin);
-      return callback(null, false); // CORS error — request blocked by cors middleware
+      return callback(new Error('Origin not allowed: ' + origin));
     },
     // PATCH added (was missing per audit B1)
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
