@@ -1016,7 +1016,15 @@
   async function checkout(plan) {
     try {
       var data = await API.checkout(plan);
-      if (data && data.payment_link) { window.location.href = data.payment_link; return; }
+      var paymentLink = data && (data.paymentLink || data.payment_link);
+      var reference = data && (data.txRef || data.tx_ref);
+      if (paymentLink && reference) {
+        // The reference is not proof of payment; it only lets the callback
+        // verify the server-side subscription record after the provider return.
+        try { sessionStorage.setItem('anistrim.web.pendingPaymentReference', reference); } catch (e) { /* ignore */ }
+        window.location.href = paymentLink;
+        return;
+      }
       toast('Could not start checkout', 'error');
     } catch (e) { toast(e.message, 'error'); }
   }
@@ -1027,13 +1035,42 @@
   async function afterPaymentReturn(root, params, query) {
     var status = document.getElementById('payment-return-status');
     var reference = query && (query.reference || query.tx_ref || query.OrderMerchantReference);
+    if (!reference) {
+      try { reference = sessionStorage.getItem('anistrim.web.pendingPaymentReference'); } catch (e) { /* ignore */ }
+    }
     if (!reference) { if (status) status.textContent = 'Missing payment reference. Please contact support if you were charged.'; return; }
-    try {
-      var result = await API.verifySubscription(reference);
-      if (status) status.textContent = (result && (result.message || result.status)) || 'Payment status updated.';
-      await Auth.refreshMe();
-      renderHeader();
-    } catch (e) { if (status) status.textContent = e.message || 'Could not verify this payment yet.'; }
+    var attempts = 0;
+    var maxAttempts = 40;
+    async function checkPayment() {
+      if (Router.currentPath() !== '/payment-return') return;
+      attempts += 1;
+      try {
+        var result = await API.verifySubscription(reference);
+        var paymentStatus = String(result && result.status || '').toUpperCase();
+        var paymentState = String(result && result.state || '').toLowerCase();
+        if (paymentStatus === 'COMPLETED' && paymentState === 'active') {
+          await Auth.refreshMe();
+          renderHeader();
+          try { sessionStorage.removeItem('anistrim.web.pendingPaymentReference'); } catch (e) { /* ignore */ }
+          if (status) status.textContent = 'Payment confirmed. Premium access is now active.';
+          return;
+        }
+        if (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED' || paymentStatus === 'REFUNDED' || paymentState === 'expired' || paymentState === 'cancelled' || paymentState === 'refunded') {
+          if (status) status.textContent = (result && result.message) || 'Payment was not completed. You have not been charged.';
+          return;
+        }
+        if (attempts < maxAttempts) {
+          if (status) status.textContent = 'Payment is being confirmed. Checking again shortly…';
+          setTimeout(checkPayment, 3000);
+        } else if (status) {
+          status.textContent = 'Payment is still being confirmed. Refresh this page in a few minutes to check again.';
+        }
+      } catch (e) {
+        if (attempts < maxAttempts) setTimeout(checkPayment, 3000);
+        else if (status) status.textContent = e.message || 'Could not verify this payment yet.';
+      }
+    }
+    checkPayment();
   }
 
   // ── Public API ──────────────────────────────────────────

@@ -3,6 +3,7 @@ const axios = require('axios');
 const db = require('../config/db');
 const pesapal = require('../services/pesapalService');
 const { sendSuccess } = require('../utils/response');
+const clientAgnostic = require('../config/clientAgnostic');
 require('dotenv').config();
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
@@ -93,6 +94,7 @@ async function refreshUserPremiumCache(userId) {
 exports.initializeCheckout = async (req, res) => {
   const { plan } = req.body;
   const userId = req.user.id;
+  const client = ['web', 'mobile', 'desktop', 'admin'].includes(req.headers['x-client']) ? req.headers['x-client'] : 'mobile';
 
   console.log(`🛒 Checkout: plan=${plan}, userId=${userId}`);
 
@@ -128,7 +130,7 @@ exports.initializeCheckout = async (req, res) => {
     const ipnId = await pesapal.registerIPN(token, ipnUrl);
 
     // 3. Build callback URL (user lands here after payment)
-    const callbackUrl = `${BACKEND_URL}/api/payments/callback?tx_ref=${reference}`;
+    const callbackUrl = `${BACKEND_URL}/api/payments/callback?tx_ref=${encodeURIComponent(reference)}&client=${encodeURIComponent(client)}`;
 
     // 4. Submit order to Pesapal
     const orderResult = await pesapal.submitOrder(token, {
@@ -373,6 +375,7 @@ exports.cancelSubscription = async (req, res) => {
 exports.paymentCallback = async (req, res) => {
   const { tx_ref, OrderTrackingId, render } = req.query;
   const txRef = tx_ref || req.query.OrderMerchantReference;
+  const client = ['web', 'mobile', 'desktop', 'admin'].includes(req.query.client) ? req.query.client : '';
   if (!txRef) {
     if (render === 'html') return res.send(buildBridgePage('error', null, 'Missing transaction reference.'));
     return res.status(400).json({
@@ -399,6 +402,16 @@ exports.paymentCallback = async (req, res) => {
       txRef,
       message: toCallbackMessage(status),
     };
+
+    // A provider's browser return is not proof of payment. Redirect only to a
+    // configured client target; that UI verifies/polls this reference and then
+    // refreshes the canonical entitlement DTO.
+    if (client) {
+      const target = clientAgnostic.getPaymentReturnTarget(client);
+      const targetUrl = clientAgnostic.buildClientUrl(target, process.env.FRONTEND_URL || BACKEND_URL);
+      const separator = targetUrl.includes('?') ? '&' : '?';
+      return res.redirect(`${targetUrl}${separator}reference=${encodeURIComponent(txRef)}&status=${encodeURIComponent(payload.status)}`);
+    }
 
     // Web bridge page is served ONLY when the client explicitly opts in.
     if (render === 'html') return res.send(buildBridgePage(status, txRef, null));

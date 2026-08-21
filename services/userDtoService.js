@@ -50,11 +50,11 @@ async function resolveEntitlement(user) {
   // 1. Active subscription (authoritative).
   try {
     const [subs] = await pool.query(
-      `SELECT plan, expires_at, status
+      `SELECT plan, ends_at, state, status
        FROM subscriptions
-       WHERE user_id = ? AND status = 'COMPLETED'
-         AND (expires_at IS NULL OR expires_at > NOW())
-       ORDER BY expires_at DESC
+       WHERE user_id = ? AND status = 'COMPLETED' AND state IN ('trialing', 'active', 'grace')
+         AND (ends_at IS NULL OR ends_at > NOW())
+       ORDER BY ends_at DESC
        LIMIT 1`,
       [user.id]
     );
@@ -63,7 +63,7 @@ async function resolveEntitlement(user) {
       return {
         isPremium: true,
         plan: (sub.plan || 'standard').toLowerCase(),
-        expiresAt: sub.expires_at || null,
+        expiresAt: sub.ends_at || null,
         source: 'subscription',
       };
     }

@@ -64,8 +64,16 @@ const DEFAULT_GOOGLE_RETURN_TARGETS = {
   admin: '/admin/google-callback.html',     // Admin dashboard callback
 };
 
+const DEFAULT_PAYMENT_RETURN_TARGETS = {
+  mobile: '/payment-callback.html',
+  web: '/web/#/payment-return',
+  desktop: 'anistrim-desktop://payment-return',
+  admin: '/admin/',
+};
+
 const resetPaths = parseJsonEnv('RESET_PATHS_JSON', DEFAULT_RESET_PATHS);
 const googleReturnTargets = parseJsonEnv('GOOGLE_RETURN_TARGETS_JSON', DEFAULT_GOOGLE_RETURN_TARGETS);
+const paymentReturnTargets = parseJsonEnv('PAYMENT_RETURN_TARGETS_JSON', DEFAULT_PAYMENT_RETURN_TARGETS);
 
 // Deployment-owned maps may contain an absolute HTTPS URL for an independently
 // hosted client (for example the Vercel Web SPA).  The value is still strict:
@@ -103,6 +111,13 @@ const GOOGLE_RETURN_ALLOW_LIST = new Set([
   '/web/#/auth/google/callback',  // hash-routed web callback (SPA)
   '/admin/google-callback.html',
   // Add custom targets here if needed
+]);
+
+const PAYMENT_RETURN_ALLOW_LIST = new Set([
+  '/payment-callback.html',
+  '/web/#/payment-return',
+  'anistrim-desktop://payment-return',
+  '/admin/',
 ]);
 
 /**
@@ -143,6 +158,12 @@ function getGoogleReturnTarget(client, requestedTarget) {
   const configured = googleReturnTargets[client];
   if (GOOGLE_RETURN_ALLOW_LIST.has(configured) || isConfiguredTarget(configured, googleReturnTargets)) return configured;
   return DEFAULT_GOOGLE_RETURN_TARGETS[client] || DEFAULT_GOOGLE_RETURN_TARGETS.mobile;
+}
+
+function getPaymentReturnTarget(client) {
+  const configured = paymentReturnTargets[client];
+  if (PAYMENT_RETURN_ALLOW_LIST.has(configured) || isConfiguredTarget(configured, paymentReturnTargets)) return configured;
+  return DEFAULT_PAYMENT_RETURN_TARGETS[client] || DEFAULT_PAYMENT_RETURN_TARGETS.mobile;
 }
 
 function buildClientUrl(target, baseUrl) {
@@ -189,9 +210,12 @@ module.exports = {
   // ── Multi-client resolution functions (B7 fix) ────────────
   getPasswordResetPath,
   getGoogleReturnTarget,
+  getPaymentReturnTarget,
   buildClientUrl,
   RESET_PATH_ALLOW_LIST,
   GOOGLE_RETURN_ALLOW_LIST,
+  PAYMENT_RETURN_ALLOW_LIST,
   resetPaths,
   googleReturnTargets,
+  paymentReturnTargets,
 };
