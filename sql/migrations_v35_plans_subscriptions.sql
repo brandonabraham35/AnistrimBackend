@@ -17,7 +17,6 @@
 --  the uniq_order_tracking key is created on it (v15 uses CREATE TABLE IF NOT
 --  EXISTS, so a pre-existing table may be missing that column).
 -- ============================================================
-USE anistrim2;
 
 -- ── 7.1 plans table ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS plans (
@@ -83,5 +82,5 @@ CREATE TABLE IF NOT EXISTS payment_events (
 
 -- Verify
 SELECT COLUMN_NAME FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'subscriptions'
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions'
   AND COLUMN_NAME IN ('order_tracking_id','plan_id','starts_at','ends_at','state','source','auto_renew') ORDER BY COLUMN_NAME;

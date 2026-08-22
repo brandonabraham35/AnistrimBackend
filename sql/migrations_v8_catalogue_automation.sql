@@ -1,7 +1,6 @@
 -- Automated catalogue support. Existing administrator uploads remain unchanged.
 -- For MySQL/MariaDB versions that do not support ADD COLUMN IF NOT EXISTS,
 -- run `node scripts/migrateCatalogue.js` instead of executing this file directly.
-USE anistrim2;
 
 ALTER TABLE anime
   ADD COLUMN IF NOT EXISTS source_provider VARCHAR(32) NOT NULL DEFAULT 'admin',
@@ -32,3 +31,4 @@ CREATE TABLE IF NOT EXISTS anime_cache (
 
 CREATE TABLE IF NOT EXISTS episode_cache LIKE anime_cache;
 CREATE TABLE IF NOT EXISTS stream_cache LIKE anime_cache;
+

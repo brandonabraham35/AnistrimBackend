@@ -4,7 +4,6 @@
 --  Phase 4.4 (Item 11): layered skip markers resolved by source
 --  priority: admin → aniskip → provider → auto → none.
 -- ============================================================
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS episode_markers (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -21,4 +20,4 @@ CREATE TABLE IF NOT EXISTS episode_markers (
 
 -- Verify
 SELECT TABLE_NAME FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'episode_markers';
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'episode_markers';

@@ -7,11 +7,10 @@
 --
 --  Safe / idempotent: uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'watch_history'
       AND COLUMN_NAME  = 'episode_id'
 );
@@ -30,3 +29,4 @@ SET wh.episode_id = e.id
 WHERE wh.episode_id IS NULL;
 
 DESCRIBE watch_history;
+

@@ -24,7 +24,13 @@ const CRITICAL_COLUMNS = {
     'order_tracking_id', 'plan_id', 'starts_at', 'ends_at', 'state',
     'source', 'auto_renew', 'paid_at', 'expires_at', 'created_at',
   ],
+  episodes: [
+    'anime_id', 'episode_number', 'season', 'title', 'video_url',
+    'is_published', 'access_tier', 'premium_until', 'is_premium',
+    'consumet_id', 'updated_at', 'created_at',
+  ],
 };
+
 
 // Critical tables that MUST exist before services that depend on them start.
 // Prompt 10: fail loudly — never silently fall back to a legacy path.

@@ -8,7 +8,6 @@
 --    mysql -u root -p anistrim2 < sql/migrations_v13_reports.sql
 -- ============================================================
 
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS stream_reports (
   id              INT             AUTO_INCREMENT PRIMARY KEY,
@@ -27,4 +26,5 @@ CREATE TABLE IF NOT EXISTS stream_reports (
 
 -- Verify
 DESCRIBE stream_reports;
+
 

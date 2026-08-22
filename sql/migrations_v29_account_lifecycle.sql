@@ -6,12 +6,11 @@
 --
 --  Safe / idempotent — uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. users.username ───────────────────────────────────────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'username'
 );
@@ -26,7 +25,7 @@ DEALLOCATE PREPARE stmt;
 -- ── 2. users.display_name ───────────────────────────────────
 SET @col_exists2 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'display_name'
 );
@@ -41,7 +40,7 @@ DEALLOCATE PREPARE stmt2;
 -- ── 3. users.email_verified_at ──────────────────────────────
 SET @col_exists3 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'email_verified_at'
 );
@@ -56,7 +55,7 @@ DEALLOCATE PREPARE stmt3;
 -- ── 4. users.status ─────────────────────────────────────────
 SET @col_exists4 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'status'
 );
@@ -71,7 +70,7 @@ DEALLOCATE PREPARE stmt4;
 -- ── 5. users.status_reason ──────────────────────────────────
 SET @col_exists5 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'status_reason'
 );
@@ -86,7 +85,7 @@ DEALLOCATE PREPARE stmt5;
 -- ── 6. users.auth_provider ──────────────────────────────────
 SET @col_exists6 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'auth_provider'
 );
@@ -101,7 +100,7 @@ DEALLOCATE PREPARE stmt6;
 -- ── 7. users.last_login_at ──────────────────────────────────
 SET @col_exists7 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'last_login_at'
 );
@@ -116,7 +115,7 @@ DEALLOCATE PREPARE stmt7;
 -- ── 8. users.onboarded_at ───────────────────────────────────
 SET @col_exists8 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'onboarded_at'
 );
@@ -131,7 +130,7 @@ DEALLOCATE PREPARE stmt8;
 -- ── 9. users.token_version ──────────────────────────────────
 SET @col_exists9 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'token_version'
 );
@@ -146,7 +145,7 @@ DEALLOCATE PREPARE stmt9;
 -- ── 10. users.deleted_at ────────────────────────────────────
 SET @col_exists10 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'deleted_at'
 );
@@ -210,7 +209,7 @@ UPDATE users SET auth_provider = 'both'   WHERE google_id IS NOT NULL AND passwo
 -- ── 16. Verify ──────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'users'
   AND COLUMN_NAME IN ('username','display_name','email_verified_at','status','status_reason',
                       'auth_provider','last_login_at','onboarded_at','token_version','deleted_at')

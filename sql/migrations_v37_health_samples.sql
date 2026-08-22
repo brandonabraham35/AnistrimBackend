@@ -4,7 +4,6 @@
 --  Persists a health sample every 5 min so the admin dashboard can
 --  render sparklines and answer "when did this start?".
 -- ============================================================
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS health_samples (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -18,4 +17,4 @@ CREATE TABLE IF NOT EXISTS health_samples (
 
 -- Verify
 SELECT TABLE_NAME FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'health_samples';
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_samples';

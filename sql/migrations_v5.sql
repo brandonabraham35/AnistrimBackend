@@ -1,5 +1,4 @@
 -- migrations_v5.sql
-USE anistrim2;
 
 -- 1. Update episodes table for Bunny Stream integration
 ALTER TABLE episodes
@@ -60,3 +59,4 @@ INSERT IGNORE INTO settings (`key`, `value`) VALUES
 ('contact_email', 'support@anistrim.com'),
 ('announcement', 'Welcome to the upgraded AniStrim!'),
 ('bunny_cdn_hostname', 'https://anistrim.b-cdn.net');
+

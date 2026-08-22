@@ -11,12 +11,11 @@
 --  Safe / idempotent: uses information_schema guards so it can be
 --  re-run without error.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. anime.animeheaven_slug ──────────────────────────────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'anime'
       AND COLUMN_NAME  = 'animeheaven_slug'
 );
@@ -31,7 +30,7 @@ DEALLOCATE PREPARE stmt;
 -- ── 2. anime index on animeheaven_slug ─────────────────────
 SET @idx_exists := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'anime'
       AND INDEX_NAME   = 'idx_animeheaven_slug'
 );
@@ -46,7 +45,7 @@ DEALLOCATE PREPARE stmt2;
 -- ── 3. episodes.animeheaven_episode_key ────────────────────
 SET @col_exists2 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'episodes'
       AND COLUMN_NAME  = 'animeheaven_episode_key'
 );
@@ -61,7 +60,7 @@ DEALLOCATE PREPARE stmt3;
 -- ── 4. episodes index on animeheaven_episode_key ───────────
 SET @idx_exists2 := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'episodes'
       AND INDEX_NAME   = 'idx_animeheaven_episode_key'
 );
@@ -76,7 +75,7 @@ DEALLOCATE PREPARE stmt4;
 -- ── 5. Verify ──────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME IN ('anime', 'episodes')
   AND COLUMN_NAME IN ('animeheaven_slug', 'animeheaven_episode_key')
 ORDER BY TABLE_NAME, COLUMN_NAME;

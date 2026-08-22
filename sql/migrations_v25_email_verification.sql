@@ -17,12 +17,11 @@
 --
 --  Safe / idempotent — uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. users.is_verified ─────────────────────────────────────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'is_verified'
 );
@@ -37,7 +36,7 @@ DEALLOCATE PREPARE stmt;
 -- ── 2. users.verification_code ───────────────────────────────
 SET @col_exists2 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'verification_code'
 );
@@ -52,7 +51,7 @@ DEALLOCATE PREPARE stmt2;
 -- ── 3. users.verification_expires ────────────────────────────
 SET @col_exists3 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'verification_expires'
 );
@@ -67,7 +66,7 @@ DEALLOCATE PREPARE stmt3;
 -- ── 4. users.verification_attempts (OTP lockout) ─────────────
 SET @col_exists4 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'verification_attempts'
 );
@@ -82,7 +81,7 @@ DEALLOCATE PREPARE stmt4;
 -- ── 5. users.verification_last_sent (resend throttle) ────────
 SET @col_exists5 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'verification_last_sent'
 );
@@ -97,7 +96,7 @@ DEALLOCATE PREPARE stmt5;
 -- ── 6. UNIQUE KEY on users.email (closes signup race) ────────
 SET @key_exists := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND INDEX_NAME   = 'uniq_users_email'
 );
@@ -112,7 +111,7 @@ DEALLOCATE PREPARE stmt6;
 -- ── 7. INDEX on (email, verification_expires) ────────────────
 SET @idx_exists := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND INDEX_NAME   = 'idx_users_verification'
 );
@@ -130,7 +129,7 @@ UPDATE users SET is_verified = 1 WHERE password_hash IS NULL OR is_admin = 1;
 -- ── 9. Verify ────────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'users'
   AND COLUMN_NAME IN ('is_verified', 'verification_code', 'verification_expires', 'verification_attempts', 'verification_last_sent')
 ORDER BY COLUMN_NAME;

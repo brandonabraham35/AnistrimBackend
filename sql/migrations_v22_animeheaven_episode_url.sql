@@ -9,12 +9,11 @@
 --
 --  Safe / idempotent: uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. episodes.animeheaven_episode_url ───────────────────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'episodes'
       AND COLUMN_NAME  = 'animeheaven_episode_url'
 );
@@ -29,6 +28,6 @@ DEALLOCATE PREPARE stmt;
 -- ── 2. Verify ──────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'episodes'
   AND COLUMN_NAME = 'animeheaven_episode_url';

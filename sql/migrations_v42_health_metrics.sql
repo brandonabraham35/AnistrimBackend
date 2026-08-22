@@ -15,7 +15,6 @@
 --  ER_DUP_FIELDNAME / ER_DUP_KEYNAME / "already exists" as skips, so this
 --  file is safe to re-run.
 -- ============================================================
-USE anistrim2;
 
 -- ── Per-request latency + status source ─────────────────────
 CREATE TABLE IF NOT EXISTS api_request_log (
@@ -59,5 +58,5 @@ ALTER TABLE stream_reports
 
 -- Verify
 SELECT TABLE_NAME FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME IN ('api_request_log', 'email_events');

@@ -46,15 +46,37 @@ CREATE TABLE IF NOT EXISTS anime (
   studio        VARCHAR(120)        DEFAULT NULL,
   status        ENUM('airing','completed','upcoming') NOT NULL DEFAULT 'completed',
   media_type    VARCHAR(20)         NOT NULL DEFAULT 'TV',  -- TV, MOVIE, OVA, SPECIAL
-  is_premium    TINYINT(1)          NOT NULL DEFAULT 0,  -- Premium-only title
+  is_premium    TINYINT(1)          NOT NULL DEFAULT 0,  -- Premium-only title (legacy flag)
+  access_tier   VARCHAR(8)          NOT NULL DEFAULT 'free', -- FREE | PREMIUM (authoritative for episode inheritance)
   is_featured   TINYINT(1)          NOT NULL DEFAULT 0,  -- Show in hero slider
+  is_published  TINYINT(1)          NOT NULL DEFAULT 1,  -- Published / visible to public
   view_count    INT                 NOT NULL DEFAULT 0,
+  daily_views   INT                 NOT NULL DEFAULT 0,  -- Viral threshold tracking (v9)
+  tags          TEXT                DEFAULT NULL,        -- Admin-editable tags (v5)
+  credits_threshold_sec INT         DEFAULT NULL,       -- Per-anime credits override (v33)
+  cover_public_id VARCHAR(255)      DEFAULT NULL,       -- Cloudinary cover public ID (v16)
+  banner_public_id VARCHAR(255)     DEFAULT NULL,       -- Cloudinary banner public ID (v16)
+  source_provider VARCHAR(32)      NOT NULL DEFAULT 'admin', -- admin | kitsu | consumet | animeheaven (v8)
+  source_id     VARCHAR(191)        DEFAULT NULL,       -- Provider-specific anime ID (v8)
+  source_slug   VARCHAR(255)        DEFAULT NULL,       -- Provider-specific slug (v8)
+  animeheaven_slug VARCHAR(255)     DEFAULT NULL,       -- AnimeHeaven gate identifier (v21)
+  animeheaven_last_synced_at DATETIME DEFAULT NULL,    -- Last AnimeHeaven refresh (v23)
+  premiere_date DATE                DEFAULT NULL,       -- Calendar premiere date (v24)
+  watchlist_count INT               NOT NULL DEFAULT 0, -- Cached watchlist saves (v24)
   created_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_featured (is_featured),
   INDEX idx_status (status),
+  INDEX idx_daily_views (daily_views),
+  INDEX idx_animeheaven_slug (animeheaven_slug),
+  INDEX idx_cover_public_id (cover_public_id),
+  INDEX idx_banner_public_id (banner_public_id),
+  INDEX idx_premiere_date (premiere_date),
+  INDEX idx_watchlist_count (watchlist_count),
+  UNIQUE KEY uq_anime_source (source_provider, source_id),
   FULLTEXT idx_search (title, description)
 ) ENGINE=InnoDB;
+
 
 -- ============================================================
 -- TABLE: genres
@@ -85,21 +107,44 @@ CREATE TABLE IF NOT EXISTS episodes (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   anime_id      INT                 NOT NULL,
   episode_number SMALLINT           NOT NULL,
+  season        SMALLINT            NOT NULL DEFAULT 1,  -- Multi-season grouping (v19)
   title         VARCHAR(255)        DEFAULT NULL,
   description   TEXT                DEFAULT NULL,
   thumbnail_url VARCHAR(500)        DEFAULT NULL,
   video_url     VARCHAR(1000)       DEFAULT NULL,     -- Cloudinary / S3 URL
   duration_sec  INT                 DEFAULT 1440,     -- 24 min default
   is_premium    TINYINT(1)          NOT NULL DEFAULT 0,
+  access_tier   VARCHAR(8)          NOT NULL DEFAULT 'inherit', -- INHERIT | FREE | PREMIUM (v28)
+  premium_until DATETIME            DEFAULT NULL,      -- When premium access expires (v28)
+  is_published  TINYINT(1)          NOT NULL DEFAULT 1,  -- Published / visible to public (v33)
+  availability_starts_at DATETIME   DEFAULT NULL,     -- Scheduled release (v33)
+  availability_ends_at   DATETIME   DEFAULT NULL,     -- Scheduled removal (v33)
   view_count    INT                 NOT NULL DEFAULT 0,
+  consumet_id   VARCHAR(255)        DEFAULT NULL,     -- Consumet episode ID (v10)
+  animeheaven_episode_key VARCHAR(128) DEFAULT NULL,  -- AnimeHeaven gate key (v21)
+  animeheaven_episode_url VARCHAR(500) DEFAULT NULL,   -- AnimeHeaven gate URL (v22)
+  bunny_video_id VARCHAR(255)       DEFAULT NULL,     -- Bunny Stream video ID (v5)
+  video_status   VARCHAR(50)        NOT NULL DEFAULT 'ready', -- Processing status (v5)
+  playback_url   TEXT              DEFAULT NULL,     -- Pre-signed playback URL (v5)
+  embed_url      TEXT              DEFAULT NULL,     -- Embed URL (v5)
+  cloudinary_public_id VARCHAR(255) DEFAULT NULL,    -- Cloudinary video public ID
+  thumbnail_public_id VARCHAR(255)  DEFAULT NULL,    -- Cloudinary thumbnail public ID
+  intro_start_time INT             DEFAULT NULL,     -- Intro skip start (seconds) (v6)
+  intro_end_time   INT             DEFAULT NULL,     -- Intro skip end (seconds) (v6)
   created_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_anime_ep (anime_id, episode_number),
   FOREIGN KEY (anime_id) REFERENCES anime(id) ON DELETE CASCADE,
-  INDEX idx_anime (anime_id)
+  INDEX idx_anime (anime_id),
+  INDEX idx_anime_season_ep (anime_id, season, episode_number),
+  INDEX idx_episodes_consumet_id (consumet_id),
+  INDEX idx_animeheaven_episode_key (animeheaven_episode_key)
 ) ENGINE=InnoDB;
+
 
 -- ============================================================
 -- TABLE: watchlist
+
 -- Each row = one user tracking one anime
 -- ============================================================
 CREATE TABLE IF NOT EXISTS watchlist (
@@ -246,10 +291,16 @@ INSERT IGNORE INTO episodes (anime_id, episode_number, title, duration_sec, is_p
 (3, 1,  'Cruelty',                     1410, 0),
 (3, 2,  'Trainer Urokodaki',           1380, 0);
 
+-- Reconcile access_tier with is_premium for seeded premium titles
+UPDATE anime SET access_tier = 'premium' WHERE is_premium = 1 AND access_tier = 'free';
+
 -- ============================================================
 -- VERIFY: Check all tables were created
 -- ============================================================
 SELECT table_name, table_rows
 FROM information_schema.tables
-WHERE table_schema = 'anistrim2'
+WHERE table_schema = DATABASE()
 ORDER BY table_name;
+
+
+

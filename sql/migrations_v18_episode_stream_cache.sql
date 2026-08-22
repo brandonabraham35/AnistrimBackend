@@ -19,7 +19,6 @@
 --  Run this in MySQL Workbench or your MySQL client:
 --    mysql -u root -p anistrim2 < sql/migrations_v18_episode_stream_cache.sql
 -- ============================================================
-USE anistrim2;
 
 -- Create the episode stream cache table.
 -- The FK (episode_id -> episodes.id) with ON DELETE CASCADE means that when
@@ -51,3 +50,4 @@ CREATE TABLE IF NOT EXISTS episode_stream_cache (
 
 -- Verify the table was created.
 DESCRIBE episode_stream_cache;
+

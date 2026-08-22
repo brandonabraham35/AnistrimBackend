@@ -4,7 +4,6 @@
 --  Adds the user_preferences table storing per-user playback and
 --  display preferences, seeded into the canonical DTO/onboarding.
 -- ============================================================
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id INT PRIMARY KEY,
@@ -27,3 +26,4 @@ FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'user_preferences'
 ORDER BY ORDINAL_POSITION;
+

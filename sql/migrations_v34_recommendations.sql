@@ -6,7 +6,6 @@
 --  user_genre_vector: per-user genre affinity (completed-minutes, decayed
 --    with a 30-day half-life), normalised.
 -- ============================================================
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS user_recommendations (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -30,4 +29,4 @@ CREATE TABLE IF NOT EXISTS user_genre_vector (
 
 -- Verify
 SELECT TABLE_NAME FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME IN ('user_recommendations','user_genre_vector') ORDER BY TABLE_NAME;
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('user_recommendations','user_genre_vector') ORDER BY TABLE_NAME;

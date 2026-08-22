@@ -306,16 +306,19 @@ async function upsertEpisodes(animeId, episodes) {
 
     if (existing.length) {
       const id = existing[0].id;
-      // NOTE: The `episodes` table has NO `updated_at` column (only `created_at`),
-      // so we must NOT reference `updated_at` here — that caused
-      // "Unknown column 'updated_at' in 'field list'".
+      // The `episodes` table now has an `updated_at` column (added by migration
+      // v46_episodes_updated_at.sql). We set it to NOW() on every import update
+      // so downstream caches and API consumers see a fresh timestamp.
       await db.query(
         `UPDATE episodes SET
            title = COALESCE(?, title),
            animeheaven_episode_key = COALESCE(?, animeheaven_episode_key),
-           animeheaven_episode_url = COALESCE(?, animeheaven_episode_url)
+           animeheaven_episode_url = COALESCE(?, animeheaven_episode_url),
+           updated_at = NOW()
          WHERE id = ?`,
+
         [ep.title || null, ep.key || null, ep.url || null, id]
+
       );
       updated += 1;
     } else {

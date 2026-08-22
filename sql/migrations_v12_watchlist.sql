@@ -9,7 +9,6 @@
 --  Run this in MySQL Workbench or your MySQL client:
 --    mysql -u root -p anistrim2 < sql/migrations_v12_watchlist.sql
 -- ============================================================
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS user_watchlists (
   id            INT             AUTO_INCREMENT PRIMARY KEY,
@@ -27,4 +26,5 @@ CREATE TABLE IF NOT EXISTS user_watchlists (
 
 -- Verify
 DESCRIBE user_watchlists;
+
 

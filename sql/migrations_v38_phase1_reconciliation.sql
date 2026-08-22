@@ -9,12 +9,11 @@
 --
 --  Safe / idempotent — uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. Reconcile auth_provider to the Phase-1 ENUM ──────────
 SET @col_type := (
     SELECT COLUMN_TYPE FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'auth_provider'
 );
@@ -74,7 +73,7 @@ DEALLOCATE PREPARE stmt3;
 -- ── 4. email_change_requests.attempts (OTP lockout) ─────────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'email_change_requests'
       AND COLUMN_NAME  = 'attempts'
 );
@@ -89,7 +88,7 @@ DEALLOCATE PREPARE stmt4;
 -- ── 5. Widen verification_code to CHAR(64) for hashed OTPs ──
 SET @col_type2 := (
     SELECT COLUMN_TYPE FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'users'
       AND COLUMN_NAME  = 'verification_code'
 );
@@ -108,7 +107,7 @@ UPDATE users SET verification_code = NULL WHERE verification_code IS NOT NULL AN
 -- ── 6. Add new login_history event types ────────────────────
 SET @col_type3 := (
     SELECT COLUMN_TYPE FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'login_history'
       AND COLUMN_NAME  = 'event'
 );
@@ -124,7 +123,7 @@ DEALLOCATE PREPARE stmt6;
 -- ── 7. Verify ───────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'users'
   AND COLUMN_NAME IN ('auth_provider','verification_code')
 ORDER BY COLUMN_NAME;

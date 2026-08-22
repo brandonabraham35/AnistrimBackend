@@ -3,7 +3,6 @@
 --  Run this SQL in MySQL Workbench or your MySQL client:
 --    mysql -u root -p anistrim2 < sql/migrations_v9_daily_views.sql
 -- ============================================================
-USE anistrim2;
 
 -- Add daily_views column to anime table (Viral Threshold tracking)
 ALTER TABLE anime
@@ -13,7 +12,8 @@ ALTER TABLE anime
 -- Verify the column was added
 SELECT column_name, column_type, is_nullable, column_default
 FROM information_schema.columns
-WHERE table_schema = 'anistrim2'
+WHERE table_schema = DATABASE()
   AND table_name = 'anime'
   AND column_name = 'daily_views';
+
 

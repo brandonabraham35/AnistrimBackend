@@ -8,7 +8,6 @@
 --
 --  Safe / idempotent.
 -- ============================================================
-USE anistrim2;
 
 CREATE TABLE IF NOT EXISTS session_refresh_tokens (
   id            BIGINT AUTO_INCREMENT PRIMARY KEY,

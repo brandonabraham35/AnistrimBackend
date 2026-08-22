@@ -5,7 +5,6 @@
 --  Run this in MySQL Workbench or your MySQL client:
 --    mysql -u root -p anistrim2 < sql/migrations_v11_watch_history.sql
 -- ============================================================
-USE anistrim2;
 
 -- Create the watch_history table
 CREATE TABLE IF NOT EXISTS watch_history (
@@ -22,4 +21,5 @@ CREATE TABLE IF NOT EXISTS watch_history (
 
 -- Verify the table was created
 DESCRIBE watch_history;
+
 

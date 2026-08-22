@@ -10,7 +10,6 @@
 --  Run in MySQL Workbench or CLI:
 --    mysql -u root -p anistrim2 < sql/migrations_v16_media_type.sql
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. Add media_type column ──────────────────────────────
 -- Using VARCHAR(20) for flexibility; defaults to 'TV' so all
@@ -32,8 +31,9 @@ ALTER TABLE anime
 -- ── 4. Verify columns ─────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'anime'
   AND COLUMN_NAME IN ('media_type', 'cover_public_id', 'banner_public_id')
 ORDER BY COLUMN_NAME;
+
 

@@ -5,7 +5,6 @@
 --  Run this in MySQL Workbench or your MySQL client:
 --    mysql -u root -p anistrim2 < sql/migrations_v10_consumet_id.sql
 -- ============================================================
-USE anistrim2;
 
 -- Add consumet_id column for storing the Consumet episode ID (e.g. "naruto-episode-1")
 ALTER TABLE episodes
@@ -15,7 +14,8 @@ ALTER TABLE episodes
 -- Verify the column was added
 SELECT column_name, column_type, is_nullable, column_default
 FROM information_schema.columns
-WHERE table_schema = 'anistrim2'
+WHERE table_schema = DATABASE()
   AND table_name = 'episodes'
   AND column_name = 'consumet_id';
+
 

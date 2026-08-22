@@ -11,12 +11,11 @@
 --
 --  Safe / idempotent — uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. users.otp_hash ──────────────────────────────────────
 SET @c1 := (
   SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_hash'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_hash'
 );
 SET @s1 := IF(@c1 = 0,
   'ALTER TABLE users ADD COLUMN otp_hash VARCHAR(255) NULL AFTER verification_code',
@@ -27,7 +26,7 @@ PREPARE stmt1 FROM @s1; EXECUTE stmt1; DEALLOCATE PREPARE stmt1;
 -- ── 2. users.otp_expires_at ────────────────────────────────
 SET @c2 := (
   SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_expires_at'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_expires_at'
 );
 SET @s2 := IF(@c2 = 0,
   'ALTER TABLE users ADD COLUMN otp_expires_at DATETIME NULL AFTER otp_hash',
@@ -38,7 +37,7 @@ PREPARE stmt2 FROM @s2; EXECUTE stmt2; DEALLOCATE PREPARE stmt2;
 -- ── 3. users.otp_attempts ──────────────────────────────────
 SET @c3 := (
   SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_attempts'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_attempts'
 );
 SET @s3 := IF(@c3 = 0,
   'ALTER TABLE users ADD COLUMN otp_attempts TINYINT NOT NULL DEFAULT 0 AFTER otp_expires_at',
@@ -49,7 +48,7 @@ PREPARE stmt3 FROM @s3; EXECUTE stmt3; DEALLOCATE PREPARE stmt3;
 -- ── 4. users.otp_last_sent_at ──────────────────────────────
 SET @c4 := (
   SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = 'anistrim2' AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_last_sent_at'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'otp_last_sent_at'
 );
 SET @s4 := IF(@c4 = 0,
   'ALTER TABLE users ADD COLUMN otp_last_sent_at DATETIME NULL AFTER otp_attempts',
@@ -68,7 +67,7 @@ WHERE otp_hash IS NULL AND verification_code IS NOT NULL;
 -- ── Verify ─────────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'users'
   AND COLUMN_NAME IN ('otp_hash','otp_expires_at','otp_attempts','otp_last_sent_at')
 ORDER BY COLUMN_NAME;

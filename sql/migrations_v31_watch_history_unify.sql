@@ -13,7 +13,6 @@
 --       (anime_id, episode_number) → episodes.id; drop unresolvable rows.
 --    4. Rename the legacy tables to _legacy_ for a two-week retention window.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. Authoritative watch_progress table ─────────────────
 CREATE TABLE IF NOT EXISTS watch_progress (
@@ -107,3 +106,4 @@ DEALLOCATE PREPARE stmt2;
 -- ── Verify ─────────────────────────────────────────────────
 SELECT TABLE_NAME FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('watch_progress','watch_dismissed') ORDER BY TABLE_NAME;
+

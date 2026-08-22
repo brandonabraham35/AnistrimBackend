@@ -14,12 +14,11 @@
 --
 --  Safe / idempotent — uses information_schema guards.
 -- ============================================================
-USE anistrim2;
 
 -- ── 1. anime.premiere_date ───────────────────────────────────
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'anime'
       AND COLUMN_NAME  = 'premiere_date'
 );
@@ -39,7 +38,7 @@ WHERE premiere_date IS NULL AND year IS NOT NULL AND year > 0;
 -- ── 2. anime.watchlist_count (cached counter) ────────────────
 SET @col_exists2 := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'anime'
       AND COLUMN_NAME  = 'watchlist_count'
 );
@@ -65,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_count ON anime (watchlist_count);
 -- ── 4. Verify ────────────────────────────────────────────────
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'anistrim2'
+WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'anime'
   AND COLUMN_NAME IN ('premiere_date', 'watchlist_count')
 ORDER BY COLUMN_NAME;

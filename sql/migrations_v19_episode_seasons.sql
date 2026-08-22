@@ -7,12 +7,11 @@
 --  Safe / idempotent: uses information_schema guards so it
 --  can be re-run without error.
 -- ============================================================
-USE anistrim2;
 
 -- 1. Add the season column (default 1 for existing single-season episodes)
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'episodes'
       AND COLUMN_NAME  = 'season'
 );
@@ -27,7 +26,7 @@ DEALLOCATE PREPARE stmt;
 -- 2. Ensure a composite index for fast season/episode lookups
 SET @idx_exists := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = 'anistrim2'
+    WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME   = 'episodes'
       AND INDEX_NAME   = 'idx_anime_season_ep'
 );
@@ -41,3 +40,4 @@ DEALLOCATE PREPARE stmt2;
 
 -- 3. Verify
 DESCRIBE episodes;
+

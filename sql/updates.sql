@@ -1,5 +1,6 @@
 -- Run this in MySQL Workbench to add new columns
-USE anistrim2;
+-- Select your database first: USE your_database_name;
+
 
 -- FIX 5: Add reset token columns
 ALTER TABLE users
