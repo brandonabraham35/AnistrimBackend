@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://anistrimbackend.onrender.com/api/:path*"
+    }
+  ]
+}

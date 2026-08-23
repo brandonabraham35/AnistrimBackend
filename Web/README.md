@@ -19,25 +19,22 @@ The API base resolves in this order:
 
 1. `window.__ANISTRIM_API`
 2. `<meta name="anistrim-api">`
-3. `https://anistrimbackend.onrender.com`
+3. `''` (same-origin — Vercel rewrites `/api/*` to the Render backend)
 
-The default meta value is production-safe. A static Vercel deployment cannot
-read server environment variables in browser JavaScript at runtime. To override
-it, inject `window.__ANISTRIM_API` during a build/deployment step, or update the
-public meta tag. Never put private credentials in this directory.
-
-Required public value: `ANISTRIM_API_URL=https://anistrimbackend.onrender.com`
-(only when a deployment process injects it into the public config).
+The production Web frontend uses **same-origin** API requests. `vercel.json`
+rewrites `/api/:path*` to `https://anistrimbackend.onrender.com/api/:path*`, so
+the browser only ever sees `https://anistrim.com/api/...` and the Render URL is
+never exposed to the client.
 
 Never expose: JWT or stream-token secrets, database credentials, Google client
 secret, SMTP credentials, or payment-provider secret keys.
 
 ## Backend deployment prerequisites
 
-Allow the exact deployed Vercel origin in the backend:
+The backend must allow the exact deployed Vercel origin in CORS:
 
-`API_ALLOWED_ORIGINS=https://YOUR-VERCEL-DOMAIN`
+`API_ALLOWED_ORIGINS=https://anistrim.com,https://www.anistrim.com,...`
 
 The backend must also be configured to generate Web password-reset and Google
-OAuth return URLs for that Vercel domain. This static client uses `X-Client: web`
-on every request; it does not use CORS workarounds or API proxy rewrites.
+OAuth return URLs for the Vercel domain. This static client uses `X-Client: web`
+on every request.

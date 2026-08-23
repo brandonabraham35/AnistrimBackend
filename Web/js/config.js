@@ -4,7 +4,11 @@
 (function () {
   'use strict';
 
-  var API_BASE = 'https://anistrimbackend.onrender.com';
+  // Same-origin API base. Vercel rewrites /api/* to the Render backend
+  // (see vercel.json). An empty string means requests go to the same origin
+  // (https://anistrim.com/api/...), which Vercel transparently proxies to
+  // https://anistrimbackend.onrender.com/api/...
+  var API_BASE = '';
 
   // B3 (review) fix — resolve the API base in priority order:
   //   (a) window.__ANISTRIM_API — explicit override ('' => same-origin relative)
