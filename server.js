@@ -13,7 +13,22 @@ process.on('uncaughtException', (error) => {
 });
 
 const app = express();
+
+// ── Render/Express proxy trust (FIX: ERR_ERL_UNEXPECTED_X_FORWARDED_FOR) ──
+// AniStrim2 is deployed behind Render's reverse proxy. Render terminates TLS
+// and forwards X-Forwarded-For / X-Forwarded-Proto. Without "trust proxy",
+// Express overwrites req.ip with the socket's remote address (the proxy
+// itself), so express-rate-limit sees every request coming from the same
+// internal IP and rejects the X-Forwarded-For header with
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+//
+// trust proxy = 1 means "trust the first hop only" — correct for a single
+// proxy layer (Render's load balancer). Set BEFORE any middleware that
+// reads req.ip (CORS, rate-limiting, request metrics).
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 5000;
+
 const providerHealthMonitor = require('./services/providerHealthMonitor');
 const clientAgnostic = require('./config/clientAgnostic');
 const { sendSuccess } = require('./utils/response');
@@ -65,9 +80,9 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
 
   providerHealthMonitor.initialize();
 
-  // ── Email (Mailgun) boot-time check ──────────────────────
-  // The server MUST start even if email is misconfigured or Mailgun is down.
-  // No real test email is sent at startup — Mailgun is only used at runtime
+  // ── Email (Postmark) boot-time check ──────────────────────
+  // The server MUST start even if email is misconfigured or Postmark is down.
+  // No real test email is sent at startup — Postmark is only used at runtime
   // when an email actually needs to be sent. This replaces the old Gmail SMTP
   // transporter.verify() which could block/crash the Render boot.
   try {

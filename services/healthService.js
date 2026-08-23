@@ -221,14 +221,14 @@ async function probePayments() {
 async function probeEmail() {
   return probe('email', async () => {
     const mailer = require('../utils/mailer');
-    if (typeof mailer.mailgunConfigured !== 'function') {
+    if (typeof mailer.postmarkConfigured !== 'function') {
       return { status: 'degraded', lastError: 'mailer API unavailable' };
     }
-    if (!mailer.mailgunConfigured()) {
-      return { status: 'degraded', lastError: 'MAILGUN_NOT_CONFIGURED' };
+    if (!mailer.postmarkConfigured()) {
+      return { status: 'degraded', lastError: 'POSTMARK_NOT_CONFIGURED' };
     }
-    // Mailgun is configured — report 'up' without sending a real email.
-    // Mailgun is contacted at send-time only, not at startup.
+    // Postmark is configured — report 'up' without sending a real email.
+    // Postmark is contacted at send-time only, not at startup.
     return { status: 'up', lastError: null };
   }, PROBE_TIMEOUT_MS, errorMappers.smtp);
 }
