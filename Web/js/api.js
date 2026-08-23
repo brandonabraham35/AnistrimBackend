@@ -151,7 +151,7 @@
     // Auth
     login: function (email, password) { return request('/api/auth/login', { method: 'POST', body: { email: email, password: password } }); },
     signup: function (payload) { return request('/api/auth/signup', { method: 'POST', body: payload }); },
-    verifyEmail: function (email, otp) { return request('/api/auth/verify-email', { method: 'POST', body: { email: email, otp: otp } }); },
+    verifyEmail: function (email, otp) { return request('/api/auth/verify-email', { method: 'POST', body: { email: email, code: otp } }); },
     resendOtp: function (email) { return request('/api/auth/resend-otp', { method: 'POST', body: { email: email } }); },
     forgotPassword: function (email) { return request('/api/auth/forgot-password', { method: 'POST', body: { email: email } }); },
     me: function () { return request('/api/auth/me'); },
