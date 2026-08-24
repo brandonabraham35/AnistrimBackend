@@ -23,7 +23,13 @@ async function verifyBearerToken(req) {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ['HS256'],
+      // Issuer and audience validation are optional — they are not currently
+      // set in the JWT payload. If added in the future, uncomment:
+      // issuer: process.env.JWT_ISSUER || 'anistrim',
+      // audience: process.env.JWT_AUDIENCE || 'anistrim-api',
+    });
   } catch (err) {
     return { status: 401, body: { message: 'Token expired or invalid. Please log in again.' } };
   }

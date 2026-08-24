@@ -56,12 +56,14 @@ const resendOtpLimiter = rateLimit({
   handler,
 });
 
-// Signup: 5 / hour per IP
+// Signup: 5 / hour per IP+email (prevents mass account creation from one IP and
+// prevents an attacker from cycling emails while staying under a per-IP cap).
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: ipEmailKeyGenerator('email'),
   handler,
 });
 

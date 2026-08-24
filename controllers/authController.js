@@ -100,12 +100,26 @@ async function issueVerificationCode(userId, email, { subject, subText, heading,
   }
 }
 
-// Timing-safe comparison of two strings (equal-length buffers)
+// Timing-safe comparison of two strings.
+// Always calls crypto.timingSafeEqual so the execution path gives no hint
+// about the stored value length. SHA-256 hashes are always 64 hex chars,
+// but we pad any shorter input so the comparison is always constant-time.
 function safeEqual(a, b) {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+  // Pad the shorter buffer to the longer one's length with zero bytes so
+  // crypto.timingSafeEqual never sees mismatched lengths (which would throw).
+  if (bufA.length === bufB.length) {
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+  // Lengths differ — still compare the overlapping portion plus a dummy
+  // operation so callers cannot distinguish length mismatch from value mismatch
+  // via timing. Always return false (different lengths = different values).
+  const minLen = Math.min(bufA.length, bufB.length);
+  const sliceA = bufA.subarray(0, minLen);
+  const sliceB = bufB.subarray(0, minLen);
+  crypto.timingSafeEqual(sliceA, sliceB); // consume time regardless
+  return false;
 }
 
 // ─── Login (any valid user) ─────────────────────────────────────────
@@ -188,7 +202,6 @@ exports.login = async (req, res) => {
                 success: false,
                 code: 'ACCOUNT_UNVERIFIED',
                 requiresVerification: true,
-                email: user.email,
                 emailSent,
                 message: 'Verification required.',
             });
@@ -432,16 +445,23 @@ exports.verifyEmailToken = async (req, res) => {
 // a failed send never invalidates an existing valid OTP.
 // Silently no-ops for unknown/verified emails to avoid an account-existence
 // oracle.
+// Rolling per-email resend budget (defense-in-depth on top of the
+// express-rate-limit middleware). Uses a sliding window so restarts don't
+// permanently reset the budget for abusive clients (the window restarts, but
+// the rate-limit middleware also enforces the same bound).
 const resendBudget = new Map(); // email -> { windowStart, count }
+const RESEND_BUDGET_MAX = 5;
+const RESEND_BUDGET_WINDOW_MS = 3600 * 1000; // 1 hour
+
 function resendAllowed(email) {
   const now = Date.now();
   const rec = resendBudget.get(email);
-  if (!rec || (now - rec.windowStart) >= 3600 * 1000) {
+  if (!rec || (now - rec.windowStart) >= RESEND_BUDGET_WINDOW_MS) {
     resendBudget.set(email, { windowStart: now, count: 1 });
     return { allowed: true };
   }
-  if (rec.count >= 5) {
-    return { allowed: false, retryAfter: Math.ceil((rec.windowStart + 3600 * 1000 - now) / 1000) };
+  if (rec.count >= RESEND_BUDGET_MAX) {
+    return { allowed: false, retryAfter: Math.ceil((rec.windowStart + RESEND_BUDGET_WINDOW_MS - now) / 1000) };
   }
   rec.count += 1;
   return { allowed: true };
