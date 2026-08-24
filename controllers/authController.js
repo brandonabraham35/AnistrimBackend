@@ -10,6 +10,19 @@ const { sendSuccess, sendAuth } = require('../utils/response');
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
 
+// Startup safety check — crash immediately in production if JWT_RESET_SECRET
+// is missing, rather than failing on the first forgot-password request.
+(function validateResetSecret() {
+  if (process.env.NODE_ENV === 'production') {
+    const s = process.env.JWT_RESET_SECRET;
+    if (!s || typeof s !== 'string' || s.trim() === '') {
+      console.error('[AUTH] FATAL: JWT_RESET_SECRET is required in production and must be a non-empty string.');
+      console.error('[AUTH] Generate one with: openssl rand -hex 32');
+      process.exit(1);
+    }
+  }
+})();
+
 // OTP lifetime in minutes (strict email verification)
 const VERIFICATION_TTL_MINUTES = 15;
 // Max failed OTP attempts before the code is invalidated
@@ -24,6 +37,28 @@ const DISPOSABLE_DOMAINS = new Set([
   'yopmail.com', 'temp-mail.org', 'throwawaymail.com', 'maildrop.cc',
   'getnada.com', 'dispostable.com', 'mailnesia.com', 'tempmail.com',
 ]);
+
+// ── Password-reset token secret ─────────────────────────────────
+// Uses JWT_RESET_SECRET independently from JWT_SECRET so a password-reset
+// token compromise can never affect access-token security, and the two
+// can be rotated separately.
+// In production, JWT_RESET_SECRET MUST be set. Missing it on startup is a
+// fatal error (see startupConfigWarnings). In development, we fall back to
+// JWT_SECRET so existing .env files continue to work.
+function getResetSecret() {
+  const secret = process.env.JWT_RESET_SECRET;
+  if (secret && typeof secret === 'string' && secret.trim() !== '') return secret.trim();
+  // In production, missing JWT_RESET_SECRET is fatal — throw so the server
+  // cannot boot with a silently weak config. In dev, fall back to JWT_SECRET.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'JWT_RESET_SECRET is required in production. ' +
+      'Set it to a unique 64+ character random string, independent of JWT_SECRET.'
+    );
+  }
+  console.warn('[AUTH] ⚠️ JWT_RESET_SECRET not set. Falling back to JWT_SECRET (dev only).');
+  return process.env.JWT_SECRET;
+}
 
 // Generate a secure random 6-digit verification code
 function generateVerificationCode() {
@@ -604,13 +639,29 @@ exports.forgotPassword = async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT id, email FROM users WHERE email = ?', [email]);
 
+        // ── Timing-oracle mitigation ───────────────────────────────
+        // Both the "account exists" and "no account" paths perform the
+        // same CPU-bound cryptographic work (JWT sign + bcrypt hash) so
+        // response timing does not reveal whether the account exists.
+        // The neutral message is identical in both cases.
+
         if (rows.length === 0) {
+            // Dummy token (same algorithm, same secret, same expiry)
+            jwt.sign(
+                { email: crypto.randomUUID() + '@anistrim.invalid', purpose: 'password-reset', sub: 0 },
+                getResetSecret(),
+                { expiresIn: '1h', algorithm: 'HS256' }
+            );
+            // Dummy bcrypt operation (same cost factor)
+            const dummySalt = await bcrypt.genSalt(10);
+            await bcrypt.hash(crypto.randomBytes(16).toString('hex'), dummySalt);
+
             return sendSuccess(res, null, { message: 'If an account exists for that email, a reset link has been sent.' });
         }
 
         const token = jwt.sign(
             { email: rows[0].email, purpose: 'password-reset', sub: rows[0].id },
-            process.env.JWT_SECRET,
+            getResetSecret(),
             { expiresIn: '1h', algorithm: 'HS256' }
         );
 
@@ -674,7 +725,7 @@ exports.resetPassword = async (req, res) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+        const decoded = jwt.verify(token, getResetSecret(), { algorithms: ['HS256'] });
         if (!decoded?.email || decoded?.purpose !== 'password-reset') {
             return res.status(400).json({ message: 'Invalid or expired reset link.' });
         }

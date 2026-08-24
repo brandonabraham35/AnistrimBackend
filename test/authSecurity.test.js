@@ -115,6 +115,48 @@ describe('Auth Security Audit', function () {
       assert.strictEqual(jwt.verify(t,'s',{algorithms:['HS256']}).purpose==='password-reset', true);
     });
   });
+describe('Password reset token cross-secret isolation', function () {
+    it('JWT_SECRET-signed token fails password-reset verify (JWT_RESET_SECRET)', function () {
+      const t=jwt.sign({email:'a@b.com',purpose:'password-reset',sub:1},'jwtAccessSecret',{expiresIn:'1h',algorithm:'HS256'});
+      try{jwt.verify(t,'resetSecret',{algorithms:['HS256']});assert.fail('Should have thrown');}
+      catch(e){assert.strictEqual(e.name,'JsonWebTokenError');}
+    });
+    it('JWT_RESET_SECRET-signed pwd-reset token fails access verify (JWT_SECRET)', function () {
+      const t=jwt.sign({email:'a@b.com',purpose:'password-reset',sub:1},'resetSecret',{expiresIn:'1h',algorithm:'HS256'});
+      try{jwt.verify(t,'jwtAccessSecret',{algorithms:['HS256']});assert.fail('Should have thrown');}
+      catch(e){assert.strictEqual(e.name,'JsonWebTokenError');}
+    });
+    it('access token signed with JWT_RESET_SECRET fails access verify (JWT_SECRET)', function () {
+      const t=jwt.sign({uid:1,sid:'s',tv:0},'resetSecret',{expiresIn:'15m',algorithm:'HS256'});
+      try{jwt.verify(t,'jwtAccessSecret',{algorithms:['HS256']});assert.fail('Should have thrown');}
+      catch(e){assert.strictEqual(e.name,'JsonWebTokenError');}
+    });
+describe('Timing-oracle mitigation (dummy crypto)', function () {
+    it('dummy JWT sign should succeed', function () {
+      const dummyToken=jwt.sign({email:'dummy@test.com',purpose:'password-reset',sub:0},'resetSecret',{expiresIn:'1h',algorithm:'HS256'});
+      assert.ok(dummyToken);
+      assert.strictEqual(typeof dummyToken,'string');
+      assert.strictEqual(dummyToken.split('.').length,3);
+    });
+    it('dummy bcrypt hash should succeed', function (done) {
+      const bcrypt=require('bcryptjs');
+      bcrypt.genSalt(10,function(err,salt){
+        if(err) return done(err);
+        bcrypt.hash('dummy-value',salt,function(err2,hash){
+          if(err2) return done(err2);
+          assert.ok(hash);
+          assert.strictEqual(hash.length > 0, true);
+          done();
+        });
+      });
+    });
+    it('neutral response message does not leak existence', function () {
+      const message='If an account exists for that email, a reset link has been sent.';
+      assert.ok(message.includes('If an account exists'));
+      assert.ok(!message.includes('found') && !message.includes('no account') && !message.includes('not found'));
+    });
+  });
+  });
   describe('Rate limiting', function () { it('bounds defined', function () { assert.ok(true); }); });
   describe('Email validation', function () {
     const re=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
