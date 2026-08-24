@@ -34,12 +34,13 @@ CREATE TABLE IF NOT EXISTS plans (
   is_active TINYINT(1) DEFAULT 1
 ) ENGINE=InnoDB;
 
--- Seed default plans (idempotent).
+-- Seed default plans (idempotent) with correct UGX amounts.
+-- premium-monthly = 15,000 UGX, premium-annual = 180,000 UGX.
 INSERT IGNORE INTO plans (code, name, tier, period, amount, currency, max_devices, max_quality, ads_enabled, trial_days, is_active) VALUES
   ('standard-monthly', 'Standard Monthly', 'standard', 'monthly', 9.99, 'UGX', 2, '1080p', 0, 0, 1),
   ('standard-annual',  'Standard Annual',  'standard', 'annual',  99.99, 'UGX', 2, '1080p', 0, 7, 1),
-  ('premium-monthly',  'Premium Monthly',  'premium',  'monthly', 14.99, 'UGX', 3, '4k',    0, 0, 1),
-  ('premium-annual',   'Premium Annual',   'premium',  'annual',  149.99, 'UGX', 3, '4k',    0, 14, 1);
+  ('premium-monthly',  'Premium Monthly',  'premium',  'monthly', 15000, 'UGX', 3, '4k',    0, 0, 1),
+  ('premium-annual',   'Premium Annual',   'premium',  'annual',  180000, 'UGX', 3, '4k',    0, 14, 1);
 
 -- ── 7.1 subscriptions: guarantee order_tracking_id exists FIRST ──
 -- (v15's CREATE TABLE IF NOT EXISTS did not add this column to a pre-existing

@@ -108,6 +108,15 @@ exports.initializeCheckout = async (req, res) => {
 
   const { amount, name: label } = planRow;
 
+  // Diagnostic logging — verify the exact amount being sent to Pesapal.
+  console.log('[CHECKOUT AMOUNT]', {
+    plan: planRow.code,
+    planId: planRow.id,
+    dbAmount: planRow.amount,
+    amount,
+    currency: planRow.currency,
+  });
+
   try {
     // Fetch user details
     const [rows] = await db.query(

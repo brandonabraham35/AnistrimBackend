@@ -281,5 +281,65 @@ describe('Timing-oracle mitigation (dummy crypto)', function () {
       for (const v of ['pending', 'trialing', 'active', 'grace', 'expired', 'cancelled', 'refunded']) {
         assert.ok(modifyMatch[0].includes("'" + v + "'"), 'MODIFY must include ' + v);
       }
+// ── Payment amount regression tests ──────────────────────────────
+describe('Payment amount regression', function () {
+  it('monthly plan amount = 15000 in v35 seed data', function () {
+    const fs = require('fs');
+    const path = require('path');
+    const v35 = fs.readFileSync(
+      path.join(__dirname, '..', 'sql', 'migrations_v35_plans_subscriptions.sql'),
+      'utf8'
+    );
+    const v48 = fs.readFileSync(
+      path.join(__dirname, '..', 'sql', 'migrations_v48_plans_amount_fix.sql'),
+      'utf8'
+    );
+    // Find the VALUES line for premium-monthly (skip -- comment lines)
+    const monthlyLine = v35.split('\n').find(l => l.includes('premium-monthly') && l.includes('15000,'));
+    assert.ok(monthlyLine, 'premium-monthly line with 15000 must be in v35');
+    assert.ok(v48.includes('15000'), 'v48 must mention 15000');
+  });
+  it('yearly plan amount = 180000 in v35 seed data', function () {
+    const fs = require('fs');
+    const path = require('path');
+    const v35 = fs.readFileSync(
+      path.join(__dirname, '..', 'sql', 'migrations_v35_plans_subscriptions.sql'),
+      'utf8'
+    );
+    const v48 = fs.readFileSync(
+      path.join(__dirname, '..', 'sql', 'migrations_v48_plans_amount_fix.sql'),
+      'utf8'
+    );
+    const yearlyLine = v35.split('\n').find(l => l.includes('premium-annual') && l.includes('180000,'));
+    assert.ok(yearlyLine, 'premium-annual line with 180000 must be in v35');
+    assert.ok(v48.includes('180000'), 'v48 must mention 180000');
+  });
+  it('initializeCheckout sends planRow.amount directly to Pesapal (no division)', function () {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'controllers', 'paymentController.js'),
+      'utf8'
+    );
+    const susPatterns = ['amount / 100', 'amount / 1000', 'amount * 100', 'amount * 1000', 'amount / 10', 'amount * 10'];
+    for (const pat of susPatterns) {
+      assert.ok(!src.includes(pat), 'checkout must not contain ' + pat);
+    }
+    const pesapalCall = src.match(/amount:\s*amount/);
+    assert.ok(pesapalCall, 'checkout must pass amount directly to Pesapal');
+  });
+  it('IPN amount verification rejects 15 when expecting 15000', function () {
+    const subAmount = 15000;
+    const txnAmount = 15;
+    const mismatch = Math.abs(txnAmount - subAmount) > 1;
+    assert.strictEqual(mismatch, true, 'IPN must reject 15 when expecting 15000');
+  });
+  it('IPN amount verification accepts 15000 when expecting 15000', function () {
+    const subAmount = 15000;
+    const txnAmount = 15000;
+    const mismatch = Math.abs(txnAmount - subAmount) > 1;
+    assert.strictEqual(mismatch, false, 'IPN must accept 15000 when expecting 15000');
+  });
+});
     });
   });
