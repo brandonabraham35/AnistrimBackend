@@ -1,4 +1,4 @@
-/* eslint-env browser */
+﻿/* eslint-env browser */
 /* global AniStrimApi, AniStrimAuth, AniStrimRouter, AniStrimPlayer, AniStrimUI, google */
 // AniStrim Web — UI layer (independent from Frontend/)
 (function () {
@@ -187,12 +187,71 @@
     if (el) el.classList.remove('open');
   }
 
+  // ── Slider state ──────────────────────────────────────────
+  var slideIdx = 0, slideData = [], slideTimer = null, slideTouchX = 0;
+
+  function renderSlider() {
+    var el = document.getElementById('home-slider');
+    if (!el) return;
+    if (!slideData.length) {
+      el.innerHTML = '<div class="slider-wrapper"><div class="slide-inner" style="height:460px;background:var(--clr-surface);display:flex;align-items:center;justify-content:center"><div style="text-align:center"><div class="skeleton" style="width:300px;height:40px;margin:0 auto 16px;border-radius:8px;background:var(--clr-border)"></div><div class="skeleton" style="width:500px;height:20px;margin:0 auto;border-radius:8px;background:var(--clr-border)"></div></div></div></div>';
+      return;
+    }
+    var h = '<div class="slider-wrapper" role="region" aria-label="Featured anime">' +
+      '<div class="slider-track" style="transform:translateX(-' + (slideIdx * 100) + '%)">';
+    for (var i = 0; i < slideData.length; i++) {
+      var a = slideData[i], bg = a.banner_image || a.cover_image || '';
+      var type = a.type || a.media_type || '';
+      h += '<div class="slide" role="group" aria-roledescription="slide" aria-label="Slide ' + (i + 1) + ' of ' + slideData.length + '">' +
+        '<div class="slide-inner"' + (bg ? ' style="background-image:linear-gradient(to top,rgba(8,8,14,1) 0%,rgba(8,8,14,.7) 40%,rgba(8,8,14,.3) 70%,transparent 100%),url(' + bg + ')"' : '') + '>' +
+        '<div class="slide-overlay"></div>' +
+        '<div class="slide-content">' +
+        (type ? '<span class="slide-badge">' + esc(type) + '</span>' : '') +
+        '<h2>' + esc(a.title) + '</h2>' +
+        (a.description ? '<p>' + esc(a.description.substring(0, 180)) + '</p>' : '') +
+        '<div class="slide-actions">' +
+        '<a href="#/anime/' + a.id + '" class="btn-primary">\u25B6 Watch Now</a>' +
+        '<a href="#/anime/' + a.id + '" class="btn-outline">Details</a>' +
+        '</div></div></div></div>';
+    }
+    h += '</div>';
+    if (slideData.length > 1) {
+      h += '<button class="slider-btn slider-prev" onclick="AniStrimUI.prevSlide()" aria-label="Previous slide">\u2039</button>' +
+        '<button class="slider-btn slider-next" onclick="AniStrimUI.nextSlide()" aria-label="Next slide">\u203A</button>' +
+        '<div class="slider-dots" role="tablist" aria-label="Slides">';
+      for (var j = 0; j < slideData.length; j++)
+        h += '<button class="slider-dot' + (j === slideIdx ? ' active' : '') + '" onclick="AniStrimUI.goToSlide(' + j + ')" role="tab" aria-selected="' + (j === slideIdx ? 'true' : 'false') + '" aria-label="Slide ' + (j + 1) + '"></button>';
+      h += '</div>';
+    }
+    el.innerHTML = h;
+    if (slideData.length > 1) {
+      el.addEventListener('mouseenter', clearSlideTimer);
+      el.addEventListener('mouseleave', startSlideTimer);
+      el.addEventListener('touchstart', onSlideTouchStart, { passive: true });
+      el.addEventListener('touchend', onSlideTouchEnd, { passive: true });
+    }
+  }
+  function goToSlide(i) {
+    if (i < 0 || i >= slideData.length) return;
+    slideIdx = i; renderSlider();
+  }
+  function nextSlide() { goToSlide(slideIdx + 1 < slideData.length ? slideIdx + 1 : 0); }
+  function prevSlide() { goToSlide(slideIdx > 0 ? slideIdx - 1 : slideData.length - 1); }
+  function clearSlideTimer() { if (slideTimer) { clearInterval(slideTimer); slideTimer = null; } }
+  function startSlideTimer() { clearSlideTimer(); if (slideData.length > 1) slideTimer = setInterval(function () { nextSlide(); }, 6000); }
+  function onSlideTouchStart(e) { slideTouchX = e.touches ? e.touches[0].clientX : 0; }
+  function onSlideTouchEnd(e) {
+    var diff = slideTouchX - (e.changedTouches ? e.changedTouches[0].clientX : 0);
+    if (Math.abs(diff) > 50) { diff > 0 ? nextSlide() : prevSlide(); }
+  }
+
   // ── Home ────────────────────────────────────────────────
   function homeView() {
     renderHeader();
-    return Promise.resolve('<div class="page home-page"><div class="hero"><div class="hero-inner" id="hero-inner">' +
-      '<h1 id="hero-title">Loading...</h1><p id="hero-desc"></p><div class="hero-actions"><a class="btn-primary" id="hero-watch" href="#/browse">Browse Anime</a></div>' +
-      '</div></div><div class="container" id="home-sections"></div></div>').then(function (h) {
+    return Promise.resolve('<div class="page home-page" style="padding-top:0">' +
+      '<div class="slider-wrapper" id="home-slider"></div>' +
+      '<div class="container" id="home-sections"></div></div>').then(function (h) {
+      renderSlider();
       setTimeout(loadHome, 0);
       return h;
     });
@@ -203,6 +262,10 @@
     if (!wrap) return;
     try {
       var s = await API.homeSections();
+      if (s && s.trending && s.trending.length) {
+        slideData = s.trending.slice(0, 8); slideIdx = 0;
+        renderSlider(); startSlideTimer();
+      }
       var out = '';
       var order = [['trending', 'Trending Now'], ['popular', 'Popular'], ['newReleases', 'New Releases'], ['classics', 'Classics']];
       if (Auth.state.isLoggedIn) {
@@ -218,23 +281,10 @@
         if (s && s[key] && s[key].length) out += section(o[1]) + grid(s[key].slice(0, 10));
       });
       wrap.innerHTML = out || '<div class="empty">No content available.</div>';
-      if (s && s.trending && s.trending[0]) {
-        var t = s.trending[0];
-        document.getElementById('hero-title').textContent = t.title;
-        document.getElementById('hero-desc').textContent = (t.description || '').substring(0, 200);
-        var hero = document.querySelector('.hero');
-        if (hero && (t.banner_image || t.cover_image)) hero.style.backgroundImage = 'linear-gradient(to bottom, rgba(10,10,15,0.4), #0a0a0f), url(\'' + (t.banner_image || t.cover_image) + '\')';
-        var w = document.getElementById('hero-watch');
-        if (w && t.id) { w.href = '#/anime/' + t.id; w.textContent = 'Watch Now'; }
-      }
     } catch (e) {
       wrap.innerHTML = '<div class="empty">Could not load home sections. ' + retryButton('loadHome()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
-      var heroTitle = document.getElementById('hero-title');
-      if (heroTitle) heroTitle.textContent = 'Discover anime';
     }
-  }
-
-  // ── Auth pages ──────────────────────────────────────────
+  }  // ── Auth pages ──────────────────────────────────────────
   function authShell(title) {
     return '<div class="page auth-page"><div class="auth-card"><h1>' + title + '</h1><div id="auth-error" class="form-error"></div>';
   }
