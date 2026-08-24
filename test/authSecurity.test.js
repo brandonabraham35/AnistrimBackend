@@ -233,3 +233,53 @@ describe('Timing-oracle mitigation (dummy crypto)', function () {
     });
   });
 });
+
+// ── Checkout state regression test ──────────────────────────────
+  describe('Checkout state regression', function () {
+    it('initializeCheckout INSERT uses state=pending', function () {
+      const fs = require('fs');
+      const path = require('path');
+      const src = fs.readFileSync(
+        path.join(__dirname, '..', 'controllers', 'paymentController.js'),
+        'utf8'
+      );
+      // Verify the INSERT VALUES clause contains 'pending' as the state value
+      // followed by 'payment' as the source value.
+      const insertMatch = src.match(/INSERT INTO subscriptions[\s\S]{0,500}VALUES[\s\S]{0,500}'pending'[\s\S]{0,100}'payment'/);
+      assert.ok(insertMatch, 'checkout INSERT must contain state=pending, source=payment');
+    });
+    it('state=pending is in the canonical ENUM definitions', function () {
+      const fs = require('fs');
+      const path = require('path');
+      const v35 = fs.readFileSync(
+        path.join(__dirname, '..', 'sql', 'migrations_v35_plans_subscriptions.sql'),
+        'utf8'
+      );
+      const v45 = fs.readFileSync(
+        path.join(__dirname, '..', 'sql', 'migrations_v45_subscriptions_reconcile.sql'),
+        'utf8'
+      );
+      const v47 = fs.readFileSync(
+        path.join(__dirname, '..', 'sql', 'migrations_v47_subscriptions_state_enum.sql'),
+        'utf8'
+      );
+      const expected = "'pending','trialing','active','grace','expired','cancelled','refunded'";
+      assert.ok(v35.includes(expected), 'v35 must define the full ENUM');
+      assert.ok(v45.includes(expected), 'v45 must define the full ENUM');
+      assert.ok(v47.includes(expected), 'v47 must define the full ENUM');
+    });
+    it('v47 MODIFY COLUMN includes all 7 state values', function () {
+      const fs = require('fs');
+      const path = require('path');
+      const v47 = fs.readFileSync(
+        path.join(__dirname, '..', 'sql', 'migrations_v47_subscriptions_state_enum.sql'),
+        'utf8'
+      );
+      const modifyMatch = v47.match(/MODIFY COLUMN state ENUM\([^)]+\)/);
+      assert.ok(modifyMatch, 'MODIFY COLUMN state ENUM must be in v47');
+      assert.ok(modifyMatch[0].includes("'pending'"), 'MODIFY must include pending');
+      for (const v of ['pending', 'trialing', 'active', 'grace', 'expired', 'cancelled', 'refunded']) {
+        assert.ok(modifyMatch[0].includes("'" + v + "'"), 'MODIFY must include ' + v);
+      }
+    });
+  });
