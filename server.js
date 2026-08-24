@@ -27,6 +27,22 @@ const app = express();
 // reads req.ip (CORS, rate-limiting, request metrics).
 app.set('trust proxy', 1);
 
+// ── Security headers ──────────────────────────────────────────
+// These are intentionally set AFTER trust-proxy but BEFORE routes.
+app.use((_req, res, next) => {
+  // X-Content-Type-Options: prevent MIME-type sniffing.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Referrer-Policy: never leak the API URL in the Referer header.
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Permissions-Policy: restrict browser features to trusted origins.
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Strict-Transport-Security: only when HTTPS is guaranteed (production).
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  next();
+});
+
 const PORT = process.env.PORT || 5000;
 
 const providerHealthMonitor = require('./services/providerHealthMonitor');

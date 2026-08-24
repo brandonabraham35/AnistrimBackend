@@ -46,7 +46,13 @@ SET @state_col_type := (
 SET @state_sql := CASE
   WHEN @state_col_type IS NULL THEN
     'ALTER TABLE subscriptions ADD COLUMN state ENUM(''pending'',''trialing'',''active'',''grace'',''expired'',''cancelled'',''refunded'') NOT NULL DEFAULT ''pending'''
-  WHEN @state_col_type NOT LIKE '%pending%' THEN
+  WHEN @state_col_type NOT LIKE '%pending%'
+    OR @state_col_type NOT LIKE '%trialing%'
+    OR @state_col_type NOT LIKE '%active%'
+    OR @state_col_type NOT LIKE '%grace%'
+    OR @state_col_type NOT LIKE '%expired%'
+    OR @state_col_type NOT LIKE '%cancelled%'
+    OR @state_col_type NOT LIKE '%refunded%' THEN
     'ALTER TABLE subscriptions MODIFY COLUMN state ENUM(''pending'',''trialing'',''active'',''grace'',''expired'',''cancelled'',''refunded'') NOT NULL DEFAULT ''pending'''
   ELSE
     'SELECT 1'

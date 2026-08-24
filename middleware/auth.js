@@ -147,10 +147,10 @@ exports.adminOnly = async (req, res, next) => {
     req.user.isAdmin = true;
     return next();
   } catch (e) {
-    // Role DB unavailable — fall back to the JWT claim (better to trust a
-    // server-signed claim than to hard-fail during a DB outage).
-    if (req.user.isAdmin) { req.user.isAdmin = true; return next(); }
-    return res.status(503).json({ message: 'Unable to verify admin role.' });
+    // Database role lookup failed — deny access. Never fall back to JWT claims
+    // or client-controlled state, as those could be stale or forged.
+    console.error('[AUTH] adminOnly role lookup failed (denied):', e.message);
+    return res.status(503).json({ message: 'Unable to verify admin role. Please try again.' });
   }
 };
 
