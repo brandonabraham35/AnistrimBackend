@@ -159,6 +159,14 @@
       (Auth.state.isPremium ? '<a href="#/profile">Account</a>' : '<a href="#/upgrade">Upgrade</a>') + '</div></div>';
   }
 
+  function toggleMobileNav() {
+    var el = document.getElementById('mobile-nav');
+    if (el) el.classList.toggle('open');
+  }
+  function closeMobileNav() {
+    var el = document.getElementById('mobile-nav');
+    if (el) el.classList.remove('open');
+  }
   // ── Home ────────────────────────────────────────────────
   function homeView() {
     renderHeader();
