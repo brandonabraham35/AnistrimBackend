@@ -143,20 +143,48 @@
     var h = document.getElementById('site-header');
     var user = Auth.state.user;
     var logged = Auth.state.isLoggedIn;
+    var name = user && (user.displayName || user.username || user.email || '');
+    var initial = name ? name.charAt(0).toUpperCase() : '?';
+    var avatar = (user && user.avatar) || '';
     h.innerHTML = '<nav class="nav"><div class="nav-inner">' +
+      '<button class="mobile-menu-btn" onclick="AniStrimUI.toggleMobileNav()" aria-label="Toggle navigation">\u2630</button>' +
       '<a class="brand" href="#/">AniStrim</a>' +
       '<div class="nav-links"><a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
-      (logged ? '<a href="#/watchlist">Watchlist</a><a href="#/history">History</a>' : '') + '</div>' +
+      (logged ? '<a href="#/watchlist">Watchlist</a><a href="#/history">History</a><a href="#/upgrade">Upgrade</a>' : '') + '</div>' +
+      '<div class="nav-search"><input type="text" placeholder="Search anime\u2026" id="nav-search-input" onkeydown="if(event.key===\'Enter\'){var q=this.value.trim();if(q){window.AniStrimRouter.navigate(\'/search\',{q:q});this.value=\'\'}}"></div>' +
       '<div class="nav-auth">' +
       (logged
-        ? '<a href="#/profile" class="btn-ghost">' + esc(user && (user.displayName || user.username || user.email) || 'Profile') + '</a>' +
-          '<button class="btn-outline" onclick="AniStrimUI.logout()">Logout</button>'
-        : '<a href="#/login" class="btn-outline">Sign In</a><a href="#/signup" class="btn-primary">Get Started</a>') +
-      '</div></div></nav>';
+        ? '<a href="#/profile" class="nav-avatar" aria-label="Profile">' +
+          (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) +
+          '</a>'
+        : '<a href="#/login" class="btn-outline btn-sm">Sign In</a><a href="#/signup" class="btn-primary btn-sm">Get Started</a>') +
+      '</div></div>' +
+      // Mobile navigation panel
+      '<div class="mobile-nav" id="mobile-nav">' +
+      (logged && user ? '<div class="nav-user">' +
+        '<div class="nav-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) + '</div>' +
+        '<div><div style="font-weight:600">' + esc(name) + '</div>' +
+        (user.email ? '<div style="font-size:.85rem;color:var(--clr-text-muted)">' + esc(user.email) + '</div>' : '') +
+        '</div></div>' : '') +
+      '<a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
+      (logged ? '<a href="#/watchlist">Watchlist</a><a href="#/history">History</a>' : '') +
+      '<a href="#/upgrade">Upgrade</a>' +
+      (logged
+        ? '<a href="#/profile">Profile</a><a href="#" onclick="AniStrimUI.logout();AniStrimUI.closeMobileNav();return false">Logout</a>'
+        : '<a href="#/login">Sign In</a><a href="#/signup">Sign Up</a>') +
+      '</div></nav>';
     var f = document.getElementById('site-footer');
-    f.innerHTML = '<div class="footer-inner"><span>© ' + new Date().getFullYear() + ' AniStrim</span>' +
+    f.innerHTML = '<div class="footer-inner"><span>\u00a9 ' + new Date().getFullYear() + ' AniStrim</span>' +
       '<div class="footer-links"><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
       (Auth.state.isPremium ? '<a href="#/profile">Account</a>' : '<a href="#/upgrade">Upgrade</a>') + '</div></div>';
+  }
+  function toggleMobileNav() {
+    var el = document.getElementById('mobile-nav');
+    if (el) el.classList.toggle('open');
+  }
+  function closeMobileNav() {
+    var el = document.getElementById('mobile-nav');
+    if (el) el.classList.remove('open');
   }
 
   // ── Home ────────────────────────────────────────────────
