@@ -172,6 +172,12 @@
     renderHeader();
     return Promise.resolve('<div class="page home-page"><div class="hero"><div class="hero-inner" id="hero-inner">' +
       '<h1 id="hero-title">Loading...</h1><p id="hero-desc"></p><div class="hero-actions"><a class="btn-primary" id="hero-watch" href="#/browse">Browse Anime</a></div>' +
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+  function fallback(title) { var t = (title || '?').charAt(0).toUpperCase(); return 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="300" height="450" fill="#18182a"/><text x="150" y="245" font-family="sans-serif" font-size="72" fill="#8b5cf6" text-anchor="middle">' + t + '</text></svg>'); }
+  function norm(list) {
+    if (Array.isArray(list)) return list;
+    return (list && (list.rows || list.items || list.data || list.watchlist || list.history)) || [];
+  }
       '</div></div><div class="container" id="home-sections"></div></div>').then(function (h) {
       setTimeout(loadHome, 0);
       return h;
