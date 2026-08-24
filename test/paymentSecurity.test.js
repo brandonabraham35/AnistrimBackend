@@ -59,6 +59,69 @@ describe('Migration v47', function () {
       assert.ok(m[0].includes(x));
   });
 });
+// ── Standard plan deactivation tests ──────────────────────────────
+describe('Standard plan deactivation', function () {
+  it('v49 migration deactivates standard-monthly', function () {
+    const fs2 = require('fs');
+    const p = require('path');
+    const v49 = fs2.readFileSync(
+      p.join(__dirname, '..', 'sql', 'migrations_v49_standard_deactivate.sql'),
+      'utf8'
+    );
+    assert.ok(v49.includes('standard-monthly'), 'v49 must reference standard-monthly');
+    assert.ok(v49.includes("is_active = 0"), 'v49 must set is_active = 0');
+  });
+  it('v49 migration deactivates standard-annual', function () {
+    const fs2 = require('fs');
+    const p = require('path');
+    const v49 = fs2.readFileSync(
+      p.join(__dirname, '..', 'sql', 'migrations_v49_standard_deactivate.sql'),
+      'utf8'
+    );
+    assert.ok(v49.includes('standard-annual'), 'v49 must reference standard-annual');
+    assert.ok(v49.includes("is_active = 0"), 'v49 must set is_active = 0');
+  });
+  it('PLAN_CODE_BY_KEY does not include standard plans', function () {
+    const fs2 = require('fs');
+    const p = require('path');
+    const src = fs2.readFileSync(
+      p.join(__dirname, '..', 'controllers', 'paymentController.js'),
+      'utf8'
+    );
+    // PLAN_CODE_BY_KEY should only map to premium plans
+    assert.ok(!src.includes("'standard'"), 'PLAN_CODE_BY_KEY must not include standard');
+    assert.ok(src.includes("monthly: 'premium-monthly'"), 'must map monthly to premium-monthly');
+  });
+  it('frontend upgrade page does not show standard plans', function () {
+    const fs2 = require('fs');
+    const p = require('path');
+    const src = fs2.readFileSync(
+      p.join(__dirname, '..', 'Web', 'js', 'ui.js'),
+      'utf8'
+    );
+    assert.ok(!src.includes('Standard'), 'frontend must not show Standard plan');
+    assert.ok(!src.includes('9.99'), 'frontend must not show 9.99 price');
+    assert.ok(!src.includes('99.99'), 'frontend must not show 99.99 price');
+  });
+  it('premium-monthly remains 15000', function () {
+    const fs2 = require('fs');
+    const p = require('path');
+    const v35 = fs2.readFileSync(
+      p.join(__dirname, '..', 'sql', 'migrations_v35_plans_subscriptions.sql'),
+      'utf8'
+    );
+    assert.ok(v35.includes('15000'), 'v35 must have premium-monthly = 15000');
+  });
+  it('premium-annual remains 180000', function () {
+    const fs2 = require('fs');
+    const p = require('path');
+    const v35 = fs2.readFileSync(
+      p.join(__dirname, '..', 'sql', 'migrations_v35_plans_subscriptions.sql'),
+      'utf8'
+    );
+    assert.ok(v35.includes('180000'), 'v35 must have premium-annual = 180000');
+  });
+});
 
 describe('Schema verify', function () {
   it('script checks amounts', function () {
