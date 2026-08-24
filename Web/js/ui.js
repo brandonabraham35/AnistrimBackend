@@ -30,17 +30,22 @@
       '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="300" height="450" fill="#151527"/>' +
       '<text x="150" y="245" font-family="sans-serif" font-size="72" fill="#8b5cf6" text-anchor="middle">' + t + '</text></svg>');
   }
-  function card(a) {
+    function card(a) {
     var img = (a && (a.cover_image || a.poster || a.coverImage)) || '';
     var title = (a && a.title) || '';
     var id = a && (a.id != null ? a.id : a.animeId);
+    var type = a && (a.type || a.media_type || '');
+    var eps = a && (a.episode_count || a.total_episodes || '');
     return '<div class="anime-card" onclick="AniStrimUI.goAnime(' + id + ')">' +
       '<div class="anime-card-img"><img src="' + (img || fallback(title)) + '" alt="' + esc(title) + '" loading="lazy" ' +
       'onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')">' +
-      (a && a.is_premium ? '<span class="badge-premium">👑</span>' : '') +
-      (a && a.rating ? '<span class="badge-rating">★ ' + esc(a.rating) + '</span>' : '') +
-      '</div><div class="anime-card-title">' + esc(title) + '</div>' +
-      (a && a.year ? '<div class="anime-card-sub">' + esc(a.year) + '</div>' : '') + '</div>';
+      (type ? '<span class="badge-type">' + esc(type) + '</span>' : '') +
+      (a && a.is_premium ? '<span class="badge-premium">&#x1F451;</span>' : '') +
+      (a && a.rating ? '<span class="badge-rating">&#9733; ' + esc(a.rating) + '</span>' : '') +
+      (eps ? '<span class="badge-ep">' + esc(eps) + '</span>' : '') +
+      '</div><div class="anime-card-body"><div class="anime-card-title">' + esc(title) + '</div>' +
+      '<div class="anime-card-sub">' + (type || 'Anime') + (eps ? ' &middot; ' + esc(eps) + ' EP' : '') +
+      (a && a.year ? ' &middot; ' + esc(a.year) : '') + '</div></div></div>';
   }
   function grid(list, cols) {
     return '<div class="anime-grid' + (cols ? ' cols-' + cols : '') + '">' + list.map(card).join('') + '</div>';
