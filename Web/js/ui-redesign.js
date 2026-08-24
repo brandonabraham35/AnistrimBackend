@@ -136,3 +136,157 @@ function ac(a) {
     rl: rl, rdSl: rdSl, rst: rst,
   };
 })();
+// ── Browse view override ─────────────────────────────────
+  V.browse = function () {
+    UI.renderHeader();
+    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Browse</h1></div>' +
+      '<div id="browse-grid" class="anime-grid">' + sc(10).replace('skeleton-grid','anime-grid') + '</div>' +
+      '</div></div>';
+  };
+  function afterBrowse() {
+    var grid = document.getElementById('browse-grid');
+    if (!grid) return;
+    API.trending(1, 20).then(function (res) {
+      var data = res && res.data ? res.data : res;
+      grid.innerHTML = ag(data);
+    }).catch(function (e) { grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">&#x26A0;&#xFE0F;</div><h3>Could not load</h3><p>' + esc(e.message) + '</p></div>'; });
+  }
+// ── Search override ─────────────────────────────────────
+  V.search = function () {
+    UI.renderHeader();
+    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Search</h1></div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">' +
+      '<input type="text" id="search-input" placeholder="Search anime..." style="flex:1;min-width:200px;max-width:400px" onkeydown="if(event.key===\'Enter\')AniStrimRedesign.dos()">' +
+      '<button class="btn-primary" onclick="AniStrimRedesign.dos()">Search</button></div>' +
+      '<div id="search-results" class="empty-state"><div class="empty-icon">&#x1F50D;</div><h3>Search for anime</h3><p>Type a title and press Enter.</p></div></div></div>';
+  };
+  function dos() {
+    var q = document.getElementById('search-input'), res = document.getElementById('search-results');
+    if (!q || !res) return;
+    var query = q.value.trim();
+    if (!query) { res.innerHTML = '<div class="empty-state"><div class="empty-icon">&#x1F50D;</div><h3>Enter a search term</h3></div>'; return; }
+    res.innerHTML = sc(8);
+    API.search(query).then(function (data) {
+      var items = nl(data);
+      if (items.length) res.innerHTML = '<div class="anime-grid">' + items.map(ac).join('') + '</div>';
+      else res.innerHTML = '<div class="empty-state"><div class="empty-icon">&#x1F50D;</div><h3>No results</h3><p>Try a different search.</p></div>';
+    }).catch(function (e) { res.innerHTML = '<div class="empty-state"><div class="empty-icon">&#x26A0;&#xFE0F;</div><h3>Search failed</h3><p>' + esc(e.message) + '</p><button class="btn-primary" onclick="AniStrimRedesign.dos()">Retry</button></div>'; });
+  }
+  function afterSearch() { setTimeout(function () { var i = document.getElementById('search-input'); if (i) i.focus(); }, 100); }
+  V.afterSearch = afterSearch;
+  V.afterBrowse = afterBrowse;
+// ── Anime Details override ──────────────────────────────
+  V.anime = function (params) {
+    UI.renderHeader();
+    return '<div class="page"><div class="anime-detail-hero" id="anime-hero"><div class="overlay"></div><div class="container"><div class="anime-detail-content">' +
+      '<div class="anime-detail-poster"><div class="skeleton" style="width:100%;height:100%;border-radius:var(--radius)"></div></div>' +
+      '<div class="anime-detail-info" id="anime-info"><div class="skeleton" style="height:32px;width:70%;margin-bottom:12px"></div><div class="skeleton" style="height:16px;width:40%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:100%;margin:4px 0"></div><div class="skeleton" style="height:12px;width:80%"></div></div>' +
+      '</div></div></div></div><div class="container"><div id="anime-episodes"><div class="section-header"><h2>Episodes</h2></div>' + sc(6).replace('skeleton-grid','anime-grid') + '</div></div></div>';
+  };
+  function afterAnime(main, params) {
+    var id = params && params.id;
+    if (!id) return;
+    API.anime(id).then(function (a) {
+      if (!a) return;
+      var bg = a.banner_image || a.cover_image || '';
+      var hero = document.getElementById('anime-hero');
+      if (hero && bg) hero.style.backgroundImage = 'linear-gradient(to top,rgba(10,10,15,1) 0,rgba(10,10,15,0.8) 50%,rgba(10,10,15,0.4) 100%),url(' + bg + ')';
+      var info = document.getElementById('anime-info');
+      if (!info) return;
+      var img = a.cover_image || a.poster || '';
+      var st = a.type || a.media_type || '', yr = a.year || '', status = a.status || '';
+      info.innerHTML = '<div class="anime-detail-poster"><img src="' + (img || fb(a.title)) + '" alt="" onerror="this.src=\'' + fb(a.title) + '\'"></div>' +
+        '<div class="anime-detail-info" style="flex:1"><h1>' + esc(a.title) + '</h1>' +
+        (a.title_japanese ? '<p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:8px">' + esc(a.title_japanese) + '</p>' : '') +
+        '<div class="anime-meta-tags">' + (st ? '<span class="anime-meta-tag">' + esc(st) + '</span>' : '') + (yr ? '<span class="anime-meta-tag">' + esc(yr) + '</span>' : '') + (status ? '<span class="anime-meta-tag">' + esc(status) + '</span>' : '') + '</div>' +
+        (a.description ? '<div class="description">' + esc(a.description) + '</div>' : '') +
+        '<div class="anime-actions"><a href="#/watch/' + a.id + '/1" class="btn-primary">&#9654; Watch Now</a>' +
+        '<button class="btn-outline" onclick="AniStrimUI.toggleWatchlist(' + a.id + ')">+ My List</button></div></div>';
+    }).catch(function () {});
+    API.episodes(id).then(function (eps) {
+      var list = nl(eps);
+      var el = document.getElementById('anime-episodes');
+      if (!el) return;
+      if (!list.length) { el.innerHTML = '<div class="section-header"><h2>Episodes</h2></div><p style="color:var(--text-muted)">No episodes available.</p>'; return; }
+      var h = '<div class="section-header"><h2>Episodes (' + list.length + ')</h2></div><div class="episode-grid">';
+      for (var i = 0; i < list.length; i++) {
+        var ep = list[i];
+        var num = ep.number || ep.episode_number || (i + 1);
+        var locked = ep.locked || (ep.accessState && ep.accessState === 'premium_required');
+        h += '<div class="episode-item' + (locked ? ' locked' : '') + '"' + (locked ? '' : ' onclick="window.AniStrimRedesign.goWatch(' + id + ',' + num + ',' + (ep.id || 'null') + ')"') + ' title="Ep ' + num + (locked ? ' (Premium)' : '') + '">' + num + '</div>';
+      }
+      h += '</div>';
+      el.innerHTML = h;
+    }).catch(function () {});
+  }
+  V.afterAnime = afterAnime;
+// ── Auth pages ────────────────────────────────────────────
+  function af(title, sub, fields, btn, sw, js) {
+    return '<div class="page"><div class="auth-page"><div class="auth-card"><h1>' + esc(title) + '</h1>' +
+      (sub ? '<div class="auth-subtitle">' + esc(sub) + '</div>' : '') +
+      '<div id="auth-error" class="form-error" style="display:none"></div>' +
+      '<form onsubmit="' + js + ';return false">' + fields +
+      '<button type="submit" class="btn-primary btn-block" style="margin-top:8px">' + esc(btn) + '</button></form>' +
+      (sw ? '<div class="auth-switch">' + sw + '</div>' : '') + '</div></div></div>';
+  }
+  V.login = function () {
+    UI.renderHeader();
+    return af('Welcome Back', 'Sign in to continue', '<div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="your@email.com" required></div><div class="form-group"><label>Password</label><input type="password" id="login-password" placeholder="Enter password" required></div>',
+      'Sign In', 'New here? <a href="#/signup">Create account</a>', 'AniStrimRedesign.dl()');
+  };
+  async function dl() {
+    var e = document.getElementById('login-email'), p = document.getElementById('login-password'), err = document.getElementById('auth-error');
+    if (!e || !p) return;
+    try { await window.AniStrimAuth.login(e.value.trim(), p.value); await window.AniStrimAuth.refreshMe(); UI.renderHeader(); R.navigate('/'); }
+    catch (x) { if (err) { err.textContent = x.message || 'Login failed'; err.style.display = 'block'; } }
+  }
+  V.signup = function () {
+    UI.renderHeader();
+    return af('Create Account', 'Start streaming', '<div class="form-group"><label>Name</label><input type="text" id="signup-name" placeholder="Your name" required></div><div class="form-group"><label>Email</label><input type="email" id="signup-email" placeholder="your@email.com" required></div><div class="form-group"><label>Password</label><input type="password" id="signup-password" placeholder="Min 6 characters" minlength="6" required></div>',
+      'Create Account', 'Have an account? <a href="#/login">Sign in</a>', 'AniStrimRedesign.ds()');
+  };
+  async function ds() {
+    var nm = document.getElementById('signup-name'), em = document.getElementById('signup-email'), pw = document.getElementById('signup-password'), err = document.getElementById('auth-error');
+    if (!nm || !em || !pw) return;
+    try { var res = await window.AniStrimAuth.signup({name: nm.value.trim(), email: em.value.trim(), password: pw.value});
+      if (res && res.requiresVerification) { R.navigate('/verify', {email: em.value.trim()}); return; }
+      await window.AniStrimAuth.refreshMe(); UI.renderHeader(); R.navigate('/'); }
+    catch (x) { if (err) { err.textContent = x.message || 'Signup failed'; err.style.display = 'block'; } }
+  }
+  V.verify = function (params, query) {
+    UI.renderHeader();
+    var email = (query && query.email) || '';
+    return af('Verify Email', 'Code sent to ' + esc(email), '<div class="form-group"><label>Code</label><input type="text" id="verify-code" placeholder="000000" maxlength="6" class="otp-input" inputmode="numeric" required></div><input type="hidden" id="verify-email" value="' + esc(email) + '">',
+      'Verify', 'Didn\'t get it? <a href="#" onclick="AniStrimRedesign.ro();return false">Resend</a>', 'AniStrimRedesign.dv()');
+  };
+  async function dv() {
+    var c = document.getElementById('verify-code'), em = document.getElementById('verify-email'), err = document.getElementById('auth-error');
+    if (!c || !em) return;
+    try { await window.AniStrimAuth.verifyEmail(em.value, c.value.trim()); await window.AniStrimAuth.refreshMe(); UI.renderHeader(); R.navigate('/'); }
+    catch (x) { if (err) { err.textContent = x.message || 'Verification failed'; err.style.display = 'block'; } }
+  }
+  async function ro() {
+    var em = document.getElementById('verify-email'), err = document.getElementById('auth-error');
+    if (!em) return;
+    try { await API.resendOtp(em.value); if (err) { err.textContent = 'Code resent!'; err.style.display = 'block'; err.style.color = 'var(--success)'; } } catch (x) { if (err) { err.textContent = x.message || 'Failed'; err.style.display = 'block'; } }
+  }
+  V.forgotPassword = function () {
+    UI.renderHeader();
+    return af('Reset Password', 'Enter your email.', '<div class="form-group"><label>Email</label><input type="email" id="forgot-email" placeholder="your@email.com" required></div>',
+      'Send Reset Link', '<a href="#/login">Back to sign in</a>', 'AniStrimRedesign.df()');
+  };
+  async function df() {
+    var em = document.getElementById('forgot-email'), err = document.getElementById('auth-error');
+    if (!em) return;
+    try { await API.forgotPassword(em.value.trim()); if (err) { err.textContent = 'If an account exists, a reset link has been sent.'; err.style.display = 'block'; err.style.color = 'var(--success)'; } } catch (x) { if (err) { err.textContent = x.message || 'Failed'; err.style.display = 'block'; } }
+  }
+  V.resetPassword = function () {
+    UI.renderHeader();
+    return af('Set New Password', 'Enter your new password.', '<div class="form-group"><label>New Password</label><input type="password" id="reset-pw" placeholder="Min 6 characters" minlength="6" required></div>',
+      'Reset Password', '', 'AniStrimRedesign.dr()');
+  };
+  async function dr() {
+    var pw = document.getElementById('reset-pw'), err = document.getElementById('auth-error');
+    if (!pw) return;
+    try { await API.resetPassword(R.query().token || '', pw.value); if (err) { err.textContent = 'Password reset successfully!'; err.style.display = 'block'; err.style.color = 'var(--success)'; } } catch (x) { if (err) { err.textContent = x.message || 'Failed'; err.style.display = 'block'; } }
+  }
