@@ -4,8 +4,9 @@ const router  = express.Router();
 const admin   = require('../controllers/adminController');
 const imports = require('../controllers/adminImportController');
 const { protect, adminOnly } = require('../middleware/auth');
+const { adminLimiter } = require('../middleware/rateLimit');
 
-router.use(protect, adminOnly);
+router.use(protect, adminOnly, adminLimiter);
 
 // Dashboard
 router.get('/stats',                        admin.getDashboardStats);

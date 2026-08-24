@@ -3,6 +3,7 @@ const express  = require('express');
 const router   = express.Router();
 const payments = require('../controllers/paymentController');
 const { protect, adminOnly } = require('../middleware/auth');
+const { ipnLimiter, paymentVerifyLimiter, adminLimiter } = require('../middleware/rateLimit');
 
 // ──────────────────────────────────────────────────────────────
 //  POST /api/payments/checkout
@@ -15,9 +16,11 @@ router.post('/checkout', protect, payments.initializeCheckout);
 //  GET /api/payments/ipn-listener
 //  Public — called by Pesapal's servers with query params
 //  OrderTrackingId & OrderMerchantReference.
-//  No auth required. Returns 200 to confirm receipt.
+//  Rate-limited to tolerate legitimate provider retries but
+//  prevent abuse. Primary security is server-side verification
+//  via Pesapal's getTransactionStatus API.
 // ──────────────────────────────────────────────────────────────
-router.get('/ipn-listener', payments.handlePesapalIPN);
+router.get('/ipn-listener', ipnLimiter, payments.handlePesapalIPN);
 
 // ──────────────────────────────────────────────────────────────
 //  GET /api/payments/callback
@@ -27,9 +30,12 @@ router.get('/callback', payments.paymentCallback);
 
 // ──────────────────────────────────────────────────────────────
 //  GET /api/payments/verify-subscription
-//  Public — used for polling subscription status.
+//  Authenticated — requires valid JWT. Looks up the subscription
+//  by reference, verifies it belongs to the authenticated user,
+//  and returns the subscription status. Never exposes another
+//  user's subscription data.
 // ──────────────────────────────────────────────────────────────
-router.get('/verify-subscription', payments.verifySubscriptionPayment);
+router.get('/verify-subscription', protect, paymentVerifyLimiter, payments.verifySubscriptionPayment);
 
 // ──────────────────────────────────────────────────────────────
 //  POST /api/payments/refund

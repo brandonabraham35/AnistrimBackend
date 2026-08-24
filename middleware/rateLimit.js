@@ -164,6 +164,56 @@ const proxyLimiter = rateLimit({
   handler,
 });
 
+// ── Payment IPN limiter ──────────────────────────────────────
+// Pesapal may retry IPN callbacks. 20 / 5 min per IP tolerates
+// legitimate retries while preventing abuse. Primary security is
+// server-side transaction verification via Pesapal's API.
+const IPN_WINDOW_MS = 5 * 60 * 1000;
+const IPN_MAX_REQUESTS = 20;
+const ipnLimiter = rateLimit({
+  windowMs: IPN_WINDOW_MS,
+  max: IPN_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler,
+});
+
+// ── Payment verify-subscription limiter ─────────────────────
+// Authenticated users polling their own subscription status.
+// 30 / min per user is generous for normal polling while
+// preventing enumeration.
+const PAYMENT_VERIFY_WINDOW_MS = 60 * 1000;
+const PAYMENT_VERIFY_MAX_REQUESTS = 30;
+const paymentVerifyLimiter = rateLimit({
+  windowMs: PAYMENT_VERIFY_WINDOW_MS,
+  max: PAYMENT_VERIFY_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'payment-verify:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
+// ── Admin endpoint limiter ──────────────────────────────────
+// Stricter per-admin rate limit. 60 / min per admin user is
+// generous for dashboard operations while preventing abuse from
+// a compromised admin credential.
+const ADMIN_WINDOW_MS = 60 * 1000;
+const ADMIN_MAX_REQUESTS = 60;
+const adminLimiter = rateLimit({
+  windowMs: ADMIN_WINDOW_MS,
+  max: ADMIN_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'admin:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
 module.exports = {
   loginLimiter,
   otpLimiter,
@@ -176,4 +226,7 @@ module.exports = {
   streamAuthorizeLimiter,
   streamResolveLimiter,
   proxyLimiter,
+  ipnLimiter,
+  paymentVerifyLimiter,
+  adminLimiter,
 };

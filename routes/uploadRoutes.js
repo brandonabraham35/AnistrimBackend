@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 
 const auth = require('../middleware/auth');
+const { protect, adminOnly } = auth;
 const {
   handleImageUpload,
   hasCloudinaryConfig,
@@ -30,29 +31,6 @@ const videoUpload = multer({
   }),
   limits: { fileSize: 1024 * 1024 * 1024 },
   fileFilter: (_req, file, callback) => callback(null, /^video\/(mp4|quicktime|x-matroska|webm)$/.test(file.mimetype)),
-});
-
-const protect = auth.protect || auth.auth || auth.authenticate;
-
-if (typeof protect !== 'function') {
-  throw new Error('Upload route needs an auth middleware export named protect, auth, or authenticate.');
-}
-
-const adminOnly = auth.adminOnly || auth.admin || ((req, res, next) => {
-  const user = req.user || {};
-  const role = String(user.role || user.user_role || user.type || '').toLowerCase();
-  const isAdmin =
-    user.isAdmin === true || user.is_admin === true || user.admin === true ||
-    user.isAdmin === 1 || user.is_admin === 1 || user.admin === 1 ||
-    role === 'admin' || role === 'administrator';
-
-  if (isAdmin) return next();
-
-  return res.status(403).json({
-    success: false,
-    message: 'Admin access required.',
-    code: 'ADMIN_REQUIRED',
-  });
 });
 
 function uploadTo(folderKey) {

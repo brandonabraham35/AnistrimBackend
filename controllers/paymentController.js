@@ -217,80 +217,133 @@ exports.initializeCheckout = async (req, res) => {
 //  GET /api/payments/ipn-listener
 //  Public webhook called by Pesapal servers.
 //  Pesapal sends query params: OrderTrackingId, OrderMerchantReference
-//  We verify the status and update subscription + user record.
-//  Prompt 3: idempotent on order_tracking_id, writes state/ends_at/plan_id,
-//  logs payment_events, handles refund/cancellation.
+//
+//  SECURITY:
+//  • Pesapal does NOT provide an HMAC/webhook signature.
+//  • Primary verification is via Pesapal's getTransactionStatus API
+//    (server-side, not client-trusted).
+//  • Amount and currency are verified against the plan.
+//  • Merchant reference is verified against the subscription.
+//  • Completed payments are never downgraded.
+//  • Idempotent — replayed IPNs are safe.
+//  • Rate-limited (see ipnLimiter in middleware/rateLimit.js).
 // ──────────────────────────────────────────────────────────────
 exports.handlePesapalIPN = async (req, res) => {
   const { OrderTrackingId, OrderMerchantReference } = req.query;
 
-  console.log(
-    `🔔 IPN received: trackingId=${OrderTrackingId}, ref=${OrderMerchantReference}`
-  );
+  // Always return 200 to acknowledge receipt to Pesapal.
+  const ack = () => sendSuccess(res, { status: 200 });
 
   if (!OrderTrackingId || !OrderMerchantReference) {
-    console.error('❌ IPN missing required params');
-    return sendSuccess(res, { status: 200 }); // Return 200 to acknowledge
+    console.warn('[IPN] Missing required params');
+    return ack();
   }
 
   try {
     // 1. Get Pesapal OAuth token
     const token = await pesapal.getToken();
 
-    // 2. Query transaction status from Pesapal
+    // 2. Query transaction status from Pesapal (authoritative source)
     const txnStatus = await pesapal.getTransactionStatus(token, OrderTrackingId);
 
-    // 3. Find the subscription by reference (idempotent — do NOT filter on
-    //    status='PENDING' so a legitimate Pesapal retry finds the row).
+    // 3. Verify the transaction exists in Pesapal's system
+    if (!txnStatus || !txnStatus.status) {
+      console.warn(`[IPN] Invalid transaction status from Pesapal for trackingId=${OrderTrackingId}`);
+      return ack();
+    }
+
+    // 4. Verify merchant_reference matches what we expect
+    if (txnStatus.merchant_reference && txnStatus.merchant_reference !== OrderMerchantReference) {
+      console.warn(
+        `[IPN] Merchant reference mismatch: expected=${OrderMerchantReference}, ` +
+        `got=${txnStatus.merchant_reference}`
+      );
+      return ack();
+    }
+
+    // 5. Find the subscription by reference
     const [subs] = await db.query(
-      `SELECT * FROM subscriptions
-       WHERE reference = ?`,
+      `SELECT * FROM subscriptions WHERE reference = ?`,
       [OrderMerchantReference]
     );
 
     if (!subs.length) {
-      console.warn(
-        `⚠️ IPN: No subscription found for ref=${OrderMerchantReference}`
-      );
-      return sendSuccess(res, { status: 200 });
+      console.warn(`[IPN] No subscription found for ref=${OrderMerchantReference}`);
+      return ack();
     }
 
     const subscription = subs[0];
 
-    // 4. Check if payment is completed
-    if (!pesapal.isPaymentCompleted(txnStatus.status)) {
-      console.log(
-        `❌ IPN: Payment not completed (status: ${txnStatus.status}). Marking as FAILED.`
-      );
-      await db.query(
-        `UPDATE subscriptions
-         SET status = 'FAILED', state = 'expired', payment_method = ?, order_tracking_id = ?
-         WHERE id = ?`,
-        [txnStatus.payment_method || null, OrderTrackingId, subscription.id]
-      );
-      await logPaymentEvent(subscription.id, OrderMerchantReference, 'failed', {
-        status: txnStatus.status,
-        order_tracking_id: OrderTrackingId,
-      });
-      return sendSuccess(res, { status: 200 });
+    // 6. Verify amount if available from Pesapal
+    if (txnStatus.amount !== undefined && txnStatus.amount !== null) {
+      const txnAmount = Number(txnStatus.amount);
+      const subAmount = Number(subscription.amount);
+      if (subAmount > 0 && Math.abs(txnAmount - subAmount) > 1) {
+        // Allow 1-unit tolerance for currency rounding
+        console.warn(
+          `[IPN] Amount mismatch: expected=${subAmount}, got=${txnAmount} ` +
+          `for ref=${OrderMerchantReference}`
+        );
+        return ack();
+      }
     }
 
-    // 5. Payment is COMPLETED — resolve plan + compute expiry.
+    // 7. Verify currency if available from Pesapal
+    if (txnStatus.currency && subscription.currency) {
+      const txnCurrency = String(txnStatus.currency).toUpperCase();
+      const subCurrency = String(subscription.currency).toUpperCase();
+      if (txnCurrency !== subCurrency) {
+        console.warn(
+          `[IPN] Currency mismatch: expected=${subCurrency}, got=${txnCurrency} ` +
+          `for ref=${OrderMerchantReference}`
+        );
+        return ack();
+      }
+    }
+
+    // 8. Check if payment is completed
+    if (!pesapal.isPaymentCompleted(txnStatus.status)) {
+      console.log(`[IPN] Payment not completed (status: ${txnStatus.status}).`);
+
+      // Only update to FAILED if the subscription is still PENDING.
+      // Never downgrade an already completed payment.
+      if (subscription.status === 'PENDING' || subscription.status === 'pending') {
+        await db.query(
+          `UPDATE subscriptions
+           SET status = 'FAILED', state = 'expired', payment_method = ?, order_tracking_id = ?
+           WHERE id = ? AND status = 'PENDING'`,
+          [txnStatus.payment_method || null, OrderTrackingId, subscription.id]
+        );
+        await logPaymentEvent(subscription.id, OrderMerchantReference, 'failed', {
+          status: txnStatus.status,
+          order_tracking_id: OrderTrackingId,
+        });
+      } else {
+        console.log(`[IPN] Skipping FAILED update — subscription in state: ${subscription.status}`);
+      }
+      return ack();
+    }
+
+    // 9. Payment is COMPLETED — resolve plan + compute expiry.
+    //    Never downgrade an already completed payment.
+    if (subscription.status === 'COMPLETED') {
+      console.log(`[IPN] Duplicate IPN — payment already completed for ref=${OrderMerchantReference}`);
+      return ack();
+    }
+
     const planRow = await resolvePlan(subscription.plan);
     if (!planRow) {
-      console.error(`❌ IPN: Plan not found for key "${subscription.plan}"`);
-      return sendSuccess(res, { status: 200 });
+      console.error(`[IPN] Plan not found for key "${subscription.plan}"`);
+      return ack();
     }
     const startsAt = new Date();
     const endsAt = planEndsAt(planRow);
 
-    console.log(
-      `✅ IPN: Payment COMPLETED for user ${subscription.user_id}. Premium until ${endsAt}`
-    );
+    console.log(`[IPN] Payment COMPLETED for user ${subscription.user_id}. Premium until ${endsAt}`);
 
-    // 6. Update subscription record — idempotent on order_tracking_id.
-    //    Prompt 3: write state='active', starts_at, ends_at, plan_id.
-    await db.query(
+    // 10. Atomic update with idempotency guard
+    //     Only update if status is not already COMPLETED.
+    const [updateResult] = await db.query(
       `UPDATE subscriptions
        SET status = 'COMPLETED',
            state = 'active',
@@ -300,7 +353,7 @@ exports.handlePesapalIPN = async (req, res) => {
            starts_at = ?,
            ends_at = ?,
            plan_id = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status != 'COMPLETED'`,
       [
         txnStatus.payment_method || null,
         OrderTrackingId,
@@ -311,7 +364,12 @@ exports.handlePesapalIPN = async (req, res) => {
       ]
     );
 
-    // 7. Refresh the derived users.is_premium / premium_expires_at cache.
+    if (updateResult.affectedRows === 0) {
+      console.log(`[IPN] Concurrent/duplicate — subscription already completed for ref=${OrderMerchantReference}`);
+      return ack();
+    }
+
+    // 11. Refresh the derived users.is_premium / premium_expires_at cache.
     await refreshUserPremiumCache(subscription.user_id);
 
     await logPaymentEvent(subscription.id, OrderMerchantReference, 'success', {
@@ -322,15 +380,13 @@ exports.handlePesapalIPN = async (req, res) => {
       order_tracking_id: OrderTrackingId,
     });
 
-    console.log(
-      `🎉 Premium granted to user ${subscription.user_id} until ${endsAt}`
-    );
+    console.log(`[IPN] Premium granted to user ${subscription.user_id} until ${endsAt}`);
 
-    return sendSuccess(res, { status: 200 });
+    return ack();
   } catch (err) {
-    console.error('❌ IPN processing error:', err.message);
+    console.error('[IPN] Processing error:', err.message);
     // Always return 200 so Pesapal knows we received it
-    return sendSuccess(res, { status: 200 });
+    return ack();
   }
 };
 
@@ -454,37 +510,36 @@ exports.paymentCallback = async (req, res) => {
 };
 
 // GET /api/payments/verify-subscription
+// Requires authentication (protect middleware in route).
+// Verifies the subscription reference belongs to the authenticated user.
 exports.verifySubscriptionPayment = async (req, res) => {
   const { reference } = req.query;
+  const userId = req.userId ?? req.user?.id;
+
   if (!reference) {
     return res.status(400).json({ message: 'Transaction reference (reference) is required.' });
   }
 
   try {
     const [rows] = await db.query(
-      `SELECT s.status, s.state, s.plan, s.amount, s.currency, s.ends_at, s.paid_at,
-              u.is_premium, u.name, u.email
-       FROM subscriptions s
-       JOIN users u ON s.user_id = u.id
-       WHERE s.reference = ?`,
-      [reference]
+      `SELECT status, state, plan, amount, currency, ends_at, paid_at
+       FROM subscriptions
+       WHERE reference = ? AND user_id = ?`,
+      [reference, userId]
     );
 
     if (!rows.length) {
+      // Neutral — never reveal whether the reference exists or belongs to another user.
       return res.status(404).json({ message: 'Subscription not found.' });
     }
 
     const sub = rows[0];
     return sendSuccess(res, {
-      status: sub.status,           // 'PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED'
-      state: sub.state,             // 'pending', 'active', 'expired', 'refunded', 'cancelled'
+      status: sub.status,
+      state: sub.state,
       plan: sub.plan,
       amount: sub.amount,
       currency: sub.currency,
-      isPremium: !!sub.is_premium,
-      is_premium: !!sub.is_premium,
-      name: sub.name,
-      email: sub.email,
       endsAt: sub.ends_at,
       ends_at: sub.ends_at,
       paidAt: sub.paid_at,
