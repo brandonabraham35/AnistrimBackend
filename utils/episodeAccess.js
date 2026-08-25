@@ -1,4 +1,4 @@
-// utils/episodeAccess.js — P2/P7: server-side episode access authority.
+﻿// utils/episodeAccess.js — P2/P7: server-side episode access authority.
 //
 // Effective access is computed HERE (application layer) from the schema added by
 // migrations_v28_premium_access.sql. The single source of truth for the
@@ -102,6 +102,16 @@ async function getEntitlement(userId) {
   if (userId === undefined || userId === null) {
     return { isPremium: false, tier: null, planCode: null, expiresAt: null, state: null, source: null, hasExpiredSubscription: false };
   }
+
+  // Admin users always have premium access (authoritative from user_roles table).
+  try {
+    const { hasRole } = require('./hasRole');
+    const isAdmin = await hasRole(userId, 'admin');
+    if (isAdmin) {
+      return { isPremium: true, tier: 'admin', planCode: null, expiresAt: null, state: 'active', source: 'admin', hasExpiredSubscription: false };
+    }
+  } catch (_) { /* non-fatal — fall through to subscription check */ }
+
   try {
     // Prefer the enriched subscriptions read path (plan joined).
     // Prompt 4: ORDER BY s.ends_at IS NULL DESC puts lifetime (NULL ends_at)

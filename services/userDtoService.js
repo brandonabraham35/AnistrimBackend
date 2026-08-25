@@ -47,6 +47,15 @@ async function buildUserDto(user) {
  * or null when not premium.
  */
 async function resolveEntitlement(user) {
+  // Admin users always have premium access.
+  try {
+    const { hasRole } = require('../utils/hasRole');
+    const roles = await hasRole(user.id, 'admin');
+    if (roles) {
+      return { isPremium: true, plan: 'admin', expiresAt: null, source: 'admin' };
+    }
+  } catch (_) { /* non-fatal — fall through */ }
+
   // 1. Active subscription (authoritative).
   try {
     const [subs] = await pool.query(
