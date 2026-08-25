@@ -1,0 +1,128 @@
+OLD source files: 669
+NEW source files: 598
+
+========== MISSING FROM NEW (source files) ==========
+
+  898f46c22e82b7c2df3b21f3653b3e5db64f272b
+  MyFiles.zip
+  Web/js/ui.js.bak
+  android/.idea/caches/deviceStreaming.xml
+  android/.idea/gradle.xml
+  android/.idea/vcs.xml
+  android/.idea/workspace.xml
+  android/app/build/outputs/logs/manifest-merger-debug-report.txt
+  android/app/build/outputs/logs/manifest-merger-release-report.txt
+  android/app/build/outputs/sdk-dependencies/release/sdkDependencies.txt
+  android/app/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin
+  android/app/build/tmp/compileReleaseJavaWithJavac/previous-compilation-data.bin
+  android/app/debug/app-debug.apk
+  android/app/release/app-release.apk
+  android/app/src/main/assets/capacitor.config.json
+  android/app/src/main/assets/capacitor.plugins.json
+  android/app/src/main/assets/public/account-status.html
+  android/app/src/main/assets/public/admin.html
+  android/app/src/main/assets/public/browse.html
+  android/app/src/main/assets/public/browse.js
+  android/app/src/main/assets/public/config.js
+  android/app/src/main/assets/public/cordova.js
+  android/app/src/main/assets/public/cordova_plugins.js
+  android/app/src/main/assets/public/css/watch.css
+  android/app/src/main/assets/public/details.html
+  android/app/src/main/assets/public/details.js
+  android/app/src/main/assets/public/forgot-password.html
+  android/app/src/main/assets/public/google-auth-handler.js
+  android/app/src/main/assets/public/google-callback.html
+  android/app/src/main/assets/public/index.html
+  android/app/src/main/assets/public/js/api.js
+  android/app/src/main/assets/public/js/avatar.js
+  android/app/src/main/assets/public/js/navigation.js
+  android/app/src/main/assets/public/js/player-controls.js
+  android/app/src/main/assets/public/js/player/ads.js
+  android/app/src/main/assets/public/js/player/core.js
+  android/app/src/main/assets/public/js/player/gestures.js
+  android/app/src/main/assets/public/js/player/markers.js
+  android/app/src/main/assets/public/js/player/resilience.js
+  android/app/src/main/assets/public/js/progress.js
+  android/app/src/main/assets/public/js/session.js
+  android/app/src/main/assets/public/login.html
+  android/app/src/main/assets/public/login.js
+  android/app/src/main/assets/public/mobile-native.css
+  android/app/src/main/assets/public/onboarding.html
+  android/app/src/main/assets/public/onboarding.js
+  android/app/src/main/assets/public/payment-callback.html
+  android/app/src/main/assets/public/profile.html
+  android/app/src/main/assets/public/profile.js
+  android/app/src/main/assets/public/reset-password.html
+  android/app/src/main/assets/public/scrpt.js
+  android/app/src/main/assets/public/signup.html
+  android/app/src/main/assets/public/signup.js
+  android/app/src/main/assets/public/src/utils/uploadImage-frontend-helper.js
+  android/app/src/main/assets/public/style.css
+  android/app/src/main/assets/public/upgrade.html
+  android/app/src/main/assets/public/upgrade.js
+  android/app/src/main/assets/public/verify-otp.html
+  android/app/src/main/assets/public/watch.html
+  android/app/src/main/assets/public/watch.js
+  android/app/src/main/assets/public/watchlist.html
+  android/app/src/main/assets/public/watchlist.js
+  android/app/src/main/res/xml/config.xml
+  android/build/reports/problems/problems-report.html
+  android/capacitor-cordova-android-plugins/build.gradle
+  android/capacitor-cordova-android-plugins/build/.transforms/dd55f24659fc50d05ad7be6bd1bfe588/results.bin
+  android/capacitor-cordova-android-plugins/build/.transforms/dd55f24659fc50d05ad7be6bd1bfe588/transformed/bundleLibRuntimeToDirDebug/desugar_graph.bin
+  android/capacitor-cordova-android-plugins/build/.transforms/e8a74a8682793e84eff487909968bd12/results.bin
+  android/capacitor-cordova-android-plugins/build/outputs/logs/manifest-merger-debug-report.txt
+  android/capacitor-cordova-android-plugins/cordova.variables.gradle
+  android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml
+  android/capacitor-cordova-android-plugins/src/main/java/.gitkeep
+  android/capacitor-cordova-android-plugins/src/main/res/.gitkeep
+  android/local.properties
+  ios/App/App/capacitor.config.json
+  ios/App/App/config.xml
+  scope-fix-diff.md
+
+========== NEW-ONLY FILES ==========
+
+  audit_compare.py
+  audit_counts.txt
+  audit_summary.txt
+  focused_audit.py
+  new_inventory.txt
+  old_inventory.txt
+
+========== WEB FOLDER FILES ==========
+
+OLD Web files:
+  Web/PRODUCTION_READINESS_REPORT.md [PRESENT]
+  Web/README.md [PRESENT]
+  Web/VERCEL_AUDIT.md [PRESENT]
+  Web/css/styles.css [PRESENT]
+  Web/index.html [PRESENT]
+  Web/js/api.js [PRESENT]
+  Web/js/app.js [PRESENT]
+  Web/js/auth.js [PRESENT]
+  Web/js/config.js [PRESENT]
+  Web/js/player.js [PRESENT]
+  Web/js/router.js [PRESENT]
+  Web/js/ui.js [PRESENT]
+  Web/js/ui.js.bak [MISSING]
+  Web/js/vendor/hls.min.js [PRESENT]
+  Web/js/vendor/shared/session.js [PRESENT]
+  Web/vercel.json [PRESENT]
+
+NEW Web files:
+  Web/PRODUCTION_READINESS_REPORT.md [PRESENT]
+  Web/README.md [PRESENT]
+  Web/VERCEL_AUDIT.md [PRESENT]
+  Web/css/styles.css [PRESENT]
+  Web/index.html [PRESENT]
+  Web/js/api.js [PRESENT]
+  Web/js/app.js [PRESENT]
+  Web/js/auth.js [PRESENT]
+  Web/js/config.js [PRESENT]
+  Web/js/player.js [PRESENT]
+  Web/js/router.js [PRESENT]
+  Web/js/ui.js [PRESENT]
+  Web/js/vendor/hls.min.js [PRESENT]
+  Web/js/vendor/shared/session.js [PRESENT]
+  Web/vercel.json [PRESENT]

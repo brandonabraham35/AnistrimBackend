@@ -314,6 +314,7 @@
     } catch (e) {
       wrap.innerHTML = '<div class="empty">Could not load home sections. ' + retryButton('loadHome()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
     }
+  }
 
 
   // ── Ranking sidebar ──────────────────────────────────────
@@ -362,7 +363,7 @@
     }
     renderRankItems(tab);
   }
-  }  // ── Auth pages ──────────────────────────────────────────
+  // ── Auth pages ──────────────────────────────────────────
   function authShell(title) {
     return '<div class="page auth-page"><div class="auth-card"><h1>' + title + '</h1><div id="auth-error" class="form-error"></div>';
   }
@@ -1396,6 +1397,7 @@
     },
     loadWatchlist: loadWatchlist, loadHistory: loadHistory, clearHistory: clearHistory,
     saveProfile: saveProfile, uploadAvatar: uploadAvatar, doAvatarUpload: doAvatarUpload,
+    switchRankTab: switchRankTab,
     checkout: checkout, renderHeader: renderHeader,
   };
 
