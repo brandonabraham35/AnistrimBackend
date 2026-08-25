@@ -302,15 +302,27 @@ video.video-element{width:100%;height:100%;display:block;outline:none}
 
 /* ── 16. PROFILE ───────────────────────────────────────── */
 .profile-grid{display:grid;grid-template-columns:300px 1fr;gap:var(--space-8)}
-.profile-card{background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-lg);padding:var(--space-8);text-align:center;position:sticky;top:calc(var(--nav-height) + var(--space-4))}
-.profile-card h2{margin:var(--space-3) 0 var(--space-1);font-size:1.2rem}
-.profile-card .muted{color:var(--clr-text-muted);margin:0 0 14px;font-size:var(--font-size-sm)}
-.avatar-wrap{width:120px;height:120px;margin:0 auto var(--space-3);border-radius:50%;overflow:hidden;border:3px solid var(--clr-accent);box-shadow:0 0 0 3px var(--clr-bg),0 0 0 6px var(--clr-accent);transition:box-shadow var(--transition-fast)}.avatar-wrap:hover{box-shadow:0 0 0 3px var(--clr-bg),0 0 0 6px var(--clr-accent-hover)}
+/* Identity card */
+.profile-card{background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-lg);padding:var(--space-8) var(--space-6);text-align:center;position:sticky;top:calc(var(--nav-height) + var(--space-4));display:flex;flex-direction:column;align-items:center}
+/* Avatar with double ring */
+.avatar-wrap{position:relative;margin:0 auto var(--space-4);width:130px;height:130px;border-radius:50%;padding:4px;background:linear-gradient(135deg,var(--clr-accent),rgba(139,92,246,.3));box-shadow:0 0 24px rgba(139,92,246,.25)}
+.avatar-ring{width:100%;height:100%;border-radius:50%;overflow:hidden;border:2px solid var(--clr-bg);background:var(--clr-card2)}
 .avatar{width:100%;height:100%;object-fit:cover;display:block}
-.profile-meta{margin-bottom:var(--space-4)}
-.profile-meta .badge-premium{display:inline-flex;align-items:center;gap:4px;padding:4px 14px;font-size:var(--font-size-xs)}
-.profile-card .btn-ghost{font-size:var(--font-size-sm);padding:8px 14px;margin-bottom:var(--space-2);border-radius:var(--radius-sm);border:1px solid transparent;color:var(--clr-text-secondary);background:var(--clr-card2);transition:all var(--transition-fast)}.profile-card .btn-ghost:hover{color:var(--clr-text);background:var(--clr-surface-hover);border-color:var(--clr-border)}
-.profile-card .btn-outline{font-size:var(--font-size-sm);padding:8px 14px;border-radius:var(--radius-sm);border:1px solid var(--clr-border);color:var(--clr-text-secondary);background:transparent;transition:all var(--transition-fast)}.profile-card .btn-outline:hover{border-color:var(--clr-danger);color:var(--clr-danger);background:rgba(239,68,68,.06)}
+.avatar-wrap:hover{box-shadow:0 0 32px rgba(139,92,246,.4)}.avatar-wrap:hover .avatar-ring{border-color:transparent}
+/* Name and username */
+.profile-name{font-size:1.35rem;font-weight:var(--font-weight-bold);margin:0 0 2px;line-height:1.2}
+.profile-username{font-size:var(--font-size-sm);color:var(--clr-text-muted);margin:0 0 var(--space-1);font-weight:var(--font-weight-medium)}
+.profile-card .muted{color:var(--clr-text-muted);margin:0 0 var(--space-4);font-size:var(--font-size-sm)}
+/* Status badges */
+.profile-meta{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);margin-bottom:var(--space-5);width:100%}
+.badge-premium{display:inline-flex;align-items:center;gap:5px;padding:5px 16px;font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);background:linear-gradient(135deg,var(--clr-accent),#6d28d9);color:#fff;border-radius:var(--radius-full);box-shadow:0 0 12px rgba(139,92,246,.25);letter-spacing:.02em}
+.badge-admin{display:inline-flex;align-items:center;gap:5px;padding:5px 16px;font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);background:rgba(139,92,246,.12);color:var(--clr-accent);border:1px solid rgba(139,92,246,.25);border-radius:var(--radius-full);letter-spacing:.02em}
+.upgrade-btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);padding:8px 24px;font-size:var(--font-size-sm);font-weight:var(--font-weight-semibold);border-radius:var(--radius-full);border:1px solid var(--clr-accent);color:var(--clr-accent);background:transparent;transition:all var(--transition-fast);text-decoration:none}.upgrade-btn:hover{background:var(--clr-accent);color:#fff;box-shadow:var(--clr-accent-glow);transform:translateY(-1px)}
+/* Action buttons row */
+.profile-actions{display:flex;flex-direction:column;gap:var(--space-2);width:100%}
+.btn-profile{font-size:var(--font-size-sm);padding:9px 16px;border-radius:var(--radius-sm);transition:all var(--transition-fast);width:100%;text-align:center}
+.profile-card .btn-ghost.btn-profile{background:var(--clr-card2);border:1px solid transparent;color:var(--clr-text-secondary)}.profile-card .btn-ghost.btn-profile:hover{color:var(--clr-text);background:var(--clr-surface-hover);border-color:var(--clr-border)}
+.profile-card .btn-outline.btn-profile{border:1px solid var(--clr-border);color:var(--clr-text-secondary);background:transparent}.profile-card .btn-outline.btn-profile:hover{border-color:var(--clr-danger);color:var(--clr-danger);background:rgba(239,68,68,.06)}
 .profile-settings{display:flex;flex-direction:column;gap:var(--space-4)}
 .settings-card{background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-lg);padding:var(--space-6);text-align:left}
 .settings-group{margin-bottom:var(--space-2)}.settings-group:last-child{margin-bottom:0}

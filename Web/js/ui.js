@@ -1148,12 +1148,14 @@
     if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/profile' }); return ''; }
     var user = Auth.state.user;
     return '<div class="page"><div class="container"><div class="profile-grid">' +
-      '<div class="profile-card"><div class="avatar-wrap"><img id="profile-avatar" class="avatar" src="" alt="avatar"></div>' +
-      '<h2 id="profile-display-name">' + esc(user && (user.displayName || user.name)) + '</h2><p class="muted" id="profile-email">' + esc(user && user.email) + '</p>' +
-      '<div class="profile-meta">' + (Auth.state.isPremium ? '<span class="badge-premium">👑 Premium</span>' : '<a href="#/upgrade" class="btn-outline">Upgrade</a>') + '</div>' +
-      '<button class="btn-ghost btn-block" onclick="AniStrimUI.uploadAvatar()">Change Avatar</button>' +
+      '<div class="profile-card"><div class="avatar-wrap"><div class="avatar-ring"><img id="profile-avatar" class="avatar" src="" alt="avatar"></div></div>' +
+      '<h2 id="profile-display-name" class="profile-name">' + esc(user && (user.displayName || user.name)) + '</h2>' +
+      '<p class="profile-username" id="profile-username">' + (user && user.username ? '@' + esc(user.username) : '') + '</p>' +
+      '<p class="muted" id="profile-email">' + esc(user && user.email) + '</p>' +
+      '<div class="profile-meta">' + (Auth.state.isPremium ? '<span class="badge-premium">👑 Premium</span>' : '') + (Auth.state.isAdmin ? '<span class="badge-admin">🛡️ Admin</span>' : '') + (!Auth.state.isPremium && !Auth.state.isAdmin ? '<a href="#/upgrade" class="btn-outline upgrade-btn">Upgrade</a>' : '') + '</div>' +
+      '<div class="profile-actions"><button class="btn-ghost btn-profile" onclick="AniStrimUI.uploadAvatar()">Change Avatar</button>' +
       '<input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="AniStrimUI.doAvatarUpload(event)">' +
-      '<button class="btn-outline btn-block" onclick="AniStrimUI.logout()">Logout</button></div>' +
+      '<button class="btn-outline btn-profile logout-btn" onclick="AniStrimUI.logout()">Logout</button></div></div>' +
       '<div class="profile-settings">' +
       '<div class="settings-card"><div class="settings-group"><h3>Playback</h3><div class="settings-divider"></div>' +
       '<label class="toggle-row"><span class="toggle-label"><span class="toggle-label-text">Auto-skip intros</span><span class="toggle-desc">Automatically skip opening and ending sequences</span></span><span class="toggle-wrap"><input type="checkbox" id="pref-auto-skip" class="toggle-input"><span class="toggle-track"></span></span></label>' +
