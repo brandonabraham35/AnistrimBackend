@@ -290,12 +290,12 @@
         for (var i = 0; i < rows.length; i++) {
           var r = rows[i];
           var pct = (r.progressSeconds && r.durationSec && r.durationSec > 0) ? Math.min(100, Math.round(r.progressSeconds / r.durationSec * 100)) : 0;
-          var img = r.thumbnailUrl || r.coverImage || (r.anime && r.anime.cover_image) || '';
+          var img = r.poster || r.thumbnailUrl || r.coverImage || (r.anime && r.anime.cover_image) || '';
           var anId = r.animeId || (r.anime && r.anime.id) || '';
           var epNum = r.episodeNumber || 1;
           var epId = r.episodeId || '';
           h += '<div class="cw-card" onclick="AniStrimUI.watch(' + anId + ',' + epNum + ',\'' + esc(epId) + '\')">' +
-            '<div class="cw-card-img"><img src="' + (img || fallback(r.title)) + '" alt="" loading="lazy" onerror="this.style.background=\'var(--clr-card2)\'">' +
+            '<div class="cw-card-img"><img src="' + (img || fallback(r.title)) + '" alt="' + esc(r.title || (r.anime && r.anime.title) || 'Continue watching') + '" loading="lazy" onerror="this.style.background=\'var(--clr-card2)\'">' +
             '<div class="cw-progress"><div style="width:' + pct + '%"></div></div>' +
             '<span class="cw-ep">EP ' + epNum + '</span></div>' +
             '<div class="cw-card-title">' + esc(r.title || (r.anime && r.anime.title) || '') + '</div>' +
