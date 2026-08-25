@@ -160,6 +160,30 @@ ul,ol{list-style:none}
 .btn-block{width:100%}
 .btn-primary:active,.btn-outline:active,.btn-ghost:active{transform:scale(.98)}
 
+/* ── 8.5 ANIME DETAILS ──────────────────────────────── */
+.anime-hero{position:relative;min-height:380px;display:flex;align-items:flex-end;padding:var(--space-12) 0 var(--space-6);background-size:cover;background-position:center}
+.anime-hero-inner{max-width:var(--container-max);margin:0 auto;padding:0 var(--space-6);width:100%;display:flex;gap:var(--space-8);align-items:flex-end;position:relative;z-index:1}
+.anime-poster{width:180px;flex-shrink:0;border-radius:var(--radius-md);overflow:hidden;aspect-ratio:2/3;background:var(--clr-card2);box-shadow:var(--shadow-lg)}
+.anime-poster img{width:100%;height:100%;object-fit:cover}
+.anime-info{flex:1;padding-bottom:var(--space-2)}
+.anime-info h1{font-size:var(--font-size-3xl);font-weight:var(--font-weight-extrabold);margin:0 0 var(--space-2)}
+.anime-info .meta-line{font-size:var(--font-size-sm);color:var(--clr-text-muted);margin-bottom:var(--space-3)}
+.anime-info .genres{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3)}
+.genre-pill{background:var(--clr-accent-muted);color:var(--clr-accent);font-size:var(--font-size-xs);font-weight:var(--font-weight-semibold);padding:4px 10px;border-radius:var(--radius-full);border:1px solid rgba(139,92,246,.2)}
+.anime-info .desc{font-size:var(--font-size);color:var(--clr-text-secondary);line-height:1.7;margin:0 0 var(--space-4);max-width:700px}
+.anime-info .hero-actions{display:flex;gap:var(--space-3);flex-wrap:wrap}
+.episodes-section{margin:var(--space-8) 0}
+.episodes-section h2{font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);margin:0 0 var(--space-4)}
+.episode-grid{display:flex;flex-direction:column;gap:6px}
+.episode-item{display:flex;align-items:center;gap:var(--space-3);padding:12px 16px;background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-sm);cursor:pointer;transition:all var(--transition-fast);text-align:left;width:100%}
+.episode-item:hover{border-color:var(--clr-accent);background:var(--clr-surface-hover)}
+.episode-item.active{border-color:var(--clr-accent);background:var(--clr-accent-muted)}
+.episode-item.locked{opacity:.4;cursor:default}
+.ep-num{font-weight:var(--font-weight-bold);font-size:var(--font-size-sm);color:var(--clr-text-muted);min-width:28px}
+.ep-title{flex:1;font-size:var(--font-size);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-lock{font-size:.8rem;flex-shrink:0}
+.recommend-section{margin:var(--space-8) 0 var(--space-12)}
+@media(max-width:768px){.anime-hero{min-height:auto;padding:var(--space-8) 0 var(--space-4)}.anime-hero-inner{flex-direction:column;align-items:flex-start;gap:var(--space-4)}.anime-poster{width:120px}.anime-info h1{font-size:var(--font-size-2xl)}.anime-info .desc{-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}}
 /* ── 8. HERO ───────────────────────────────────────────── */
 .hero{min-height:420px;background:linear-gradient(135deg,var(--clr-surface) 0%,var(--clr-bg2) 60%,var(--clr-bg) 100%);background-size:cover;background-position:center;display:flex;align-items:center;padding:var(--space-12) var(--space-8);position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,transparent 0%,rgba(8,8,14,.6) 100%);pointer-events:none}
@@ -211,6 +235,28 @@ ul,ol{list-style:none}
 .auth-switch{text-align:center;margin-top:18px;font-size:var(--font-size-sm);color:var(--clr-text-secondary)}
 .auth-switch a{color:var(--clr-accent);font-weight:var(--font-weight-semibold)}
 
+/* ── 12.5 WATCH PAGE ───────────────────────────────── */
+.watch-page{padding:0}
+.watch-container{max-width:var(--container-max);margin:0 auto;padding:var(--space-4) var(--space-6)}
+.player-stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:var(--radius-md);overflow:hidden;margin-bottom:var(--space-4)}
+video.video-element{width:100%;height:100%;display:block;outline:none}
+.player-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--clr-text-muted);font-size:var(--font-size);background:rgba(0,0,0,.7);z-index:5}
+.player-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:var(--space-3);color:var(--clr-danger);font-size:var(--font-size);background:rgba(0,0,0,.8);z-index:5;padding:var(--space-6);text-align:center}
+.skip-actions{position:absolute;bottom:70px;right:var(--space-4);z-index:10;display:flex;gap:var(--space-2)}
+.autoplay-next{position:absolute;bottom:70px;right:var(--space-4);z-index:10;background:rgba(0,0,0,.85);border:1px solid var(--clr-border);border-radius:var(--radius-sm);padding:var(--space-3) var(--space-4);display:flex;flex-direction:column;gap:var(--space-2);min-width:200px;text-align:center}
+.autoplay-next span{font-size:var(--font-size-sm);color:var(--clr-text-secondary)}
+.autoplay-next .btn-primary{width:100%}
+.watch-meta{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-3);margin:0 0 var(--space-4)}
+.watch-meta h2{font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);margin:0}
+.player-options{display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap}
+.player-options label{font-size:var(--font-size-sm);color:var(--clr-text-secondary);display:flex;align-items:center;gap:6px}
+.player-options select{font-size:var(--font-size-sm);padding:4px 8px;min-width:80px}
+.watch-nav{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin:0 0 var(--space-3)}
+.season-nav{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin:0 0 var(--space-4)}
+.season-nav select{margin-left:6px}
+.episode-list{margin:0 0 var(--space-6)}
+.watch-back{margin:var(--space-4) 0 var(--space-8)}
+@media(max-width:768px){.watch-container{padding:var(--space-2) var(--space-4)}.player-stage{aspect-ratio:16/9;border-radius:var(--radius-sm)}.watch-meta{flex-direction:column;align-items:flex-start}.player-options{width:100%}}
 /* ── 12. WATCH / EPISODE ──────────────────────────────── */
 .watch-nav,.season-nav{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin-top:var(--space-3)}
 .season-nav select{margin-left:6px}
