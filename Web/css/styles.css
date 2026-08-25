@@ -257,18 +257,6 @@ video.video-element{width:100%;height:100%;display:block;outline:none}
 .episode-list{margin:0 0 var(--space-6)}
 .watch-back{margin:var(--space-4) 0 var(--space-8)}
 @media(max-width:768px){.watch-container{padding:var(--space-2) var(--space-4)}.player-stage{aspect-ratio:16/9;border-radius:var(--radius-sm)}.watch-meta{flex-direction:column;align-items:flex-start}.player-options{width:100%}}
-/* ── 12. WATCH / EPISODE ──────────────────────────────── */
-.watch-nav,.season-nav{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin-top:var(--space-3)}
-.season-nav select{margin-left:6px}
-.watch-meta{margin:var(--space-5) 0 0}
-.watch-meta h2{font-size:1.3rem;margin:0}
-.episode-list{margin-top:var(--space-5)}
-.watch-back{margin-top:var(--space-5)}
-.episode-item{padding:8px 14px;background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-sm);cursor:pointer;transition:all var(--transition-fast);display:inline-block;margin:4px}
-.episode-item:hover{border-color:var(--clr-accent)}
-.episode-item.active{border-color:var(--clr-accent);background:var(--clr-accent);color:#fff}
-.episode-item.locked{opacity:.35;cursor:default}
-
 /* ── 13. HISTORY / WATCHLIST ────────────────────────────── */
 .history-list{display:flex;flex-direction:column;gap:var(--space-2)}
 .history-entry{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:10px;padding:14px 18px;transition:border-color var(--transition-fast)}
@@ -388,36 +376,4 @@ video.video-element{width:100%;height:100%;display:block;outline:none}
 @media(max-width:1024px){.home-content{grid-template-columns:1fr}.home-sidebar{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-top:var(--space-3)}}
 @media(max-width:768px){.home-sidebar{grid-template-columns:1fr}}
 
-/* ── 20. RESPONSIVE ────────────────────────────────────── */
-@media(max-width:1024px){
-  .hero h1{font-size:var(--font-size-3xl)}
-  .anime-hero-inner{flex-direction:column;align-items:flex-start}
-  .profile-grid{grid-template-columns:1fr}
-  .plans{max-width:100%;gap:var(--space-4)}
-}
-@media(max-width:768px){
-  .container{padding:0 var(--space-4)}
-  .nav-inner{padding:0 var(--space-4);gap:var(--space-3)}
-  .nav-links a{display:none}
-  .mobile-menu-btn{display:block}
-  .hero{min-height:300px;padding:var(--space-8) var(--space-5)}
-  .hero h1{font-size:1.8rem}
-  .hero p{font-size:var(--font-size)}
-  .anime-grid{gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
-  .plans{grid-template-columns:1fr;max-width:400px;margin-left:auto;margin-right:auto}
-  .page-toolbar{flex-direction:column;align-items:stretch}
-  .page-toolbar select,.toolbar-controls input,.search-bar input{min-width:auto}
-  .search-bar{max-width:none}
-  .auth-card{padding:var(--space-6) 18px}
-  .profile-grid{grid-template-columns:1fr}
-  .footer-inner{flex-direction:column;gap:var(--space-2);text-align:center}
-}
-@media(max-width:480px){
-  .anime-grid{gap:8px;grid-template-columns:repeat(2,1fr)}
-  .hero{min-height:240px;padding:var(--space-6) var(--space-4)}
-  .hero h1{font-size:var(--font-size-2xl)}
-  .hero p{display:none}
-  .history-entry{flex-direction:column;align-items:stretch;gap:var(--space-2)}
-  .plan{padding:var(--space-6) var(--space-4)}
-  .price{font-size:1.6rem}
-}
+/* ── 20. RESPONSIVE ────────────────────────────────────── */@media(max-width:1024px){.hero h1{font-size:var(--font-size-3xl)}.anime-hero-inner{flex-direction:column;align-items:flex-start}.profile-grid{grid-template-columns:1fr}.plans{max-width:100%;gap:var(--space-4)}}@media(max-width:768px){.container{padding:0 var(--space-4)}.nav-inner{padding:0 var(--space-4);gap:var(--space-3)}.nav-links a,.nav-search{display:none}.mobile-menu-btn{display:block}.hero{min-height:300px;padding:var(--space-8) var(--space-5)}.hero h1{font-size:1.8rem}.hero p{font-size:var(--font-size)}.anime-grid{gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.plans{grid-template-columns:1fr;max-width:400px;margin-left:auto;margin-right:auto}.page-toolbar{flex-direction:column;align-items:stretch}.page-toolbar select,.toolbar-controls input,.search-bar input{min-width:auto}.search-bar{max-width:none}.auth-card{padding:var(--space-6) 18px}.auth-page{padding:var(--space-8) var(--space-4)}.profile-grid{grid-template-columns:1fr}.footer-inner{flex-direction:column;gap:var(--space-2);text-align:center}.toolbar-controls{flex-direction:column;align-items:stretch}.toolbar-controls select,.toolbar-controls input{width:100%;min-width:auto}.rank-thumb{width:30px;height:42px}.rank-title{font-size:var(--font-size-xs)}.cw-card{flex:0 0 155px}.episode-item{padding:10px 12px}.ep-num{min-width:22px;font-size:var(--font-size-xs)}.ep-title{font-size:var(--font-size-sm)}.player-options label{font-size:var(--font-size-xs)}.player-options select{min-width:65px;font-size:var(--font-size-xs)}.watch-nav .btn{font-size:var(--font-size-sm);padding:6px 12px}}@media(max-width:480px){.anime-grid{gap:8px;grid-template-columns:repeat(2,1fr)}.hero{min-height:240px;padding:var(--space-6) var(--space-4)}.hero h1{font-size:var(--font-size-2xl)}.hero p{display:none}.history-entry{flex-direction:column;align-items:stretch;gap:var(--space-2)}.plan{padding:var(--space-6) var(--space-4)}.price{font-size:1.6rem}.anime-info h1{font-size:var(--font-size-xl)}.anime-poster{width:90px}.genre-pill{font-size:var(--font-size-xs)}.episode-item{padding:8px 10px}.ep-num{min-width:18px;font-size:var(--font-size-xs)}.ep-title{font-size:var(--font-size-xs)}.watch-meta h2{font-size:var(--font-size-lg)}.player-options{gap:var(--space-2)}.player-options label{font-size:var(--font-size-xs)}.auth-card{padding:var(--space-4) var(--space-3)}.auth-card h1{font-size:1.3rem}.rank-item{padding:var(--space-1) var(--space-2)}.rank-thumb{width:26px;height:38px}.rank-title{font-size:var(--font-size-xs)}.cw-card{flex:0 0 135px}.cw-card-title{font-size:var(--font-size-xs)}}@media(max-width:360px){.anime-grid{gap:4px;grid-template-columns:repeat(2,1fr)}.anime-card-title{font-size:var(--font-size-xs)}.slide-inner{height:200px;padding:var(--space-3) var(--space-2)}.slide-content h2{font-size:1rem}.slide-content p{display:none}.slide-badge{font-size:.6rem}.hero{min-height:200px;padding:var(--space-4) var(--space-3)}.hero h1{font-size:1.2rem}.auth-card{padding:var(--space-3) var(--space-2)}.auth-card h1{font-size:1.1rem}.plan{padding:var(--space-4) var(--space-3)}.price{font-size:1.3rem}.cw-card{flex:0 0 120px}.rank-item{gap:var(--space-1)}.rank-thumb{width:22px;height:32px}}
