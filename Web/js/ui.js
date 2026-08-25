@@ -583,12 +583,17 @@
   }
   function browseView() {
     renderHeader();
-    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Browse</h1><div class="toolbar-controls">' +
+    return '<div class="page"><div class="container"><div class="browse-header">' +
+      '<span class="browse-label">Catalogue</span>' +
+      '<h1>Browse</h1>' +
+      '<p class="browse-subtitle">Discover anime across every genre</p>' +
+      '<span class="browse-count" id="browse-count"></span></div>' +
+      '<div class="filter-bar"><div class="filter-controls">' +
       '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="trending">Trending</option><option value="popular">Popular</option><option value="latest">Latest</option></select>' +
       '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select>' +
       '<select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
-      '<input id="browse-q" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div>' +
-      '<div id="browse-grid" class="grid-loading" style="padding:40px 0;text-align:center;color:var(--clr-text-muted)">Loading catalogue...</div>' +
+      '<div class="filter-search"><input id="browse-q" type="search" placeholder="Search titles..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div></div>' +
+      '<div id="browse-grid" class="anime-grid"><div class="list-loading">Loading catalogue...</div></div>' +
       '<div id="browse-more" style="text-align:center;margin-top:var(--space-6)"></div></div></div>';
   }
   function afterBrowse() { fillGenreSelect('browse-genre'); reloadBrowse(false); }
@@ -618,7 +623,9 @@
       }
       if (requestId !== browseRequest || !document.getElementById('browse-grid')) return;
       browseState = { page: page, items: loadMore ? browseState.items.concat(list) : list, hasNext: Boolean(meta.hasNext) };
-      el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">No anime matched</h3><p style="font-size:var(--font-size)">Try adjusting your filters.</p></div>';
+      var countEl = document.getElementById('browse-count');
+      if (countEl) countEl.textContent = browseState.items.length + ' titles';
+      el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div class="empty-state"><div class="empty-icon">\U0001f50d</div><h3>No anime matched</h3><p>Try adjusting your filters.</p></div>';
       if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div style="padding:var(--space-6) 0;text-align:center">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
     } catch (e) {
       if (requestId !== browseRequest) return;
@@ -629,12 +636,15 @@
   function loadMoreBrowse() { return reloadBrowse(true); }
   function searchView() {
     renderHeader();
-    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Search</h1><div class="toolbar-controls">' +
-      '<input id="search-input" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceSearch()" onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
-      '<select id="search-genre" onchange="AniStrimUI.doSearch()">' + filterOptions() + '</select>' +
-      '<select id="search-status" onchange="AniStrimUI.doSearch()">' + statusOptions() + '</select>' +
-      '<button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
-      '<div id="search-results" style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Search for anime</h3><p style="font-size:var(--font-size)">Type a title and press Enter.</p></div></div></div>';
+    return '<div class="page"><div class="container"><div class="search-hero">' +
+      '<span class="search-label">Discover</span>' +
+      '<h1>Search</h1>' +
+      '<p class="search-subtitle">Find your next favorite anime</p>' +
+      '<div class="search-bar-main"><div class="search-input-wrap"><input id="search-input" type="text" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceSearch()" onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
+      '<button class="btn-primary search-btn" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
+      '<div class="search-filters"><select id="search-genre" onchange="AniStrimUI.doSearch()">' + filterOptions() + '</select>' +
+      '<select id="search-status" onchange="AniStrimUI.doSearch()">' + statusOptions() + '</select></div></div>' +
+      '<div id="search-results" class="search-results"><div class="search-empty"><div class="empty-icon">\U0001f50d</div><h3>Search for anime</h3><p>Type a title, pick a genre, or select a status to start exploring.</p></div></div></div></div>';
   }
   function afterSearch(root, params, query) {
     var q = query && query.q;
@@ -654,16 +664,16 @@
     var status = document.getElementById('search-status') ? document.getElementById('search-status').value : '';
     var el = document.getElementById('search-results');
     if (!el) return;
-    if (!q && !genre && !status) { el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Enter a search term</h3><p style="font-size:var(--font-size)">Type a title or choose a filter.</p></div>'; return; }
+    if (!q && !genre && !status) { el.innerHTML = '<div class="search-empty"><div class="empty-icon">\U0001f50d</div><h3>Enter a search term</h3><p>Type a title or choose a filter.</p></div>'; return; }
     var requestId = ++searchRequest;
-    el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:1rem">Searching...</div></div>';
+    el.innerHTML = '<div class="search-loading">Searching...</div>';
     try {
       var list = norm(await API.search(q, { genre: genre, status: status }));
       if (requestId !== searchRequest || !document.getElementById('search-results')) return;
-      el.innerHTML = list.length ? grid(list) : '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">No results found</h3><p style="font-size:var(--font-size)">Try a different search term or filter.</p></div>';
+      el.innerHTML = list.length ? grid(list) : '<div class="search-empty"><div class="empty-icon">\U0001f50d</div><h3>No results found</h3><p>Try a different search term or filter.</p></div>';
     } catch (e) {
       if (requestId !== searchRequest) return;
-      el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\u26A0\uFE0F</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Search failed</h3><p style="font-size:var(--font-size);margin-bottom:var(--space-4)">' + esc(e.message) + '</p>' + retryButton('doSearch()', 'Try again') + '</div>';
+      el.innerHTML = '<div class="search-empty"><div class="empty-icon">\u26A0\uFE0F</div><h3>Search failed</h3><p>' + esc(e.message) + '</p>' + retryButton('doSearch()', 'Try again') + '</div>';
     }
   }
 
@@ -1098,45 +1108,79 @@
   function watchlistView() {
     renderHeader();
     if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/watchlist' }); return ''; }
-    return '<div class="page"><div class="container"><h1>My Watchlist</h1><div id="watchlist-grid" class="grid-loading">Loading...</div></div></div>';
+    return '<div class="page"><div class="container"><div class="watchlist-header">' +
+      '<span class="watchlist-label">Saved</span>' +
+      '<h1>My Watchlist</h1>' +
+      '<span class="watchlist-count" id="watchlist-count"></span></div>' +
+      '<div id="watchlist-grid" class="grid-loading"><div class="list-loading">Loading your watchlist...</div></div></div></div>';
   }
   async function loadWatchlist() {
     var el = document.getElementById('watchlist-grid');
     if (!el) return;
-    el.innerHTML = '<div class="grid-loading">Loading...</div>';
+    el.innerHTML = '<div class="list-loading">Loading your watchlist...</div>';
     try {
       var list = await refreshWatchlistState();
-      el.innerHTML = list.length ? '<div class="anime-grid">' + list.map(function (w) {
-        var animeId = w.animeId || (w.anime && w.anime.id) || w.id;
-        var anime = w.anime || { animeId: animeId, title: w.title, poster: w.poster };
-        return '<div class="watchlist-entry">' + card(anime) + '<button class="btn-ghost" onclick="AniStrimUI.removeWatchlist(\'' + esc(animeId) + '\')">Remove</button></div>';
-      }).join('') + '</div>' : '<div class="empty">Your watchlist is empty.</div>';
-    } catch (e) { el.innerHTML = '<div class="empty">Could not load your watchlist. ' + retryButton('loadWatchlist()', 'Try again') + '<p>' + esc(e.message) + '</p></div>'; }
+      var countEl = document.getElementById('watchlist-count');
+      if (countEl) countEl.textContent = list.length ? list.length + ' titles' : '';
+      if (list.length) {
+        var h = '<div class="anime-grid">';
+        for (var i = 0; i < list.length; i++) {
+          var w = list[i];
+          var animeId = w.animeId || (w.anime && w.anime.id) || w.id;
+          var anime = w.anime || { animeId: animeId, title: w.title, poster: w.poster };
+          h += '<div class="watchlist-entry">' + card(anime) +
+            '<button class="watchlist-remove" onclick="AniStrimUI.removeWatchlist(\'' + esc(animeId) + '\')" title="Remove from watchlist">✕</button></div>';
+        }
+        h += '</div>';
+        el.innerHTML = h;
+      } else {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><h3>Your watchlist is empty</h3><p>Start exploring and add anime to your list.</p><a href="#/browse" class="btn-primary" style="display:inline-flex;margin-top:var(--space-4)">Browse Anime</a></div>';
+      }
+    } catch (e) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load watchlist</h3><p>' + esc(e.message) + '</p>' + retryButton('loadWatchlist()', 'Try again') + '</div>'; }
   }
   function historyView() {
     renderHeader();
     if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/history' }); return ''; }
-    return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Watch History</h1>' +
-      '<button class="btn-outline" onclick="AniStrimUI.clearHistory()">Clear</button></div>' +
-      '<div id="history-list"><div class="grid-loading">Loading...</div></div></div></div>';
+    return '<div class="page"><div class="container"><div class="history-header">' +
+      '<span class="history-label">Activity</span>' +
+      '<h1>Watch History</h1>' +
+      '<span class="history-count" id="history-count">0 episodes</span></div>' +
+      '<div class="history-toolbar"><button class="btn-outline history-clear-btn" onclick="AniStrimUI.clearHistory()">Clear History</button></div>' +
+      '<div id="history-list"><div class="list-loading">Loading your watch history...</div></div></div></div>';
   }
   async function loadHistory() {
     var el = document.getElementById('history-list');
     if (!el) return;
-    el.innerHTML = '<div class="grid-loading">Loading...</div>';
+    el.innerHTML = '<div class="list-loading">Loading your watch history...</div>';
     try {
       var list = norm(await API.watchHistory(1, 30));
-      // History is backed by watch_progress rows, not full anime DTOs. Adapt
-      // the documented response shape so cards retain their real title, art,
-      // and navigation target instead of rendering an empty placeholder.
-      el.innerHTML = list.length ? '<div class="history-list">' + list.map(function (h) {
-        var title = h.animeTitle || h.title || 'Anime';
-        var episode = h.episodeNumber || 1;
-        var percent = Math.max(0, Math.min(100, Number(h.percent) || 0));
-        return '<div class="history-entry"><div><strong>' + esc(title) + '</strong><div class="muted">Episode ' + esc(episode) + (h.episodeTitle ? ': ' + esc(h.episodeTitle) : '') + ' · ' + Math.round(percent) + '% watched</div></div>' +
-          '<button class="btn-outline" onclick="AniStrimUI.resumeHistory(\'' + esc(h.animeId) + '\',' + Number(episode) + ',\'' + esc(h.episodeId) + '\')">' + (h.completed ? 'Watch again' : 'Resume') + '</button></div>';
-      }).join('') + '</div>' : '<div class="empty">No watch history.</div>';
-    } catch (e) { el.innerHTML = '<div class="empty">Could not load watch history. ' + retryButton('loadHistory()', 'Try again') + '<p>' + esc(e.message) + '</p></div>'; }
+      var countEl = document.getElementById('history-count');
+      if (countEl) countEl.textContent = list.length + ' episodes';
+      if (list.length) {
+        var h = '<div class="history-list">';
+        for (var i = 0; i < list.length; i++) {
+          var entry = list[i];
+          var title = entry.animeTitle || entry.title || 'Anime';
+          var episode = entry.episodeNumber || 1;
+          var percent = Math.max(0, Math.min(100, Number(entry.percent) || 0));
+          var img = entry.poster || entry.thumbnailUrl || entry.coverImage || '';
+          var anId = entry.animeId || (entry.anime && entry.anime.id) || '';
+          var epId = entry.episodeId || '';
+          var completed = entry.completed || percent >= 95;
+          h += '<div class="history-entry">' +
+            (img ? '<div class="history-thumb"><img src="' + img + '" alt="" loading="lazy" onerror="this.style.display=\'none\'"></div>' : '') +
+            '<div class="history-info"><div class="history-title">' + esc(title) + '</div>' +
+            '<div class="history-meta">Episode ' + esc(episode) + (entry.episodeTitle ? ': ' + esc(entry.episodeTitle) : '') + '</div>' +
+            (!completed ? '<div class="history-progress"><div class="history-progress-bar"><div style="width:' + percent + '%"></div></div><span class="history-progress-text">' + Math.round(percent) + '%</span></div>' : '<span class="history-completed-badge">Completed</span>') +
+            '</div>' +
+            '<button class="btn-primary history-resume-btn" onclick="AniStrimUI.resumeHistory(\'' + esc(anId) + '\',' + Number(episode) + ',\'' + esc(epId) + '\')">' + (completed ? 'Watch again' : 'Resume') + '</button></div>';
+        }
+        h += '</div>';
+        el.innerHTML = h;
+      } else {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><h3>No watch history</h3><p>Start watching anime and your progress will appear here.</p><a href="#/browse" class="btn-primary" style="display:inline-flex;margin-top:var(--space-4)">Browse Anime</a></div>';
+      }
+    } catch (e) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load watch history</h3><p>' + esc(e.message) + '</p>' + retryButton('loadHistory()', 'Try again') + '</div>'; }
   }
   async function clearHistory() {
     try { await API.clearHistory(); toast('History cleared.'); loadHistory(); } catch (e) { toast(e.message, 'error'); }
@@ -1248,15 +1292,15 @@
     renderHeader();
     if (Auth.state.isPremium) return '<div class="page"><div class="container"><div class="card premium-card"><h1>You are Premium 👑</h1><p style="color:var(--clr-text-secondary);margin-top:var(--space-2)">You already have access to all Premium features.</p></div></div></div>';
     return '<div class="page upgrade-page"><div class="container">' +
-      '<div class="upgrade-hero"><h1>Upgrade to Premium</h1><p class="upgrade-subtitle">Unlock the full AniStrim experience. Watch more, enjoy more.</p></div>' +
+      '<div class="upgrade-hero"><span class="upgrade-label">Premium</span><h1>Upgrade to Premium</h1><p class="upgrade-subtitle">Unlock the full AniStrim experience. Watch more, enjoy more.</p></div>' +
       '<div class="plans">' +
       '<div class="plan"><div class="plan-header"><h3>Monthly</h3><div class="price">UGX 15,000<span>/mo</span></div></div>' +
       '<ul class="plan-features"><li><span class="feat-icon">🎬</span> Access to all anime series</li><li><span class="feat-icon">🎯</span> HD &amp; 4K video quality</li><li><span class="feat-icon">🚫</span> Completely ad-free</li><li><span class="feat-icon">📱</span> Multi-device streaming</li><li><span class="feat-icon">⬇️</span> Offline downloads</li><li><span class="feat-icon">📋</span> Unlimited watchlists</li></ul>' +
-      '<button class="btn-primary btn-block" onclick="AniStrimUI.checkout(\'monthly\')">Choose Monthly</button></div>' +
+      '<button class="btn-primary btn-block" onclick="AniStrimUI.checkout(\'monthly\')">Subscribe Monthly</button></div>' +
       '<div class="plan featured"><div class="plan-header"><h3>Yearly</h3><div class="price">UGX 180,000<span>/yr</span></div></div>' +
       '<ul class="plan-features"><li><span class="feat-icon">🎬</span> Access to all anime series</li><li><span class="feat-icon">🎯</span> HD &amp; 4K video quality</li><li><span class="feat-icon">🚫</span> Completely ad-free</li><li><span class="feat-icon">📱</span> Multi-device streaming</li><li><span class="feat-icon">⬇️</span> Offline downloads</li><li><span class="feat-icon">📋</span> Unlimited watchlists</li></ul>' +
       '<div class="plan-savings">Save 16% compared to monthly</div>' +
-      '<button class="btn-primary btn-block" onclick="AniStrimUI.checkout(\'yearly\')">Choose Yearly</button></div>' +
+      '<button class="btn-primary btn-block" onclick="AniStrimUI.checkout(\'yearly\')">Subscribe Yearly</button></div>' +
       '</div>' +
       '<div class="upgrade-faq"><h2>Why Premium?</h2><div class="faq-grid">' +
       '<div class="faq-item"><div class="faq-icon">🎯</div><h3>Crystal Clear Quality</h3><p>Stream in HD and 4K with adaptive bitrate — no more buffering on slow connections.</p></div>' +
