@@ -208,8 +208,7 @@
       var a = slideData[i], bg = a.banner_image || a.cover_image || '';
       var type = a.type || a.media_type || '';
       h += '<div class="slide" role="group" aria-roledescription="slide" aria-label="Slide ' + (i + 1) + ' of ' + slideData.length + '">' +
-        '<div class="slide-inner"' + (bg ? ' style="background-image:linear-gradient(to top,rgba(8,8,14,1) 0%,rgba(8,8,14,.7) 40%,rgba(8,8,14,.3) 70%,transparent 100%),url(' + bg + ')"' : '') + '>' +
-        '<div class="slide-overlay"></div>' +
+        '<div class="slide-inner"' + (bg ? ' style="background-image:url(' + bg + ')"' : '') + '>' +
         '<div class="slide-content">' +
         (type ? '<span class="slide-badge">' + esc(type) + '</span>' : '') +
         '<h2>' + esc(a.title) + '</h2>' +
@@ -629,7 +628,7 @@
       if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div style="padding:var(--space-6) 0;text-align:center">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
     } catch (e) {
       if (requestId !== browseRequest) return;
-      el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\u26A0\uFE0F</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Could not load catalogue</h3><p style="font-size:var(--font-size);margin-bottom:var(--space-4)">' + esc(e.message) + '</p>' + retryButton('reloadBrowse()', 'Try again') + '</div>';
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">\u26A0\uFE0F</div><h3>Could not load catalogue</h3><p>' + esc(e.message) + '</p>' + retryButton('reloadBrowse()', 'Try again') + '</div>';
       if (more) more.innerHTML = '';
     }
   }
@@ -722,19 +721,26 @@
   // ── Watch / Player ──────────────────────────────────────
   function watchView(params) {
     renderHeader();
-    return '<div class="page watch-page"><div class="watch-container">' +
+    return '<div class="page watch-page">' +
+      '<div class="watch-breadcrumb"><a href="#/browse">Browse</a><span class="breadcrumb-sep">/</span><a href="#/anime/' + esc(params.id) + '" id="watch-breadcrumb-anime">Anime</a><span class="breadcrumb-sep">/</span><span id="watch-breadcrumb-ep">Episode ' + esc(params.ep || 1) + '</span></div>' +
+      '<div class="watch-container">' +
       '<div class="player-stage"><video id="animePlayer" class="video-element" controls playsinline></video>' +
       '<div class="player-loading" id="player-loading" aria-live="polite">Preparing playback…</div>' +
       '<div class="player-error" id="player-error" style="display:none"></div>' +
-      '<div class="skip-actions" id="skip-actions"><button id="skip-intro" class="btn-ghost" style="display:none" onclick="AniStrimUI.skipMarker(\'intro\')">Skip intro</button><button id="skip-outro" class="btn-ghost" style="display:none" onclick="AniStrimUI.skipMarker(\'outro\')">Skip outro</button></div>' +
+      '<div class="skip-actions" id="skip-actions"><button id="skip-intro" class="skip-btn" style="display:none" onclick="AniStrimUI.skipMarker(\'intro\')">Skip intro</button><button id="skip-outro" class="skip-btn" style="display:none" onclick="AniStrimUI.skipMarker(\'outro\')">Skip outro</button></div>' +
       '<div class="autoplay-next" id="autoplay-next" style="display:none"><span id="autoplay-next-text"></span><button class="btn-primary" onclick="AniStrimUI.playNextEpisode()">Play now</button><button class="btn-ghost" onclick="AniStrimUI.cancelAutoplay()">Cancel</button></div></div>' +
-      '<div class="watch-meta"><h2 id="watch-title">Loading...</h2><div class="player-options" id="player-options">' +
-      '<label>Speed <select id="player-speed" onchange="AniStrimUI.setPlaybackSpeed(this.value)"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>' +
+      '<div class="watch-info-panel"><div class="watch-info-main"><div class="watch-episode-label" id="watch-episode-label">Episode ' + esc(params.ep || 1) + '</div>' +
+      '<h2 id="watch-title">Loading...</h2>' +
+      '<div class="watch-meta-row" id="watch-meta-row"><span id="watch-meta-sub">Sub</span><span class="meta-dot">·</span><span id="watch-meta-quality">HD</span><span class="meta-dot">·</span><span id="watch-meta-duration">-- min</span><span class="meta-dot">·</span><span id="watch-meta-genres">Loading...</span></div></div>' +
+      '<div class="watch-info-actions"><div class="watch-speed-ctrl"><label>Speed</label><select id="player-speed" onchange="AniStrimUI.setPlaybackSpeed(this.value)"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>' +
+      '<div class="watch-nav-buttons" id="watch-nav"></div></div></div>' +
+      '<div class="player-options" id="player-options" style="display:none">' +
       '<label id="quality-option" style="display:none">Quality <select id="player-quality" onchange="AniStrimUI.setQuality(this.value)"></select></label>' +
       '<label id="audio-option" style="display:none">Audio <select id="player-audio" onchange="AniStrimUI.setAudioTrack(this.value)"></select></label>' +
       '<label id="subtitle-option" style="display:none">Subtitles <select id="player-subtitle" onchange="AniStrimUI.setSubtitleTrack(this.value)"></select></label></div>' +
-      '<div class="watch-nav" id="watch-nav"></div><div class="season-nav" id="season-nav"></div></div>' +
-      '<div class="episode-list" id="watch-episodes"><div class="grid-loading">Loading...</div></div>' +
+      '<div class="season-nav" id="season-nav"></div>' +
+      '<div class="watch-episodes-section"><div class="watch-episodes-header"><h3>Episodes</h3><span class="watch-episodes-count" id="watch-episodes-count"></span></div>' +
+      '<div class="episode-list" id="watch-episodes"><div class="grid-loading">Loading...</div></div></div>' +
       '<div class="watch-back"><a href="#/anime/' + esc(params.id) + '" class="btn-ghost">← Back to Anime</a></div>' +
       '</div></div>';
   }
@@ -856,7 +862,7 @@
     var previous = neighborEpisode(-1);
     var next = neighborEpisode(1);
     if (nav) {
-      nav.innerHTML = '<button class="btn-ghost" ' + (previous ? '' : 'disabled') + ' onclick="AniStrimUI.playPreviousEpisode()">← Previous</button>' +
+      nav.innerHTML = '<button class="btn-ghost" ' + (previous ? '' : 'disabled') + ' onclick="AniStrimUI.playPreviousEpisode()">← Prev</button>' +
         '<button class="btn-ghost" ' + (next ? '' : 'disabled') + ' onclick="AniStrimUI.playNextEpisode()">Next →</button>';
     }
     var seasons = watchState.seasons;
@@ -876,9 +882,9 @@
     listEl.innerHTML = '<div class="episode-grid">' + visible.map(function (item) {
       var n = episodeNumber(item);
       var active = String(item.id) === String(watchState.target.id) ? ' active' : '';
-      return '<button class="episode-item' + active + '" onclick="AniStrimUI.watch(\'' + esc(watchState.animeId) + '\',' + (n || 1) + ',\'' + esc(item.id) + '\')">' +
-        '<span class="ep-num">' + esc(n) + '</span><span class="ep-title">' + esc(item.title || 'Episode ' + n) + '</span>' +
-        (item.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
+      return '<button class="episode-item' + active + '" onclick="AniStrimUI.watch(\'' + esc(watchState.animeId) + '\',' + (n || 1) + ',\'' + esc(item.id) + '\')" title="Episode ' + esc(n) + '">' +
+        '<span class="ep-num">' + esc(n) + '</span>' +
+        (item.locked ? '<span class="ep-lock" style="position:absolute;top:2px;right:2px;font-size:8px">🔒</span>' : '') + '</button>';
     }).join('') + '</div>';
   }
   function navigateEpisode(episode) {
@@ -1051,6 +1057,22 @@
       var anime = await API.anime(id);
       var eps = norm(await API.episodes(id));
       if (titleEl && anime) titleEl.textContent = anime.title + (ep ? ' — Ep ' + ep : '');
+      var breadcrumbAnime = document.getElementById('watch-breadcrumb-anime');
+      if (breadcrumbAnime) breadcrumbAnime.textContent = anime && anime.title;
+      var breadcrumbEp = document.getElementById('watch-breadcrumb-ep');
+      if (breadcrumbEp) breadcrumbEp.textContent = 'Episode ' + (ep || 1);
+      var episodeLabel = document.getElementById('watch-episode-label');
+      if (episodeLabel) episodeLabel.textContent = 'Episode ' + (ep || 1) + ' of ' + eps.length;
+      var metaRow = document.getElementById('watch-meta-row');
+      if (metaRow && anime) {
+        var genres = Array.isArray(anime.genres) ? anime.genres.slice(0, 3).join(' · ') : '';
+        var duration = anime.episode_duration || anime.duration || '';
+        metaRow.innerHTML = '<span>Sub</span><span class="meta-dot">·</span><span>HD</span>' +
+          (duration ? '<span class="meta-dot">·</span><span>' + esc(String(duration)) + '</span>' : '') +
+          (genres ? '<span class="meta-dot">·</span><span>' + esc(genres) + '</span>' : '');
+      }
+      var epCountEl = document.getElementById('watch-episodes-count');
+      if (epCountEl) epCountEl.textContent = eps.length + ' episodes';
       var target = eps.find(function (x) { return epId && String(x.id) === String(epId); }) ||
         eps.find(function (x) { return String(x.number || x.episode_number) === String(ep); });
       if (!target) { if (errEl) { errEl.textContent = 'Episode not found.'; errEl.style.display = 'block'; } return; }
