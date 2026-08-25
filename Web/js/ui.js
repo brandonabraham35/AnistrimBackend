@@ -617,11 +617,11 @@
       }
       if (requestId !== browseRequest || !document.getElementById('browse-grid')) return;
       browseState = { page: page, items: loadMore ? browseState.items.concat(list) : list, hasNext: Boolean(meta.hasNext) };
-      el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div class="empty">No anime matched those filters.</div>';
+      el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">No anime matched</h3><p style="font-size:var(--font-size)">Try adjusting your filters.</p></div>';
       if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div style="padding:var(--space-6) 0;text-align:center">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
     } catch (e) {
       if (requestId !== browseRequest) return;
-      el.innerHTML = '<div class="empty">Could not load the catalogue. ' + retryButton('reloadBrowse()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
+      el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\u26A0\uFE0F</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Could not load catalogue</h3><p style="font-size:var(--font-size);margin-bottom:var(--space-4)">' + esc(e.message) + '</p>' + retryButton('reloadBrowse()', 'Try again') + '</div>';
       if (more) more.innerHTML = '';
     }
   }
@@ -630,8 +630,10 @@
     renderHeader();
     return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Search</h1><div class="toolbar-controls">' +
       '<input id="search-input" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceSearch()" onkeydown="if(event.key===\'Enter\')AniStrimUI.doSearch()">' +
-      '<select id="search-genre" onchange="AniStrimUI.doSearch()">' + filterOptions() + '</select><select id="search-status" onchange="AniStrimUI.doSearch()">' + statusOptions() + '</select><button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
-      '<div id="search-results" class="empty">Enter a search term to find anime.</div></div></div>';
+      '<select id="search-genre" onchange="AniStrimUI.doSearch()">' + filterOptions() + '</select>' +
+      '<select id="search-status" onchange="AniStrimUI.doSearch()">' + statusOptions() + '</select>' +
+      '<button class="btn-primary" onclick="AniStrimUI.doSearch()">Search</button></div></div>' +
+      '<div id="search-results" style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Search for anime</h3><p style="font-size:var(--font-size)">Type a title and press Enter.</p></div></div></div>';
   }
   function afterSearch(root, params, query) {
     var q = query && query.q;
@@ -651,16 +653,16 @@
     var status = document.getElementById('search-status') ? document.getElementById('search-status').value : '';
     var el = document.getElementById('search-results');
     if (!el) return;
-    if (!q && !genre && !status) { el.innerHTML = '<div class="empty">Enter a search term or choose a filter.</div>'; return; }
+    if (!q && !genre && !status) { el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Enter a search term</h3><p style="font-size:var(--font-size)">Type a title or choose a filter.</p></div>'; return; }
     var requestId = ++searchRequest;
-    el.innerHTML = '<div class="grid-loading">Searching...</div>';
+    el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:1rem">Searching...</div></div>';
     try {
       var list = norm(await API.search(q, { genre: genre, status: status }));
       if (requestId !== searchRequest || !document.getElementById('search-results')) return;
-      el.innerHTML = list.length ? grid(list) : '<div class="empty">No anime matched your search.</div>';
+      el.innerHTML = list.length ? grid(list) : '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\uD83D\uDD0D</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">No results found</h3><p style="font-size:var(--font-size)">Try a different search term or filter.</p></div>';
     } catch (e) {
       if (requestId !== searchRequest) return;
-      el.innerHTML = '<div class="empty">Search failed. ' + retryButton('doSearch()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
+      el.innerHTML = '<div style="text-align:center;padding:var(--space-10) 0;color:var(--clr-text-muted)"><div style="font-size:3rem;margin-bottom:var(--space-3);opacity:.5">\u26A0\uFE0F</div><h3 style="font-size:var(--font-size-xl);font-weight:var(--font-weight-semibold);margin-bottom:var(--space-2);color:var(--clr-text-secondary)">Search failed</h3><p style="font-size:var(--font-size);margin-bottom:var(--space-4)">' + esc(e.message) + '</p>' + retryButton('doSearch()', 'Try again') + '</div>';
     }
   }
 
