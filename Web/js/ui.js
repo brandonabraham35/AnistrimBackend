@@ -1182,6 +1182,8 @@
     if (displayName) displayName.textContent = (user && (user.displayName || user.name || user.username)) || 'Profile';
     var email = document.getElementById('profile-email');
     if (email) email.textContent = (user && user.email) || '';
+    var username = document.getElementById('profile-username');
+    if (username) username.textContent = (user && user.username ? '@' + esc(user.username) : '');
     var u = document.getElementById('pref-username');
     if (u && user && user.username) u.value = user.username;
     var preferencesRequest = user && user.preferences
