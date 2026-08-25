@@ -212,6 +212,7 @@
         '<div class="slide-content">' +
         (type ? '<span class="slide-badge">' + esc(type) + '</span>' : '') +
         '<div class="slide-meta">' +
+        (a.genres && a.genres.length ? '<span>' + esc(Array.isArray(a.genres) ? a.genres.slice(0, 2).join(', ') : a.genres) + '</span><span class="meta-dot">·</span>' : '') +
         (a.year ? '<span>' + esc(a.year) + '</span>' : '') +
         (a.rating ? '<span class="meta-dot">·</span><span>★ ' + esc(a.rating) + '</span>' : '') +
         '</div>' +
