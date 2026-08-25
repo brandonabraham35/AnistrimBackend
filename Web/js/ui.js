@@ -1237,11 +1237,25 @@
   // ── Upgrade ─────────────────────────────────────────────
   function upgradeView() {
     renderHeader();
-    if (Auth.state.isPremium) return '<div class="page"><div class="container"><div class="card premium-card"><h1>You are Premium 👑</h1></div></div></div>';
-    return '<div class="page"><div class="container"><h1>Upgrade to Premium</h1><div class="plans">' +
-      '<div class="plan"><h3>Monthly</h3><div class="price">UGX 15,000<span>/mo</span></div><button class="btn-primary" onclick="AniStrimUI.checkout(\'monthly\')">Choose</button></div>' +
-      '<div class="plan featured"><h3>Yearly</h3><div class="price">UGX 180,000<span>/yr</span></div><button class="btn-primary" onclick="AniStrimUI.checkout(\'yearly\')">Choose</button></div>' +
-      '</div></div></div>';
+    if (Auth.state.isPremium) return '<div class="page"><div class="container"><div class="card premium-card"><h1>You are Premium 👑</h1><p style="color:var(--clr-text-secondary);margin-top:var(--space-2)">You already have access to all Premium features.</p></div></div></div>';
+    return '<div class="page upgrade-page"><div class="container">' +
+      '<div class="upgrade-hero"><h1>Upgrade to Premium</h1><p class="upgrade-subtitle">Unlock the full AniStrim experience. Watch more, enjoy more.</p></div>' +
+      '<div class="plans">' +
+      '<div class="plan"><div class="plan-header"><h3>Monthly</h3><div class="price">UGX 15,000<span>/mo</span></div></div>' +
+      '<ul class="plan-features"><li><span class="feat-icon">🎬</span> Access to all anime series</li><li><span class="feat-icon">🎯</span> HD &amp; 4K video quality</li><li><span class="feat-icon">🚫</span> Completely ad-free</li><li><span class="feat-icon">📱</span> Multi-device streaming</li><li><span class="feat-icon">⬇️</span> Offline downloads</li><li><span class="feat-icon">📋</span> Unlimited watchlists</li></ul>' +
+      '<button class="btn-primary btn-block" onclick="AniStrimUI.checkout(\'monthly\')">Choose Monthly</button></div>' +
+      '<div class="plan featured"><div class="plan-header"><h3>Yearly</h3><div class="price">UGX 180,000<span>/yr</span></div></div>' +
+      '<ul class="plan-features"><li><span class="feat-icon">🎬</span> Access to all anime series</li><li><span class="feat-icon">🎯</span> HD &amp; 4K video quality</li><li><span class="feat-icon">🚫</span> Completely ad-free</li><li><span class="feat-icon">📱</span> Multi-device streaming</li><li><span class="feat-icon">⬇️</span> Offline downloads</li><li><span class="feat-icon">📋</span> Unlimited watchlists</li></ul>' +
+      '<div class="plan-savings">Save 16% compared to monthly</div>' +
+      '<button class="btn-primary btn-block" onclick="AniStrimUI.checkout(\'yearly\')">Choose Yearly</button></div>' +
+      '</div>' +
+      '<div class="upgrade-faq"><h2>Why Premium?</h2><div class="faq-grid">' +
+      '<div class="faq-item"><div class="faq-icon">🎯</div><h3>Crystal Clear Quality</h3><p>Stream in HD and 4K with adaptive bitrate — no more buffering on slow connections.</p></div>' +
+      '<div class="faq-item"><div class="faq-icon">🚫</div><h3>Ad-Free Experience</h3><p>Enjoy uninterrupted anime without any ads, pop-ups, or interstitials.</p></div>' +
+      '<div class="faq-item"><div class="faq-icon">📱</div><h3>Watch Anywhere</h3><p>Stream on your phone, tablet, desktop, or TV — all synced with your watch history.</p></div>' +
+      '<div class="faq-item"><div class="faq-icon">⬇️</div><h3>Offline Mode</h3><p>Download episodes and watch them offline, even without an internet connection.</p></div>' +
+      '</div></div>' +
+      '</div></div>';
   }
   async function checkout(plan) {
     try {
