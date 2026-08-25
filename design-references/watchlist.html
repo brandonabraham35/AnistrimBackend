@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AniStrim — My Watchlist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a090e; --bg-elev:#121017; --card:#161420; --border:rgba(255,255,255,.08);
+    --purple:#8b5cf6; --purple2:#a855f7; --purple-deep:#6d28d9;
+    --text:#f5f4f7; --text-dim:#9d99ab; --text-dimmer:#6b6777; --gold:#f5b942; --radius:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column;}
+  h1,.logo,nav a,.btn{font-family:'Sora',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+
+  header.site{
+    display:flex;align-items:center;justify-content:space-between;padding:20px 48px;
+    border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;
+    background:rgba(10,9,14,.85);backdrop-filter:blur(10px);
+  }
+  .logo{font-weight:800;font-size:22px;background:linear-gradient(120deg,var(--purple2),var(--purple-deep));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  nav.main{display:flex;gap:8px;}
+  nav.main a{font-size:13px;font-weight:600;letter-spacing:.6px;color:var(--text-dim);padding:10px 16px;border-radius:999px;transition:.2s;}
+  nav.main a:hover{color:var(--text);}
+  nav.main a.active{background:var(--card);color:var(--text);}
+  .nav-right{display:flex;align-items:center;gap:16px;}
+  .search-box{display:flex;align-items:center;gap:8px;background:var(--bg-elev);border:1px solid var(--border);padding:9px 16px;border-radius:999px;color:var(--text-dimmer);font-size:13px;width:220px;}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--purple2),var(--purple-deep));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
+
+  .page{flex:1;padding:44px 48px 60px;}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.5px;color:var(--purple2);margin-bottom:10px;}
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:20px;margin-bottom:36px;padding-bottom:28px;border-bottom:1px solid var(--border);}
+  .page-head h1{font-size:44px;font-weight:800;}
+  .page-head .count{color:var(--text-dim);font-size:14px;margin-top:6px;}
+
+  .btn-outline{
+    display:flex;align-items:center;gap:8px;background:none;border:1px solid var(--border);
+    color:var(--text);font-family:'Sora',sans-serif;font-weight:700;font-size:13px;
+    padding:11px 20px;border-radius:10px;cursor:pointer;transition:.2s;
+  }
+  .btn-outline:hover{border-color:#e05c5c;color:#e05c5c;}
+
+  .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:20px;}
+  .card{background:var(--card);border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);transition:.25s;cursor:pointer;position:relative;}
+  .card:hover{transform:translateY(-4px);border-color:rgba(139,92,246,.4);}
+  .poster{position:relative;aspect-ratio:2/2.6;background-size:cover;}
+  .poster .type{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);font-size:10px;font-weight:700;letter-spacing:.5px;padding:4px 8px;border-radius:5px;}
+  .poster .rate{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);font-size:11px;font-weight:700;padding:4px 8px;border-radius:5px;color:var(--gold);}
+  .trash{
+    position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;
+    background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;
+    color:#e8b4b4;cursor:pointer;backdrop-filter:blur(4px);
+  }
+  .card-body{padding:12px 13px 15px;}
+  .card-title{font-size:13.5px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-sub{font-size:11.5px;color:var(--text-dimmer);}
+
+  .g1{background-image:linear-gradient(160deg,#0c1f2e,#0891b2 60%,#67e8f9);}
+  .g5{background-image:linear-gradient(160deg,#3f0d16,#dc2626 65%,#f97316);}
+  .g6{background-image:linear-gradient(160deg,#2b0a1f,#be185d 60%,#f472b6);}
+
+  footer{padding:32px 48px;border-top:1px solid var(--border);display:flex;justify-content:space-between;color:var(--text-dimmer);font-size:12.5px;}
+  footer a{margin-left:20px;color:var(--text-dim);}
+
+  @media(max-width:1100px){.grid{grid-template-columns:repeat(3,1fr);}}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="logo">AniStrim</div>
+  <nav class="main">
+    <a href="index.html">HOME</a>
+    <a href="browse.html">BROWSE</a>
+    <a href="search.html">SEARCH</a>
+    <a class="active" href="watchlist.html">WATCHLIST</a>
+    <a href="history.html">HISTORY</a>
+    <a href="upgrade.html">UPGRADE</a>
+  </nav>
+  <div class="nav-right">
+    <div class="search-box">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search anime…
+    </div>
+    <div class="avatar">D</div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="eyebrow">SAVED</div>
+  <div class="page-head">
+    <div>
+      <h1>My Watchlist</h1>
+      <div class="count">4 titles queued up</div>
+    </div>
+    <button class="btn-outline">🗑 Clear list</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="poster g1"><span class="type">TV</span><span class="trash">🗑</span><span class="rate">★ 9.10</span></div>
+      <div class="card-body"><div class="card-title">Frieren: Beyond Journey's E...</div><div class="card-sub">TV · 2026 · 12 ep</div></div>
+    </div>
+    <div class="card">
+      <div class="poster g5"><span class="type">MOVIE</span><span class="trash">🗑</span><span class="rate">★ 9.10</span></div>
+      <div class="card-body"><div class="card-title">Chainsaw Man: The Movie …</div><div class="card-sub">Movie · 2025 · 1 ep</div></div>
+    </div>
+    <div class="card">
+      <div class="poster g6"><span class="type">TV</span><span class="trash">🗑</span><span class="rate">★ 8.20</span></div>
+      <div class="card-body"><div class="card-title">You and I are Polar Opposites</div><div class="card-sub">TV · 2026 · 12 ep</div></div>
+    </div>
+    <div class="card">
+      <div class="poster g1"><span class="type">TV</span><span class="trash">🗑</span><span class="rate">★ 8.40</span></div>
+      <div class="card-body"><div class="card-title">Neon Diver</div><div class="card-sub">TV · 2025 · 11 ep</div></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>© 2026 AniStrim</span>
+  <div>
+    <a href="browse.html">Browse</a>
+    <a href="search.html">Search</a>
+    <a href="upgrade.html">Upgrade</a>
+  </div>
+</footer>
+
+</body>
+</html>

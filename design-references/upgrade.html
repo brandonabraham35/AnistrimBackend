@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AniStrim — Upgrade to Premium</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a090e; --bg-elev:#121017; --card:#161420; --border:rgba(255,255,255,.08);
+    --purple:#8b5cf6; --purple2:#a855f7; --purple-deep:#6d28d9;
+    --text:#f5f4f7; --text-dim:#9d99ab; --text-dimmer:#6b6777; --green:#4ade80;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.logo,nav a,.btn{font-family:'Sora',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+
+  header.site{
+    display:flex;align-items:center;justify-content:space-between;padding:20px 48px;
+    border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;
+    background:rgba(10,9,14,.85);backdrop-filter:blur(10px);
+  }
+  .logo{font-weight:800;font-size:22px;background:linear-gradient(120deg,var(--purple2),var(--purple-deep));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  nav.main{display:flex;gap:8px;}
+  nav.main a{font-size:13px;font-weight:600;letter-spacing:.6px;color:var(--text-dim);padding:10px 16px;border-radius:999px;transition:.2s;}
+  nav.main a:hover{color:var(--text);}
+  nav.main a.active{background:var(--card);color:var(--text);}
+  .nav-right{display:flex;align-items:center;gap:16px;}
+  .search-box{display:flex;align-items:center;gap:8px;background:var(--bg-elev);border:1px solid var(--border);padding:9px 16px;border-radius:999px;color:var(--text-dimmer);font-size:13px;width:220px;}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--purple2),var(--purple-deep));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
+
+  .page{
+    padding:60px 48px 90px;text-align:center;position:relative;overflow:hidden;
+  }
+  .page::before{
+    content:"";position:absolute;top:-120px;left:50%;transform:translateX(-50%);
+    width:700px;height:400px;border-radius:50%;
+    background:radial-gradient(closest-side, rgba(139,92,246,.28), transparent);
+    z-index:-1;
+  }
+  .plan-badge{
+    display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,.15);
+    border:1px solid rgba(139,92,246,.4);color:var(--purple2);font-size:12px;font-weight:700;
+    letter-spacing:1px;padding:8px 18px;border-radius:999px;margin-bottom:24px;
+  }
+  .page h1{
+    font-size:52px;font-weight:800;margin-bottom:16px;
+    background:linear-gradient(120deg,#fff,var(--purple2));-webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .page > p{color:var(--text-dim);font-size:15.5px;margin-bottom:52px;}
+
+  .plans{display:flex;gap:28px;justify-content:center;max-width:960px;margin:0 auto 90px;flex-wrap:wrap;}
+  .plan-card{
+    background:var(--card);border:1px solid var(--border);border-radius:18px;
+    padding:36px 34px;width:420px;text-align:left;position:relative;
+  }
+  .plan-card.featured{
+    border:1px solid rgba(139,92,246,.6);
+    background:linear-gradient(180deg, rgba(139,92,246,.08), var(--card) 40%);
+    box-shadow:0 0 60px rgba(139,92,246,.15);
+  }
+  .best-value{
+    position:absolute;top:-14px;left:50%;transform:translateX(-50%);
+    background:linear-gradient(120deg,var(--purple2),var(--purple-deep));
+    font-size:11px;font-weight:800;letter-spacing:1px;padding:6px 16px;border-radius:999px;
+  }
+  .plan-label{font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text-dimmer);margin-bottom:14px;text-align:center;}
+  .plan-price{font-size:42px;font-weight:800;text-align:center;margin-bottom:24px;}
+  .plan-price span{font-size:16px;font-weight:600;color:var(--text-dimmer);}
+  .plan-card hr{border:none;border-top:1px solid var(--border);margin-bottom:20px;}
+  .feature-list{list-style:none;margin-bottom:24px;}
+  .feature-list li{display:flex;align-items:center;gap:12px;padding:9px 0;font-size:14px;color:var(--text);}
+  .check{
+    width:20px;height:20px;border-radius:50%;background:rgba(139,92,246,.18);color:var(--purple2);
+    display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;
+  }
+  .save-note{color:var(--green);font-size:13px;font-weight:700;text-align:center;margin-bottom:18px;}
+  .plan-cta{
+    width:100%;padding:15px;border-radius:10px;border:none;font-family:'Sora',sans-serif;
+    font-weight:700;font-size:14.5px;cursor:pointer;
+  }
+  .plan-cta.ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border);}
+  .plan-cta.ghost:hover{background:rgba(255,255,255,.1);}
+  .plan-cta.solid{background:linear-gradient(120deg,var(--purple2),var(--purple-deep));color:#fff;}
+  .plan-cta.solid:hover{filter:brightness(1.1);}
+
+  .why h2{font-size:32px;font-weight:800;margin-bottom:44px;}
+  .why-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:960px;margin:0 auto;}
+  .why-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 24px;text-align:left;}
+  .why-icon{width:44px;height:44px;border-radius:10px;background:rgba(139,92,246,.15);display:flex;align-items:center;justify-content:center;color:var(--purple2);font-size:18px;margin-bottom:18px;}
+  .why-card h3{font-size:16px;font-weight:700;margin-bottom:8px;}
+  .why-card p{font-size:13.5px;color:var(--text-dim);line-height:1.5;}
+
+  footer{padding:32px 48px;border-top:1px solid var(--border);display:flex;justify-content:space-between;color:var(--text-dimmer);font-size:12.5px;}
+  footer a{margin-left:20px;color:var(--text-dim);}
+
+  @media(max-width:900px){.why-grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="logo">AniStrim</div>
+  <nav class="main">
+    <a href="index.html">HOME</a>
+    <a href="browse.html">BROWSE</a>
+    <a href="search.html">SEARCH</a>
+    <a href="watchlist.html">WATCHLIST</a>
+    <a href="history.html">HISTORY</a>
+    <a class="active" href="upgrade.html">UPGRADE</a>
+  </nav>
+  <div class="nav-right">
+    <div class="search-box">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search anime…
+    </div>
+    <div class="avatar">D</div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="plan-badge">✦ PREMIUM</div>
+  <h1>Upgrade to Premium</h1>
+  <p>Unlock the full AniStrim experience. Watch more, enjoy more.</p>
+
+  <div class="plans">
+    <div class="plan-card">
+      <div class="plan-label">MONTHLY</div>
+      <div class="plan-price">UGX 15,000<span>/mo</span></div>
+      <hr>
+      <ul class="feature-list">
+        <li><span class="check">✓</span> Access to all anime series</li>
+        <li><span class="check">✓</span> HD &amp; 4K video quality</li>
+        <li><span class="check">✓</span> Completely ad-free</li>
+        <li><span class="check">✓</span> Multi-device streaming</li>
+        <li><span class="check">✓</span> Offline downloads</li>
+        <li><span class="check">✓</span> Unlimited watchlists</li>
+      </ul>
+      <button class="plan-cta ghost">Choose Monthly</button>
+    </div>
+
+    <div class="plan-card featured">
+      <div class="best-value">BEST VALUE</div>
+      <div class="plan-label">YEARLY</div>
+      <div class="plan-price">UGX 180,000<span>/yr</span></div>
+      <hr>
+      <ul class="feature-list">
+        <li><span class="check">✓</span> Access to all anime series</li>
+        <li><span class="check">✓</span> HD &amp; 4K video quality</li>
+        <li><span class="check">✓</span> Completely ad-free</li>
+        <li><span class="check">✓</span> Multi-device streaming</li>
+        <li><span class="check">✓</span> Offline downloads</li>
+        <li><span class="check">✓</span> Unlimited watchlists</li>
+      </ul>
+      <div class="save-note">Save 16% compared to monthly</div>
+      <button class="plan-cta solid">Choose Yearly</button>
+    </div>
+  </div>
+
+  <div class="why">
+    <h2>Why Premium?</h2>
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-icon">4K</div>
+        <h3>Crystal clear streams</h3>
+        <p>Watch every frame in true HD and 4K, on any screen, with zero buffering compromises.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">⛔</div>
+        <h3>Zero interruptions</h3>
+        <p>No pre-roll ads, no mid-episode breaks — just the story, start to finish.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-icon">⬇</div>
+        <h3>Take it offline</h3>
+        <p>Download full seasons and watch anywhere, even without a connection.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>© 2026 AniStrim</span>
+  <div>
+    <a href="browse.html">Browse</a>
+    <a href="search.html">Search</a>
+    <a href="upgrade.html">Upgrade</a>
+  </div>
+</footer>
+
+</body>
+</html>

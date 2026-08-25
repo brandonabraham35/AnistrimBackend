@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AniStrim — Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a090e;
+    --bg-elev:#121017;
+    --card:#161420;
+    --card-hover:#1c1928;
+    --border:rgba(255,255,255,.08);
+    --purple:#8b5cf6;
+    --purple2:#a855f7;
+    --purple-deep:#6d28d9;
+    --text:#f5f4f7;
+    --text-dim:#9d99ab;
+    --text-dimmer:#6b6777;
+    --gold:#f5b942;
+    --radius:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.logo,.nav a,.btn{font-family:'Sora',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+  img{display:block;max-width:100%;}
+  ::selection{background:var(--purple);color:#fff;}
+
+  /* ---- NAV ---- */
+  header.site{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:20px 48px;
+    border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:50;
+    background:rgba(10,9,14,.85);
+    backdrop-filter:blur(10px);
+  }
+  .logo{
+    font-weight:800;font-size:22px;letter-spacing:.3px;
+    background:linear-gradient(120deg,var(--purple2),var(--purple-deep));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  nav.main{display:flex;gap:8px;}
+  nav.main a{
+    font-size:13px;font-weight:600;letter-spacing:.6px;color:var(--text-dim);
+    padding:10px 16px;border-radius:999px;transition:.2s;
+  }
+  nav.main a:hover{color:var(--text);}
+  nav.main a.active{background:var(--card);color:var(--text);}
+  .nav-right{display:flex;align-items:center;gap:16px;}
+  .search-box{
+    display:flex;align-items:center;gap:8px;
+    background:var(--bg-elev);border:1px solid var(--border);
+    padding:9px 16px;border-radius:999px;color:var(--text-dimmer);
+    font-size:13px;width:220px;
+  }
+  .search-box svg{flex-shrink:0;opacity:.7;}
+  .avatar{
+    width:34px;height:34px;border-radius:50%;
+    background:linear-gradient(135deg,var(--purple2),var(--purple-deep));
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:14px;
+  }
+
+  /* ---- HERO ---- */
+  .hero{
+    position:relative;min-height:560px;display:flex;align-items:flex-end;
+    padding:64px 48px;overflow:hidden;
+  }
+  .hero-bg{
+    position:absolute;inset:0;
+    background:
+      linear-gradient(180deg, rgba(10,9,14,.2) 0%, rgba(10,9,14,.6) 55%, var(--bg) 100%),
+      linear-gradient(100deg, #2a1a3d 0%, #4a2560 35%, #d97b3f 70%, #e8985a 100%);
+    z-index:-1;
+  }
+  .hero-bg::after{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(115deg, transparent 0 60px, rgba(255,255,255,.03) 60px 62px);
+  }
+  .hero-content{max-width:640px;}
+  .hero-meta{display:flex;align-items:center;gap:10px;margin-bottom:18px;font-size:13px;font-weight:600;color:var(--text-dim);}
+  .badge{
+    background:var(--purple);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;
+  }
+  .rating{color:var(--gold);display:flex;align-items:center;gap:4px;}
+  .hero h1{font-size:56px;font-weight:800;line-height:1.05;margin-bottom:18px;}
+  .hero p{color:#d8d5e0;font-size:15.5px;line-height:1.6;margin-bottom:28px;max-width:560px;}
+  .hero-actions{display:flex;gap:14px;margin-bottom:34px;}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:14px;
+    padding:13px 26px;border-radius:10px;border:none;cursor:pointer;transition:.2s;
+  }
+  .btn-primary{background:linear-gradient(120deg,var(--purple2),var(--purple-deep));color:#fff;}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border);}
+  .btn-ghost:hover{background:rgba(255,255,255,.1);}
+  .hero-dots{display:flex;gap:8px;}
+  .hero-dots span{width:28px;height:4px;border-radius:2px;background:rgba(255,255,255,.2);}
+  .hero-dots span.active{background:var(--purple2);width:38px;}
+  .hero-nav{
+    position:absolute;bottom:64px;right:48px;display:flex;gap:10px;
+  }
+  .hero-nav button{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--border);
+    background:rgba(255,255,255,.05);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+
+  /* ---- LAYOUT ---- */
+  .page{display:flex;gap:40px;padding:48px;align-items:flex-start;}
+  .main-col{flex:1;min-width:0;}
+  .side-col{width:300px;flex-shrink:0;}
+
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:20px;}
+  .section-head h2{font-size:24px;font-weight:700;}
+  .see-all{font-size:12.5px;font-weight:700;color:var(--text-dim);letter-spacing:.5px;}
+  .see-all:hover{color:var(--purple2);}
+
+  /* ---- CARDS ---- */
+  .row-scroll{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:52px;
+  }
+  .grid-5{grid-template-columns:repeat(5,1fr);}
+  .card{
+    background:var(--card);border-radius:var(--radius);overflow:hidden;
+    border:1px solid var(--border);transition:.25s;cursor:pointer;
+  }
+  .card:hover{transform:translateY(-4px);border-color:rgba(139,92,246,.4);}
+  .poster{
+    position:relative;aspect-ratio:2/2.6;
+    display:flex;align-items:flex-end;padding:12px;
+    background-size:cover;background-position:center;
+  }
+  .poster .type{
+    position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);
+    font-size:10px;font-weight:700;letter-spacing:.5px;padding:4px 8px;border-radius:5px;
+    backdrop-filter:blur(4px);
+  }
+  .poster .rate{
+    position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);
+    font-size:11px;font-weight:700;padding:4px 8px;border-radius:5px;color:var(--gold);
+    display:flex;align-items:center;gap:3px;
+  }
+  .poster .ep-badge{
+    position:absolute;top:10px;right:10px;background:var(--purple);
+    font-size:10px;font-weight:700;padding:4px 8px;border-radius:5px;
+  }
+  .poster .glyph{font-size:15px;font-weight:800;color:rgba(255,255,255,.85);letter-spacing:1px;}
+  .progress{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(0,0,0,.4);}
+  .progress i{display:block;height:100%;background:var(--purple2);}
+  .card-body{padding:12px 13px 15px;}
+  .card-title{font-size:13.5px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-sub{font-size:11.5px;color:var(--text-dimmer);}
+
+  /* poster gradient variants */
+  .g1{background-image:linear-gradient(160deg,#2a1140,#7c3aed 65%,#c026d3);}
+  .g2{background-image:linear-gradient(160deg,#1a1a1a,#ea580c 70%,#7c2d12);}
+  .g3{background-image:linear-gradient(160deg,#0b1220,#0e2a4a 55%,#38bdf8);}
+  .g4{background-image:linear-gradient(160deg,#0c1f2e,#0891b2 60%,#67e8f9);}
+  .g5{background-image:linear-gradient(160deg,#3f0d16,#dc2626 65%,#f97316);}
+  .g6{background-image:linear-gradient(160deg,#2b0a1f,#be185d 60%,#f472b6);}
+
+  /* ---- SIDEBAR ---- */
+  .panel{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px;margin-bottom:24px;
+  }
+  .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .panel-head h3{font-size:16px;font-weight:700;}
+  .top-tag{font-size:10.5px;font-weight:700;color:var(--purple2);letter-spacing:.5px;}
+  .rank-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+  .rank-row:last-child{border:none;}
+  .rank-num{font-size:15px;font-weight:800;color:var(--text-dimmer);width:16px;}
+  .rank-thumb{width:42px;height:42px;border-radius:8px;flex-shrink:0;}
+  .rank-info p{font-size:13px;font-weight:700;line-height:1.3;}
+  .rank-info span{font-size:11px;color:var(--text-dimmer);}
+
+  .premium-card{
+    background:linear-gradient(160deg,#2a1440,#160b22);
+    border:1px solid rgba(139,92,246,.35);border-radius:var(--radius);padding:24px;
+  }
+  .premium-card h3{font-size:18px;margin-bottom:6px;}
+  .premium-card p{font-size:12.5px;color:var(--text-dim);margin-bottom:18px;line-height:1.5;}
+  .premium-card .btn-primary{width:100%;justify-content:center;}
+
+  footer{padding:32px 48px;border-top:1px solid var(--border);display:flex;justify-content:space-between;color:var(--text-dimmer);font-size:12.5px;}
+  footer a{margin-left:20px;color:var(--text-dim);}
+
+  @media(max-width:1000px){
+    .page{flex-direction:column;}
+    .side-col{width:100%;}
+    .row-scroll{grid-template-columns:repeat(2,1fr);}
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="logo">AniStrim</div>
+  <nav class="main">
+    <a class="active" href="index.html">HOME</a>
+    <a href="browse.html">BROWSE</a>
+    <a href="search.html">SEARCH</a>
+    <a href="watchlist.html">WATCHLIST</a>
+    <a href="history.html">HISTORY</a>
+    <a href="upgrade.html">UPGRADE</a>
+  </nav>
+  <div class="nav-right">
+    <div class="search-box">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search anime…
+    </div>
+    <div class="avatar">D</div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-content">
+    <div class="hero-meta">
+      <span class="badge">TV</span>
+      <span>2008</span>
+      <span class="rating">★ 8.9</span>
+      <span>DRAMA · ROMANCE</span>
+    </div>
+    <h1>Clannad After Story</h1>
+    <p>Summer break is now over; the second semester has started for Tomoya, Nagisa and the others, and little has changed. Since Tomoya's relationship with his father is still troubled, the future keeps arriving anyway.</p>
+    <div class="hero-actions">
+      <button class="btn btn-primary">▶ Watch Now</button>
+      <button class="btn btn-ghost">ⓘ Details</button>
+    </div>
+    <div class="hero-dots">
+      <span class="active"></span>
+      <span></span>
+    </div>
+  </div>
+  <div class="hero-nav">
+    <button>‹</button>
+    <button>›</button>
+  </div>
+</section>
+
+<div class="page">
+  <div class="main-col">
+
+    <div class="section-head">
+      <h2>Continue Watching</h2>
+      <a class="see-all" href="history.html">HISTORY</a>
+    </div>
+    <div class="row-scroll">
+      <div class="card">
+        <div class="poster g1"><span class="ep-badge">EP 3</span></div>
+        <div class="progress"><i style="width:42%"></i></div>
+        <div class="card-body">
+          <div class="card-title">Clannad After Story</div>
+          <div class="card-sub">42% watched</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="poster g4"><span class="ep-badge">EP 1</span></div>
+        <div class="progress"><i style="width:74%"></i></div>
+        <div class="card-body">
+          <div class="card-title">Frieren: Beyond Journey's End</div>
+          <div class="card-sub">74% watched</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="poster g5"><span class="ep-badge">EP 1</span></div>
+        <div class="progress"><i style="width:6%"></i></div>
+        <div class="card-body">
+          <div class="card-title">Sorcery Fight</div>
+          <div class="card-sub">6% watched</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="poster g3"><span class="ep-badge">EP 7</span></div>
+        <div class="progress"><i style="width:89%"></i></div>
+        <div class="card-body">
+          <div class="card-title">Frieren: Beyond Journey's End Season 2</div>
+          <div class="card-sub">89% watched</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <h2>Trending Now</h2>
+      <a class="see-all" href="browse.html">SEE ALL</a>
+    </div>
+    <div class="row-scroll grid-5">
+      <div class="card">
+        <div class="poster g1"><span class="type">TV</span><span class="rate">★ 9.10</span></div>
+        <div class="card-body"><div class="card-title">Sorcery Fight 2nd Season</div><div class="card-sub">TV · 2023 · 23 ep</div></div>
+      </div>
+      <div class="card">
+        <div class="poster g2"><span class="type">TV</span><span class="rate">★ 9.10</span></div>
+        <div class="card-body"><div class="card-title">Bleach: Thousand-Year Blood War</div><div class="card-sub">TV · 2022 · 39 ep</div></div>
+      </div>
+      <div class="card">
+        <div class="poster g3"><span class="type">TV</span><span class="rate">★ 8.90</span></div>
+        <div class="card-body"><div class="card-title">Clannad After Story</div><div class="card-sub">TV · 2008 · 24 ep</div></div>
+      </div>
+      <div class="card">
+        <div class="poster g4"><span class="type">TV</span><span class="rate">★ 9.30</span></div>
+        <div class="card-body"><div class="card-title">Frieren: Beyond Journey's End</div><div class="card-sub">TV · 2023 · 28 ep</div></div>
+      </div>
+      <div class="card">
+        <div class="poster g5"><span class="type">MOVIE</span><span class="rate">★ 8.80</span></div>
+        <div class="card-body"><div class="card-title">Sorcery Fight 0</div><div class="card-sub">Movie · 2021 · 1 ep</div></div>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <h2>New This Season</h2>
+      <a class="see-all" href="browse.html">SEE ALL</a>
+    </div>
+    <div class="row-scroll grid-5">
+      <div class="card"><div class="poster g6"><span class="type">TV</span></div><div class="card-body"><div class="card-title">Moonlit Blade Chronicle</div><div class="card-sub">TV · 2026 · 8.60</div></div></div>
+      <div class="card"><div class="poster g4"><span class="type">NEW</span></div><div class="card-body"><div class="card-title">Neon Diver</div><div class="card-sub">TV · 2025 · 8.40</div></div></div>
+      <div class="card"><div class="poster g6"><span class="type">MOVIE</span></div><div class="card-body"><div class="card-title">Chainsaw Man: The Movie</div><div class="card-sub">Movie · 2025 · 9.10</div></div></div>
+      <div class="card"><div class="poster g5"><span class="type">NEW</span></div><div class="card-body"><div class="card-title">You and I are Polar Opposites</div><div class="card-sub">TV · 2026 · 8.20</div></div></div>
+      <div class="card"><div class="poster g1"><span class="type">NEW</span></div><div class="card-body"><div class="card-title">Jujutsu Kaisen: The Culling</div><div class="card-sub">TV · 2026 · 8.80</div></div></div>
+    </div>
+
+  </div>
+
+  <div class="side-col">
+    <div class="panel">
+      <div class="panel-head">
+        <h3>All Time Popular</h3>
+        <span class="top-tag">TOP 6</span>
+      </div>
+      <div class="rank-row"><span class="rank-num">1</span><div class="rank-thumb g2"></div><div class="rank-info"><p>Bleach: Thousand-Year Blood War</p><span>TV · ★ 9.1</span></div></div>
+      <div class="rank-row"><span class="rank-num">2</span><div class="rank-thumb g1"></div><div class="rank-info"><p>Sorcery Fight 2nd Season</p><span>TV · ★ 9.1</span></div></div>
+      <div class="rank-row"><span class="rank-num">3</span><div class="rank-thumb g5"></div><div class="rank-info"><p>Chainsaw Man: The Movie</p><span>Movie · ★ 9.1</span></div></div>
+      <div class="rank-row"><span class="rank-num">4</span><div class="rank-thumb g4"></div><div class="rank-info"><p>Frieren: Beyond Journey's End</p><span>TV · ★ 9.3</span></div></div>
+      <div class="rank-row"><span class="rank-num">5</span><div class="rank-thumb g5"></div><div class="rank-info"><p>Sorcery Fight</p><span>TV · ★ 9.0</span></div></div>
+      <div class="rank-row"><span class="rank-num">6</span><div class="rank-thumb g6"></div><div class="rank-info"><p>Moonlit Blade Chronicle</p><span>TV · ★ 8.6</span></div></div>
+    </div>
+
+    <div class="premium-card">
+      <h3>Go Premium</h3>
+      <p>4K streams, zero ads, offline downloads.</p>
+      <button class="btn btn-primary" onclick="location.href='upgrade.html'">Upgrade</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>© 2026 AniStrim</span>
+  <div>
+    <a href="browse.html">Browse</a>
+    <a href="search.html">Search</a>
+    <a href="upgrade.html">Upgrade</a>
+  </div>
+</footer>
+
+</body>
+</html>

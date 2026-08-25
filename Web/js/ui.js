@@ -211,10 +211,14 @@
         '<div class="slide-inner"' + (bg ? ' style="background-image:url(' + bg + ')"' : '') + '>' +
         '<div class="slide-content">' +
         (type ? '<span class="slide-badge">' + esc(type) + '</span>' : '') +
+        '<div class="slide-meta">' +
+        (a.year ? '<span>' + esc(a.year) + '</span>' : '') +
+        (a.rating ? '<span class="meta-dot">·</span><span>★ ' + esc(a.rating) + '</span>' : '') +
+        '</div>' +
         '<h2>' + esc(a.title) + '</h2>' +
         (a.description ? '<p>' + esc(a.description.substring(0, 180)) + '</p>' : '') +
         '<div class="slide-actions">' +
-        '<a href="#/anime/' + a.id + '" class="btn-primary">\u25B6 Watch Now</a>' +
+        '<a href="#/anime/' + a.id + '" class="btn-primary">▶ Watch Now</a>' +
         '<a href="#/anime/' + a.id + '" class="btn-outline">Details</a>' +
         '</div></div></div></div>';
     }
@@ -327,7 +331,9 @@
       '<div class="rank-tabs" role="tablist">' +
       '<button class="rank-tab active" onclick="AniStrimUI.switchRankTab(0)" role="tab">All Time Popular</button>' +
       '<button class="rank-tab" onclick="AniStrimUI.switchRankTab(1)" role="tab">All Time Favorites</button>' +
-      '</div><div class="rank-list" id="rank-list"></div></div>';
+      '</div><div class="rank-list" id="rank-list"></div></div>' +
+      (!Auth.state.isPremium ? '<div class="premium-cta-card"><div class="premium-cta-icon">👑</div><h4>Go Premium</h4><p>Unlock HD streaming, ad-free viewing, and more.</p><a href="#/upgrade" class="btn-primary btn-block" style="margin-top:var(--space-3);font-size:var(--font-size-sm);padding:8px 16px">Upgrade Now</a></div>' : '') +
+      '</div>';
     renderRankItems(0);
   }
   function renderRankItems(tab) {
