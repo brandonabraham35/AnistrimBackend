@@ -348,7 +348,7 @@
       var topClass = i < 3 ? ' top-' + (i + 1) : '';
       h += '<div class="rank-item" onclick="AniStrimUI.goAnime(' + (a.id || a.animeId) + ')">' +
         '<span class="rank-num' + topClass + '">' + (i + 1) + '</span>' +
-        '<div class="rank-thumb"><img src="' + (img || fallback(a.title)) + '" alt="" loading="lazy" onerror="this.style.display='none'"></div>' +
+        '<div class="rank-thumb"><img src="' + (img || fallback(a.title)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'"></div>' +
         '<div class="rank-info"><div class="rank-title">' + esc(a.title || '') + '</div>' +
         '<div class="rank-meta">' + (type || 'Anime') + (eps ? ' &middot; ' + eps + ' EP' : '') + '</div></div></div>';
     }
