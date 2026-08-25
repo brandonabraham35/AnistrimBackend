@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AniStrim — Profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0B12;
+    --panel:#13151F;
+    --panel-alt:#191C29;
+    --border:rgba(255,255,255,0.07);
+    --violet:#8B5CF6;
+    --violet-soft:#8B5CF61a;
+    --pink:#FF5C8A;
+    --text:#F1F0F7;
+    --muted:#8B8DA8;
+    --muted-dim:#5B5D74;
+    --radius:16px;
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(139,92,246,0.16), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(255,92,138,0.08), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+    padding:48px 24px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* faint scanline texture, subject-appropriate for a streaming brand */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background:repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  .wrap{ max-width:1080px; margin:0 auto; position:relative; z-index:1; }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:36px;
+  }
+  .brand{
+    font-family:'Sora', sans-serif; font-weight:800; font-size:20px;
+    letter-spacing:0.01em;
+    background:linear-gradient(90deg, #fff, var(--violet) 140%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .crumb{ font-size:13px; color:var(--muted-dim); font-family:'IBM Plex Mono', monospace; }
+  .crumb b{ color:var(--muted); font-weight:500; }
+
+  .layout{
+    display:grid;
+    grid-template-columns:300px 1fr;
+    gap:24px;
+    align-items:start;
+  }
+
+  /* ---------- Sidebar / identity card ---------- */
+  .card{
+    background:linear-gradient(180deg, var(--panel-alt), var(--panel));
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    position:relative;
+    overflow:hidden;
+  }
+
+  .film-edge{
+    height:10px;
+    background-image:radial-gradient(circle, rgba(255,255,255,0.10) 1.6px, transparent 1.6px);
+    background-size:14px 10px;
+    background-position:center;
+    opacity:0.5;
+  }
+
+  .id-card{ padding:32px 26px 26px; text-align:center; }
+
+  .avatar-ring{
+    width:112px; height:112px; margin:0 auto 18px; position:relative;
+  }
+  .avatar-ring svg{ position:absolute; inset:0; transform:rotate(-90deg); }
+  .avatar-ring .track{ fill:none; stroke:rgba(255,255,255,0.06); stroke-width:4; }
+  .avatar-ring .prog{
+    fill:none; stroke:url(#ringGrad); stroke-width:4; stroke-linecap:round;
+    stroke-dasharray:301.6; stroke-dashoffset:96;
+    transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1);
+  }
+  .avatar-core{
+    position:absolute; inset:10px;
+    border-radius:50%;
+    background:linear-gradient(145deg, #2A2450, #1B1730);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Sora', sans-serif; font-weight:700; font-size:32px;
+    color:#fff;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+  .level-badge{
+    position:absolute; bottom:-2px; right:2px;
+    background:linear-gradient(135deg, var(--violet), var(--pink));
+    color:#fff; font-family:'IBM Plex Mono', monospace; font-size:11px; font-weight:500;
+    padding:3px 8px; border-radius:20px; border:2px solid var(--panel-alt);
+    letter-spacing:0.02em;
+  }
+
+  .id-name{ font-family:'Sora', sans-serif; font-weight:700; font-size:19px; }
+  .id-handle{ color:var(--muted); font-size:13px; margin-top:3px; font-family:'IBM Plex Mono', monospace;}
+  .id-email{ color:var(--muted-dim); font-size:12.5px; margin-top:10px; }
+
+  .xp-caption{
+    margin-top:14px; font-size:11.5px; color:var(--muted-dim);
+    font-family:'IBM Plex Mono', monospace;
+  }
+  .xp-caption b{ color:var(--pink); font-weight:500; }
+
+  .id-actions{ display:flex; gap:8px; margin-top:20px; }
+  .btn{
+    flex:1; padding:10px 14px; border-radius:10px; border:none;
+    font-family:'Inter'; font-size:13.5px; font-weight:600; cursor:pointer;
+    transition:transform .15s ease, filter .15s ease;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{ background:linear-gradient(135deg, var(--violet), #6D3FD9); color:#fff; }
+  .btn-primary:hover{ filter:brightness(1.12); }
+  .btn-ghost{ background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .btn-ghost:hover{ color:var(--text); border-color:rgba(255,255,255,0.18); }
+
+  .divider{ height:1px; background:var(--border); margin:24px 0 18px; }
+
+  .stat-row{ display:flex; justify-content:space-between; padding:0 26px 22px; }
+  .stat{ text-align:left; }
+  .stat .n{ font-family:'IBM Plex Mono', monospace; font-size:17px; font-weight:500; color:var(--text); }
+  .stat .l{ font-size:10.5px; color:var(--muted-dim); text-transform:uppercase; letter-spacing:0.06em; margin-top:2px; }
+
+  /* watch streak heatmap — signature element */
+  .streak{ padding:0 26px 26px; }
+  .streak-label{
+    font-size:11px; text-transform:uppercase; letter-spacing:0.08em;
+    color:var(--muted-dim); margin-bottom:10px; text-align:left;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .streak-label span{ color:var(--pink); font-family:'IBM Plex Mono', monospace; text-transform:none; letter-spacing:0; font-size:11.5px;}
+  .heatmap{
+    display:grid; grid-template-columns:repeat(13, 1fr); gap:3px;
+  }
+  .heatmap i{
+    display:block; width:100%; aspect-ratio:1; border-radius:3px;
+    background:var(--cell, rgba(255,255,255,0.05));
+  }
+
+  /* ---------- Main content ---------- */
+  .main{ display:flex; flex-direction:column; gap:20px; }
+
+  .main-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
+  .main-head h1{ font-family:'Sora', sans-serif; font-size:24px; font-weight:700; }
+  .main-head p{ color:var(--muted); font-size:13.5px; margin-top:4px; }
+
+  .group{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:22px 24px;
+  }
+  .group-title{
+    font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--violet); font-weight:600; margin-bottom:16px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .group-title::after{ content:""; flex:1; height:1px; background:var(--border); }
+
+  .row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:13px 0; border-bottom:1px solid var(--border);
+    gap:20px;
+  }
+  .row:last-child{ border-bottom:none; padding-bottom:0; }
+  .row:first-of-type{ padding-top:0; }
+
+  .row-text .t{ font-size:14.5px; font-weight:500; }
+  .row-text .d{ font-size:12.5px; color:var(--muted-dim); margin-top:2px; }
+
+  /* custom toggle, styled as a small play-scrubber */
+  .switch{
+    width:44px; height:24px; border-radius:20px; border:none;
+    background:rgba(255,255,255,0.08); position:relative; cursor:pointer;
+    flex-shrink:0; transition:background .2s ease;
+  }
+  .switch::after{
+    content:""; position:absolute; top:3px; left:3px; width:18px; height:18px;
+    border-radius:50%; background:#B9B9C7;
+    transition:transform .22s cubic-bezier(.4,0,.2,1), background .2s ease;
+  }
+  .switch.on{ background:linear-gradient(90deg, var(--violet), var(--pink)); }
+  .switch.on::after{ transform:translateX(20px); background:#fff; }
+
+  select, input[type=text]{
+    background:var(--panel-alt); color:var(--text);
+    border:1px solid var(--border); border-radius:9px;
+    padding:9px 34px 9px 12px; font-family:'Inter'; font-size:13.5px;
+    appearance:none; cursor:pointer; min-width:150px;
+  }
+  select:focus, input[type=text]:focus{ outline:2px solid var(--violet); outline-offset:1px; }
+  .select-wrap{ position:relative; }
+  .select-wrap::after{
+    content:"⌄"; position:absolute; right:12px; top:50%; transform:translateY(-55%);
+    color:var(--muted-dim); pointer-events:none; font-size:13px;
+  }
+  input[type=text]{ width:100%; cursor:text; }
+  input[type=text]::placeholder{ color:var(--muted-dim); }
+
+  .save-bar{ display:flex; justify-content:flex-end; align-items:center; gap:12px; }
+  .saved-msg{
+    font-size:12.5px; color:var(--pink); font-family:'IBM Plex Mono', monospace;
+    opacity:0; transform:translateY(2px); transition:all .25s ease;
+  }
+  .saved-msg.show{ opacity:1; transform:translateY(0); }
+
+  a{ color:inherit; text-decoration:none; }
+
+  @media (max-width:820px){
+    .layout{ grid-template-columns:1fr; }
+    .stat-row{ padding:0 26px 22px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; animation:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#FF5C8A"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">AniStrim</div>
+    <div class="crumb"><b>Home</b> / <b>Account</b> / Profile</div>
+  </div>
+
+  <div class="layout">
+
+    <!-- SIDEBAR -->
+    <div class="card">
+      <div class="film-edge"></div>
+      <div class="id-card">
+        <div class="avatar-ring">
+          <svg viewBox="0 0 104 104">
+            <circle class="track" cx="52" cy="52" r="48"></circle>
+            <circle class="prog" cx="52" cy="52" r="48"></circle>
+          </svg>
+          <div class="avatar-core">D</div>
+          <div class="level-badge">LV 12</div>
+        </div>
+        <div class="id-name">DErrICK</div>
+        <div class="id-handle">@derrick.k</div>
+        <div class="id-email">brandybenard4@gmail.com</div>
+        <div class="xp-caption">2,140 / 3,000 XP to <b>LV 13</b></div>
+        <div class="id-actions">
+          <button class="btn btn-primary">Upgrade</button>
+          <button class="btn btn-ghost">Log out</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="n">341</div><div class="l">Episodes</div></div>
+        <div class="stat"><div class="n">128h</div><div class="l">Watched</div></div>
+        <div class="stat"><div class="n">Shonen</div><div class="l">Top genre</div></div>
+      </div>
+
+      <div class="streak">
+        <div class="streak-label">Watch streak <span id="streakCount">— day streak</span></div>
+        <div class="heatmap" id="heatmap"></div>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+      <div class="main-head">
+        <div>
+          <h1>Preferences</h1>
+          <p>Controls apply the next time you press play.</p>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Playback</div>
+        <div class="row">
+          <div class="row-text"><div class="t">Auto-skip intros</div><div class="d">Jump straight past the OP when it's detected</div></div>
+          <button class="switch" data-key="skipIntro"></button>
+        </div>
+        <div class="row">
+          <div class="row-text"><div class="t">Auto-play next episode</div><div class="d">Keep the story rolling without touching a thing</div></div>
+          <button class="switch on" data-key="autoplay"></button>
+        </div>
+        <div class="row">
+          <div class="row-text"><div class="t">Autoplay delay</div><div class="d">Time before the next episode starts</div></div>
+          <div class="select-wrap"><select>
+            <option>5 seconds</option>
+            <option selected>10 seconds</option>
+            <option>20 seconds</option>
+            <option>Off</option>
+          </select></div>
+        </div>
+        <div class="row">
+          <div class="row-text"><div class="t">Default quality</div><div class="d">Starting resolution for new episodes</div></div>
+          <div class="select-wrap"><select>
+            <option selected>Auto</option>
+            <option>1080p</option>
+            <option>720p</option>
+            <option>480p</option>
+          </select></div>
+        </div>
+        <div class="row">
+          <div class="row-text"><div class="t">Playback speed</div><div class="d">Default speed for every new episode</div></div>
+          <div class="select-wrap"><select>
+            <option>0.75×</option>
+            <option selected>Normal</option>
+            <option>1.25×</option>
+            <option>1.5×</option>
+          </select></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Subtitles &amp; audio</div>
+        <div class="row">
+          <div class="row-text"><div class="t">Subtitles</div><div class="d">Show subtitles by default</div></div>
+          <button class="switch on" data-key="subs"></button>
+        </div>
+        <div class="row">
+          <div class="row-text"><div class="t">Subtitle language</div><div class="d">Used whenever a track is available</div></div>
+          <div class="select-wrap"><select>
+            <option selected>English</option>
+            <option>Japanese</option>
+            <option>Spanish</option>
+            <option>Portuguese</option>
+          </select></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Accessibility</div>
+        <div class="row">
+          <div class="row-text"><div class="t">Reduce motion</div><div class="d">Turn off transitions and background animation</div></div>
+          <button class="switch" data-key="reduceMotion"></button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Account</div>
+        <div class="row">
+          <div class="row-text"><div class="t">Username</div><div class="d">Shown on your public watch history</div></div>
+        </div>
+        <input type="text" placeholder="Set username" style="margin-top:-6px;">
+      </div>
+
+      <div class="save-bar">
+        <span class="saved-msg" id="savedMsg">Preferences saved</span>
+        <button class="btn btn-primary" id="saveBtn" style="flex:none; padding:11px 26px;">Save changes</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // toggles
+  document.querySelectorAll('.switch').forEach(sw=>{
+    sw.addEventListener('click', ()=>{
+      sw.classList.toggle('on');
+      if (sw.dataset.key === 'reduceMotion') {
+        document.documentElement.style.setProperty('--motion', sw.classList.contains('on') ? '0s' : '');
+      }
+    });
+  });
+
+  // save feedback
+  const saveBtn = document.getElementById('saveBtn');
+  const savedMsg = document.getElementById('savedMsg');
+  let t;
+  saveBtn.addEventListener('click', ()=>{
+    savedMsg.classList.add('show');
+    clearTimeout(t);
+    t = setTimeout(()=> savedMsg.classList.remove('show'), 2200);
+  });
+
+  // watch streak heatmap — deterministic pseudo-random intensities
+  const grid = document.getElementById('heatmap');
+  const weeks = 13, days = 7;
+  let seed = 42;
+  function rnd(){ seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  const colors = ['rgba(255,255,255,0.05)', '#3B2A63', '#5B3F9E', '#8B5CF6', '#FF5C8A'];
+  let streak = 0, counting = true;
+  const cells = [];
+  for(let w=0; w<weeks; w++){
+    for(let d=0; d<days; d++){
+      const r = rnd();
+      const level = r < 0.18 ? 0 : r < 0.4 ? 1 : r < 0.65 ? 2 : r < 0.86 ? 3 : 4;
+      cells.push(level);
+    }
+  }
+  cells.forEach((level, i)=>{
+    const cell = document.createElement('i');
+    cell.style.setProperty('--cell', colors[level]);
+    grid.appendChild(cell);
+  });
+  for(let i = cells.length - 1; i >= 0; i--){
+    if(cells[i] > 0 && counting){ streak++; } else { counting = false; }
+  }
+  document.getElementById('streakCount').textContent = streak + '-day streak';
+</script>
+
+</body>
+</html>

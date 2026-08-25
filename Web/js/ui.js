@@ -1154,17 +1154,22 @@
       '<button class="btn-ghost btn-block" onclick="AniStrimUI.uploadAvatar()">Change Avatar</button>' +
       '<input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="AniStrimUI.doAvatarUpload(event)">' +
       '<button class="btn-outline btn-block" onclick="AniStrimUI.logout()">Logout</button></div>' +
-      '<div class="profile-settings"><div class="settings-card"><h3>Preferences</h3>' +
-      '<label class="checkbox"><input type="checkbox" id="pref-auto-skip"> Auto-skip intros</label>' +
-      '<label class="checkbox"><input type="checkbox" id="pref-auto-play"> Auto-play next</label>' +
-      '<label>Autoplay delay <select id="pref-auto-countdown"><option value="0">Start immediately</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select></label>' +
-      '<label>Default quality <select id="pref-quality"><option value="auto">Auto</option><option value="360">360p</option><option value="480">480p</option><option value="720">720p</option><option value="1080">1080p</option></select></label>' +
-      '<label>Subtitles <select id="pref-subtitles"><option value="on">On</option><option value="off">Off</option></select></label>' +
-      '<label>Subtitle language <select id="pref-subtitle-lang"><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="pt">Portuguese</option><option value="ja">Japanese</option><option value="ar">Arabic</option><option value="none">None</option></select></label>' +
-      '<label>Playback speed <select id="pref-playback-rate"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>' +
-      '<label class="checkbox"><input type="checkbox" id="pref-reduce-motion"> Reduce motion</label>' +
-      '<label>Username<input id="pref-username" placeholder="Set username"></label>' +
-      '<button class="btn-primary" onclick="AniStrimUI.saveProfile()">Save</button></div></div></div></div></div>';
+      '<div class="profile-settings">' +
+      '<div class="settings-card"><div class="settings-group"><h3>Playback</h3><div class="settings-divider"></div>' +
+      '<label class="toggle-row"><span class="toggle-label"><span class="toggle-label-text">Auto-skip intros</span><span class="toggle-desc">Automatically skip opening and ending sequences</span></span><span class="toggle-wrap"><input type="checkbox" id="pref-auto-skip" class="toggle-input"><span class="toggle-track"></span></span></label>' +
+      '<label class="toggle-row"><span class="toggle-label"><span class="toggle-label-text">Auto-play next</span><span class="toggle-desc">Automatically start the next episode</span></span><span class="toggle-wrap"><input type="checkbox" id="pref-auto-play" class="toggle-input"><span class="toggle-track"></span></span></label>' +
+      '<label class="select-row"><span class="select-label"><span class="select-label-text">Autoplay delay</span><span class="select-desc">Wait time before the next episode starts</span></span><select id="pref-auto-countdown"><option value="0">Start immediately</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select></label>' +
+      '<label class="select-row"><span class="select-label"><span class="select-label-text">Default quality</span><span class="select-desc">Preferred video quality when available</span></span><select id="pref-quality"><option value="auto">Auto</option><option value="360">360p</option><option value="480">480p</option><option value="720">720p</option><option value="1080">1080p</option></select></label>' +
+      '<label class="select-row"><span class="select-label"><span class="select-label-text">Playback speed</span><span class="select-desc">Default playback speed for all videos</span></span><select id="pref-playback-rate"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label></div>' +
+      '<div class="settings-group"><h3>Subtitles &amp; Audio</h3><div class="settings-divider"></div>' +
+      '<label class="select-row"><span class="select-label"><span class="select-label-text">Subtitles</span><span class="select-desc">Show subtitles during playback</span></span><select id="pref-subtitles"><option value="on">On</option><option value="off">Off</option></select></label>' +
+      '<label class="select-row"><span class="select-label"><span class="select-label-text">Subtitle language</span><span class="select-desc">Preferred subtitle language</span></span><select id="pref-subtitle-lang"><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="pt">Portuguese</option><option value="ja">Japanese</option><option value="ar">Arabic</option><option value="none">None</option></select></label></div>' +
+      '<div class="settings-group"><h3>Accessibility</h3><div class="settings-divider"></div>' +
+      '<label class="toggle-row"><span class="toggle-label"><span class="toggle-label-text">Reduce motion</span><span class="toggle-desc">Minimize animations and transitions</span></span><span class="toggle-wrap"><input type="checkbox" id="pref-reduce-motion" class="toggle-input"><span class="toggle-track"></span></span></label></div>' +
+      '<div class="settings-group"><h3>Account</h3><div class="settings-divider"></div>' +
+      '<label class="input-row"><span class="input-label"><span class="input-label-text">Username</span><span class="input-desc">Your display name on the platform</span></span><input id="pref-username" type="text" placeholder="Set username"></label></div>' +
+      '<button class="btn-primary btn-block" onclick="AniStrimUI.saveProfile()" id="profile-save-btn">Save Changes</button>' +
+      '</div></div></div></div>';
   }
   async function afterProfile() {
     await Auth.refreshMe();
