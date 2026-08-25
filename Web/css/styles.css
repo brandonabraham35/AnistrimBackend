@@ -299,6 +299,19 @@ ul,ol{list-style:none}
 .slider-dot.active{background:var(--clr-accent);transform:scale(1.25);box-shadow:0 0 12px rgba(139,92,246,.4)}
 @media(max-width:768px){.slide-inner{height:340px;padding:40px 24px}.slide-content h2{font-size:var(--font-size-2xl)}.slider-btn{width:36px;height:36px;font-size:1rem}}
 @media(max-width:480px){.slide-inner{height:260px;padding:24px 16px}.slide-content h2{font-size:var(--font-size-xl)}.slider-btn{display:none}}
+/* ── 6.7 CONTINUE WATCHING ──────────────────────────── */
+.cw-strip{display:flex;gap:14px;overflow-x:auto;padding:4px 0 var(--space-4);scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.cw-strip::-webkit-scrollbar{height:4px}
+.cw-card{flex:0 0 180px;scroll-snap-align:start;cursor:pointer;transition:transform var(--transition-fast)}
+.cw-card:hover{transform:translateY(-2px)}
+.cw-card-img{position:relative;aspect-ratio:16/9;border-radius:var(--radius-sm);overflow:hidden;background:var(--clr-card2)}
+.cw-card-img img{width:100%;height:100%;object-fit:cover;display:block}
+.cw-progress{position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(0,0,0,.5)}
+.cw-progress div{height:100%;background:var(--clr-accent-gradient);border-radius:0 2px 0 0;transition:width var(--transition)}
+.cw-ep{position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.75);color:#fff;font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);padding:2px 7px;border-radius:var(--radius-xs)}
+.cw-card-title{font-size:var(--font-size-sm);font-weight:var(--font-weight-medium);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cw-card-pct{font-size:var(--font-size-xs);color:var(--clr-text-muted);margin-top:1px}
+@media(max-width:480px){.cw-card{flex:0 0 150px}}
 /* ── 6.6 SKELETON ──────────────────────────────────────── */
 .skeleton{background:linear-gradient(90deg,var(--clr-surface) 25%,var(--clr-surface-hover) 50%,var(--clr-surface) 75%);background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite;border-radius:var(--radius-sm);display:inline-block}
 

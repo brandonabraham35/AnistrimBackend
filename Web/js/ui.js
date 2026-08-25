@@ -281,7 +281,28 @@
         API.continueWatching().then(function (cw) {
           var rows = norm(cw).slice(0, 10);
           var el = document.getElementById('home-continue');
-          if (el && rows.length) el.innerHTML = section('Continue Watching') + grid(rows);
+          if (!el) return;
+        if (!rows.length) {
+          el.innerHTML = '<div class="section-header"><h2>Continue Watching</h2></div><div class="empty" style="padding:var(--space-8) 0;color:var(--clr-text-muted);font-size:var(--font-size-sm)">No watch history yet. Start watching to see your progress here.</div>';
+          return;
+        }
+        var h = '<div class="section-header"><h2>Continue Watching</h2></div><div class="cw-strip">';
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          var pct = (r.progressSeconds && r.durationSec && r.durationSec > 0) ? Math.min(100, Math.round(r.progressSeconds / r.durationSec * 100)) : 0;
+          var img = r.thumbnailUrl || r.coverImage || (r.anime && r.anime.cover_image) || '';
+          var anId = r.animeId || (r.anime && r.anime.id) || '';
+          var epNum = r.episodeNumber || 1;
+          var epId = r.episodeId || '';
+          h += '<div class="cw-card" onclick="AniStrimUI.watch(' + anId + ',' + epNum + ',\'' + esc(epId) + '\')">' +
+            '<div class="cw-card-img"><img src="' + (img || fallback(r.title)) + '" alt="" loading="lazy" onerror="this.style.background=\'var(--clr-card2)\'">' +
+            '<div class="cw-progress"><div style="width:' + pct + '%"></div></div>' +
+            '<span class="cw-ep">EP ' + epNum + '</span></div>' +
+            '<div class="cw-card-title">' + esc(r.title || (r.anime && r.anime.title) || '') + '</div>' +
+            (pct ? '<div class="cw-card-pct">' + pct + '%</div>' : '') + '</div>';
+        }
+        h += '</div>';
+        el.innerHTML = h;
         }).catch(function () {});
       }
       order.forEach(function (o) {
