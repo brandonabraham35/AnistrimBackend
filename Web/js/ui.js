@@ -255,7 +255,10 @@
     renderHeader();
     return Promise.resolve('<div class="page home-page" style="padding-top:0">' +
       '<div class="slider-wrapper" id="home-slider"></div>' +
-      '<div class="container" id="home-sections"></div></div>').then(function (h) {
+      '<div class="container"><div class="home-content">' +
+      '<div class="home-main" id="home-sections"></div>' +
+      '<div class="home-sidebar" id="home-sidebar"></div>' +
+      '</div></div></div>').then(function (h) {
       renderSlider();
       setTimeout(loadHome, 0);
       return h;
@@ -286,9 +289,58 @@
         if (s && s[key] && s[key].length) out += section(o[1]) + grid(s[key].slice(0, 10));
       });
       wrap.innerHTML = out || '<div class="empty">No content available.</div>';
+      loadRanking(s);
     } catch (e) {
       wrap.innerHTML = '<div class="empty">Could not load home sections. ' + retryButton('loadHome()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
     }
+
+
+  // ── Ranking sidebar ──────────────────────────────────────
+  var rankData = { popular: [], trending: [] };
+  function loadRanking(s) {
+    var side = document.getElementById('home-sidebar');
+    if (!side) return;
+    rankData.popular = (s && s.popular) || [];
+    rankData.trending = (s && s.trending) || [];
+    side.innerHTML = '<div class="rank-section">' +
+      '<div class="rank-tabs" role="tablist">' +
+      '<button class="rank-tab active" onclick="AniStrimUI.switchRankTab(0)" role="tab">All Time Popular</button>' +
+      '<button class="rank-tab" onclick="AniStrimUI.switchRankTab(1)" role="tab">All Time Favorites</button>' +
+      '</div><div class="rank-list" id="rank-list"></div></div>';
+    renderRankItems(0);
+  }
+  function renderRankItems(tab) {
+    var list = document.getElementById('rank-list');
+    if (!list) return;
+    var items = tab === 0 ? rankData.popular : rankData.trending;
+    if (!items || !items.length) {
+      list.innerHTML = '<div class="rank-item" style="padding:16px;justify-content:center;color:var(--clr-text-muted);font-size:var(--font-size-sm)">No data available.</div>';
+      return;
+    }
+    var items2 = items.slice(0, 10);
+    var h = '';
+    for (var i = 0; i < items2.length; i++) {
+      var a = items2[i];
+      var img = a.cover_image || a.poster || '';
+      var type = a.type || a.media_type || '';
+      var eps = a.episode_count || a.total_episodes || '';
+      var topClass = i < 3 ? ' top-' + (i + 1) : '';
+      h += '<div class="rank-item" onclick="AniStrimUI.goAnime(' + (a.id || a.animeId) + ')">' +
+        '<span class="rank-num' + topClass + '">' + (i + 1) + '</span>' +
+        '<div class="rank-thumb"><img src="' + (img || fallback(a.title)) + '" alt="" loading="lazy" onerror="this.style.display='none'"></div>' +
+        '<div class="rank-info"><div class="rank-title">' + esc(a.title || '') + '</div>' +
+        '<div class="rank-meta">' + (type || 'Anime') + (eps ? ' &middot; ' + eps + ' EP' : '') + '</div></div></div>';
+    }
+    list.innerHTML = h;
+  }
+  function switchRankTab(tab) {
+    var tabs = document.querySelectorAll('.rank-tab');
+    if (tabs.length) {
+      tabs[0].className = tab === 0 ? 'rank-tab active' : 'rank-tab';
+      tabs[1].className = tab === 1 ? 'rank-tab active' : 'rank-tab';
+    }
+    renderRankItems(tab);
+  }
   }  // ── Auth pages ──────────────────────────────────────────
   function authShell(title) {
     return '<div class="page auth-page"><div class="auth-card"><h1>' + title + '</h1><div id="auth-error" class="form-error"></div>';
@@ -511,9 +563,11 @@
     renderHeader();
     return '<div class="page"><div class="container"><div class="page-toolbar"><h1>Browse</h1><div class="toolbar-controls">' +
       '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="trending">Trending</option><option value="popular">Popular</option><option value="latest">Latest</option></select>' +
-      '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select><select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
-      '<input id="browse-q" placeholder="Search..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div>' +
-      '<div id="browse-grid" class="grid-loading">Loading...</div><div id="browse-more"></div></div></div>';
+      '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select>' +
+      '<select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
+      '<input id="browse-q" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div>' +
+      '<div id="browse-grid" class="grid-loading" style="padding:40px 0;text-align:center;color:var(--clr-text-muted)">Loading catalogue...</div>' +
+      '<div id="browse-more" style="text-align:center;margin-top:var(--space-6)"></div></div></div>';
   }
   function afterBrowse() { fillGenreSelect('browse-genre'); reloadBrowse(false); }
   function debounceBrowse() { clearTimeout(browseTimer); browseTimer = setTimeout(function () { reloadBrowse(false); }, 350); }
@@ -543,7 +597,7 @@
       if (requestId !== browseRequest || !document.getElementById('browse-grid')) return;
       browseState = { page: page, items: loadMore ? browseState.items.concat(list) : list, hasNext: Boolean(meta.hasNext) };
       el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div class="empty">No anime matched those filters.</div>';
-      if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div class="empty">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
+      if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div style="padding:var(--space-6) 0;text-align:center">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
     } catch (e) {
       if (requestId !== browseRequest) return;
       el.innerHTML = '<div class="empty">Could not load the catalogue. ' + retryButton('reloadBrowse()', 'Try again') + '<p>' + esc(e.message) + '</p></div>';
