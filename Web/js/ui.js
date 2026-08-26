@@ -161,7 +161,7 @@
       '<a class="brand" href="#/">AniStrim</a>' +
       '<div class="nav-links"><a' + navActive('/') + ' href="#/">Home</a><a' + navActive('/browse') + ' href="#/browse">Browse</a><a' + navActive('/search') + ' href="#/search">Search</a>' +
       (logged ? '<a' + navActive('/watchlist') + ' href="#/watchlist">Watchlist</a><a' + navActive('/history') + ' href="#/history">History</a><a' + navActive('/upgrade') + ' href="#/upgrade">Upgrade</a>' : '') + '</div>' +
-      '<div class="nav-search"><input type="text" placeholder="Search anime\u2026" id="nav-search-input" onkeydown="if(event.key===\'Enter\'){var q=this.value.trim();if(q){window.AniStrimRouter.navigate(\'/search\',{q:q});this.value=\'\'}}"></div>' +
+      '<div class="nav-search"><input type="text" placeholder="Search anime\u2026" id="nav-search-input" autocomplete="off"><div id="nav-search-autocomplete" class="search-autocomplete" aria-label="Search suggestions" role="listbox"></div></div>' +
       '<div class="nav-auth">' +
       (logged
         ? '<a href="#/profile" class="nav-avatar" aria-label="Profile">' +
@@ -185,8 +185,9 @@
       '</div></nav>';
     var f = document.getElementById('site-footer');
     f.innerHTML = '<div class="footer-inner"><span>\u00a9 ' + new Date().getFullYear() + ' AniStrim</span>' +
-      '<div class="footer-links"><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
+            '<div class="footer-links"><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
       (Auth.state.isPremium ? '<a href="#/profile">Account</a>' : '<a href="#/upgrade">Upgrade</a>') + '</div></div>';
+    acInit();
   }
   function toggleMobileNav() {
     var el = document.getElementById('mobile-nav');
@@ -692,6 +693,31 @@
       if (requestId !== searchRequest) return;
       el.innerHTML = '<div class="search-empty"><div class="empty-icon">\u26A0\uFE0F</div><h3>Search failed</h3><p>' + esc(e.message) + '</p>' + retryButton('doSearch()', 'Try again') + '</div>';
     }
+  }
+
+  // ── Live search autocomplete (header nav) ───────────────
+  var acTimer = null, acQueryId = 0, acHover = -1, acResults = [], acOpen = false, acAbort = null;
+  function acNormalize(q){return String(q||'').toLowerCase().replace(/[\s_]+/g,'').replace(/[^\p{L}\p{N}]/gu,'');}
+  function acRank(q,list){var nq=acNormalize(q);if(!nq)return list.slice(0,10);return list.slice().sort(function(a,b){var ra=a&&a.title?acNormalize(a.title):'';var rb=b&&b.title?acNormalize(b.title):'';function r(t){if(!t)return 99;if(t===nq)return 0;if(t.indexOf(nq)===0)return 1;if(t.indexOf(nq)!==-1)return 2;return 3;}var ra2=r(ra),rb2=r(rb);if(ra2!==rb2)return ra2-rb2;return (ra?ra.length:99)-(rb?rb.length:99);}).slice(0,10);}
+  function acClose(){var dd=document.getElementById('nav-search-autocomplete');if(dd)dd.innerHTML='';acOpen=false;acHover=-1;acResults=[];}
+  function acRender(q,list){var dd=document.getElementById('nav-search-autocomplete');if(!dd){acClose();return;}if(!list||!list.length){dd.innerHTML='<div class="sa-empty">No anime found matching "'+esc(q)+'"</div>';acOpen=true;acResults=[];return;}var ranked=acRank(q,list);acResults=ranked;var h='';for(var i=0;i<ranked.length;i++){var a=ranked[i];var id=a.id!=null?a.id:a.animeId;var t=a.title||'';var p=a.cover_image||a.poster||a.coverImage||'';var ty=a.type||a.media_type||'';var yr=a.year||'';h+='<div class="search-suggestion" role="option" aria-selected="false" data-id="'+esc(String(id))+'" data-index="'+i+'"><img src="'+(p||fallback(t))+'" alt="'+esc(t)+'" loading="lazy"><div class="sa-info"><div class="sa-title">'+esc(t)+'</div><div class="sa-sub">'+[ty,yr].filter(function(x){return x;}).join(' · ')+'</div></div>'+(a.is_premium?'<span class="sa-meta">👑</span>':'')+'</div>';}dd.innerHTML=h;acOpen=true;acHover=-1;var items=dd.querySelectorAll('.search-suggestion');items.forEach(function(item,idx){item.addEventListener('click',function(){acSelect(item.getAttribute('data-id'));});item.addEventListener('mousedown',function(e){e.preventDefault();});item.addEventListener('mouseenter',function(){acHighlight(idx);});});}
+  function acHighlight(idx){acHover=idx;var dd=document.getElementById('nav-search-autocomplete');if(!dd)return;dd.querySelectorAll('.search-suggestion').forEach(function(item,i){item.classList.toggle('active',i===idx);});}
+  function acLoading(){var dd=document.getElementById('nav-search-autocomplete');if(!dd)return;dd.innerHTML='<div class="sa-loading">Searching…</div>';acOpen=true;}
+  function acSelect(id){acClose();var inp=document.getElementById('nav-search-input');if(inp)inp.value='';if(id!=null&&id!=='')Router.navigate('/anime/'+encodeURIComponent(id));}
+  function acSearch(q){if(!q||q.length<1){acClose();return;}if(acAbort)acAbort.abort();var cid=++acQueryId;acLoading();acHover=-1;acAbort=new AbortController();clearTimeout(acTimer);acTimer=setTimeout(function(){if(acAbort.signal.aborted)return;API.search(q).then(function(data){if(acAbort.signal.aborted||cid!==acQueryId)return;var list=[];if(Array.isArray(data))list=data;else if(data&&Array.isArray(data.data))list=data.data;else if(data&&Array.isArray(data.items))list=data.items;else if(data&&Array.isArray(data.rows))list=data.rows;acRender(q,list);}).catch(function(){if(acAbort.signal.aborted||cid!==acQueryId)return;var dd=document.getElementById('nav-search-autocomplete');if(dd)dd.innerHTML='<div class="sa-empty">Error loading results</div>';acOpen=true;});},350);}
+  function acOnKey(e){var inp=document.getElementById('nav-search-input');var dd=document.getElementById('nav-search-autocomplete');if(!inp||!dd)return;if(e.key==='Escape'){acClose();inp.blur();e.preventDefault();return;}if(e.key==='ArrowDown'&&acOpen&&acResults.length){e.preventDefault();acHighlight(acHover<acResults.length-1?acHover+1:0);}else if(e.key==='ArrowUp'&&acOpen&&acResults.length){e.preventDefault();acHighlight(acHover>0?acHover-1:acResults.length-1);}else if(e.key==='Enter'){if(acOpen&&acHover>=0&&acHover<acResults.length){e.preventDefault();var r=acResults[acHover];acSelect(r.id!=null?r.id:r.animeId);return false;}var q=inp.value.trim();if(q){acClose();Router.navigate('/search',{q:q});inp.value='';}e.preventDefault();return false;}}
+  function acInit(){var inp=document.getElementById('nav-search-input');if(!inp)return;inp.removeEventListener('input',acSearch);inp.removeEventListener('keydown',acOnKey);inp.addEventListener('input',function(e){acSearch(e.target.value);});inp.addEventListener('keydown',acOnKey);}
+
+  // Global: close autocomplete on click outside or Escape
+  if (typeof window !== 'undefined') {
+    document.addEventListener('click', function (e) {
+      var dd = document.getElementById('nav-search-autocomplete');
+      var inp = document.getElementById('nav-search-input');
+      if (dd && dd.innerHTML && !dd.contains(e.target) && e.target !== inp) acClose();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && typeof acOpen !== 'undefined' && acOpen) { acClose(); var i = document.getElementById('nav-search-input'); if (i) i.blur(); }
+    });
   }
 
   // ── Anime details ───────────────────────────────────────

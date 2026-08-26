@@ -172,8 +172,13 @@ exports.googleCallback = async (req, res) => {
     // Stage 1 — Token exchange. Uses the SAME per-client redirect URI as the
     // authorization request (web → anistrim.com callback). Object form is the
     // only correct form for google-auth-library >= 10.
+        // Object form is the only correct form for google-auth-library >= 10
+    // (a second positional arg is treated as a callback). `client_id` is set
+    // explicitly so token exchange authenticates the right Google OAuth
+    // client and `redirect_uri` is applied deterministically — the same URI
+    // used during authorization (`getCallbackUri(returnClient)`).
     const { tokens } = await tagged('token-exchange', () =>
-      client.getToken({ code, redirect_uri: getCallbackUri(returnClient) })
+      client.getToken({ code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient) })
     );
     client.setCredentials(tokens);
 
