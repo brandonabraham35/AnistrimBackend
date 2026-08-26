@@ -36,7 +36,8 @@
     var id = a && (a.id != null ? a.id : a.animeId);
     var type = a && (a.type || a.media_type || '');
     var eps = a && (a.episode_count || a.total_episodes || '');
-    return '<div class="anime-card" onclick="AniStrimUI.goAnime(' + id + ')">' +
+    // Crawlable link: real <a href> for search engines; SPA nav for humans.
+    return '<a class="anime-card" href="/anime/' + encodeURIComponent(id) + '" onclick="return AniStrimUI.goCard(event,' + id + ')">' +
       '<div class="anime-card-img"><img src="' + (img || fallback(title)) + '" alt="' + esc(title) + '" loading="lazy" ' +
       'onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')">' +
       (type ? '<span class="badge-type">' + esc(type) + '</span>' : '') +
@@ -45,7 +46,7 @@
       (eps ? '<span class="badge-ep">' + esc(eps) + '</span>' : '') +
       '</div><div class="anime-card-body"><div class="anime-card-title">' + esc(title) + '</div>' +
       '<div class="anime-card-sub">' + (type || 'Anime') + (eps ? ' &middot; ' + esc(eps) + ' EP' : '') +
-      (a && a.year ? ' &middot; ' + esc(a.year) : '') + '</div></div></div>';
+      (a && a.year ? ' &middot; ' + esc(a.year) : '') + '</div></div></a>';
   }
   function grid(list, cols) {
     return '<div class="anime-grid' + (cols ? ' cols-' + cols : '') + '">' + list.map(card).join('') + '</div>';
@@ -358,11 +359,11 @@
       var type = a.type || a.media_type || '';
       var eps = a.episode_count || a.total_episodes || '';
       var topClass = i < 3 ? ' top-' + (i + 1) : '';
-      h += '<div class="rank-item" onclick="AniStrimUI.goAnime(' + (a.id || a.animeId) + ')">' +
+      h += '<a class="rank-item" href="/anime/' + encodeURIComponent(a.id || a.animeId) + '">' +
         '<span class="rank-num' + topClass + '">' + (i + 1) + '</span>' +
         '<div class="rank-thumb"><img src="' + (img || fallback(a.title)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'"></div>' +
         '<div class="rank-info"><div class="rank-title">' + esc(a.title || '') + '</div>' +
-        '<div class="rank-meta">' + (type || 'Anime') + (eps ? ' &middot; ' + eps + ' EP' : '') + '</div></div></div>';
+        '<div class="rank-meta">' + (type || 'Anime') + (eps ? ' &middot; ' + eps + ' EP' : '') + '</div></div></a>';
     }
     list.innerHTML = h;
   }
@@ -756,6 +757,8 @@
             (ep.locked ? '<span class="ep-lock">🔒</span>' : '') + '</button>';
         }).join('') + '</div></div>' +
         (recs.length ? '<div class="recommend-section">' + section('Recommended') + grid(recs) + '</div>' : '') + '</div>';
+      // Per-title browser tab title (crawlers get the full SEO page instead).
+      if (title) document.title = title + ' — Watch Online | AniStrim';
       if (Auth.state.isLoggedIn) {
         refreshWatchlistState().then(syncWatchlistButtons).catch(function () {});
       }
@@ -1440,6 +1443,12 @@
   window.AniStrimUI = {
     fallback: fallback,
     goAnime: function (id) { Router.navigate('/anime/' + encodeURIComponent(id)); },
+    // Anchor-card click handler: crawlable href stays for SEO; humans get SPA nav.
+    goCard: function (event, id) {
+      if (event && event.preventDefault) event.preventDefault();
+      Router.navigate('/anime/' + encodeURIComponent(id));
+      return false;
+    },
     watch: function (id, ep, epId) {
       var path = '/watch/' + encodeURIComponent(id) + '/' + encodeURIComponent(ep || 1);
       Router.navigate(path, epId ? { epId: epId } : null);

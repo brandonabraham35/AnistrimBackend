@@ -3,8 +3,23 @@
 (function () {
   'use strict';
 
+  // ── Path→hash boot mapping ──────────────────────────────
+  // Canonical SEO URLs are path-based (/anime/5, /browse). When such a URL is
+  // opened directly (or served by a static host) with no hash, transparently
+  // convert it to the equivalent hash route so the SPA renders the right view
+  // instead of silently showing the home page. replaceState avoids a reload.
+  try {
+    var bootPath = window.location.pathname || '/';
+    var bootHash = window.location.hash || '';
+    if ((!bootHash || bootHash === '#' || bootHash === '#/') &&
+        /^\/(browse|anime\/[^/]+)\/?$/.test(bootPath)) {
+      history.replaceState(null, '', '/#' + bootPath.replace(/\/+$/, ''));
+    }
+  } catch (e) { /* older browsers / sandboxed frames */ }
+
   var routes = [];
   var currentPath = '/';
+  var DEFAULT_TITLE = 'AniStrim — Stream Anime Online';
 
   function decode(value) {
     try { return decodeURIComponent(value); } catch (e) { return value; }
@@ -60,6 +75,7 @@
       window.AniStrimPlayer.destroy();
     }
     currentPath = path;
+    document.title = DEFAULT_TITLE;
     var m = match(path);
     var main = document.getElementById('site-main');
     if (!main) return;

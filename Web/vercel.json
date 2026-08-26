@@ -5,6 +5,22 @@
       "destination": "https://anistrimbackend.onrender.com/api/:path*"
     },
     {
+      "source": "/robots.txt",
+      "destination": "https://anistrimbackend.onrender.com/robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "https://anistrimbackend.onrender.com/sitemap.xml"
+    },
+    {
+      "source": "/anime/:id",
+      "destination": "https://anistrimbackend.onrender.com/anime/:id"
+    },
+    {
+      "source": "/browse",
+      "destination": "https://anistrimbackend.onrender.com/browse"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -175,6 +175,12 @@ app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/home', require('./routes/homeShelfRoutes'));
 
+// ─── SEO surface (crawlable path-based URLs) ────────────────
+// Dynamic sitemap.xml / robots.txt plus per-anime and browse pages that carry
+// canonical URLs, metadata, and JSON-LD for crawlers while booting humans into
+// the hash-routed Web SPA. Must stay registered BEFORE static/catch-all mounts.
+app.use(require('./routes/seoRoutes'));
+
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
 try {
   const consumetApp = require('./services/consumet/server');
