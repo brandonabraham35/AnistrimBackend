@@ -38,6 +38,8 @@ async function handleLogin() {
   });
 
   if (ok && data && data.token) {
+    // Analytics: track login
+    if (window.trackEvent) window.trackEvent('login');
     // Store both access + refresh tokens via the canonical helper.
     if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
     else localStorage.setItem('token', data.token);

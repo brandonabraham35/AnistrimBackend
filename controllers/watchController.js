@@ -85,8 +85,8 @@ exports.saveProgress = async (req, res) => {
 
     await db.query(
       `INSERT INTO watch_progress
-         (user_id, anime_id, episode_id, episode_number, position_sec, duration_sec, completed, completed_at, device)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (user_id, anime_id, episode_id, episode_number, position_sec, duration_sec, completed, completed_at, device, client_platform)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          position_sec = VALUES(position_sec),
          -- FIX 7 (Phase 3): never overwrite a known duration with 0
@@ -94,8 +94,9 @@ exports.saveProgress = async (req, res) => {
          completed    = VALUES(completed),
          completed_at = IF(VALUES(completed)=1, COALESCE(watch_progress.completed_at, NOW()), watch_progress.completed_at),
          device       = VALUES(device),
+         client_platform = VALUES(client_platform),
          updated_at   = NOW()`,
-      [userId, ep.anime_id, ep.id, ep.episode_number, position, duration, completed ? 1 : 0, completed ? new Date() : null, device]
+      [userId, ep.anime_id, ep.id, ep.episode_number, position, duration, completed ? 1 : 0, completed ? new Date() : null, device, req.clientPlatform || 'unknown']
     );
 
     return sendSuccess(res, { positionSec: position, completed });

@@ -98,6 +98,8 @@ async function loadDetails() {
     }
 
     currentAnime = data;
+    // Analytics: track anime view
+    if (window.trackEvent) window.trackEvent('anime_view', { anime_id: id, title: data.title });
     renderDetails(currentAnime);
 
     // Render episodes from the payload immediately (getById returns episodes[]),

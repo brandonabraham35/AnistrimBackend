@@ -134,6 +134,11 @@ app.use(cors(corsOptions));
 // X-Request-Id response header. Used by the error handler in every error body.
 app.use(require('./middleware/requestId'));
 
+// ─── Client Platform Normalization ─────────────────────────
+// Extracts X-Client header (web|mobile|desktop|admin) into req.clientPlatform
+// for analytics attribution. Backward-compatible: missing headers → 'unknown'.
+app.use(require('./middleware/clientPlatform'));
+
 // ─── Standard Middleware ───────────────────────────────────
 // Webhook route MUST come before express.json() so it gets raw body
 app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
@@ -174,6 +179,7 @@ app.use('/api/stream-proxy', require('./routes/streamProxyRoutes'));
 app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/home', require('./routes/homeShelfRoutes'));
+app.use('/api/analytics', require('./routes/analyticsRoutes'));
 
 // ─── SEO surface (crawlable path-based URLs) ────────────────
 // Dynamic sitemap.xml / robots.txt plus per-anime and browse pages that carry

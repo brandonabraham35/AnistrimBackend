@@ -234,5 +234,20 @@
     // Payments
     checkout: function (plan) { return request('/api/payments/checkout', { method: 'POST', body: { plan: plan } }); },
     verifySubscription: function (ref) { return request('/api/payments/verify-subscription?reference=' + encodeURIComponent(ref)); },
+
+    // ── Analytics (Phase 50: cross-platform analytics) ──────
+    // Fire-and-forget event recording. Never throws to caller.
+    trackEvent: function (eventType, metadata) {
+      try {
+        var headers = { 'Content-Type': 'application/json', 'X-Client': 'web' };
+        var token = getToken();
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        fetch(API + '/api/analytics/events', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ event_type: eventType, metadata: metadata || {} }),
+        }).catch(function () { /* silent — analytics must never break UX */ });
+      } catch (_) { /* silent */ }
+    },
   };
 })();

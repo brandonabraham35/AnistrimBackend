@@ -382,4 +382,20 @@
       }
     }
   })();
+
+  // ── Analytics (Phase 50: cross-platform analytics) ──────
+  // Fire-and-forget event recording. Never throws to caller.
+  var API_BASE_FOR_TRACKING = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com';
+  window.trackEvent = function (eventType, metadata) {
+    try {
+      var headers = { 'Content-Type': 'application/json', 'X-Client': 'mobile' };
+      var token = (typeof window.getAuthToken === 'function') ? window.getAuthToken() : '';
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      fetch(API_BASE_FOR_TRACKING + '/api/analytics/events', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ event_type: eventType, metadata: metadata || {} }),
+      }).catch(function () { /* silent — analytics must never break UX */ });
+    } catch (_) { /* silent */ }
+  };
 })();

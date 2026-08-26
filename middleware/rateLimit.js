@@ -95,6 +95,20 @@ const googleLimiter = rateLimit({
   handler,
 });
 
+// Analytics event recording: 100 req / 5 min per user.
+// Prevents analytics event flooding while allowing reasonable batch sizes.
+const eventLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'event:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
 // Ad event logging: 60 req / 5 min per user (keyed on the authenticated user id).
 // Prevents an authenticated user from flooding ad_events (storage/DoS, poisoned
 // analytics). Falls back to IP when no user id is present.
@@ -222,6 +236,7 @@ module.exports = {
   refreshLimiter,
   sensitiveLimiter,
   googleLimiter,
+  eventLimiter,
   adEventLimiter,
   streamAuthorizeLimiter,
   streamResolveLimiter,

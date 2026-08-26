@@ -36,6 +36,8 @@ function handleSearch(query) {
       await reloadBrowse();
       return;
     }
+    // Analytics: track search
+    if (window.trackEvent) window.trackEvent('search', { query: trimmed });
     try {
       const { data, ok } = await apiFetch('/api/anime/search/advanced?query=' + encodeURIComponent(trimmed) + '&perPage=15');
       if (!ok) throw new Error('Search failed');

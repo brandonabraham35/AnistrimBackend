@@ -136,11 +136,19 @@ const adminController = {
                  COALESCE(SUM(CASE WHEN YEAR(paid_at) = YEAR(CURDATE()) AND MONTH(paid_at) = MONTH(CURDATE()) THEN amount ELSE 0 END), 0) AS month
           FROM payments WHERE status = "successful"`),
         dashboardQuery('latest users', 'SELECT id, name, email, avatar_url, created_at FROM users ORDER BY created_at DESC LIMIT 5'),
+        // Platform breakdown from analytics_events (if table exists)
+        dashboardQuery('platform breakdown', `
+          SELECT client_platform, COUNT(*) AS views
+          FROM analytics_events
+          WHERE event_type IN ('anime_view','episode_view','watch_start')
+            AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+          GROUP BY client_platform`),
       ]);
       const users = results[0][0][0] || {};
       const content = results[1][0][0] || {};
       const episodes = results[2][0][0] || {};
       const activity = results[3][0][0] || {};
+      const platformBreakdown = (results[11][0] || []).map(r => ({ platform: r.client_platform, views: r.views }));
       return sendSuccess(res, {
         overview: {
           users: { total: Number(users.total) || 0, premium: Number(users.premium) || 0, activeToday: Number(activity.activeToday) || 0, banned: Number(users.banned) || 0 },
@@ -149,6 +157,7 @@ const adminController = {
           cloudinary: { ready: Number(episodes.videoCount) || 0, processing: Number(episodes.processingCount) || 0, failed: Number(episodes.failedCount) || 0 },
           revenue: results[8][0][0] || { total: 0, today: 0, month: 0 },
         },
+        platformBreakdown,
         recentAnime: results[4][0], recentEpisodes: results[5][0], activityLogs: results[6][0], topAnime: results[7][0], latestUsers: results[9][0],
       });
     } catch (error) {

@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!initializedSections.has(effectiveTargetId)) {
       switch (effectiveTargetId) {
         case 'anime':    if (window.initializeAnimeSection)    window.initializeAnimeSection(); break;
+        case 'analytics': if (window.initializeAnalyticsSection) window.initializeAnalyticsSection(); break;
         case 'users':    if (window.initializeUsersSection)    window.initializeUsersSection(); break;
         case 'episodes': if (window.initializeEpisodesSection) window.initializeEpisodesSection(); break;
         case 'genres':   if (window.initializeGenresSection)   window.initializeGenresSection(); break;

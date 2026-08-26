@@ -443,6 +443,8 @@
     var err = document.getElementById('auth-error');
     try {
       var data = await Auth.login(document.getElementById('login-email').value, document.getElementById('login-password').value);
+      // Analytics: track login
+      if (API.trackEvent) API.trackEvent('login');
       await Auth.refreshMe();
       renderHeader();
       if (data.user && data.user.emailVerified === false) {
@@ -684,6 +686,8 @@
     var el = document.getElementById('search-results');
     if (!el) return;
     if (!q && !genre && !status) { el.innerHTML = '<div class="search-empty"><div class="empty-icon">\U0001f50d</div><h3>Enter a search term</h3><p>Type a title or choose a filter.</p></div>'; return; }
+    // Analytics: track search
+    if (API.trackEvent) API.trackEvent('search', { query: q, genre: genre, status: status });
     var requestId = ++searchRequest;
     el.innerHTML = '<div class="search-loading">Searching...</div>';
     try {
@@ -733,6 +737,8 @@
     root.innerHTML = '<div class="grid-loading">Loading...</div>';
     try {
       var anime = await API.anime(id);
+      // Analytics: track anime view
+      if (API.trackEvent) API.trackEvent('anime_view', { anime_id: id, title: anime && anime.title });
       // Current servers embed access-masked episodes in the detail response.
       // Only ask the legacy endpoint when an older server omits that field.
       var eps = Array.isArray(anime && anime.episodes) ? anime.episodes : norm(await API.episodes(id));
