@@ -148,7 +148,7 @@ const adminController = {
       const content = results[1][0][0] || {};
       const episodes = results[2][0][0] || {};
       const activity = results[3][0][0] || {};
-      const platformBreakdown = (results[11][0] || []).map(r => ({ platform: r.client_platform, views: r.views }));
+      const platformBreakdown = (results[11] && results[11][0] ? results[11][0] : []).map(r => ({ platform: r.client_platform, views: r.views }));
       return sendSuccess(res, {
         overview: {
           users: { total: Number(users.total) || 0, premium: Number(users.premium) || 0, activeToday: Number(activity.activeToday) || 0, banned: Number(users.banned) || 0 },
