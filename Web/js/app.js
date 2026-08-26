@@ -13,7 +13,7 @@
   Router.register('/forgot-password', V.forgotPassword);
   Router.register('/reset-password', V.resetPassword);
   Router.register('/auth/google/callback', V.googleCallback);
-  Router.register('/browse', V.browse, V.afterBrowse);
+  Router.register('/browse', function () { Router.navigate('/search'); return ''; });
   Router.register('/search', V.search, V.afterSearch);
   Router.register('/anime/:id', V.anime, V.afterAnime);
   Router.register('/watch/:id/:ep', V.watch, V.afterWatch);

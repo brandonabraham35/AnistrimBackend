@@ -162,7 +162,7 @@
     h.innerHTML = '<nav class="nav"><div class="nav-inner">' +
       '<button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle navigation" aria-expanded="false" onclick="AniStrimUI.toggleMobileNav()"><span class="bar"></span><span class="bar"></span><span class="bar"></span></button>' +
       '<a class="brand" href="#/">AniStrim</a>' +
-      '<div class="nav-links"><a' + navActive('/') + ' href="#/">Home</a><a' + navActive('/browse') + ' href="#/browse">Browse</a><a' + navActive('/search') + ' href="#/search">Search</a>' +
+      '<div class="nav-links"><a' + navActive('/') + ' href="#/">Home</a><a' + navActive('/search') + ' href="#/search">Search</a>' +
       (logged ? '<a' + navActive('/watchlist') + ' href="#/watchlist">Watchlist</a><a' + navActive('/history') + ' href="#/history">History</a><a' + navActive('/upgrade') + ' href="#/upgrade">Upgrade</a>' : '') + '</div>' +
       '<div class="nav-search"><input type="text" placeholder="Search anime\u2026" id="nav-search-input" autocomplete="off"><div id="nav-search-autocomplete" class="search-autocomplete" aria-label="Search suggestions" role="listbox"></div></div>' +
       '<div class="nav-auth">' +
@@ -182,7 +182,7 @@
         '<div><div style="font-weight:600">' + esc(name) + '</div>' +
         (user.email ? '<div style="font-size:.85rem;color:var(--clr-text-muted)">' + esc(user.email) + '</div>' : '') +
         '</div></div>' : '') +
-      '<a href="#/" onclick="AniStrimUI.closeMobileNav()">Home</a><a href="#/browse" onclick="AniStrimUI.closeMobileNav()">Browse</a><a href="#/search" onclick="AniStrimUI.closeMobileNav()">Search</a>' +
+      '<a href="#/" onclick="AniStrimUI.closeMobileNav()">Home</a><a href="#/search" onclick="AniStrimUI.closeMobileNav()">Search</a>' +
       (logged ? '<a href="#/watchlist" onclick="AniStrimUI.closeMobileNav()">Watchlist</a><a href="#/history" onclick="AniStrimUI.closeMobileNav()">History</a>' : '') +
       '<a href="#/upgrade" onclick="AniStrimUI.closeMobileNav()">Upgrade</a>' +
       (logged
@@ -191,7 +191,7 @@
       '</div></nav>';
     var f = document.getElementById('site-footer');
     f.innerHTML = '<div class="footer-inner"><span>\u00a9 ' + new Date().getFullYear() + ' AniStrim</span>' +
-            '<div class="footer-links"><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
+            '<div class="footer-links"><a href="#/search">Search</a>' +
       (Auth.state.isPremium ? '<a href="#/profile">Account</a>' : '<a href="#/upgrade">Upgrade</a>') + '</div></div>';
     acInit();
   }
