@@ -398,7 +398,7 @@
   // ── Auth pages ──────────────────────────────────────────
   function authShell(title, subtitle) {
     return '<div class="page auth-page"><div class="auth-card">' +
-      '<div class="auth-brand"><span class="auth-logo">A</span><h1>' + title + '</h1>' +
+      '<div class="auth-brand"><img src="assets/logo.png" alt="AniStrim" class="auth-logo-img"><h1>' + title + '</h1>' +
       (subtitle ? '<p class="auth-subtitle">' + subtitle + '</p>' : '') +
       '</div>' +
       '<div id="auth-error" class="form-error" role="alert"></div>';
@@ -412,10 +412,7 @@
       '<div class="auth-field"><label for="login-email">Email</label>' +
       '<input type="email" id="login-email" required autocomplete="email" placeholder="you@example.com"></div>' +
       '<div class="auth-field"><label for="login-password">Password</label>' +
-      '<div class="auth-password-field">' +
-      '<input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter your password">' +
-      '<button type="button" class="auth-password-toggle" onclick="AniStrimUI.togglePassword(\'login-password\',this)" aria-label="Show password">\U0001f441</button>' +
-      '</div></div>' +
+      '<input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter your password"></div>' +
       '<div class="auth-forgot"><a href="#/forgot-password">Forgot password?</a></div>' +
       '<button class="btn-primary btn-block btn-auth-submit" type="submit">Sign In</button></form>' +
       '<div class="auth-divider"><span>or continue with</span></div>' +
@@ -435,18 +432,12 @@
       '<div class="auth-field"><label for="signup-email">Email</label>' +
       '<input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com"></div>' +
       '<div class="auth-field"><label for="signup-password">Password</label>' +
-      '<div class="auth-password-field">' +
       '<input type="password" id="signup-password" required minlength="6" autocomplete="new-password" placeholder="Create a password" oninput="AniStrimUI.updatePasswordStrength(this.value)">' +
-      '<button type="button" class="auth-password-toggle" onclick="AniStrimUI.togglePassword(\'signup-password\',this)" aria-label="Show password">\U0001f441</button>' +
-      '</div>' +
       '<div class="auth-password-requirements" id="signup-password-requirements">' +
       '<span class="req-item">\u25cb At least 6 characters</span>' +
       '</div></div>' +
       '<div class="auth-field"><label for="signup-confirm">Confirm Password</label>' +
-      '<div class="auth-password-field">' +
-      '<input type="password" id="signup-confirm" required minlength="6" autocomplete="new-password" placeholder="Confirm your password">' +
-      '<button type="button" class="auth-password-toggle" onclick="AniStrimUI.togglePassword(\'signup-confirm\',this)" aria-label="Show password">\U0001f441</button>' +
-      '</div></div>' +
+      '<input type="password" id="signup-confirm" required minlength="6" autocomplete="new-password" placeholder="Confirm your password"></div>' +
       '<button class="btn-primary btn-block btn-auth-submit" type="submit">Create Account</button></form>' +
       '<div class="auth-divider"><span>or sign up with</span></div>' +
       '<button class="btn-google btn-block" onclick="AniStrimUI.doGoogleSignup()">' +
