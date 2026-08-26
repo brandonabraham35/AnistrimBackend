@@ -625,8 +625,8 @@
     // Populate all filter dropdowns in parallel
     Promise.all([
       fillGenreSelect('browse-genre', query && query.genre),
-      fillSelectFromAPI('browse-year', '/api/anime/years', query && query.year),
-      fillSelectFromAPI('browse-type', '/api/anime/types', query && query.type),
+      fillSelectFromAPI('browse-year', API.years, query && query.year),
+      fillSelectFromAPI('browse-type', API.types, query && query.type),
     ]).then(function () {
       // Restore filter values from URL query
       if (query) {
@@ -639,10 +639,10 @@
   }
 
   // Helper: populate a select with values from an API endpoint
-  function fillSelectFromAPI(selectId, apiPath, selectedValue) {
+  function fillSelectFromAPI(selectId, apiMethod, selectedValue) {
     var select = document.getElementById(selectId);
     if (!select) return Promise.resolve();
-    return request(apiPath).then(function (items) {
+    return apiMethod().then(function (items) {
       var current = selectedValue || select.value || '';
       var firstOption = select.querySelector('option');
       var firstLabel = firstOption ? firstOption.textContent : '';
