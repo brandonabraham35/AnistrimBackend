@@ -947,17 +947,19 @@ async function _handleKitsuSearch(e) {
 
   try {
     const results = await window.apiRequest(`/api/admin/anime/import/search?q=${encodeURIComponent(query)}`);
-    if (!results || results.length === 0) {
+    // unwrapAdminEnvelope returns { items, rows, ...meta } for array payloads.
+    const items = Array.isArray(results) ? results : (results?.items || results?.rows || []);
+    if (!items || items.length === 0) {
       resultsContainer.innerHTML = '<p>No results found on Consumet.</p>';
       return;
     }
-    _importResults = results;
+    _importResults = items;
     resultsContainer.innerHTML = `
       <div class="universal-import-bar">
-        <span>${results.length} matching title${results.length === 1 ? '' : 's'}</span>
+        <span>${items.length} matching title${items.length === 1 ? '' : 's'}</span>
         <button type="button" class="btn universal-import-btn">Universal Import</button>
       </div>
-    ` + results.map(item => `
+    ` + items.map(item => `
       <div class="kitsu-result-item" data-kitsu-id="${item.id}">
         <img src="${item.cover_image}" alt="${item.title}" loading="lazy">
         <div class="kitsu-result-info">
@@ -1047,18 +1049,20 @@ async function _handleAnimeHeavenSearch(e) {
 
   try {
     const results = await window.apiRequest(`/api/admin/animeheaven/search?q=${encodeURIComponent(query)}`);
-    if (!results || results.length === 0) {
+    // unwrapAdminEnvelope returns { items, rows, ...meta } for array payloads.
+    const items = Array.isArray(results) ? results : (results?.items || results?.rows || []);
+    if (!items || items.length === 0) {
       resultsContainer.innerHTML = '<p>No results found on AnimeHeaven.</p>';
       return;
     }
     // Store the full search results for the "Import All" action.
-    _ahSearchResults = results;
+    _ahSearchResults = items;
     resultsContainer.innerHTML = `
       <div class="universal-import-bar">
-        <span>${results.length} matching title${results.length === 1 ? '' : 's'}</span>
+        <span>${items.length} matching title${items.length === 1 ? '' : 's'}</span>
         <button type="button" class="btn universal-import-btn" id="ah-import-all-btn">Import All</button>
       </div>
-    ` + results.map(item => `
+    ` + items.map(item => `
       <div class="kitsu-result-item" data-ah-id="${item.identifier || item.id}">
         <img src="${item.image || item.cover || 'img/placeholder.png'}" alt="${item.title}" loading="lazy">
         <div class="kitsu-result-info">
