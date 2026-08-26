@@ -587,6 +587,10 @@ body {
   border-radius: 16px; display: flex; align-items: center; justify-content: center;
   font-size: 1.5rem; font-weight: 800; color: white; margin-bottom: 12px;
 }
+.auth-logo-img {
+  width: 80px; height: 80px; object-fit: contain; margin-bottom: 12px;
+  border-radius: 16px;
+}
 .auth-logo h1 { font-size: 1.5rem; font-weight: 700; }
 .auth-logo h1 span { color: var(--purple); }
 .auth-logo p { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
