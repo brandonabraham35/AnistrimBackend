@@ -77,10 +77,14 @@ function sitemapXml(rows) {
       '</url>'
     );
   };
-  // Homepage and /browse have no single authoritative modification date, so
-  // they intentionally carry no <lastmod> rather than a fabricated one.
+  // Homepage and catalogue hub pages have no single authoritative modification
+  // date, so they intentionally carry no <lastmod> rather than a fabricated one.
   push('/', '');
   push('/browse', '');
+  push('/search', '');
+  // Additional public catalogue discovery pages (crawlable, no auth required).
+  push('/browse?sort=popular', '');
+  push('/browse?sort=latest', '');
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || row.id == null) continue;
     push('/anime/' + encodeURIComponent(row.id), lastmodDate(row.updated_at));
@@ -122,8 +126,14 @@ function seoHead(opts) {
     '  <meta property="og:type" content="website">\n' +
     '  <meta property="og:url" content="' + escHtml(canonical) + '">\n';
   if (opts.imageUrl) {
-    h += '  <meta property="og:image" content="' + escHtml(opts.imageUrl) + '">\n';
+    h += '  <meta property="og:image" content="' + escHtml(opts.imageUrl) + '">\n' +
+      '  <meta name="twitter:card" content="summary_large_image">\n' +
+      '  <meta name="twitter:image" content="' + escHtml(opts.imageUrl) + '">\n';
+  } else {
+    h += '  <meta name="twitter:card" content="summary">\n';
   }
+  h += '  <meta name="twitter:title" content="' + escHtml(title) + '">\n' +
+    '  <meta name="twitter:description" content="' + escHtml(description) + '">\n';
   if (opts.jsonLd) {
     // JSON.stringify output is not HTML-safe inside <script>; escape '<'.
     h += '  <script type="application/ld+json">' +
@@ -294,11 +304,43 @@ async function getBrowseSeo(req, res) {
   }
 }
 
+/** Crawlable search landing page: form + genre filters for discovery. */
+function searchSeoPage() {
+  const body =
+    '  <h1>Search Anime</h1>\n' +
+    '  <p>Search the ' + escHtml(SITE_NAME) + ' anime catalogue by title, genre, or status.</p>\n' +
+    '  <form action="/browse" method="get" role="search">\n' +
+    '    <label>Search: <input type="search" name="q" placeholder="Enter an anime title..."></label><br>\n' +
+    '    <button type="submit">Search</button>\n' +
+    '  </form>\n' +
+    '  <p><a href="/browse">Browse all anime on ' + escHtml(SITE_NAME) + '</a></p>\n' +
+    '  <noscript><p><a href="' + escHtml(PUBLIC_BASE + '/#/search') +
+      '">Open search on ' + escHtml(SITE_NAME) + '</a></p></noscript>\n' +
+    '  <script>try{location.replace("/#/search")}catch(e){}</scr' + 'ipt>\n';
+  return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+    seoHead({
+      title: 'Search Anime — ' + SITE_NAME,
+      description: 'Search and discover anime in the ' + SITE_NAME +
+        ' catalogue — by title, genre, or status.',
+      canonicalPath: '/search',
+    }) +
+    bootRedirectMeta('/search') +
+    '</head>\n<body>\n' + body + '</body>\n</html>\n';
+}
+
+async function getSearchSeo(req, res) {
+  res.status(200)
+    .type('html; charset=utf-8')
+    .set('Cache-Control', 'public, max-age=600')
+    .send(searchSeoPage());
+}
+
 module.exports = {
   getSitemap,
   getRobots,
   getAnimeSeo,
   getBrowseSeo,
+  getSearchSeo,
   // Pure builders exported for testing.
   sitemapXml,
   robotsTxt,

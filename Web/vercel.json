@@ -21,6 +21,10 @@
       "destination": "https://anistrimbackend.onrender.com/browse"
     },
     {
+      "source": "/search",
+      "destination": "https://anistrimbackend.onrender.com/search"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
