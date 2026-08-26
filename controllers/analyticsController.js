@@ -73,47 +73,56 @@ exports.getOverview = async (req, res) => {
     const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
 
     const [users] = await db.query('SELECT COUNT(*) AS total FROM users');
-    const [activeToday] = await db.query(
-      `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
-       WHERE event_type IN ('login','anime_view','episode_view','watch_start')
-         AND DATE(created_at) = CURDATE() ${platformWhere}`
-    );
-    const [activeWeek] = await db.query(
-      `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
-       WHERE event_type IN ('login','anime_view','episode_view','watch_start')
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ${platformWhere}`
-    );
-    const [activeMonth] = await db.query(
-      `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
-       WHERE event_type IN ('login','anime_view','episode_view','watch_start')
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ${platformWhere}`
-    );
-    const [animeViews] = await db.query(
-      `SELECT COUNT(*) AS total FROM analytics_events
-       WHERE event_type = 'anime_view' ${platformWhere}`
-    );
-    const [episodeViews] = await db.query(
-      `SELECT COUNT(*) AS total FROM analytics_events
-       WHERE event_type IN ('episode_view','watch_start') ${platformWhere}`
-    );
-    const [searches] = await db.query(
-      `SELECT COUNT(*) AS total FROM analytics_events
-       WHERE event_type = 'search' ${platformWhere}`
-    );
-    const [logins] = await db.query(
-      `SELECT COUNT(*) AS total FROM analytics_events
-       WHERE event_type IN ('login','google_login') ${platformWhere}`
-    );
 
-    // Platform breakdown
-    const [platformBreakdown] = await db.query(
-      `SELECT client_platform, COUNT(*) AS views
-       FROM analytics_events
-       WHERE event_type IN ('anime_view','episode_view','watch_start')
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY client_platform`,
-      [days]
-    );
+    let activeToday = [{ total: 0 }], activeWeek = [{ total: 0 }], activeMonth = [{ total: 0 }];
+    let animeViews = [{ total: 0 }], episodeViews = [{ total: 0 }];
+    let searches = [{ total: 0 }], logins = [{ total: 0 }];
+    let platformBreakdown = [];
+
+    try {
+      [activeToday] = await db.query(
+        `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
+         WHERE event_type IN ('login','anime_view','episode_view','watch_start')
+           AND DATE(created_at) = CURDATE() ${platformWhere}`
+      );
+      [activeWeek] = await db.query(
+        `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
+         WHERE event_type IN ('login','anime_view','episode_view','watch_start')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ${platformWhere}`
+      );
+      [activeMonth] = await db.query(
+        `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
+         WHERE event_type IN ('login','anime_view','episode_view','watch_start')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ${platformWhere}`
+      );
+      [animeViews] = await db.query(
+        `SELECT COUNT(*) AS total FROM analytics_events
+         WHERE event_type = 'anime_view' ${platformWhere}`
+      );
+      [episodeViews] = await db.query(
+        `SELECT COUNT(*) AS total FROM analytics_events
+         WHERE event_type IN ('episode_view','watch_start') ${platformWhere}`
+      );
+      [searches] = await db.query(
+        `SELECT COUNT(*) AS total FROM analytics_events
+         WHERE event_type = 'search' ${platformWhere}`
+      );
+      [logins] = await db.query(
+        `SELECT COUNT(*) AS total FROM analytics_events
+         WHERE event_type IN ('login','google_login') ${platformWhere}`
+      );
+      [platformBreakdown] = await db.query(
+        `SELECT client_platform, COUNT(*) AS views
+         FROM analytics_events
+         WHERE event_type IN ('anime_view','episode_view','watch_start')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         GROUP BY client_platform`,
+        [days]
+      );
+    } catch (e) {
+      // analytics_events table may not exist yet — return zeros
+      console.warn('[Analytics] analytics_events table not available:', e.message);
+    }
 
     // New users by period
     const [newUsers] = await db.query(
@@ -144,16 +153,21 @@ exports.getViews = async (req, res) => {
     const platform = req.query.platform || 'all';
     const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
 
-    const [rows] = await db.query(
-      `SELECT DATE(ae.created_at) AS date, ae.client_platform, COUNT(*) AS views
-       FROM analytics_events ae
-       WHERE ae.event_type IN ('anime_view','episode_view','watch_start')
-         AND ae.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-         ${platformWhere}
-       GROUP BY DATE(ae.created_at), ae.client_platform
-       ORDER BY date ASC`,
-      [days]
-    );
+    let rows = [];
+    try {
+      [rows] = await db.query(
+        `SELECT DATE(ae.created_at) AS date, ae.client_platform, COUNT(*) AS views
+         FROM analytics_events ae
+         WHERE ae.event_type IN ('anime_view','episode_view','watch_start')
+           AND ae.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+           ${platformWhere}
+         GROUP BY DATE(ae.created_at), ae.client_platform
+         ORDER BY date ASC`,
+        [days]
+      );
+    } catch (e) {
+      console.warn('[Analytics] views: analytics_events not available:', e.message);
+    }
 
     // Group by date
     const byDate = {};
@@ -180,25 +194,29 @@ exports.getSearches = async (req, res) => {
     const platform = req.query.platform || 'all';
     const platformWhere = platform === 'all' ? '' : `AND client_platform = '${db.escape(platform).slice(1, -1)}'`;
 
-    const [topTerms] = await db.query(
-      `SELECT JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.query')) AS term,
-              client_platform, COUNT(*) AS searches
-       FROM analytics_events
-       WHERE event_type = 'search'
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-         AND metadata IS NOT NULL
-         ${platformWhere}
-       GROUP BY term, client_platform
-       ORDER BY searches DESC
-       LIMIT 50`,
-      [days]
-    );
-
-    const [totalSearches] = await db.query(
-      `SELECT COUNT(*) AS total FROM analytics_events
-       WHERE event_type = 'search' AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
-      [days]
-    );
+    let topTerms = [], totalSearches = [{ total: 0 }];
+    try {
+      [topTerms] = await db.query(
+        `SELECT JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.query')) AS term,
+                client_platform, COUNT(*) AS searches
+         FROM analytics_events
+         WHERE event_type = 'search'
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+           AND metadata IS NOT NULL
+           ${platformWhere}
+         GROUP BY term, client_platform
+         ORDER BY searches DESC
+         LIMIT 50`,
+        [days]
+      );
+      [totalSearches] = await db.query(
+        `SELECT COUNT(*) AS total FROM analytics_events
+         WHERE event_type = 'search' AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
+        [days]
+      );
+    } catch (e) {
+      console.warn('[Analytics] searches: analytics_events not available:', e.message);
+    }
 
     return sendSuccess(res, {
       total: totalSearches[0]?.total || 0,
@@ -217,21 +235,26 @@ exports.getActivity = async (req, res) => {
     const platform = req.query.platform || 'all';
     const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
 
-    const [rows] = await db.query(
-      `SELECT ae.event_type AS event, ae.client_platform AS platform,
-              ae.user_id, ae.anime_id, ae.episode_id, ae.created_at,
-              u.name AS user_name, u.email AS user_email,
-              a.title AS anime_title,
-              e.episode_number, e.title AS episode_title
-       FROM analytics_events ae
-       LEFT JOIN users u ON u.id = ae.user_id
-       LEFT JOIN anime a ON a.id = ae.anime_id
-       LEFT JOIN episodes e ON e.id = ae.episode_id
-       WHERE 1=1 ${platformWhere}
-       ORDER BY ae.created_at DESC
-       LIMIT ?`,
-      [limit]
-    );
+    let rows = [];
+    try {
+      [rows] = await db.query(
+        `SELECT ae.event_type AS event, ae.client_platform AS platform,
+                ae.user_id, ae.anime_id, ae.episode_id, ae.created_at,
+                u.name AS user_name, u.email AS user_email,
+                a.title AS anime_title,
+                e.episode_number, e.title AS episode_title
+         FROM analytics_events ae
+         LEFT JOIN users u ON u.id = ae.user_id
+         LEFT JOIN anime a ON a.id = ae.anime_id
+         LEFT JOIN episodes e ON e.id = ae.episode_id
+         WHERE 1=1 ${platformWhere}
+         ORDER BY ae.created_at DESC
+         LIMIT ?`,
+        [limit]
+      );
+    } catch (e) {
+      console.warn('[Analytics] activity: analytics_events not available:', e.message);
+    }
 
     return sendSuccess(res, rows.map(r => ({
       event: r.event,
@@ -264,26 +287,28 @@ exports.getUsers = async (req, res) => {
       [days]
     );
 
-    // Active users by platform
-    const [activeByPlatform] = await db.query(
-      `SELECT client_platform, COUNT(DISTINCT user_id) AS users
-       FROM analytics_events
-       WHERE event_type IN ('login','anime_view','episode_view')
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-         ${platformWhere}
-       GROUP BY client_platform`,
-      [days]
-    );
-
-    // Login methods
-    const [loginMethods] = await db.query(
-      `SELECT event_type, COUNT(*) AS count
-       FROM analytics_events
-       WHERE event_type IN ('login','google_login')
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY event_type`,
-      [days]
-    );
+    let activeByPlatform = [], loginMethods = [];
+    try {
+      [activeByPlatform] = await db.query(
+        `SELECT client_platform, COUNT(DISTINCT user_id) AS users
+         FROM analytics_events
+         WHERE event_type IN ('login','anime_view','episode_view')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+           ${platformWhere}
+         GROUP BY client_platform`,
+        [days]
+      );
+      [loginMethods] = await db.query(
+        `SELECT event_type, COUNT(*) AS count
+         FROM analytics_events
+         WHERE event_type IN ('login','google_login')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         GROUP BY event_type`,
+        [days]
+      );
+    } catch (e) {
+      console.warn('[Analytics] users: analytics_events not available:', e.message);
+    }
 
     return sendSuccess(res, {
       newUsersByDay: newByDay.map(r => ({ date: r.date, count: r.count })),
