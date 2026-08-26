@@ -171,7 +171,7 @@
       auto_select: false,
       itp_support: true,
       prompt_parent_id: null,
-      use_fedcm_for_prompt: true,
+      use_fedcm_for_prompt: false,
     });
     gisInitialized = true;
     gisClientId = clientId;
