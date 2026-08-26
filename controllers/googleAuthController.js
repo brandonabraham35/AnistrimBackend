@@ -151,7 +151,7 @@ exports.googleCallback = async (req, res) => {
   }
 
   try {
-    const { tokens } = await client.getToken(code, { redirect_uri: getCallbackUri(returnClient) });
+    const { tokens } = await client.getToken({ code, redirect_uri: getCallbackUri(returnClient) });
     client.setCredentials(tokens);
 
     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
