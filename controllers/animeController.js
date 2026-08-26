@@ -71,6 +71,32 @@ exports.getGenres = async (req, res, next) => {
   }
 };
 
+// GET /api/anime/years — distinct years present in the catalogue for filter dropdown.
+exports.getYears = async (req, res, next) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT year FROM anime WHERE ${PUBLIC_ANIME_FILTER} AND year IS NOT NULL AND year > 0 ORDER BY year DESC`
+    );
+    return sendSuccess(res, rows.map(r => r.year));
+  } catch (error) {
+    console.error('[AnimeController] getYears error:', error.message);
+    return next(internal('ANIME_YEARS_FETCH_FAILED', 'Failed to fetch years.'));
+  }
+};
+
+// GET /api/anime/types — distinct anime types (TV, Movie, OVA, etc.) for filter dropdown.
+exports.getTypes = async (req, res, next) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT type FROM anime WHERE ${PUBLIC_ANIME_FILTER} AND type IS NOT NULL AND type != '' ORDER BY type ASC`
+    );
+    return sendSuccess(res, rows.map(r => r.type));
+  } catch (error) {
+    console.error('[AnimeController] getTypes error:', error.message);
+    return next(internal('ANIME_TYPES_FETCH_FAILED', 'Failed to fetch types.'));
+  }
+};
+
 // GET /api/anime/trending — paginated trending/popular anime (Browse default).
 // Query params: page (default 1), perPage (default 10, max 50).
 // Returns a bounded slice of the catalogue ordered by engagement (views + rating).
@@ -159,11 +185,17 @@ exports.getFeatured = async (req, res) => {
   }
 };
 
-// GET /api/anime/search?q=query&genre=Action&status=airing
+// GET /api/anime/search?q=query&genre=Action&status=airing&year=2025&type=TV&sort=rating&page=1&perPage=24
+// Enhanced search with pagination, sort, year, and type filters.
 exports.search = async (req, res) => {
-  const { q, genre, status } = req.query;
+  const { q, genre, status, year, type, sort, page, perPage } = req.query;
   try {
-    let sql = `SELECT a.id, a.title, a.cover_image, a.rating, a.year, a.status, a.is_premium
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const perPageNum = Math.min(50, Math.max(1, parseInt(perPage, 10) || 24));
+    const offset = (pageNum - 1) * perPageNum;
+
+    let sql = `SELECT a.id, a.title, a.title_japanese, a.cover_image, a.banner_image,
+                      a.rating, a.year, a.studio, a.status, a.type, a.is_premium, a.is_featured, a.view_count, a.created_at
                FROM anime a`;
     const params = [];
 
@@ -173,18 +205,37 @@ exports.search = async (req, res) => {
       params.push(genre);
     }
     sql += ` WHERE ${PUBLIC_ANIME_FILTER}`;
-    // LIKE works on every supported MySQL schema. MATCH requires a FULLTEXT
-    // index which is not present in older production databases.
     if (q) {
       sql += ` AND (a.title LIKE ? OR a.description LIKE ?)`;
       params.push(`%${q}%`, `%${q}%`);
     }
     if (status) { sql += ` AND a.status = ?`; params.push(status); }
-    sql += ` ORDER BY a.rating DESC LIMIT 50`;
+    if (year) { sql += ` AND a.year = ?`; params.push(parseInt(year, 10)); }
+    if (type) { sql += ` AND a.type = ?`; params.push(type); }
 
-    const [rows] = await db.query(sql, params);
+    // Sort options
+    const validSorts = { rating: 'a.rating DESC', popular: 'a.view_count DESC', latest: 'a.created_at DESC', az: 'a.title ASC', za: 'a.title DESC' };
+    const orderBy = validSorts[sort] || validSorts.rating;
+    sql += ` ORDER BY ${orderBy}`;
+
+    const [rows] = await db.query(sql + ` LIMIT ? OFFSET ?`, [...params, perPageNum, offset]);
     const result = await attachGenres(rows);
-    return sendSuccess(res, result);
+
+    // Total count for pagination
+    let countSql = `SELECT COUNT(*) AS total FROM anime a`;
+    const countParams = [];
+    if (genre) {
+      countSql += ` JOIN anime_genres ag ON a.id = ag.anime_id JOIN genres g ON ag.genre_id = g.id AND g.name = ?`;
+      countParams.push(genre);
+    }
+    countSql += ` WHERE ${PUBLIC_ANIME_FILTER}`;
+    if (q) { countSql += ` AND (a.title LIKE ? OR a.description LIKE ?)`; countParams.push(`%${q}%`, `%${q}%`); }
+    if (status) { countSql += ` AND a.status = ?`; countParams.push(status); }
+    if (year) { countSql += ` AND a.year = ?`; countParams.push(parseInt(year, 10)); }
+    if (type) { countSql += ` AND a.type = ?`; countParams.push(type); }
+
+    const [countRows] = await db.query(countSql, countParams);
+    return sendPaginated(res, result, { page: pageNum, perPage: perPageNum, totalItems: countRows[0]?.total || 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Search failed.' });

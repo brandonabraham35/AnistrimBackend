@@ -606,48 +606,153 @@
     renderHeader();
     return '<div class="page"><div class="container"><div class="browse-header">' +
       '<span class="browse-label">Catalogue</span>' +
-      '<h1>Browse</h1>' +
+      '<h1>Browse Anime</h1>' +
       '<p class="browse-subtitle">Discover anime across every genre</p>' +
-      '<span class="browse-count" id="browse-count"></span></div>' +
+      '<span class="browse-count" id="browse-count"></span>' +
+      '<button id="browse-clear" class="btn-ghost" style="display:none;margin-left:auto" onclick="AniStrimUI.clearBrowseFilters()">Clear Filters</button></div>' +
       '<div class="filter-bar"><div class="filter-controls">' +
-      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="trending">Trending</option><option value="popular">Popular</option><option value="latest">Latest</option></select>' +
+      '<div class="filter-search"><input id="browse-q" type="search" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div>' +
       '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select>' +
       '<select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
-      '<div class="filter-search"><input id="browse-q" type="search" placeholder="Search titles..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div></div></div>' +
+      '<select id="browse-year" onchange="AniStrimUI.reloadBrowse()"><option value="">All Years</option></select>' +
+      '<select id="browse-type" onchange="AniStrimUI.reloadBrowse()"><option value="">All Types</option></select>' +
+      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="popular">Popular</option><option value="rating">Highest Rated</option><option value="latest">Recently Added</option><option value="az">A–Z</option><option value="za">Z–A</option></select>' +
+      '</div></div>' +
       '<div id="browse-grid" class="anime-grid"><div class="list-loading">Loading catalogue...</div></div>' +
       '<div id="browse-more" style="text-align:center;margin-top:var(--space-6)"></div></div></div>';
   }
-  function afterBrowse() { fillGenreSelect('browse-genre'); reloadBrowse(false); }
+  function afterBrowse(root, params, query) {
+    // Populate all filter dropdowns in parallel
+    Promise.all([
+      fillGenreSelect('browse-genre', query && query.genre),
+      fillSelectFromAPI('browse-year', '/api/anime/years', query && query.year),
+      fillSelectFromAPI('browse-type', '/api/anime/types', query && query.type),
+    ]).then(function () {
+      // Restore filter values from URL query
+      if (query) {
+        if (query.q) { var qi = document.getElementById('browse-q'); if (qi) qi.value = query.q; }
+        if (query.status) { var si = document.getElementById('browse-status'); if (si) si.value = query.status; }
+        if (query.sort) { var soi = document.getElementById('browse-sort'); if (soi) soi.value = query.sort; }
+      }
+      reloadBrowse(false);
+    });
+  }
+
+  // Helper: populate a select with values from an API endpoint
+  function fillSelectFromAPI(selectId, apiPath, selectedValue) {
+    var select = document.getElementById(selectId);
+    if (!select) return Promise.resolve();
+    return request(apiPath).then(function (items) {
+      var current = selectedValue || select.value || '';
+      var firstOption = select.querySelector('option');
+      var firstLabel = firstOption ? firstOption.textContent : '';
+      select.innerHTML = '<option value="">' + esc(firstLabel) + '</option>' +
+        norm(items).map(function (item) {
+          return '<option value="' + esc(item) + '">' + esc(item) + '</option>';
+        }).join('');
+      select.value = current;
+    }).catch(function () {});
+  }
+
+  // Clear all browse filters and reload
+  function clearBrowseFilters() {
+    var qi = document.getElementById('browse-q'); if (qi) qi.value = '';
+    var gi = document.getElementById('browse-genre'); if (gi) gi.value = '';
+    var si = document.getElementById('browse-status'); if (si) si.value = '';
+    var yi = document.getElementById('browse-year'); if (yi) yi.value = '';
+    var ti = document.getElementById('browse-type'); if (ti) ti.value = '';
+    var soi = document.getElementById('browse-sort'); if (soi) soi.value = 'popular';
+    Router.navigate('/browse');
+  }
+
   function debounceBrowse() { clearTimeout(browseTimer); browseTimer = setTimeout(function () { reloadBrowse(false); }, 350); }
+
   async function reloadBrowse(loadMore) {
     clearTimeout(browseTimer);
     var el = document.getElementById('browse-grid');
     var more = document.getElementById('browse-more');
+    var countEl = document.getElementById('browse-count');
+    var clearBtn = document.getElementById('browse-clear');
     if (!el) return;
-    var sort = document.getElementById('browse-sort') ? document.getElementById('browse-sort').value : 'trending';
+
+    var sort = document.getElementById('browse-sort') ? document.getElementById('browse-sort').value : 'popular';
     var q = document.getElementById('browse-q') ? document.getElementById('browse-q').value.trim() : '';
     var genre = document.getElementById('browse-genre') ? document.getElementById('browse-genre').value : '';
     var status = document.getElementById('browse-status') ? document.getElementById('browse-status').value : '';
-    var filtered = Boolean(q || genre || status);
-    var page = loadMore && !filtered && sort !== 'latest' ? browseState.page + 1 : 1;
+    var year = document.getElementById('browse-year') ? document.getElementById('browse-year').value : '';
+    var type = document.getElementById('browse-type') ? document.getElementById('browse-type').value : '';
+
+    // Check if any filter is active
+    var filtered = Boolean(q || genre || status || year || type);
+
+    // Update URL with current filter state
+    var queryParams = [];
+    if (q) queryParams.push('q=' + encodeURIComponent(q));
+    if (genre) queryParams.push('genre=' + encodeURIComponent(genre));
+    if (status) queryParams.push('status=' + encodeURIComponent(status));
+    if (year) queryParams.push('year=' + encodeURIComponent(year));
+    if (type) queryParams.push('type=' + encodeURIComponent(type));
+    if (sort && sort !== 'popular') queryParams.push('sort=' + encodeURIComponent(sort));
+    if (browseState.page > 1) queryParams.push('page=' + browseState.page);
+    var qs = queryParams.length ? '?' + queryParams.join('&') : '';
+    if (window.location.hash !== '#/browse' + qs) {
+      history.replaceState(null, '', '#/browse' + qs);
+    }
+
+    // Show/hide clear filters button
+    if (clearBtn) clearBtn.style.display = filtered ? 'inline-block' : 'none';
+
+    var page = loadMore && browseState.hasNext ? browseState.page + 1 : 1;
     var requestId = ++browseRequest;
     if (!loadMore) el.innerHTML = '<div class="grid-loading">Loading catalogue...</div>';
     if (more) more.innerHTML = loadMore ? '<div class="grid-loading">Loading more...</div>' : '';
+
     try {
-      var list, meta = {};
-      if (filtered) list = norm(await API.search(q, { genre: genre, status: status }));
-      else if (sort === 'latest') list = norm(await API.latest(50));
-      else {
-        var pageResult = sort === 'popular' ? await API.popular(page, 10) : await API.trending(page, 10);
-        list = norm(pageResult && pageResult.data);
-        meta = (pageResult && pageResult.meta && pageResult.meta.pagination) || {};
-      }
+      // Use the unified search endpoint for all browse queries
+      var filters = { genre: genre, status: status, year: year, type: type, sort: sort, page: page, perPage: 24 };
+      var result = await API.search(q, filters);
+      var list = norm(result && result.data ? result.data : result);
+      var meta = (result && result.meta && result.meta.pagination) || {};
+      var totalItems = meta.totalItems || list.length;
+
       if (requestId !== browseRequest || !document.getElementById('browse-grid')) return;
-      browseState = { page: page, items: loadMore ? browseState.items.concat(list) : list, hasNext: Boolean(meta.hasNext) };
-      var countEl = document.getElementById('browse-count');
-      if (countEl) countEl.textContent = browseState.items.length + ' titles';
-      el.innerHTML = browseState.items.length ? grid(browseState.items) : '<div class="empty-state"><div class="empty-icon">\U0001f50d</div><h3>No anime matched</h3><p>Try adjusting your filters.</p></div>';
-      if (more) more.innerHTML = browseState.hasNext && !filtered ? '<div style="padding:var(--space-6) 0;text-align:center">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>' : '';
+
+      browseState = {
+        page: page,
+        items: loadMore ? browseState.items.concat(list) : list,
+        hasNext: meta.hasNext || (list.length === 24 && !filtered),
+        totalItems: totalItems,
+      };
+
+      // Update count display
+      if (countEl) {
+        if (q || genre || status || year || type) {
+          var descParts = [];
+          if (q) descParts.push('matching "' + esc(q) + '"');
+          if (genre) descParts.push('in ' + esc(genre));
+          if (status) descParts.push('status: ' + esc(status));
+          if (year) descParts.push('year ' + esc(year));
+          if (type) descParts.push('type: ' + esc(type));
+          countEl.textContent = totalItems + ' anime' + (descParts.length ? ' ' + descParts.join(', ') : '');
+        } else {
+          countEl.textContent = totalItems + ' anime';
+        }
+      }
+
+      el.innerHTML = browseState.items.length
+        ? grid(browseState.items)
+        : '<div class="empty-state"><div class="empty-icon">\U0001f50d</div><h3>No anime found</h3><p>We couldn\'t find any anime matching your filters.</p><p style="margin-top:8px;color:var(--clr-text-muted);font-size:var(--font-size-sm)">Try adjusting your search or filters.</p></div>';
+
+      // Pagination: show page numbers or load more
+      if (more) {
+        if (browseState.hasNext) {
+          more.innerHTML = '<div style="padding:var(--space-4) 0;text-align:center">' + retryButton('loadMoreBrowse()', 'Load more') + '</div>';
+        } else if (page > 1) {
+          more.innerHTML = '<div style="padding:var(--space-4) 0;text-align:center;color:var(--clr-text-muted)">Showing all ' + browseState.items.length + ' results</div>';
+        } else {
+          more.innerHTML = '';
+        }
+      }
     } catch (e) {
       if (requestId !== browseRequest) return;
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">\u26A0\uFE0F</div><h3>Could not load catalogue</h3><p>' + esc(e.message) + '</p>' + retryButton('reloadBrowse()', 'Try again') + '</div>';

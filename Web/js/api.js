@@ -186,11 +186,13 @@
       return request('/api/anime/popular?' + p.toString(), { includeMeta: true });
     },
     genres: function () { return request('/api/anime/genres'); },
+    years: function () { return request('/api/anime/years'); },
+    types: function () { return request('/api/anime/types'); },
     search: function (q, filters) {
       var params = new URLSearchParams();
       if (q) params.set('q', q);
-      if (filters) Object.keys(filters).forEach(function (k) { if (filters[k]) params.set(k, filters[k]); });
-      return request('/api/anime/search?' + params.toString());
+      if (filters) Object.keys(filters).forEach(function (k) { if (filters[k] != null && filters[k] !== '') params.set(k, filters[k]); });
+      return request('/api/anime/search?' + params.toString(), { includeMeta: true });
     },
     anime: function (id) { return request('/api/anime/' + id); },
     episodes: function (id) { return request('/api/anime/' + id + '/episodes'); },

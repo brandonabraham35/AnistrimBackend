@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx *)",
-      "Agent(Explore)"
+      "Agent(Explore)",
+      "Bash(node *)"
     ]
   },
   "$version": 4
