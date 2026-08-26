@@ -23,9 +23,27 @@ const { sendSuccess } = require('../utils/response');
 const clientAgnostic = require('../config/clientAgnostic');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
+// Public web origin (Vercel). The web client's Google OAuth callback and its
+// post-OAuth redirect resolve against this origin so browser users stay on the
+// public anistrim.com domain and never land on the Render backend host.
+const FRONTEND_URL = process.env.FRONTEND_URL || BACKEND_URL;
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
 const APP_PACKAGE = process.env.APP_PACKAGE || 'com.anistrim.render';
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
+
+/**
+ * The Google OAuth redirect_uri for a client. The web client returns to the
+ * public origin (which Vercel rewrites/proxies to this backend), while the
+ * mobile/desktop/deep-link clients keep the backend origin as before. The value
+ * is carried in the OAuth `state` (via the client id) so the matching URI is
+ * used again at token exchange.
+ * @param {string|null} client client id (web|mobile|desktop|admin) or ''
+ * @returns {string} absolute callback URL used with Google
+ */
+function getCallbackUri(client) {
+  const base = String(client === 'web' ? FRONTEND_URL : BACKEND_URL).replace(/\/+$/, '');
+  return `${base}/api/auth/google/callback`;
+}
 
 // In production, Redis/DB is better. This works on one Railway instance.
 const loginCodeStore = new Map();
@@ -33,7 +51,7 @@ const loginCodeStore = new Map();
 const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  `${BACKEND_URL}/api/auth/google/callback`
+  getCallbackUri('')
 );
 
 function createLoginCode(token, refreshToken, user, intent) {
@@ -76,10 +94,23 @@ exports.googleRedirect = (req, res) => {
     access_type: 'offline',
     scope: ['openid', 'email', 'profile'],
     prompt: 'select_account',
+    redirect_uri: getCallbackUri(returnClient),
     state: JSON.stringify({ intent, client: returnClient }),
   });
   res.redirect(url);
 };
+
+// Resolve a validated OAuth return target into an absolute URL the browser can
+// follow. Absolute scheme URLs (https:, anistrim:, anistrim-desktop:) pass
+// through unchanged. Relative paths are resolved against the public web origin
+// for the web client (so the browser ends on anistrim.com, not Render) and
+// against the backend origin otherwise (admin/mobile pages served by Render).
+function resolveReturnUrl(clientId, returnTarget) {
+  if (!returnTarget) return '';
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(returnTarget)) return returnTarget; // absolute scheme URL
+  const base = clientId === 'web' ? FRONTEND_URL : BACKEND_URL;
+  return clientAgnostic.buildClientUrl(returnTarget, base);
+}
 
 // ── Google redirect_uri — apply the SAME login/signup business rules.
 //    Client-agnostic path: pass ?client=api to receive structured JSON instead
@@ -110,17 +141,17 @@ exports.googleCallback = async (req, res) => {
     // their own UI even when Google cancels or rejects consent. The message is
     // intentionally generic and no credentials are placed in the URL.
     if (!jsonMode && returnClient) {
-      const returnTarget = clientAgnostic.getGoogleReturnTarget(returnClient);
-      if (returnTarget) {
-        const separator = returnTarget.includes('?') ? '&' : '?';
-        return res.redirect(`${returnTarget}${separator}error=${encodeURIComponent('Sign-in cancelled.')}`);
+      const redirectTarget = resolveReturnUrl(returnClient, clientAgnostic.getGoogleReturnTarget(returnClient));
+      if (redirectTarget) {
+        const separator = redirectTarget.includes('?') ? '&' : '?';
+        return res.redirect(`${redirectTarget}${separator}error=${encodeURIComponent('Sign-in cancelled.')}`);
       }
     }
     return fail('Sign-in cancelled.', 'OAUTH_CANCELLED');
   }
 
   try {
-    const { tokens } = await client.getToken(code);
+    const { tokens } = await client.getToken(code, { redirect_uri: getCallbackUri(returnClient) });
     client.setCredentials(tokens);
 
     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -168,10 +199,10 @@ exports.googleCallback = async (req, res) => {
     // Google. Return only to the server-owned allow-listed target, carrying a
     // short-lived one-time code rather than an access token in the URL.
     if (returnClient) {
-      const returnTarget = clientAgnostic.getGoogleReturnTarget(returnClient);
-      if (returnTarget) {
-        const separator = returnTarget.includes('?') ? '&' : '?';
-        return res.redirect(`${returnTarget}${separator}code=${encodeURIComponent(loginCode)}&intent=${encodeURIComponent(intent)}`);
+      const redirectTarget = resolveReturnUrl(returnClient, clientAgnostic.getGoogleReturnTarget(returnClient));
+      if (redirectTarget) {
+        const separator = redirectTarget.includes('?') ? '&' : '?';
+        return res.redirect(`${redirectTarget}${separator}code=${encodeURIComponent(loginCode)}&intent=${encodeURIComponent(intent)}`);
       }
     }
 

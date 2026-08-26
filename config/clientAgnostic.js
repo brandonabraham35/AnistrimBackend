@@ -59,7 +59,7 @@ const DEFAULT_RESET_PATHS = {
 // Default Google OAuth return targets per client
 const DEFAULT_GOOGLE_RETURN_TARGETS = {
   mobile: 'anistrim://auth',                // Deep link scheme for Capacitor
-  web: '/web/#/auth/google/callback',       // Web hash-routed SPA callback
+  web: '/#/auth/google/callback',           // Web hash-routed SPA callback (hosted at root on Vercel)
   desktop: 'anistrim-desktop://auth',       // Desktop custom scheme
   admin: '/admin/google-callback.html',     // Admin dashboard callback
 };
@@ -109,6 +109,7 @@ const GOOGLE_RETURN_ALLOW_LIST = new Set([
   'anistrim-desktop://auth',
   '/web/auth/google/callback',
   '/web/#/auth/google/callback',  // hash-routed web callback (SPA)
+  '/#/auth/google/callback',      // web callback (Vercel SPA hosted at root)
   '/admin/google-callback.html',
   // Add custom targets here if needed
 ]);
