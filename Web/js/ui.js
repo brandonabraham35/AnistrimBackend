@@ -40,13 +40,13 @@
     return '<a class="anime-card" href="/anime/' + encodeURIComponent(id) + '" onclick="return AniStrimUI.goCard(event,' + id + ')">' +
       '<div class="anime-card-img"><img src="' + (img || fallback(title)) + '" alt="' + esc(title) + '" loading="lazy" ' +
       'onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')">' +
-      (type ? '<span class="badge-type">' + esc(type) + '</span>' : '') +
+      (type ? '<span class="anime-card-badge">' + esc(type) + '</span>' : '') +
       (a && a.is_premium ? '<span class="badge-premium">&#x1F451;</span>' : '') +
-      (a && a.rating ? '<span class="badge-rating">&#9733; ' + esc(a.rating) + '</span>' : '') +
+      (a && a.rating ? '<span class="anime-card-rating">&#9733; ' + esc(a.rating) + '</span>' : '') +
       (eps ? '<span class="badge-ep">' + esc(eps) + '</span>' : '') +
       '</div><div class="anime-card-body"><div class="anime-card-title">' + esc(title) + '</div>' +
-      '<div class="anime-card-sub">' + (type || 'Anime') + (eps ? ' &middot; ' + esc(eps) + ' EP' : '') +
-      (a && a.year ? ' &middot; ' + esc(a.year) : '') + '</div></div></a>';
+      '<div class="anime-card-sub">' + (type ? '<span>' + esc(type) + '</span>' : '') + (eps ? '<span>' + esc(eps) + ' ep</span>' : '') +
+      (a && a.year ? '<span>' + esc(a.year) + '</span>' : '') + '</div></div></a>';
   }
   function grid(list, cols) {
     return '<div class="anime-grid' + (cols ? ' cols-' + cols : '') + '">' + list.map(card).join('') + '</div>';
@@ -745,18 +745,15 @@
   function browseView() {
     renderHeader();
     return '<div class="page"><div class="container"><div class="browse-header">' +
-      '<span class="browse-label"></span>' +
-      '<h1>Browse Anime</h1>' +
-      '<p class="browse-subtitle">Discover anime across every genre</p>' +
+      '<span class="browse-label">CATALOGUE</span>' +
+      '<h1>Browse</h1>' +
       '<span class="browse-count" id="browse-count"></span>' +
-      '<button id="browse-clear" class="btn-ghost" style="display:none;margin-left:auto" onclick="AniStrimUI.clearBrowseFilters()">Clear Filters</button></div>' +
       '<div class="filter-bar"><div class="filter-controls">' +
-      '<div class="filter-search"><input id="browse-q" type="search" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div>' +
+      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="popular">Trending</option><option value="rating">Highest Rated</option><option value="latest">Recently Added</option><option value="az">A–Z</option><option value="za">Z–A</option></select>' +
       '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select>' +
       '<select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
-      '<select id="browse-year" onchange="AniStrimUI.reloadBrowse()"><option value="">All Years</option></select>' +
-      '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="popular">Popular</option><option value="rating">Highest Rated</option><option value="latest">Recently Added</option><option value="az">A–Z</option><option value="za">Z–A</option></select>' +
-      '</div></div>' +
+      '<div class="filter-search"><input id="browse-q" type="search" placeholder="Search anime..." autocomplete="off" oninput="AniStrimUI.debounceBrowse()" onkeydown="if(event.key===\'Enter\')AniStrimUI.reloadBrowse()"></div>' +
+      '</div></div></div>' +
       '<div id="browse-grid" class="anime-grid"><div class="list-loading">Loading catalogue...</div></div>' +
       '<div id="browse-more" style="text-align:center;margin-top:var(--space-6)"></div></div></div>';
   }
@@ -1171,13 +1168,15 @@
     if (!listEl || !watchState) return;
     var visible = watchState.episodes.filter(function (episode) { return episodeSeason(episode) === watchState.season; });
     if (!visible.length) visible = watchState.episodes;
+    var watchedCount = visible.filter(function (ep) { return watchState.progress && watchState.progress[ep.id]; }).length;
     listEl.innerHTML = '<div class="episode-grid">' + visible.map(function (item) {
       var n = episodeNumber(item);
-      var active = String(item.id) === String(watchState.target.id) ? ' active' : '';
-      return '<button class="episode-item' + active + '" onclick="AniStrimUI.watch(\'' + esc(watchState.animeId) + '\',' + (n || 1) + ',\'' + esc(item.id) + '\')" title="Episode ' + esc(n) + '">' +
-        '<span class="ep-num">' + esc(n) + '</span>' +
-        (item.locked ? '<span class="ep-lock" style="position:absolute;top:2px;right:2px;font-size:8px">🔒</span>' : '') + '</button>';
+      var current = String(item.id) === String(watchState.target.id) ? ' current' : '';
+      var watched = (watchState.progress && watchState.progress[item.id]) ? ' watched' : '';
+      return '<button class="ep-btn' + current + watched + '" onclick="AniStrimUI.watch(\'' + esc(watchState.animeId) + '\',' + (n || 1) + ',\'' + esc(item.id) + '\')" title="Episode ' + esc(n) + '">' + n + '</button>';
     }).join('') + '</div>';
+    var countEl = document.getElementById('watch-episodes-count');
+    if (countEl) countEl.textContent = watchedCount + ' of ' + visible.length + ' watched';
   }
   function navigateEpisode(episode) {
     if (!episode || !watchState) return;
