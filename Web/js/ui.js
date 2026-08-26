@@ -144,6 +144,11 @@
   }
 
   // ── Header / Footer ─────────────────────────────────────
+  function navActive(path) {
+    var current = Router.currentPath();
+    if (path === '/') return current === '/' ? ' class="active"' : '';
+    return current.indexOf(path) === 0 ? ' class="active"' : '';
+  }
   function renderHeader() {
     var h = document.getElementById('site-header');
     var user = Auth.state.user;
@@ -154,8 +159,8 @@
     h.innerHTML = '<nav class="nav"><div class="nav-inner">' +
       '<button class="mobile-menu-btn" onclick="AniStrimUI.toggleMobileNav()" aria-label="Toggle navigation">\u2630</button>' +
       '<a class="brand" href="#/">AniStrim</a>' +
-      '<div class="nav-links"><a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
-      (logged ? '<a href="#/watchlist">Watchlist</a><a href="#/history">History</a><a href="#/upgrade">Upgrade</a>' : '') + '</div>' +
+      '<div class="nav-links"><a' + navActive('/') + ' href="#/">Home</a><a' + navActive('/browse') + ' href="#/browse">Browse</a><a' + navActive('/search') + ' href="#/search">Search</a>' +
+      (logged ? '<a' + navActive('/watchlist') + ' href="#/watchlist">Watchlist</a><a' + navActive('/history') + ' href="#/history">History</a><a' + navActive('/upgrade') + ' href="#/upgrade">Upgrade</a>' : '') + '</div>' +
       '<div class="nav-search"><input type="text" placeholder="Search anime\u2026" id="nav-search-input" onkeydown="if(event.key===\'Enter\'){var q=this.value.trim();if(q){window.AniStrimRouter.navigate(\'/search\',{q:q});this.value=\'\'}}"></div>' +
       '<div class="nav-auth">' +
       (logged
@@ -333,8 +338,7 @@
       '<button class="rank-tab active" onclick="AniStrimUI.switchRankTab(0)" role="tab">All Time Popular</button>' +
       '<button class="rank-tab" onclick="AniStrimUI.switchRankTab(1)" role="tab">All Time Favorites</button>' +
       '</div><div class="rank-list" id="rank-list"></div></div>' +
-      (!Auth.state.isPremium ? '<div class="premium-cta-card"><div class="premium-cta-icon">👑</div><h4>Go Premium</h4><p>Unlock HD streaming, ad-free viewing, and more.</p><a href="#/upgrade" class="btn-primary btn-block" style="margin-top:var(--space-3);font-size:var(--font-size-sm);padding:8px 16px">Upgrade Now</a></div>' : '') +
-      '</div>';
+      (!Auth.state.isPremium ? '<div class="premium-cta-card"><div class="premium-cta-icon">👑</div><h4>Go Premium</h4><p>Unlock HD streaming, ad-free viewing, and more.</p><a href="#/upgrade" class="btn-primary btn-block" style="margin-top:var(--space-3);font-size:var(--font-size-sm);padding:8px 16px">Upgrade Now</a></div>' : '');
     renderRankItems(0);
   }
   function renderRankItems(tab) {
@@ -1321,7 +1325,7 @@
     renderHeader();
     if (Auth.state.isPremium) return '<div class="page"><div class="container"><div class="card premium-card"><h1>You are Premium 👑</h1><p style="color:var(--clr-text-secondary);margin-top:var(--space-2)">You already have access to all Premium features.</p></div></div></div>';
     return '<div class="page upgrade-page"><div class="container">' +
-      '<div class="upgrade-hero"><span class="upgrade-label">Premium</span><h1>Upgrade to Premium</h1><p class="upgrade-subtitle">Unlock the full AniStrim experience. Watch more, enjoy more.</p></div>' +
+      '<div class="upgrade-hero"><span class="upgrade-label">✦ Premium</span><h1>Upgrade to Premium</h1><p class="upgrade-subtitle">Unlock the full AniStrim experience. Watch more, enjoy more.</p></div>' +
       '<div class="plans">' +
       '<div class="plan"><div class="plan-header"><h3>Monthly</h3><div class="price">UGX 15,000<span>/mo</span></div></div>' +
       '<ul class="plan-features"><li><span class="feat-icon">🎬</span> Access to all anime series</li><li><span class="feat-icon">🎯</span> HD &amp; 4K video quality</li><li><span class="feat-icon">🚫</span> Completely ad-free</li><li><span class="feat-icon">📱</span> Multi-device streaming</li><li><span class="feat-icon">⬇️</span> Offline downloads</li><li><span class="feat-icon">📋</span> Unlimited watchlists</li></ul>' +
