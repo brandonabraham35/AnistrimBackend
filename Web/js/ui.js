@@ -158,7 +158,7 @@
     var initial = name ? name.charAt(0).toUpperCase() : '?';
     var avatar = (user && user.avatar) || '';
     h.innerHTML = '<nav class="nav"><div class="nav-inner">' +
-      '<button class="mobile-menu-btn" onclick="AniStrimUI.toggleMobileNav()" aria-label="Toggle navigation">\u2630</button>' +
+      '<button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle navigation" aria-expanded="false" onclick="AniStrimUI.toggleMobileNav()"><span class="bar"></span><span class="bar"></span><span class="bar"></span></button>' +
       '<a class="brand" href="#/">AniStrim</a>' +
       '<div class="nav-links"><a' + navActive('/') + ' href="#/">Home</a><a' + navActive('/browse') + ' href="#/browse">Browse</a><a' + navActive('/search') + ' href="#/search">Search</a>' +
       (logged ? '<a' + navActive('/watchlist') + ' href="#/watchlist">Watchlist</a><a' + navActive('/history') + ' href="#/history">History</a><a' + navActive('/upgrade') + ' href="#/upgrade">Upgrade</a>' : '') + '</div>' +
@@ -170,19 +170,22 @@
           '</a>'
         : '<a href="#/login" class="btn-outline btn-sm">Sign In</a><a href="#/signup" class="btn-primary btn-sm">Get Started</a>') +
       '</div></div>' +
+      // Mobile navigation backdrop (closes menu on tap outside)
+      '<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="AniStrimUI.closeMobileNav()"></div>' +
       // Mobile navigation panel
-      '<div class="mobile-nav" id="mobile-nav">' +
+      '<div class="mobile-nav" id="mobile-nav" role="dialog" aria-label="Navigation menu">' +
+      '<div class="mobile-nav-header"><button class="mobile-nav-close" onclick="AniStrimUI.closeMobileNav()" aria-label="Close menu">\u2715</button></div>' +
       (logged && user ? '<div class="nav-user">' +
         '<div class="nav-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) + '</div>' +
         '<div><div style="font-weight:600">' + esc(name) + '</div>' +
         (user.email ? '<div style="font-size:.85rem;color:var(--clr-text-muted)">' + esc(user.email) + '</div>' : '') +
         '</div></div>' : '') +
-      '<a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/search">Search</a>' +
-      (logged ? '<a href="#/watchlist">Watchlist</a><a href="#/history">History</a>' : '') +
-      '<a href="#/upgrade">Upgrade</a>' +
+      '<a href="#/" onclick="AniStrimUI.closeMobileNav()">Home</a><a href="#/browse" onclick="AniStrimUI.closeMobileNav()">Browse</a><a href="#/search" onclick="AniStrimUI.closeMobileNav()">Search</a>' +
+      (logged ? '<a href="#/watchlist" onclick="AniStrimUI.closeMobileNav()">Watchlist</a><a href="#/history" onclick="AniStrimUI.closeMobileNav()">History</a>' : '') +
+      '<a href="#/upgrade" onclick="AniStrimUI.closeMobileNav()">Upgrade</a>' +
       (logged
-        ? '<a href="#/profile">Profile</a><a href="#" onclick="AniStrimUI.logout();AniStrimUI.closeMobileNav();return false">Logout</a>'
-        : '<a href="#/login">Sign In</a><a href="#/signup">Sign Up</a>') +
+        ? '<a href="#/profile" onclick="AniStrimUI.closeMobileNav()">Profile</a><a href="#" onclick="AniStrimUI.logout();AniStrimUI.closeMobileNav();return false">Logout</a>'
+        : '<a href="#/login" onclick="AniStrimUI.closeMobileNav()">Sign In</a><a href="#/signup" onclick="AniStrimUI.closeMobileNav()">Sign Up</a>') +
       '</div></nav>';
     var f = document.getElementById('site-footer');
     f.innerHTML = '<div class="footer-inner"><span>\u00a9 ' + new Date().getFullYear() + ' AniStrim</span>' +
@@ -192,11 +195,26 @@
   }
   function toggleMobileNav() {
     var el = document.getElementById('mobile-nav');
-    if (el) el.classList.toggle('open');
+    var bd = document.getElementById('mobile-nav-backdrop');
+    var btn = document.getElementById('mobile-menu-btn');
+    var isOpen = el && el.classList.contains('open');
+    if (isOpen) {
+      closeMobileNav();
+    } else {
+      if (el) el.classList.add('open');
+      if (bd) bd.classList.add('open');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden'; // prevent background scroll
+    }
   }
   function closeMobileNav() {
     var el = document.getElementById('mobile-nav');
+    var bd = document.getElementById('mobile-nav-backdrop');
+    var btn = document.getElementById('mobile-menu-btn');
     if (el) el.classList.remove('open');
+    if (bd) bd.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
   }
 
   // ── Slider state ──────────────────────────────────────────
@@ -376,29 +394,91 @@
     renderRankItems(tab);
   }
   // ── Auth pages ──────────────────────────────────────────
-  function authShell(title) {
-    return '<div class="page auth-page"><div class="auth-card"><h1>' + title + '</h1><div id="auth-error" class="form-error"></div>';
+  function authShell(title, subtitle) {
+    return '<div class="page auth-page"><div class="auth-card">' +
+      '<div class="auth-brand"><span class="auth-logo">A</span><h1>' + title + '</h1>' +
+      (subtitle ? '<p class="auth-subtitle">' + subtitle + '</p>' : '') +
+      '</div>' +
+      '<div id="auth-error" class="form-error" role="alert"></div>';
   }
+
   function loginView() {
     renderHeader();
     postAuthRoute();
-    return authShell('Sign In') +
-      '<form onsubmit="return AniStrimUI.doLogin(event)"><label>Email<input type="email" id="login-email" required></label>' +
-      '<label>Password<input type="password" id="login-password" required></label>' +
-      '<button class="btn-primary btn-block" type="submit">Sign In</button></form>' +
-      '<div class="auth-alt"><span>or</span></div><button class="btn-google" onclick="AniStrimUI.doGoogleLogin()">Continue with Google</button>' +
-      '<p class="auth-switch"><a href="#/forgot-password">Forgot password?</a> · New here? <a href="#/signup">Create an account</a></p></div></div>';
+    return authShell('Welcome back', 'Sign in to continue watching anime on AniStrim') +
+      '<form id="login-form" onsubmit="return AniStrimUI.doLogin(event)">' +
+      '<div class="auth-field"><label for="login-email">Email</label>' +
+      '<input type="email" id="login-email" required autocomplete="email" placeholder="you@example.com"></div>' +
+      '<div class="auth-field"><label for="login-password">Password</label>' +
+      '<div class="auth-password-field">' +
+      '<input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter your password">' +
+      '<button type="button" class="auth-password-toggle" onclick="AniStrimUI.togglePassword(\'login-password\',this)" aria-label="Show password">\U0001f441</button>' +
+      '</div></div>' +
+      '<div class="auth-forgot"><a href="#/forgot-password">Forgot password?</a></div>' +
+      '<button class="btn-primary btn-block btn-auth-submit" type="submit">Sign In</button></form>' +
+      '<div class="auth-divider"><span>or continue with</span></div>' +
+      '<button class="btn-google btn-block" onclick="AniStrimUI.doGoogleLogin()">' +
+      '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>' +
+      'Google</button>' +
+      '<p class="auth-switch">Don\'t have an account? <a href="#/signup">Create one</a></p></div></div>';
   }
+
   function signupView() {
     renderHeader();
     postAuthRoute();
-    return authShell('Create Account') +
-      '<form onsubmit="return AniStrimUI.doSignup(event)"><label>Name<input id="signup-name" required></label>' +
-      '<label>Email<input type="email" id="signup-email" required></label>' +
-      '<label>Password<input type="password" id="signup-password" required minlength="6"></label>' +
-      '<button class="btn-primary btn-block" type="submit">Create Account</button></form>' +
-      '<div class="auth-alt"><span>or</span></div><button class="btn-google" onclick="AniStrimUI.doGoogleSignup()">Continue with Google</button>' +
-      '<p class="auth-switch">Have an account? <a href="#/login">Sign in</a></p></div></div>';
+    var html = authShell('Create your account', 'Join AniStrim to discover and watch thousands of anime') +
+      '<form id="signup-form" onsubmit="return AniStrimUI.doSignup(event)">' +
+      '<div class="auth-field"><label for="signup-name">Name</label>' +
+      '<input type="text" id="signup-name" required autocomplete="name" placeholder="Your name"></div>' +
+      '<div class="auth-field"><label for="signup-email">Email</label>' +
+      '<input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com"></div>' +
+      '<div class="auth-field"><label for="signup-password">Password</label>' +
+      '<div class="auth-password-field">' +
+      '<input type="password" id="signup-password" required minlength="6" autocomplete="new-password" placeholder="Create a password" oninput="AniStrimUI.updatePasswordStrength(this.value)">' +
+      '<button type="button" class="auth-password-toggle" onclick="AniStrimUI.togglePassword(\'signup-password\',this)" aria-label="Show password">\U0001f441</button>' +
+      '</div>' +
+      '<div class="auth-password-requirements" id="signup-password-requirements">' +
+      '<span class="req-item">\u25cb At least 6 characters</span>' +
+      '</div></div>' +
+      '<div class="auth-field"><label for="signup-confirm">Confirm Password</label>' +
+      '<div class="auth-password-field">' +
+      '<input type="password" id="signup-confirm" required minlength="6" autocomplete="new-password" placeholder="Confirm your password">' +
+      '<button type="button" class="auth-password-toggle" onclick="AniStrimUI.togglePassword(\'signup-confirm\',this)" aria-label="Show password">\U0001f441</button>' +
+      '</div></div>' +
+      '<button class="btn-primary btn-block btn-auth-submit" type="submit">Create Account</button></form>' +
+      '<div class="auth-divider"><span>or sign up with</span></div>' +
+      '<button class="btn-google btn-block" onclick="AniStrimUI.doGoogleSignup()">' +
+      '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>' +
+      'Google</button>' +
+      '<p class="auth-switch">Already have an account? <a href="#/login">Sign in</a></p></div></div>';
+    // Defer attaching listener so the DOM is ready
+    setTimeout(attachSignupPasswordListener, 0);
+    return html;
+  }
+
+  // Toggle password visibility
+  function togglePassword(inputId, btn) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    btn.textContent = isPassword ? '\U0001f441\u200d\U0001f5e8' : '\U0001f441';
+    btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+  }
+
+  // Password strength indicator for signup
+  function updatePasswordStrength(value) {
+    var req = document.getElementById('signup-password-requirements');
+    if (!req) return;
+    var items = req.querySelectorAll('.req-item');
+    items.forEach(function(item) {
+      var check = item.dataset.minlen;
+      if (check === 'true' || item.hasAttribute('data-minlen')) {
+        var met = value.length >= 6;
+        item.innerHTML = (met ? '\u2713' : '\u25cb') + item.textContent.replace(/^[\u2713\u25cb]\s*/, ' ').trim();
+        item.style.color = met ? 'var(--clr-success)' : '';
+      }
+    });
   }
   function verifyView() {
     renderHeader();
@@ -408,6 +488,16 @@
       '<label>Code<input type="text" id="verify-otp" required inputmode="numeric"></label>' +
       '<button class="btn-primary btn-block" type="submit">Verify</button></form>' +
       '<button class="btn-ghost btn-block" onclick="AniStrimUI.resendOtp()">Resend code</button></div></div>';
+  }
+
+  // Attach password strength listener after signup renders
+  var _signupPasswordListenerAttached = false;
+  function attachSignupPasswordListener() {
+    if (_signupPasswordListenerAttached) return;
+    var pw = document.getElementById('signup-password');
+    if (!pw) return;
+    pw.addEventListener('input', function () { updatePasswordStrength(pw.value); });
+    _signupPasswordListenerAttached = true;
   }
   function forgotPasswordView() {
     renderHeader();
@@ -441,30 +531,80 @@
   async function doLogin(e) {
     e.preventDefault();
     var err = document.getElementById('auth-error');
+    var email = document.getElementById('login-email');
+    var password = document.getElementById('login-password');
+    var btn = document.querySelector('#login-form .btn-auth-submit');
+    // Validate
+    if (!email.value.trim()) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; email.focus(); return false; }
+    if (!password.value) { err.textContent = 'Please enter your password.'; err.style.display = 'block'; password.focus(); return false; }
+    // Loading state
+    err.style.display = 'none'; err.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Signing in\u2026'; }
     try {
-      var data = await Auth.login(document.getElementById('login-email').value, document.getElementById('login-password').value);
+      var data = await Auth.login(email.value, password.value);
       // Analytics: track login
       if (API.trackEvent) API.trackEvent('login');
       await Auth.refreshMe();
       renderHeader();
       if (data.user && data.user.emailVerified === false) {
-        Router.navigate('/verify', { email: data.user.email || document.getElementById('login-email').value, redirect: postAuthRoute() });
+        Router.navigate('/verify', { email: data.user.email || email.value, redirect: postAuthRoute() });
       } else Router.navigate(consumePostAuthRoute());
-    } catch (e2) { if (err) err.textContent = e2.message; }
+    } catch (e2) {
+      if (err) {
+        var msg = e2.message || '';
+        if (msg.indexOf('401') !== -1 || msg.indexOf('credentials') !== -1 || msg.indexOf('incorrect') !== -1 || msg.indexOf('Invalid') !== -1) {
+          err.textContent = 'Email or password is incorrect. Please try again.';
+        } else if (msg.indexOf('network') !== -1 || msg.indexOf('fetch') !== -1 || msg.indexOf('connect') !== -1) {
+          err.textContent = 'We couldn\'t connect to AniStrim. Please check your connection and try again.';
+        } else {
+          err.textContent = 'Something went wrong. Please try again.';
+        }
+        err.style.display = 'block';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+    }
     return false;
   }
+
   async function doSignup(e) {
     e.preventDefault();
     var err = document.getElementById('auth-error');
+    var name = document.getElementById('signup-name');
+    var email = document.getElementById('signup-email');
+    var password = document.getElementById('signup-password');
+    var confirm = document.getElementById('signup-confirm');
+    var btn = document.querySelector('#signup-form .btn-auth-submit');
+    // Validate
+    if (!name.value.trim()) { err.textContent = 'Please enter your name.'; err.style.display = 'block'; name.focus(); return false; }
+    if (!email.value.trim()) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; email.focus(); return false; }
+    if (!password.value) { err.textContent = 'Please choose a password.'; err.style.display = 'block'; password.focus(); return false; }
+    if (password.value.length < 6) { err.textContent = 'Password must be at least 6 characters.'; err.style.display = 'block'; password.focus(); return false; }
+    if (confirm && confirm.value !== password.value) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; confirm.focus(); return false; }
+    // Loading state
+    err.style.display = 'none'; err.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating account\u2026'; }
     try {
       var data = await Auth.signup({
-        name: document.getElementById('signup-name').value,
-        email: document.getElementById('signup-email').value,
-        password: document.getElementById('signup-password').value,
+        name: name.value,
+        email: email.value,
+        password: password.value,
       });
       if (data && data.token) { await Auth.refreshMe(); renderHeader(); Router.navigate(consumePostAuthRoute()); }
-      else Router.navigate('/verify', { email: document.getElementById('signup-email').value, redirect: postAuthRoute() });
-    } catch (e2) { if (err) err.textContent = e2.message; }
+      else Router.navigate('/verify', { email: email.value, redirect: postAuthRoute() });
+    } catch (e2) {
+      if (err) {
+        var msg = e2.message || '';
+        if (msg.indexOf('already') !== -1 || msg.indexOf('exists') !== -1 || msg.indexOf('duplicate') !== -1) {
+          err.textContent = 'An account with this email already exists. Please sign in instead.';
+        } else if (msg.indexOf('network') !== -1 || msg.indexOf('fetch') !== -1 || msg.indexOf('connect') !== -1) {
+          err.textContent = 'We couldn\'t connect to AniStrim. Please check your connection and try again.';
+        } else {
+          err.textContent = 'Something went wrong. Please try again.';
+        }
+        err.style.display = 'block';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+    }
     return false;
   }
   async function doVerify(e) {
