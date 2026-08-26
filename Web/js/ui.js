@@ -1748,6 +1748,7 @@
     loadHome: loadHome,
     reloadBrowse: reloadBrowse, loadMoreBrowse: loadMoreBrowse, debounceBrowse: debounceBrowse,
     doSearch: doSearch, debounceSearch: debounceSearch,
+    toggleMobileNav: toggleMobileNav, closeMobileNav: closeMobileNav,
     loadAnime: loadAnime, loadWatch: loadWatch,
     stopWatchProgress: function () { stopProgressTracking(); clearAutoplay(); watchState = null; },
     playPreviousEpisode: function () { navigateEpisode(neighborEpisode(-1)); },
