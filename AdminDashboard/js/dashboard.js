@@ -571,4 +571,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initializeDashboard();
+
+  // ─── Mobile Menu Toggle ──────────────────────────────────
+  const mobileToggle = document.getElementById('mobile-menu-toggle');
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+
+  function closeMobileMenu() {
+    sidebar?.classList.remove('mobile-open');
+    overlay?.classList.remove('active');
+  }
+
+  mobileToggle?.addEventListener('click', () => {
+    sidebar?.classList.toggle('mobile-open');
+    overlay?.classList.toggle('active');
+  });
+
+  overlay?.addEventListener('click', closeMobileMenu);
+
+  // Close mobile menu when a nav link is clicked
+  navLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      if (window.innerWidth <= 600) closeMobileMenu();
+    });
+  });
 });
