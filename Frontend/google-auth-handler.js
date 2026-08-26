@@ -167,9 +167,11 @@
     google.accounts.id.initialize({
       client_id: clientId,
       callback: callback,
-      cancel_on_tap_outside: false,
+      cancel_on_tap_outside: true,
       auto_select: false,
       itp_support: true,
+      prompt_parent_id: null,
+      use_fedcm_for_prompt: true,
     });
     gisInitialized = true;
     gisClientId = clientId;
