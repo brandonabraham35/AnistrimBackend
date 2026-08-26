@@ -100,7 +100,8 @@
 
     try {
       const data = await window.apiRequest('/api/admin/payments');
-      _payments_all = data.data || data || [];
+      // unwrapAdminEnvelope exposes .items/.rows for paginated responses
+      _payments_all = data.items || data.rows || data || [];
       _applyFilters();
       _renderPayments();
     } catch (error) {

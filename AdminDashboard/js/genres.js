@@ -102,7 +102,9 @@
     _genres_tbody.innerHTML = '<tr><td colspan="2">' + window.SkeletonLoader.table(3, 2) + '</td></tr>';
 
     try {
-      _genres_all = await window.apiRequest('/api/admin/genres');
+      const resp = await window.apiRequest('/api/admin/genres');
+      // unwrapAdminEnvelope exposes .items/.rows for array responses
+      _genres_all = Array.isArray(resp) ? resp : (resp.items || resp.rows || []);
       _applyFilters();
       _renderGenres();
     } catch (error) {

@@ -84,7 +84,8 @@
   async function _loadAnimeList() {
     try {
       const data = await window.apiRequest('/api/admin/anime?limit=1000');
-      _animeList = data.data || data || [];
+      // unwrapAdminEnvelope exposes .items/.rows for paginated responses
+      _animeList = data.items || data.rows || data || [];
     } catch (e) {
       console.warn('[Episodes] Could not load anime list:', e.message);
     }
@@ -103,7 +104,8 @@
       } else {
         data = await window.apiRequest('/api/admin/episodes');
       }
-      _episodesData = Array.isArray(data) ? data : [];
+      // unwrapAdminEnvelope exposes .items/.rows for array responses
+      _episodesData = Array.isArray(data) ? data : (data.items || data.rows || []);
       _renderEpisodes(tbody);
     } catch (error) {
       console.error('[Episodes] Failed to load:', error);

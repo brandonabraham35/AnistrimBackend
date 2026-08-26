@@ -254,14 +254,22 @@ async function _fetchAnime() {
 
     const response = await window.apiRequest(`/api/admin/anime?${params.toString()}`);
 
-    // Support both old (array) and new (paginated) API formats
+    // unwrapAdminEnvelope transforms { success:true, data:[...], meta:{...} }
+    // into { items:[...], rows:[...], pagination:{...} }. Support all shapes.
     if (Array.isArray(response)) {
       _allAnime = response;
       _filteredAnime = response;
       _currentPage = 1;
       _renderPage();
       _renderPaginationSimple();
+    } else if (response.items || response.rows) {
+      // After envelope unwrap: paginated responses expose .items and .rows
+      _allAnime = response.items || response.rows || [];
+      _filteredAnime = _allAnime;
+      _renderPage();
+      _renderPagination(response.pagination);
     } else if (response.data) {
+      // Legacy shape (pre-unwrap compatibility)
       _allAnime = response.data || [];
       _filteredAnime = _allAnime;
       _renderPage();

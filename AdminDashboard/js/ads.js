@@ -186,7 +186,9 @@
     _ads_tbody.innerHTML = '<tr><td colspan="7">' + window.SkeletonLoader.table(3, 6) + '</td></tr>';
 
     try {
-      _ads_all = await window.apiRequest('/api/admin/ads');
+      const resp = await window.apiRequest('/api/admin/ads');
+      // unwrapAdminEnvelope exposes .items/.rows for array responses
+      _ads_all = Array.isArray(resp) ? resp : (resp.items || resp.rows || []);
       _renderAds();
     } catch (error) {
       console.error('[Ads] Failed to load:', error);

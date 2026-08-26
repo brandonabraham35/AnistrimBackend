@@ -59,7 +59,9 @@
     _users_tableBody.innerHTML = '<tr><td colspan="7">' + window.SkeletonLoader.table(5, 7) + '</td></tr>';
 
     try {
-      _users_all = await window.apiRequest('/api/admin/users');
+      const resp = await window.apiRequest('/api/admin/users');
+      // unwrapAdminEnvelope exposes .items/.rows for array responses
+      _users_all = Array.isArray(resp) ? resp : (resp.items || resp.rows || []);
       _handleFilterChange();
     } catch (error) {
       console.error('[Users] Failed to load:', error);

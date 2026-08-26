@@ -73,7 +73,9 @@
     _logs_tbody.innerHTML = '<tr><td colspan="5">' + window.SkeletonLoader.table(5, 5) + '</td></tr>';
 
     try {
-      _logs_all = await window.apiRequest('/api/admin/logs');
+      const resp = await window.apiRequest('/api/admin/logs');
+      // unwrapAdminEnvelope exposes .items/.rows for array responses
+      _logs_all = Array.isArray(resp) ? resp : (resp.items || resp.rows || []);
       _applyFilters();
       _renderLogs();
     } catch (error) {
