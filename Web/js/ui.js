@@ -745,7 +745,7 @@
   function browseView() {
     renderHeader();
     return '<div class="page"><div class="container"><div class="browse-header">' +
-      '<span class="browse-label">Catalogue</span>' +
+      '<span class="browse-label"></span>' +
       '<h1>Browse Anime</h1>' +
       '<p class="browse-subtitle">Discover anime across every genre</p>' +
       '<span class="browse-count" id="browse-count"></span>' +
@@ -755,7 +755,6 @@
       '<select id="browse-genre" onchange="AniStrimUI.reloadBrowse()">' + filterOptions() + '</select>' +
       '<select id="browse-status" onchange="AniStrimUI.reloadBrowse()">' + statusOptions() + '</select>' +
       '<select id="browse-year" onchange="AniStrimUI.reloadBrowse()"><option value="">All Years</option></select>' +
-      '<select id="browse-type" onchange="AniStrimUI.reloadBrowse()"><option value="">All Types</option></select>' +
       '<select id="browse-sort" onchange="AniStrimUI.reloadBrowse()"><option value="popular">Popular</option><option value="rating">Highest Rated</option><option value="latest">Recently Added</option><option value="az">A–Z</option><option value="za">Z–A</option></select>' +
       '</div></div>' +
       '<div id="browse-grid" class="anime-grid"><div class="list-loading">Loading catalogue...</div></div>' +
@@ -766,7 +765,6 @@
     Promise.all([
       fillGenreSelect('browse-genre', query && query.genre),
       fillSelectFromAPI('browse-year', API.years, query && query.year),
-      fillSelectFromAPI('browse-type', API.types, query && query.type),
     ]).then(function () {
       // Restore filter values from URL query
       if (query) {
@@ -800,7 +798,6 @@
     var gi = document.getElementById('browse-genre'); if (gi) gi.value = '';
     var si = document.getElementById('browse-status'); if (si) si.value = '';
     var yi = document.getElementById('browse-year'); if (yi) yi.value = '';
-    var ti = document.getElementById('browse-type'); if (ti) ti.value = '';
     var soi = document.getElementById('browse-sort'); if (soi) soi.value = 'popular';
     Router.navigate('/browse');
   }
@@ -820,10 +817,9 @@
     var genre = document.getElementById('browse-genre') ? document.getElementById('browse-genre').value : '';
     var status = document.getElementById('browse-status') ? document.getElementById('browse-status').value : '';
     var year = document.getElementById('browse-year') ? document.getElementById('browse-year').value : '';
-    var type = document.getElementById('browse-type') ? document.getElementById('browse-type').value : '';
 
     // Check if any filter is active
-    var filtered = Boolean(q || genre || status || year || type);
+    var filtered = Boolean(q || genre || status || year);
 
     // Update URL with current filter state
     var queryParams = [];
@@ -831,7 +827,6 @@
     if (genre) queryParams.push('genre=' + encodeURIComponent(genre));
     if (status) queryParams.push('status=' + encodeURIComponent(status));
     if (year) queryParams.push('year=' + encodeURIComponent(year));
-    if (type) queryParams.push('type=' + encodeURIComponent(type));
     if (sort && sort !== 'popular') queryParams.push('sort=' + encodeURIComponent(sort));
     if (browseState.page > 1) queryParams.push('page=' + browseState.page);
     var qs = queryParams.length ? '?' + queryParams.join('&') : '';
@@ -849,7 +844,7 @@
 
     try {
       // Use the unified search endpoint for all browse queries
-      var filters = { genre: genre, status: status, year: year, type: type, sort: sort, page: page, perPage: 24 };
+      var filters = { genre: genre, status: status, year: year, sort: sort, page: page, perPage: 24 };
       var result = await API.search(q, filters);
       var list = norm(result && result.data ? result.data : result);
       var meta = (result && result.meta && result.meta.pagination) || {};
@@ -866,13 +861,12 @@
 
       // Update count display
       if (countEl) {
-        if (q || genre || status || year || type) {
+        if (q || genre || status || year) {
           var descParts = [];
           if (q) descParts.push('matching "' + esc(q) + '"');
           if (genre) descParts.push('in ' + esc(genre));
           if (status) descParts.push('status: ' + esc(status));
           if (year) descParts.push('year ' + esc(year));
-          if (type) descParts.push('type: ' + esc(type));
           countEl.textContent = totalItems + ' anime' + (descParts.length ? ' ' + descParts.join(', ') : '');
         } else {
           countEl.textContent = totalItems + ' anime';

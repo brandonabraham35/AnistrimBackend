@@ -187,7 +187,6 @@
     },
     genres: function () { return request('/api/anime/genres'); },
     years: function () { return request('/api/anime/years'); },
-    types: function () { return request('/api/anime/types'); },
     search: function (q, filters) {
       var params = new URLSearchParams();
       if (q) params.set('q', q);
