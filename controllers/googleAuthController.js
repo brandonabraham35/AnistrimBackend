@@ -112,6 +112,20 @@ function resolveReturnUrl(clientId, returnTarget) {
   return clientAgnostic.buildClientUrl(returnTarget, base);
 }
 
+// Stage-labeled diagnostic wrapper. Identifies WHICH sequential OAuth stage
+// failed in production logs so the exact failing operation can be confirmed on
+// the next live attempt. Never logs the authorization code, tokens, or secrets.
+async function tagged(stage, fn) {
+  try {
+    const result = await fn();
+    console.log(`[googleCallback] stage ok: ${stage}`);
+    return result;
+  } catch (err) {
+    console.error(`[googleCallback] stage FAILED: ${stage} | code=${(err && err.code) || ''} status=${(err && err.status) || ''} msg=${(err && err.message) || err}`);
+    throw err;
+  }
+}
+
 // ── Google redirect_uri — apply the SAME login/signup business rules.
 //    Client-agnostic path: pass ?client=api to receive structured JSON instead
 //    of the HTML bridge page. The existing mobile flow (no client param) is
@@ -136,6 +150,10 @@ exports.googleCallback = async (req, res) => {
     }
   } catch (e) { /* malformed state -> default login */ }
 
+  // Non-sensitive entry log: intent/client and the presence of code/error only —
+  // never the authorization code itself.
+  console.log(`[googleCallback] enter intent=${intent} client=${returnClient || '(default)'} hasCode=${code ? 1 : 0} hasError=${error ? 1 : 0} jsonMode=${jsonMode ? 1 : 0}`);
+
   if (error || !code) {
     // Web/desktop clients with a validated return target should land back in
     // their own UI even when Google cancels or rejects consent. The message is
@@ -151,13 +169,22 @@ exports.googleCallback = async (req, res) => {
   }
 
   try {
-    const { tokens } = await client.getToken({ code, redirect_uri: getCallbackUri(returnClient) });
+    // Stage 1 — Token exchange. Uses the SAME per-client redirect URI as the
+    // authorization request (web → anistrim.com callback). Object form is the
+    // only correct form for google-auth-library >= 10.
+    const { tokens } = await tagged('token-exchange', () =>
+      client.getToken({ code, redirect_uri: getCallbackUri(returnClient) })
+    );
     client.setCredentials(tokens);
 
-    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
+    // Stage 2 — Retrieve the verified Google profile.
+    const userInfoResponse = await tagged('google-profile', () =>
+      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      })
+    );
     if (!userInfoResponse.ok) {
+      console.error(`[googleCallback] stage FAILED: google-profile | HTTP ${userInfoResponse.status}`);
       const text = await userInfoResponse.text();
       throw new Error(`Failed to fetch Google user info: ${text}`);
     }
@@ -166,15 +193,15 @@ exports.googleCallback = async (req, res) => {
     if (!profile?.email) return fail('Could not get your email.', 'MISSING_EMAIL');
     if (profile.email_verified === false) return fail('Google email is not verified.', 'EMAIL_NOT_VERIFIED');
 
-    // Apply the IDENTICAL login/signup intent rule via the shared helper.
-    const { user } = await resolveGoogleIdentity(profile, intent);
+    // Stage 3 — Apply the IDENTICAL login/signup intent rule via the shared helper.
+    const { user } = await tagged('identity-resolution', () => resolveGoogleIdentity(profile, intent));
 
-    // Create a session (access + refresh tokens).
-    const { accessToken, refreshToken } = await sessionService.createSession(user, req);
-    await sessionService.logEvent(user.id, 'google_login', 'google', req);
+    // Stage 4 — Create a session (access + refresh tokens) + login history.
+    const { accessToken, refreshToken } = await tagged('session-creation', () => sessionService.createSession(user, req));
+    await tagged('login-history', () => sessionService.logEvent(user.id, 'google_login', 'google', req));
 
-    // Build the canonical user DTO.
-    const dto = await buildUserDto(user);
+    // Stage 5 — Build the canonical user DTO.
+    const dto = await tagged('user-dto', () => buildUserDto(user));
 
     const loginCode = createLoginCode(accessToken, refreshToken, dto, intent);
 
@@ -208,7 +235,8 @@ exports.googleCallback = async (req, res) => {
 
     return res.send(successPage(loginCode));
   } catch (err) {
-    console.error('Google callback error:', err.message);
+    console.error(`[googleCallback] callback FAILED | code=${(err && err.code) || ''} status=${(err && err.status) || ''} msg=${(err && err.message) || err}`);
+    if (err && err.stack) console.error(err.stack);
     if (err.code === 'GOOGLE_NO_ACCOUNT') {
       return fail('No AniStrim account is associated with this Google account. Please create an account first.', 'GOOGLE_NO_ACCOUNT');
     }
@@ -217,6 +245,20 @@ exports.googleCallback = async (req, res) => {
     }
     if (err.code === 'ACCOUNT_ALREADY_EXISTS') {
       return fail('An AniStrim account already exists. Please log in instead.', 'ACCOUNT_ALREADY_EXISTS');
+    }
+    // Account status-gate codes (thrown by resolveGoogleIdentity). These must
+    // not be masked by the generic "sign-in failed" message.
+    if (err.code === 'ACCOUNT_SUSPENDED') {
+      return fail('Your account is suspended. Contact support for help.', 'ACCOUNT_SUSPENDED');
+    }
+    if (err.code === 'ACCOUNT_DEACTIVATED') {
+      return fail('Your account has been deactivated. Sign in again to reactivate it.', 'ACCOUNT_DEACTIVATED');
+    }
+    if (err.code === 'ACCOUNT_DELETED') {
+      return fail('This account has been deleted and cannot sign in.', 'ACCOUNT_DELETED');
+    }
+    if (err.code === 'ACCOUNT_NOT_ACTIVE') {
+      return fail('This account is not active.', 'ACCOUNT_NOT_ACTIVE');
     }
     return fail('Google sign-in failed. Please try again.', 'GOOGLE_AUTH_FAILED');
   }

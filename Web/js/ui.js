@@ -549,7 +549,14 @@
       renderHeader();
       Router.navigate(consumePostAuthRoute());
     } catch (e) {
-      if (err) err.textContent = e.message || 'Google sign-in could not be completed.';
+      var msg = (e && e.message) || 'Google sign-in could not be completed.';
+      if (err) err.textContent = msg;
+      toast(msg, 'error');
+      // Do not leave stale OAuth state behind after a failed attempt: drop any
+      // retained guarded post-auth route, then return the user to the login
+      // screen (short delay so the inline error is visible before navigation).
+      try { sessionStorage.removeItem(POST_AUTH_ROUTE_KEY); } catch (e2) { void e2; }
+      setTimeout(function () { Router.navigate('/login'); }, 1400);
     }
   }
 
