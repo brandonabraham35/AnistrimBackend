@@ -177,7 +177,7 @@
       // not children — otherwise backdrop-filter on .nav makes it the
       // containing block for position:fixed, collapsing the panel to 0 height.
       '<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="AniStrimUI.closeMobileNav()"></div>' +
-      '<div class="mobile-nav" id="mobile-nav" role="dialog" aria-label="Navigation menu">' +
+      '<div class="mobile-nav" id="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation menu">' +
       '<div class="mobile-nav-header"><button class="mobile-nav-close" onclick="AniStrimUI.closeMobileNav()" aria-label="Close menu">\u2715</button></div>' +
       (logged && user ? '<div class="nav-user">' +
         '<div class="nav-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) + '</div>' +
@@ -197,6 +197,7 @@
       (Auth.state.isPremium ? '<a href="#/profile">Account</a>' : '<a href="#/upgrade">Upgrade</a>') + '</div></div>';
     acInit();
   }
+  var mobileNavFocusTrap = null;
   function toggleMobileNav() {
     var el = document.getElementById('mobile-nav');
     var bd = document.getElementById('mobile-nav-backdrop');
@@ -212,9 +213,23 @@
       document.addEventListener('keydown', mobileNavEscHandler);
       // Focus the first link inside the nav for accessibility
       if (el) {
-        var firstLink = el.querySelector('a');
+        var firstLink = el.querySelector('a, button');
         if (firstLink) firstLink.focus();
       }
+      // Trap focus within the mobile nav dialog
+      mobileNavFocusTrap = function(e) {
+        if (e.key !== 'Tab' || !el) return;
+        var focusable = el.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first || !el.contains(document.activeElement)) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last || !el.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+        }
+      };
+      document.addEventListener('keydown', mobileNavFocusTrap);
     }
   }
   function mobileNavEscHandler(e) {
@@ -229,6 +244,7 @@
     if (btn) btn.setAttribute('aria-expanded', 'false');
     document.body.style.overflow = '';
     document.removeEventListener('keydown', mobileNavEscHandler);
+    if (mobileNavFocusTrap) { document.removeEventListener('keydown', mobileNavFocusTrap); mobileNavFocusTrap = null; }
     // Restore focus to the hamburger button
     if (btn) btn.focus();
   }
