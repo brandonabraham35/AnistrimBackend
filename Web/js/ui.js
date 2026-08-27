@@ -1616,7 +1616,9 @@
     }).catch(function () { /* preferences are non-critical on the profile page */ });
   }
   async function saveProfile() {
+    var btn = document.getElementById('profile-save-btn');
     try {
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving\u2026'; }
       var u = document.getElementById('pref-username') ? document.getElementById('pref-username').value : '';
       var skip = document.getElementById('pref-auto-skip') ? document.getElementById('pref-auto-skip').checked : false;
       var play = document.getElementById('pref-auto-play') ? document.getElementById('pref-auto-play').checked : false;
@@ -1632,6 +1634,7 @@
       renderHeader();
       toast('Saved');
     } catch (e) { toast(e.message, 'error'); }
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
   }
   function uploadAvatar() { var i = document.getElementById('avatar-input'); if (i) i.click(); }
   async function doAvatarUpload(e) {
@@ -1639,14 +1642,21 @@
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast('Image too large. Max 5 MB.', 'error'); return; }
     if (!String(file.type || '').startsWith('image/')) { toast('Choose an image file.', 'error'); return; }
+    var av = document.getElementById('profile-avatar');
+    if (av) av.style.opacity = '0.5';
     try {
       await API.uploadAvatar(file);
       await Auth.refreshMe();
-      var avatar = document.getElementById('profile-avatar');
       var user = Auth.state.user;
-      if (avatar && user && user.avatarUrl) avatar.src = user.avatarUrl + (user.avatarUrl.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+      if (av && user && user.avatarUrl) av.src = user.avatarUrl + (user.avatarUrl.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+      if (av) av.style.opacity = '';
       renderHeader(); toast('Avatar updated');
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      if (av) av.style.opacity = '';
+      toast(err.message, 'error');
+    }
+    // Reset file input so the same file can be selected again
+    e.target.value = '';
   }
 
   // ── Upgrade ─────────────────────────────────────────────
