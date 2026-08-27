@@ -1800,7 +1800,7 @@
     var errorEl = document.getElementById('support-error');
     var submitBtn = document.getElementById('support-submit-btn');
     if (errorEl) errorEl.style.display = 'none';
-    if (submitBtn) submitBtn.disabled = true;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending\u2026'; }
 
     var category = document.getElementById('support-category').value;
     var subject = document.getElementById('support-subject').value.trim();
@@ -1831,7 +1831,7 @@
       window.scrollTo(0, 0);
     } catch (err) {
       if (errorEl) { errorEl.textContent = err.message || 'Failed to submit request. Please try again.'; errorEl.style.display = 'block'; }
-      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Send Support Request'; }
     }
   }
 
