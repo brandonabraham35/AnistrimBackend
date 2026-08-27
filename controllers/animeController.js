@@ -193,8 +193,10 @@ exports.search = async (req, res) => {
     }
     sql += ` WHERE ${PUBLIC_ANIME_FILTER}`;
     if (q) {
+      // Escape LIKE wildcards to prevent information disclosure via pattern matching
+      const escapedQ = String(q).replace(/[%_]/g, '\\$&');
       sql += ` AND (a.title LIKE ? OR a.description LIKE ?)`;
-      params.push(`%${q}%`, `%${q}%`);
+      params.push(`%${escapedQ}%`, `%${escapedQ}%`);
     }
     if (status) { sql += ` AND a.status = ?`; params.push(status); }
     if (year) { sql += ` AND a.year = ?`; params.push(parseInt(year, 10)); }
@@ -215,7 +217,11 @@ exports.search = async (req, res) => {
       countParams.push(genre);
     }
     countSql += ` WHERE ${PUBLIC_ANIME_FILTER}`;
-    if (q) { countSql += ` AND (a.title LIKE ? OR a.description LIKE ?)`; countParams.push(`%${q}%`, `%${q}%`); }
+    if (q) {
+      const escapedQ = String(q).replace(/[%_]/g, '\\$&');
+      countSql += ` AND (a.title LIKE ? OR a.description LIKE ?)`;
+      countParams.push(`%${escapedQ}%`, `%${escapedQ}%`);
+    }
     if (status) { countSql += ` AND a.status = ?`; countParams.push(status); }
     if (year) { countSql += ` AND a.year = ?`; countParams.push(parseInt(year, 10)); }
 

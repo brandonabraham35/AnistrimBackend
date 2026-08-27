@@ -25,24 +25,31 @@ async function ensureAdminUser() {
   let connection;
   try {
     connection = await pool.getConnection();
-    console.log('🔑 Verifying default admin user...');
+    console.log(' Verifying default admin user...');
 
     const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@anistrim.com';
     const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
-
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(adminPassword, salt);
 
     // Check if the user exists
     const [rows] = await connection.query('SELECT id FROM users WHERE email = ?', [adminEmail]);
 
     if (rows.length > 0) {
-      // User exists, ensure they are an admin and the password is correct
+      // User exists — just ensure they have admin role. NEVER reset the password
+      // of an existing admin, as this would overwrite any custom password.
       const user = rows[0];
-      await connection.query('UPDATE users SET password_hash = ?, is_admin = 1 WHERE id = ?', [passwordHash, user.id]);
-      console.log(`✅ Admin user '${adminEmail}' verified and password reset.`);
+      await connection.query('UPDATE users SET is_admin = 1 WHERE id = ?', [user.id]);
+      console.log(`✅ Admin user '${adminEmail}' verified (role granted, password unchanged).`);
     } else {
-      // User does not exist, create them.
+      // User does not exist, create them with the default password.
+      // SECURITY: In production, DEFAULT_ADMIN_PASSWORD must be set.
+      if (process.env.NODE_ENV === 'production' && !process.env.DEFAULT_ADMIN_PASSWORD) {
+        console.warn('⚠️ DEFAULT_ADMIN_PASSWORD is not set in production. ' +
+          'The admin account will be created with a default password. ' +
+          'Set DEFAULT_ADMIN_PASSWORD to a strong random value.');
+      }
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(adminPassword, salt);
+
       // Check whether the Phase-1 `status` column exists yet (migrations may not
       // have run on a fresh DB). If it does, set status='active'; otherwise omit
       // it so the INSERT does not crash with "Unknown column 'status'".

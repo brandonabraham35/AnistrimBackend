@@ -92,7 +92,8 @@
         window.scrollTo(0, 0);
         if (m.route.after) m.route.after(main, m.params, parseQuery());
       }).catch(function (err) {
-        main.innerHTML = '<div class="page"><h1>Error</h1><p>' + (err && err.message || 'Something went wrong') + '</p></div>';
+        var esc = (window.AniStrimUI && window.AniStrimUI.esc) || function(s) { return String(s || ''); };
+        main.innerHTML = '<div class="page"><h1>Error</h1><p>' + esc(err && err.message || 'Something went wrong') + '</p></div>';
       });
     }
   }

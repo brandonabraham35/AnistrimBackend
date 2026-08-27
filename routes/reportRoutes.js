@@ -12,7 +12,10 @@ router.post('/stream', protect, report.submitReport);
 
 // ─── User-facing: client-side event logging ──────────────
 // POST /api/reports/client-event
-router.post('/client-event', report.logClientEvent);
+// Protected by auth + rate-limited to prevent log flooding abuse
+const { protect } = require('../middleware/auth');
+const { eventLimiter } = require('../middleware/rateLimit');
+router.post('/client-event', protect, eventLimiter, report.logClientEvent);
 
 // ─── Admin-only: view pending reports & update status ──────
 // GET  /api/reports/stream

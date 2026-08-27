@@ -12,7 +12,7 @@
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '\x26amp;').replace(/</g, '\x3C').replace(/>/g, '\x3E')
-      .replace(/"/g, '\x22quot;').replace(/'/g, '\x26#039;');
+      .replace(/"/g, '\x26quot;').replace(/'/g, '\x26#039;');
   }
   function toast(msg, type) {
     var root = document.getElementById('toast-root');
@@ -36,7 +36,7 @@
     var id = a && (a.id != null ? a.id : a.animeId);
     var type = a && (a.type || a.media_type || '');
     var eps = a && (a.episode_count || a.total_episodes || '');
-    return '<a class="anime-card" href="/anime/' + encodeURIComponent(id) + '" onclick="return AniStrimUI.goCard(event,' + id + ')">' +
+    return '<a class="anime-card" href="/anime/' + encodeURIComponent(id) + '" onclick="return AniStrimUI.goCard(event,' + JSON.stringify(id) + ')">' +
       '<div class="anime-card-img"><img src="' + (img || fallback(title)) + '" alt="' + esc(title) + '" loading="lazy" ' +
       'onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')">' +
       (type ? '<span class="anime-card-badge">' + esc(type) + '</span>' : '') +
@@ -355,7 +355,7 @@
           var anId = r.animeId || (r.anime && r.anime.id) || '';
           var epNum = r.episodeNumber || 1;
           var epId = r.episodeId || '';
-          h += '<div class="cw-card" onclick="AniStrimUI.watch(' + anId + ',' + epNum + ',\'' + esc(epId) + '\')">' +
+          h += '<div class="cw-card" onclick="AniStrimUI.watch(' + JSON.stringify(anId) + ',' + Number(epNum) + ',\'' + esc(epId) + '\')">' +
             '<div class="cw-card-img"><img src="' + (img || fallback(r.title)) + '" alt="' + esc(r.title || (r.anime && r.anime.title) || 'Continue watching') + '" loading="lazy" onerror="this.style.background=\'var(--clr-card2)\'">' +
             '<div class="cw-progress"><div style="width:' + pct + '%"></div></div>' +
             '<span class="cw-ep">EP ' + epNum + '</span></div>' +
@@ -767,6 +767,18 @@
 
   async function gAuth(intent) {
     try {
+      // Validate the resolved API base URL against known origins to prevent
+      // open redirect attacks if window.__ANISTRIM_API is compromised via XSS.
+      var apiBase = API.API_BASE || '';
+      var knownOrigins = ['', 'https://anistrimbackend.onrender.com', 'https://anistrim.com'];
+      var isKnown = knownOrigins.some(function(origin) {
+        return origin === '' ? apiBase === '' : (apiBase.indexOf(origin) === 0);
+      });
+      if (!isKnown) {
+        console.warn('[SECURITY] OAuth redirect blocked — unknown API base:', apiBase);
+        toast('Authentication unavailable. Please reload.', 'error');
+        return;
+      }
       // OAuth leaves this page for Google, so retain a previously requested
       // guarded hash route until the callback returns to this Web client.
       sessionStorage.setItem(POST_AUTH_ROUTE_KEY, postAuthRoute());
@@ -1704,6 +1716,16 @@
       var paymentLink = data && (data.paymentLink || data.payment_link);
       var reference = data && (data.txRef || data.tx_ref);
       if (paymentLink && reference) {
+        // Validate payment link points to a known payment provider (Flutterwave)
+        // to prevent open redirect attacks if the API response is compromised.
+        var isKnownProvider = paymentLink.indexOf('https://checkout.flutterwave.com') === 0 ||
+                              paymentLink.indexOf('https://api.ravepay.co') === 0 ||
+                              paymentLink.indexOf('https://ravepay.co') === 0;
+        if (!isKnownProvider) {
+          console.warn('[SECURITY] Payment link rejected — not a known provider:', paymentLink);
+          toast('Could not start checkout — invalid payment provider.', 'error');
+          return;
+        }
         // The reference is not proof of payment; it only lets the callback
         // verify the server-side subscription record after the provider return.
         try { sessionStorage.setItem('anistrim.web.pendingPaymentReference', reference); } catch (e) { /* ignore */ }

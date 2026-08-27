@@ -40,8 +40,53 @@ app.use((_req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
+  // X-Frame-Options: prevent clickjacking via iframe embedding.
+  res.setHeader('X-Frame-Options', 'DENY');
+  // Content-Security-Policy: restrict script/style sources to self.
+  // 'unsafe-inline' is needed for the SPA's inline event handlers and JSON-LD.
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "img-src 'self' data: https:; media-src 'self' https: blob:; " +
+    "connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; " +
+    "font-src 'self' https://fonts.gstatic.com;"
+  );
+  // Hide Express framework identity.
+  // (done via app.disable below, but header-level defense in depth)
   next();
 });
+
+// Disable Express's X-Powered-By header.
+app.disable('x-powered-by');
+
+// ─ Vercel secret gate ──────────────────────────────────────
+// Ensures API requests come from Vercel (with the shared secret header)
+// and not from direct Render URL access. Public static/SEO routes are exempt.
+const VERCEL_SECRET = process.env.VERCEL_SECRET;
+if (VERCEL_SECRET) {
+  app.use('/api', (req, res, next) => {
+    // Health check and public endpoints are exempt
+    if (req.path === '/health' || req.path.startsWith('/health/')) return next();
+    const provided = req.headers['x-vercel-secret'];
+    if (!provided || provided !== VERCEL_SECRET) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied.' } });
+    }
+    next();
+  });
+}
+
+// ─ HTTPS enforcement (production only) ────────────────────────
+// Render terminates TLS at the edge and forwards X-Forwarded-Proto.
+// Without this, direct IP access to the Render instance would serve
+// unencrypted HTTP, exposing Bearer tokens to MITM attacks.
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+    }
+    next();
+  });
+}
 
 const PORT = process.env.PORT || 5000;
 
@@ -57,6 +102,11 @@ const { sendSuccess } = require('./utils/response');
 // never become an auth-token (JWT) key compromise, and rotation must be
 // possible independently. Generate with: openssl rand -hex 32
 const REQUIRED_ENV = ['JWT_SECRET', 'STREAM_TOKEN_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+// PASSWORD_PEPPER is strongly recommended for production security.
+// Without it, passwords are vulnerable to offline cracking if the database is breached.
+// Generate with: openssl rand -hex 32
+// Note: We don't make it required to avoid breaking existing deployments that
+// would need a migration strategy for existing password hashes.
 if (process.env.NODE_ENV === 'production') {
   const missing = REQUIRED_ENV.filter(k => !process.env[k]);
   if (missing.length) {
@@ -190,12 +240,20 @@ app.use('/api/support', require('./routes/supportRoutes'));
 app.use(require('./routes/seoRoutes'));
 
 // ─── Consumet Microservice Middleware (Optional HTTP Routes) ──
-try {
-  const consumetApp = require('./services/consumet/server');
-  app.use('/consumet-api', consumetApp);
-  console.log('✅ Consumet microservice mounted at /consumet-api');
-} catch (err) {
-  console.log('ℹ️ Consumet running purely in-memory via @consumet/extensions');
+// Security: Consumet is only mounted in non-production environments.
+// In production, the backend uses the dedicated stream proxy instead.
+// This prevents unauthorized scraping of upstream providers.
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const consumetApp = require('./services/consumet/server');
+    const authMiddleware = require('./middleware/auth');
+    app.use('/consumet-api', authMiddleware.protect, consumetApp);
+    console.log('✅ Consumet microservice mounted at /consumet-api (dev only, auth-protected)');
+  } catch (err) {
+    console.log('ℹ️ Consumet running purely in-memory via @consumet/extensions');
+  }
+} else {
+  console.log('ℹ️ Consumet microservice disabled in production (using stream proxy instead)');
 }
 
 // ─── Health Check ──────────────────────────────────────────

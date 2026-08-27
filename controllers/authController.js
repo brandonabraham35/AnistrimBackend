@@ -10,6 +10,25 @@ const { sendSuccess, sendAuth } = require('../utils/response');
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
 
+// ── Password pepper (application-level HMAC) ──────────────────────
+// Adds an extra layer of defense against database breaches. Even if the
+// database is compromised, passwords cannot be cracked without also
+// compromising the application server's PASSWORD_PEPPER secret.
+function pepperPassword(password) {
+  const pepper = process.env.PASSWORD_PEPPER;
+  if (pepper && typeof pepper === 'string' && pepper.trim() !== '') {
+    return crypto.createHmac('sha256', pepper.trim()).update(password).digest('hex');
+  }
+  // In production, missing pepper is a warning but not fatal — existing
+  // hashes without pepper would be impossible to verify if we made it fatal.
+  if (process.env.NODE_ENV === 'production' && (!pepper || pepper.trim() === '')) {
+    console.warn('[AUTH] WARNING: PASSWORD_PEPPER is not set in production. ' +
+      'Password hashes are vulnerable to offline cracking if the database is breached. ' +
+      'Set PASSWORD_PEPPER to a 64+ character random string.');
+  }
+  return password;
+}
+
 // Startup safety check — crash immediately in production if JWT_RESET_SECRET
 // is missing, rather than failing on the first forgot-password request.
 (function validateResetSecret() {
@@ -29,6 +48,19 @@ const VERIFICATION_TTL_MINUTES = 15;
 const MAX_VERIFICATION_ATTEMPTS = 5;
 // Minimum seconds between resend requests
 const RESEND_THROTTLE_SECONDS = 60;
+
+// Used password reset token JTI store — prevents token reuse.
+// Since reset tokens expire in 1 hour, this Map self-cleans via TTL.
+const usedResetJtis = new Map();
+const RESET_JTI_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (longer than token expiry)
+
+// Periodically clean up expired used JTIs
+setInterval(() => {
+  const now = Date.now();
+  for (const [jti, expiresAt] of usedResetJtis.entries()) {
+    if (now > expiresAt) usedResetJtis.delete(jti);
+  }
+}, 5 * 60 * 1000).unref?.();
 
 // Simple disposable-domain blocklist (anti-burner control).
 // Extend as needed. Lowercase, no leading dot.
@@ -177,6 +209,11 @@ exports.login = async (req, res) => {
 
         if (rows.length === 0) {
             log('User not found.');
+            // Timing attack mitigation: perform a dummy bcrypt hash so the
+            // response time is indistinguishable from the "user found + wrong
+            // password" path (which performs bcrypt.compare).
+            const dummySalt = await bcrypt.genSalt(10);
+            await bcrypt.hash(pepperPassword(crypto.randomBytes(16).toString('hex')), dummySalt);
             await sessionService.logEvent(0, 'login_failed', 'password', req).catch(() => {});
             return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' });
         }
@@ -192,7 +229,8 @@ exports.login = async (req, res) => {
             });
         }
 
-        const match = await bcrypt.compare(password, user.password_hash);
+        const pepperedPassword = pepperPassword(password);
+        const match = await bcrypt.compare(pepperedPassword, user.password_hash);
         if (!match) {
             log('Password mismatch.');
             await sessionService.logEvent(user.id, 'login_failed', 'password', req).catch(() => {});
@@ -289,8 +327,8 @@ exports.signup = async (req, res) => {
         return res.status(400).json({ message: 'Name, email, and password are required.' });
     }
 
-    if (password.length < 6) {
-        return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    if (password.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
 
     if (!isValidEmail(email)) {
@@ -303,7 +341,8 @@ exports.signup = async (req, res) => {
 
     try {
         const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(password, salt);
+        const pepperedPassword = pepperPassword(password);
+        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
 
         // Generate a secure 6-digit OTP and set a 15-minute expiry.
         // Store the SHA-256 hash of the code, never the plaintext.
@@ -596,8 +635,8 @@ exports.setPassword = async (req, res) => {
     if (!userId) {
         return res.status(401).json({ message: 'Not authenticated. Please log in.' });
     }
-    if (!newPassword || String(newPassword).length < 6) {
-        return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    if (!newPassword || String(newPassword).length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
 
     try {
@@ -612,7 +651,8 @@ exports.setPassword = async (req, res) => {
         const user = rows[0];
 
         const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(String(newPassword), salt);
+        const pepperedPassword = pepperPassword(newPassword);
+        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
 
         // Update ONLY password_hash. google_id and auth_provider stay intact.
         await pool.query(
@@ -660,7 +700,7 @@ exports.forgotPassword = async (req, res) => {
         }
 
         const token = jwt.sign(
-            { email: rows[0].email, purpose: 'password-reset', sub: rows[0].id },
+            { email: rows[0].email, purpose: 'password-reset', sub: rows[0].id, jti: crypto.randomUUID() },
             getResetSecret(),
             { expiresIn: '1h', algorithm: 'HS256' }
         );
@@ -693,7 +733,8 @@ exports.forgotPassword = async (req, res) => {
         await sendEmail(rows[0].email, 'Reset your AniStrim password', resetHtml);
 
         // Expose the reset token/result so any client can complete the reset.
-        if (process.env.NODE_ENV !== 'production') {
+        // Only in explicit development mode — never when NODE_ENV is unset.
+        if (process.env.NODE_ENV === 'development') {
             response.resetToken = token;
             response.token = token;
             if (resetLink) {
@@ -720,8 +761,8 @@ exports.resetPassword = async (req, res) => {
         return res.status(400).json({ message: 'Reset token and new password are required.' });
     }
 
-    if (String(newPassword).length < 6) {
-        return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    if (String(newPassword).length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
 
     try {
@@ -730,19 +771,29 @@ exports.resetPassword = async (req, res) => {
             return res.status(400).json({ message: 'Invalid or expired reset link.' });
         }
 
+        // Single-use enforcement: check if this JTI has already been used
+        const jti = decoded.jti;
+        if (jti && usedResetJtis.has(jti)) {
+            return res.status(400).json({ message: 'This reset link has already been used. Please request a new one.' });
+        }
+
         const [rows] = await pool.query('SELECT id FROM users WHERE email = ?', [decoded.email]);
         if (!rows.length) {
             return res.status(400).json({ message: 'Invalid or expired reset link.' });
         }
 
         const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(newPassword, salt);
+        const pepperedPassword = pepperPassword(newPassword);
+        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
 
         await pool.query(
             'UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?',
             [passwordHash, rows[0].id]
         );
         await sessionService.logEvent(rows[0].id, 'password_reset', 'password', req).catch(() => {});
+
+        // Mark this JTI as used to prevent replay
+        if (jti) usedResetJtis.set(jti, Date.now() + RESET_JTI_TTL_MS);
 
         return sendSuccess(res, null, { message: 'Password reset successfully.' });
     } catch (error) {
@@ -861,8 +912,8 @@ exports.changePassword = async (req, res) => {
     if (!oldPassword || !newPassword) {
         return res.status(400).json({ message: 'Old and new passwords are required.' });
     }
-    if (String(newPassword).length < 6) {
-        return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    if (String(newPassword).length < 8) {
+        return res.status(400).json({ message: 'New password must be at least 8 characters.' });
     }
 
     try {
@@ -874,13 +925,15 @@ exports.changePassword = async (req, res) => {
             return res.status(400).json({ message: 'This account uses Google Sign-In. Set a password first.' });
         }
 
-        const match = await bcrypt.compare(oldPassword, user.password_hash);
+        const pepperedOldPassword = pepperPassword(oldPassword);
+        const match = await bcrypt.compare(pepperedOldPassword, user.password_hash);
         if (!match) {
             return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect.' });
         }
 
         const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(String(newPassword), salt);
+        const pepperedPassword = pepperPassword(newPassword);
+        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
 
         // token_version++ invalidates ALL other sessions' access tokens.
         await pool.query(
@@ -1062,7 +1115,7 @@ exports.deleteAccount = async (req, res) => {
             if (!password || typeof password !== 'string') {
                 return res.status(400).json({ message: 'Please enter your password to confirm account deletion.' });
             }
-            const match = await bcrypt.compare(password, user.password_hash);
+            const match = await bcrypt.compare(pepperPassword(password), user.password_hash);
             if (!match) {
                 return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect password. Account deletion cancelled.' });
             }

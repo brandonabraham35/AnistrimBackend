@@ -21,6 +21,7 @@ const sessionService = require('../services/sessionService');
 const { buildUserDto } = require('../services/userDtoService');
 const { sendSuccess } = require('../utils/response');
 const clientAgnostic = require('../config/clientAgnostic');
+const pool = require('../config/db');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
 // Public web origin (Vercel). The web client's Google OAuth callback and its
@@ -45,8 +46,28 @@ function getCallbackUri(client) {
   return `${base}/api/auth/google/callback`;
 }
 
-// In production, Redis/DB is better. This works on one Railway instance.
-const loginCodeStore = new Map();
+// PKCE code verifier store — maps nonce → code_verifier. Cleaned up periodically.
+const pkceVerifierStore = new Map();
+const PKCE_VERIFIER_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Periodically clean up expired PKCE verifiers
+setInterval(() => {
+  const now = Date.now();
+  for (const [nonce] of pkceVerifierStore.entries()) {
+    if (now > pkceVerifierStore.get(nonce).expiresAt) pkceVerifierStore.delete(nonce);
+  }
+}, 60 * 1000).unref?.();
+
+// Generate a PKCE code_verifier (43-128 random chars, RFC 7636)
+function generateCodeVerifier() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+// Compute PKCE code_challenge from code_verifier (SHA256, base64url-encoded, no padding)
+function generateCodeChallenge(verifier) {
+  const hash = crypto.createHash('sha256').update(verifier).digest();
+  return hash.toString('base64url').replace(/=/g, '');
+}
 
 const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
@@ -54,32 +75,32 @@ const client = new OAuth2Client(
   getCallbackUri('')
 );
 
-function createLoginCode(token, refreshToken, user, intent) {
+// ── OAuth login codes stored in DB (multi-instance safe) ──────
+async function createLoginCode(token, refreshToken, user, intent) {
   const code = crypto.randomUUID();
-  loginCodeStore.set(code, {
-    token,
-    refreshToken,
-    user,
-    intent,
-    expiresAt: Date.now() + LOGIN_CODE_TTL_MS,
-  });
+  const expiresAt = new Date(Date.now() + LOGIN_CODE_TTL_MS);
+  await pool.query(
+    'INSERT INTO oauth_login_codes (code, user_id, access_token, refresh_token, intent, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [code, user.id, token, refreshToken || null, intent, expiresAt]
+  );
   return code;
 }
 
-function consumeLoginCode(code) {
-  const record = loginCodeStore.get(code);
-  loginCodeStore.delete(code);
-  if (!record) return null;
-  if (Date.now() > record.expiresAt) return null;
-  return record;
+async function consumeLoginCode(code) {
+  const [rows] = await pool.query(
+    'SELECT * FROM oauth_login_codes WHERE code = ? AND expires_at > NOW() LIMIT 1',
+    [code]
+  );
+  if (!rows.length) return null;
+  // Delete the code (single-use)
+  await pool.query('DELETE FROM oauth_login_codes WHERE code = ?', [code]).catch(() => {});
+  return rows[0];
 }
 
+// Periodic cleanup of expired codes (every 5 minutes)
 setInterval(() => {
-  const now = Date.now();
-  for (const [code, record] of loginCodeStore.entries()) {
-    if (now > record.expiresAt) loginCodeStore.delete(code);
-  }
-}, 60 * 1000).unref?.();
+  pool.query('DELETE FROM oauth_login_codes WHERE expires_at < NOW()').catch(() => {});
+}, 5 * 60 * 1000).unref?.();
 
 // ── Begin the OAuth redirect. intent is carried in OAuth `state` so it
 //    survives the round-trip through Google. Defaults to 'login'.
@@ -90,12 +111,26 @@ exports.googleRedirect = (req, res) => {
   // return a browser client to its own route after Google completes.
   const requestedClient = typeof req.query.client === 'string' ? req.query.client : '';
   const returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(requestedClient) ? requestedClient : '';
+
+  // PKCE: Generate code_verifier and code_challenge
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const pkceNonce = crypto.randomBytes(16).toString('hex');
+
+  // Store verifier keyed by nonce with TTL
+  pkceVerifierStore.set(pkceNonce, {
+    codeVerifier,
+    expiresAt: Date.now() + PKCE_VERIFIER_TTL_MS,
+  });
+
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['openid', 'email', 'profile'],
     prompt: 'select_account',
     redirect_uri: getCallbackUri(returnClient),
-    state: JSON.stringify({ intent, client: returnClient }),
+    state: JSON.stringify({ intent, client: returnClient, pkceNonce }),
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
   });
   res.redirect(url);
 };
@@ -142,11 +177,13 @@ exports.googleCallback = async (req, res) => {
 
   let intent = 'login';
   let returnClient = '';
+  let pkceNonce = '';
   try {
     if (state) {
       const parsedState = JSON.parse(state);
       intent = (parsedState.intent === 'signup') ? 'signup' : 'login';
       returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(parsedState.client) ? parsedState.client : '';
+      pkceNonce = parsedState.pkceNonce || '';
     }
   } catch (e) { /* malformed state -> default login */ }
 
@@ -177,8 +214,17 @@ exports.googleCallback = async (req, res) => {
     // explicitly so token exchange authenticates the right Google OAuth
     // client and `redirect_uri` is applied deterministically — the same URI
     // used during authorization (`getCallbackUri(returnClient)`).
+    // PKCE: Look up code_verifier by nonce and include it in token exchange.
+    let codeVerifier = '';
+    if (pkceNonce && pkceVerifierStore.has(pkceNonce)) {
+      const pkceRecord = pkceVerifierStore.get(pkceNonce);
+      if (Date.now() <= pkceRecord.expiresAt) {
+        codeVerifier = pkceRecord.codeVerifier;
+      }
+      pkceVerifierStore.delete(pkceNonce); // single-use
+    }
     const { tokens } = await tagged('token-exchange', () =>
-      client.getToken({ code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient) })
+      client.getToken({ code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient), code_verifier: codeVerifier || undefined })
     );
     client.setCredentials(tokens);
 
@@ -269,19 +315,26 @@ exports.googleCallback = async (req, res) => {
   }
 };
 
-exports.exchangeLoginCode = (req, res) => {
+exports.exchangeLoginCode = async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).json({ message: 'Missing login code.' });
 
-  const record = consumeLoginCode(code);
+  const record = await consumeLoginCode(code);
   if (!record) {
     return res.status(400).json({ message: 'Login code is invalid or expired. Please try Google sign-in again.' });
   }
 
+  // Rebuild user DTO from the user_id stored in the code record
+  const [rows] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [record.user_id]);
+  if (!rows.length) {
+    return res.status(404).json({ message: 'User not found.' });
+  }
+  const dto = await buildUserDto(rows[0]);
+
   return sendSuccess(res, {
-    token: record.token,
-    refreshToken: record.refreshToken,
-    user: record.user,
+    token: record.access_token,
+    refreshToken: record.refresh_token,
+    user: dto,
     intent: record.intent,
   });
 };
