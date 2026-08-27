@@ -457,7 +457,10 @@
       '<span class="req-item">\u25cb At least 6 characters</span>' +
       '</div></div>' +
       '<div class="auth-field"><label for="signup-confirm">Confirm Password</label>' +
-      '<input type="password" id="signup-confirm" required minlength="6" autocomplete="new-password" placeholder="Confirm your password"></div>' +
+      '<div class="auth-password-wrap">' +
+      '<input type="password" id="signup-confirm" required minlength="6" autocomplete="new-password" placeholder="Confirm your password">' +
+      '<button type="button" class="auth-pw-toggle" onclick="AniStrimUI.togglePassword(\'signup-confirm\',this)" aria-label="Show password" tabindex="-1">&#128065;</button>' +
+      '</div></div>' +
       '<button class="btn-primary btn-block btn-auth-submit" type="submit">Create Account</button></form>' +
       '<div class="auth-divider"><span>or sign up with</span></div>' +
       '<button class="btn-google btn-block" onclick="AniStrimUI.doGoogleSignup()">' +
