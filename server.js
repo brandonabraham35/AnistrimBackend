@@ -523,6 +523,16 @@ try {
   console.error('⚠️ [ANIMEHEAVEN_CATALOG] Daily refresh init failed (non-fatal):', err && err.message);
 }
 
+// Start the conservative background stream source monitor (DISABLED BY DEFAULT).
+// Periodically verifies cached sources to detect expiry before users encounter
+// playback failures. Controlled by STREAM_MONITOR_ENABLED env var.
+try {
+  const streamSourceMonitor = require('./services/streamSourceMonitor');
+  streamSourceMonitor.start();
+} catch (err) {
+  console.error('⚠️ [STREAM_MONITOR] Init failed (non-fatal):', err && err.message);
+}
+
 // Start the nightly recommendation rebuild (Phase 6.3, best-effort).
 // Recomputes user_recommendations + user_genre_vector each night at 03:00 so
 // the homepage is a single indexed read. Idempotent + failure-safe.
