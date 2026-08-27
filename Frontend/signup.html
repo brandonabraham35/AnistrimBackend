@@ -66,6 +66,35 @@
 <script src="js/navigation.js"></script>
 <script src="google-auth-handler.js"></script>
 <script src="signup.js"></script>
+<script>
+// Initialize the native Google Sign-In plugin when running inside Capacitor.
+(function() {
+  if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNative) {
+    var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
+    if (googleSignIn && typeof googleSignIn.initialize === 'function') {
+      var backendUrl = (typeof window.getApiBaseUrl === 'function')
+        ? window.getApiBaseUrl()
+        : 'https://anistrimbackend.onrender.com';
+      fetch(backendUrl + '/api/auth/google/client-id', {
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        var clientId = (data && data.success === true && data.data) ? data.data.clientId : data.clientId;
+        if (clientId) {
+          googleSignIn.initialize({ clientId: clientId });
+          console.log('[GoogleAuth] Native Google Sign-In plugin initialized (signup)');
+        } else {
+          console.warn('[GoogleAuth] Could not retrieve Google Client ID for native plugin (signup)');
+        }
+      })
+      .catch(function(err) {
+        console.warn('[GoogleAuth] Failed to initialize native Google Sign-In plugin (signup):', err?.message || err);
+      });
+    }
+  }
+})();
+</script>
 </body>
 </html>
 

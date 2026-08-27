@@ -64,6 +64,38 @@
 <script src="js/navigation.js"></script>
 <script src="google-auth-handler.js"></script>
 <script src="login.js"></script>
+<script>
+// Initialize the native Google Sign-In plugin when running inside Capacitor.
+// This must happen before the user taps the Google login button so the
+// Credential Manager API is ready. Uses the same web client ID as the backend.
+(function() {
+  if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNative) {
+    var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
+    if (googleSignIn && typeof googleSignIn.initialize === 'function') {
+      // Fetch the Google Client ID from the backend (same as GIS uses).
+      var backendUrl = (typeof window.getApiBaseUrl === 'function')
+        ? window.getApiBaseUrl()
+        : 'https://anistrimbackend.onrender.com';
+      fetch(backendUrl + '/api/auth/google/client-id', {
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        var clientId = (data && data.success === true && data.data) ? data.data.clientId : data.clientId;
+        if (clientId) {
+          googleSignIn.initialize({ clientId: clientId });
+          console.log('[GoogleAuth] Native Google Sign-In plugin initialized');
+        } else {
+          console.warn('[GoogleAuth] Could not retrieve Google Client ID for native plugin');
+        }
+      })
+      .catch(function(err) {
+        console.warn('[GoogleAuth] Failed to initialize native Google Sign-In plugin:', err?.message || err);
+      });
+    }
+  }
+})();
+</script>
 </body>
 </html>
 

@@ -228,19 +228,29 @@ exports.googleCallback = async (req, res) => {
     // Account status-gate codes (thrown by resolveGoogleIdentity). These must
     // not be masked by the generic "sign-in failed" message.
     if (err.code === 'ACCOUNT_SUSPENDED') {
-      return fail('Your account is suspended. Contact support for help.', 'ACCOUNT_SUSPENDED');
+      return fail('This account has been suspended.', 'ACCOUNT_SUSPENDED');
     }
     if (err.code === 'ACCOUNT_DEACTIVATED') {
-      return fail('Your account has been deactivated. Sign in again to reactivate it.', 'ACCOUNT_DEACTIVATED');
+      return fail('This account has been deactivated.', 'ACCOUNT_DEACTIVATED');
     }
     if (err.code === 'ACCOUNT_DELETED') {
-      return fail('This account has been deleted and cannot sign in.', 'ACCOUNT_DELETED');
+      return fail('This account has been deleted.', 'ACCOUNT_DELETED');
     }
-    if (err.code === 'ACCOUNT_NOT_ACTIVE') {
-      return fail('This account is not active.', 'ACCOUNT_NOT_ACTIVE');
-    }
-    return fail('Google sign-in failed. Please try again.', 'GOOGLE_AUTH_FAILED');
+    return fail('Sign-in failed. Please try again.');
   }
+};
+
+// ── Fallback page for S.browser_fallback_url ───────────────
+// Served when the Android intent:// URL cannot be handled natively by the
+// In-App Browser (Chrome Custom Tab). This minimal page gives the browser a
+// valid URL to navigate to, which triggers it to close and allows the
+// Capacitor app to receive the appUrlOpen event from the intent.
+exports.callbackFallback = (_req, res) => {
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Returning to AniStrim...</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:sans-serif;padding:20px}.spinner{width:52px;height:52px;border:4px solid rgba(108,43,217,0.2);border-top-color:#6c2bd9;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}p{color:#aaa;font-size:.9rem;text-align:center}.logo{font-size:1.3rem;font-weight:800;color:#fff}.logo span{color:#6c2bd9}</style>
+</head><body><div class="logo">Ani<span>Strim</span></div><div class="spinner"></div><p>Returning to AniStrim...</p></body></html>`);
 };
 
 exports.exchangeLoginCode = async (req, res) => {
@@ -270,7 +280,12 @@ exports.exchangeLoginCode = async (req, res) => {
 function successPage(code) {
   const encodedCode = encodeURIComponent(code);
   const deepLink = `${APP_SCHEME}://auth?code=${encodedCode}`;
-  const androidIntent = `intent://auth?code=${encodedCode}#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};end`;
+  // Browsers (including Chrome Custom Tabs used by Capacitor Browser) need
+  // S.browser_fallback_url to know where to navigate when an intent:// URL
+  // cannot be handled natively. Without it the browser stays on the success
+  // page and the Capacitor app never receives the appUrlOpen event.
+  const fallbackUrl = encodeURIComponent(`${BACKEND_URL}/api/auth/google/callback-fallback?code=${encodedCode}`);
+  const androidIntent = `intent://auth?code=${encodedCode}#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};S.browser_fallback_url=${fallbackUrl};end`;
 
   return `<!DOCTYPE html>
 <html>

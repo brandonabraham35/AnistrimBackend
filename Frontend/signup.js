@@ -15,7 +15,11 @@
 // ── Capacitor plugin handles (present only inside the native app) ──
 const CapBrowser = window.Capacitor?.Plugins?.Browser;
 const CapApp     = window.Capacitor?.Plugins?.App;
+const CapGoogleSignIn = window.Capacitor?.Plugins?.GoogleSignIn;
 const isNative   = !!window.Capacitor?.isNativePlatform?.();
+
+// ── Single-use guard for deep-link callback processing ──
+var _googleCallbackProcessed = false;
 
 // ── Email/Password Sign Up ────────────────────────────────
 async function handleSignUp() {
@@ -74,28 +78,53 @@ window.handleSignUp = handleSignUp;
 
 // ── Google Sign Up (native + web) ─────────────────────────
 async function loginWithInAppBrowser() {
+  // NATIVE PATH: Use the native Google Sign-In plugin.
+  if (isNative && CapGoogleSignIn) {
+    try {
+      console.log('[GoogleAuth] OAuth started — native Google Sign-In (signup)');
+      const result = await CapGoogleSignIn.signIn();
+      if (!result || !result.idToken) {
+        showError('Google sign-in failed. No credential received.');
+        return;
+      }
+      console.log('[GoogleAuth] Callback received — native Google Sign-In returned idToken (signup)');
+      await sendIdTokenToBackend(result.idToken);
+    } catch (err) {
+      if (err && err.code === 'SIGN_IN_CANCELED') {
+        console.log('[GoogleAuth] User canceled Google sign-in (signup)');
+        return;
+      }
+      console.error('[GoogleAuth] Native Google sign-in error (signup):', err?.message || err);
+      showError('Google sign-in failed. Please try again.');
+    }
+    return;
+  }
+
+  // FALLBACK PATH: In-App Browser OAuth (legacy).
   const oauthUrl = `${BACKEND}/api/auth/google/start?intent=signup`;
 
   if (isNative && CapBrowser) {
+    console.log('[GoogleAuth] OAuth started — In-App Browser fallback (signup)');
     try {
       await CapBrowser.open({ url: oauthUrl, windowName: '_blank' });
     } catch (err) {
-      console.error('[Signup] In-App Browser error:', err?.message || err);
+      console.error('[GoogleAuth] In-App Browser error (signup):', err?.message || err);
       showError('Could not open Google sign-in. Please try again.');
     }
     return;
   }
 
+  // WEB PATH: Google Identity Services (GIS).
   try {
     const response = await window.initGoogleAuth('google-signup-btn');
     if (!response || !response.credential) {
       showError('Google sign-in failed. No credential received.');
       return;
     }
-    console.log('[Signup] Google ID token received, verifying with backend...');
+    console.log('[GoogleAuth] Callback received — web GIS returned credential (signup)');
     await sendIdTokenToBackend(response.credential);
   } catch (err) {
-    console.error('[Signup] Google auth error:', err?.message || err);
+    console.error('[GoogleAuth] Web GIS auth error (signup):', err?.message || err);
   }
 }
 window.loginWithInAppBrowser = loginWithInAppBrowser;
@@ -123,8 +152,14 @@ async function sendIdTokenToBackend(idToken) {
   showError(msg);
 }
 
-// ── Deep Link Handler (native only) ─────────────────────────
+// ── Deep Link Handler (native only — fallback for legacy browser OAuth) ──
 async function handleAppUrlOpen(data) {
+  // Single-use guard: prevent the same callback from being processed twice
+  if (_googleCallbackProcessed) {
+    console.log('[GoogleAuth] Callback already processed — ignoring duplicate (signup)');
+    return;
+  }
+
   try {
     await CapBrowser?.close();
   } catch (e) {
@@ -134,29 +169,52 @@ async function handleAppUrlOpen(data) {
   if (!data || !data.url) return;
 
   try {
+    console.log('[GoogleAuth] Callback URL parsed (signup):', data.url.split('?')[0] + '?...');
     const url = new URL(data.url);
     const token = url.searchParams.get('token');
 
     if (token) {
+      console.log('[GoogleAuth] Token detected — direct token path (signup)');
+      _googleCallbackProcessed = true;
       if (window.setAuthTokens) window.setAuthTokens(token, null);
       else { localStorage.setItem('session_token', token); localStorage.setItem('token', token); }
+      console.log('[GoogleAuth] Tokens persisted (signup)');
+      console.log('[GoogleAuth] Redirecting after authentication (signup)');
       window.redirectAfterAuthentication(JSON.parse(localStorage.getItem('user') || 'null'), token, null);
       return;
     }
 
     const code = url.searchParams.get('code');
     if (code) {
+      console.log('[GoogleAuth] Login code detected — code exchange path (signup)');
+      _googleCallbackProcessed = true;
+      console.log('[GoogleAuth] Login code exchange started — GET /api/auth/google/token (signup)');
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
       const raw2 = await res.json();
       const data2 = (raw2 && raw2.success === true && raw2.data) ? raw2.data : raw2;
       if (res.ok && data2.token) {
+        console.log('[GoogleAuth] Login code exchange succeeded (signup)');
         if (window.setAuthTokens) window.setAuthTokens(data2.token, data2.refreshToken);
         else { localStorage.setItem('session_token', data2.token); localStorage.setItem('token', data2.token); }
+        console.log('[GoogleAuth] Tokens persisted (signup)');
         if (data2.user) localStorage.setItem('user', JSON.stringify(data2.user));
+        console.log('[GoogleAuth] User persisted (signup)');
         localStorage.setItem('isFirstVisit', 'true');
+        console.log('[GoogleAuth] Redirecting after authentication (signup)');
         window.redirectAfterAuthentication(data2.user, data2.token, data2.refreshToken);
       } else {
-        showError(data2.message || 'Google sign-in failed. Please try again.');
+        if (data2.message && data2.message.includes('invalid or expired')) {
+          console.log('[GoogleAuth] Login code already consumed by another handler (signup)');
+          var hasToken = localStorage.getItem('anistrim.mobile.token') ||
+                         localStorage.getItem('token') ||
+                         localStorage.getItem('session_token');
+          if (hasToken && window.State && window.State.isLoggedIn) {
+            console.log('[GoogleAuth] Tokens found — redirecting anyway (signup)');
+            window.redirectAfterAuthentication?.(window.State.user, hasToken, null);
+          }
+        } else {
+          showError(data2.message || 'Google sign-in failed. Please try again.');
+        }
       }
       return;
     }
@@ -165,7 +223,7 @@ async function handleAppUrlOpen(data) {
       showError('Google sign-in was cancelled or failed.');
     }
   } catch (err) {
-    console.error('[Signup] Deep link parse error:', err?.message || err);
+    console.error('[GoogleAuth] Deep link parse error (signup):', err?.message || err);
   }
 }
 

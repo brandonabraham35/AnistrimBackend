@@ -592,7 +592,8 @@
     }
   }
 
-  // Check URL params on page load
+  // Check URL params on page load (web/desktop only — deep links are handled
+  // centrally by login.js / signup.js appUrlOpen listeners in the native app).
   function checkUrlOnLoad() {
     var code = getCodeFromUrl(window.location.href);
     if (code) {
@@ -602,22 +603,14 @@
     return false;
   }
 
-  // Listen for Capacitor deep link event
+  // Deep-link handling in the native app is consolidated in login.js and
+  // signup.js (each page registers exactly one appUrlOpen listener). This
+  // module's deep-link handler is removed to prevent duplicate callback
+  // processing where the same login code could be consumed twice.
+  // The listenForDeepLink function is kept as a no-op for backward compat.
   function listenForDeepLink() {
-    if (typeof window.Capacitor === 'undefined') return;
-    if (!window.Capacitor.Plugins || !window.Capacitor.Plugins.App) return;
-    try {
-      window.Capacitor.Plugins.App.addListener('appUrlOpen', function(data) {
-        if (!data || !data.url) return;
-        if (!data.url.includes('anistrim://auth')) return;
-        try { window.Capacitor.Plugins.Browser.close(); } catch(e) {}
-        if (data.url.includes('error=')) return;
-        var code = getCodeFromUrl(data.url);
-        if (code) fetchAndLogin(code);
-      });
-    } catch(e) {
-      console.log('Deep link listener error:', e.message);
-    }
+    // Intentionally empty — deep-link handling is centralized in login.js /
+    // signup.js to prevent duplicate appUrlOpen processing.
   }
 
   // UI helpers for overlay

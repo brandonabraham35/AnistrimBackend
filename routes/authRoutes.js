@@ -153,6 +153,13 @@ router.get('/google/start', googleAuthController.googleRedirect);
 // @access  Public
 router.get('/google/callback', googleAuthController.googleCallback);
 
+// @route   GET /api/auth/google/callback-fallback
+// @desc    Fallback page for Android intent S.browser_fallback_url parameter.
+//          Gives the In-App Browser a valid URL to navigate to when the intent
+//          cannot be handled natively, triggering browser close.
+// @access  Public
+router.get('/google/callback-fallback', googleAuthController.callbackFallback);
+
 // @route   GET /api/auth/google/token
 // @desc    Exchange the short-lived login code for a JWT + user + intent.
 // @access  Public
