@@ -61,12 +61,14 @@ app.disable('x-powered-by');
 
 // ─ Vercel secret gate ──────────────────────────────────────
 // Ensures API requests come from Vercel (with the shared secret header)
-// and not from direct Render URL access. Public static/SEO routes are exempt.
+// and not from direct Render URL access.
+// Public endpoints are EXEMPT — only sensitive endpoints are gated.
 const VERCEL_SECRET = process.env.VERCEL_SECRET;
 if (VERCEL_SECRET) {
+  const PUBLIC_API_PREFIXES = ['/api/anime/', '/api/stream/', '/api/health', '/api/auth/google/'];
   app.use('/api', (req, res, next) => {
-    // Health check and public endpoints are exempt
-    if (req.path === '/health' || req.path.startsWith('/health/')) return next();
+    // Exempt public endpoints
+    if (PUBLIC_API_PREFIXES.some(p => req.path.startsWith(p))) return next();
     const provided = req.headers['x-vercel-secret'];
     if (!provided || provided !== VERCEL_SECRET) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied.' } });
