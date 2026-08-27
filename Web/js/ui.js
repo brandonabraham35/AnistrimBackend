@@ -426,7 +426,10 @@
       '<div class="auth-field"><label for="login-email">Email</label>' +
       '<input type="email" id="login-email" required autocomplete="email" placeholder="you@example.com"></div>' +
       '<div class="auth-field"><label for="login-password">Password</label>' +
-      '<input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter your password"></div>' +
+      '<div class="auth-password-wrap">' +
+      '<input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter your password">' +
+      '<button type="button" class="auth-pw-toggle" onclick="AniStrimUI.togglePassword(\'login-password\',this)" aria-label="Show password" tabindex="-1">&#128065;</button>' +
+      '</div></div>' +
       '<div class="auth-forgot"><a href="#/forgot-password">Forgot password?</a></div>' +
       '<button class="btn-primary btn-block btn-auth-submit" type="submit">Sign In</button></form>' +
       '<div class="auth-divider"><span>or continue with</span></div>' +
@@ -446,7 +449,10 @@
       '<div class="auth-field"><label for="signup-email">Email</label>' +
       '<input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com"></div>' +
       '<div class="auth-field"><label for="signup-password">Password</label>' +
+      '<div class="auth-password-wrap">' +
       '<input type="password" id="signup-password" required minlength="6" autocomplete="new-password" placeholder="Create a password" oninput="AniStrimUI.updatePasswordStrength(this.value)">' +
+      '<button type="button" class="auth-pw-toggle" onclick="AniStrimUI.togglePassword(\'signup-password\',this)" aria-label="Show password" tabindex="-1">&#128065;</button>' +
+      '</div>' +
       '<div class="auth-password-requirements" id="signup-password-requirements">' +
       '<span class="req-item">\u25cb At least 6 characters</span>' +
       '</div></div>' +
