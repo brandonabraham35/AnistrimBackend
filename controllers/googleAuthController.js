@@ -182,7 +182,7 @@ exports.googleCallback = async (req, res) => {
     // Stage 5 — Build the canonical user DTO.
     const dto = await tagged('user-dto', () => buildUserDto(user));
 
-    const loginCode = createLoginCode(accessToken, refreshToken, dto, intent);
+    const loginCode = await createLoginCode(accessToken, refreshToken, dto, intent);
 
     // Client-agnostic path: return structured result + suggested deep link.
     // B7 fix: per-client return target resolved from X-Client header with
