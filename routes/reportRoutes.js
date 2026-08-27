@@ -11,6 +11,11 @@ const { eventLimiter } = require('../middleware/rateLimit');
 // POST /api/reports/stream
 router.post('/stream', protect, report.submitReport);
 
+// ─── User-facing: report playback failure ──────────────────
+// POST /api/reports/playback-failure
+// Protected by auth + rate-limited internally (3 per 5 min per user).
+router.post('/playback-failure', protect, report.reportPlaybackFailure);
+
 // ─── User-facing: client-side event logging ──────────────
 // POST /api/reports/client-event
 // Protected by auth + rate-limited to prevent log flooding abuse

@@ -4,6 +4,14 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const { sendSuccess } = require('../utils/response');
+const streamCacheService = require('../services/streamCacheService');
+const cache = require('../utils/cacheService');
+
+// Rate limit: max 3 failure reports per user per 5 minutes.
+// Prevents a malicious client from spamming cache invalidation.
+const FAILURE_REPORT_WINDOW_MS = 5 * 60 * 1000;
+const FAILURE_REPORT_MAX = 3;
+const failureReportCounts = new Map(); // userId => { count, resetAt }
 
 /**
  * POST /api/reports/stream
@@ -32,6 +40,85 @@ exports.submitReport = async (req, res) => {
   } catch (err) {
     console.error('[ReportController] submitReport error:', err.message);
     res.status(500).json({ message: 'Failed to submit report.' });
+  }
+};
+
+/**
+ * POST /api/reports/playback-failure
+ * Body: { episodeId, reason }
+ * Reports a playback failure for an authorized stream.
+ * Invalidates the cached source so the next play triggers a fresh resolution.
+ *
+ * Security:
+ *   - Requires authentication (protect middleware).
+ *   - episodeId must be a positive integer (validated).
+ *   - Rate-limited per user (3 per 5 min) to prevent abuse.
+ *   - Client cannot specify arbitrary provider URLs — the backend
+ *     identifies the cached source by trusted episodeId.
+ */
+exports.reportPlaybackFailure = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { episodeId, reason } = req.body;
+
+    // Validate episodeId.
+    const epId = Number(episodeId);
+    if (!Number.isInteger(epId) || epId <= 0) {
+      return res.status(400).json({ message: 'Valid episodeId (positive integer) is required.' });
+    }
+
+    // Rate limit: max 3 failure reports per user per 5 minutes.
+    const now = Date.now();
+    const userRecord = failureReportCounts.get(userId);
+    if (userRecord && now < userRecord.resetAt) {
+      userRecord.count += 1;
+      if (userRecord.count > FAILURE_REPORT_MAX) {
+        return res.status(429).json({
+          message: 'Too many failure reports. Please try again later.',
+          retryAfter: Math.ceil((userRecord.resetAt - now) / 1000),
+        });
+      }
+    } else {
+      failureReportCounts.set(userId, { count: 1, resetAt: now + FAILURE_REPORT_WINDOW_MS });
+    }
+
+    // Invalidate Redis cache for the default provider.
+    const provider = process.env.STREAM_CACHE_PROVIDER || 'animeheaven';
+    const redisKey = streamCacheService.buildRedisKey(epId, provider);
+    try {
+      await cache.delByPrefix(redisKey);
+    } catch (redisErr) {
+      logger.warn('[ReportController] Redis invalidation failed (non-fatal)', {
+        episodeId: epId, error: redisErr.message,
+      });
+    }
+
+    // Invalidate MySQL cache: mark as invalid, increment failure count.
+    try {
+      await db.query(
+        `UPDATE episode_stream_cache
+         SET verification_status = 'invalid',
+             failure_count = failure_count + 1,
+             last_failed_at = NOW()
+         WHERE episode_id = ? AND provider = ?`,
+        [epId, provider]
+      );
+    } catch (dbErr) {
+      logger.warn('[ReportController] MySQL invalidation failed (non-fatal)', {
+        episodeId: epId, error: dbErr.message,
+      });
+    }
+
+    logger.info('[ReportController] Playback failure reported', {
+      userId, episodeId: epId, reason: reason || 'unspecified',
+    });
+
+    return sendSuccess(res, null, {
+      message: 'Playback failure reported. A fresh source will be resolved on next play.',
+    });
+  } catch (err) {
+    console.error('[ReportController] reportPlaybackFailure error:', err.message);
+    res.status(500).json({ message: 'Failed to report playback failure.' });
   }
 };
 

@@ -230,6 +230,12 @@
     authorizeStream: function (episodeId) {
       return request('/api/stream/authorize', { method: 'POST', body: { episodeId: String(episodeId) } });
     },
+    reportPlaybackFailure: function (episodeId, reason) {
+      return request('/api/reports/playback-failure', {
+        method: 'POST',
+        body: { episodeId: Number(episodeId), reason: reason || '' },
+      });
+    },
     providers: function (title, episodeNum) { return request('/api/stream/providers/' + encodeURIComponent(title) + '/' + episodeNum); },
 
     // Payments

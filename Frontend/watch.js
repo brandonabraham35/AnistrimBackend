@@ -100,6 +100,19 @@ let currentAnimeTitle = '';
 let currentStreamSources = [];
 let currentStreamQuality = 'auto';
 
+// ── Playback failure reporting ──────────────────────────────
+// Reports a playback failure to the backend for cache invalidation.
+// Fire-and-forget — must never block the player.
+function reportPlaybackFailure(episodeId, reason) {
+  if (!episodeId) return;
+  try {
+    apiFetch('/api/reports/playback-failure', {
+      method: 'POST',
+      body: JSON.stringify({ episodeId: Number(episodeId), reason: reason || 'unknown' }),
+    }).catch(function () { /* silent */ });
+  } catch (_) { /* silent */ }
+}
+
 // ── Phase 10 / Prompt 2: Stream authorization state ─────────
 // The hardened playback path requires a short-lived HMAC token minted by
 // POST /api/stream/authorize (120s TTL). We cache the token + streamId and
@@ -647,6 +660,10 @@ async function loadWatch() {
       clearTimeout(playbackTimeout);
       setPlayerState(PLAYER_STATES.PLAYBACK_ERROR, { message: err.message });
       showWatchError(err.message || 'Stream resolution failed.');
+
+      // Report playback failure to backend for cache invalidation.
+      const episodeId = (currentEp && currentEp.id) || streamAuth.episodeId;
+      reportPlaybackFailure(episodeId, err.message || 'Stream resolution failed');
     }
 
     if (!(State.isPremium || State.isAdmin)) {
@@ -3406,6 +3423,9 @@ function attachStreamSource(video, source) {
           message: video.error ? video.error.message : null,
           currentSrc: video.currentSrc
         });
+        // Report playback failure to backend for cache invalidation.
+        const episodeId = (currentEp && currentEp.id) || streamAuth.episodeId;
+        reportPlaybackFailure(episodeId, 'Video source could not be loaded');
         reject(new Error('Video source could not be loaded.'));
       }, { once: true });
 

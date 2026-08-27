@@ -58,6 +58,19 @@
   function fail(err, fallback) {
     if (!state || state.failed) return;
     state.failed = true;
+
+    // Report playback failure to the backend for cache invalidation.
+    // Only report if we have an episodeId (authenticated stream).
+    // This is fire-and-forget — must never block the error callback.
+    if (state.episodeId) {
+      var reason = (err && err.message) || fallback || 'unknown';
+      try {
+        API.reportPlaybackFailure(state.episodeId, reason).catch(function () {
+          /* silent — failure reporting must never break UX */
+        });
+      } catch (_) { /* silent */ }
+    }
+
     if (accessFailure(err)) {
       if (state.callbacks.onAccessDenied) state.callbacks.onAccessDenied(err, null);
     } else if (state.callbacks.onError) {
