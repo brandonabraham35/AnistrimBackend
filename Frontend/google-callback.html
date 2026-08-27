@@ -56,10 +56,22 @@
 <div class="spinner" id="spinner"></div>
 <p id="status-text">Signing you in with Google...</p>
 
+<!-- Canonical auth/navigation modules so the Google callback follows the
+     same post-auth flow as email/password login: status → verification →
+     onboarding → home. This prevents bypassing account-status checks, email
+     verification, and onboarding enforcement. -->
 <script src="/shared/client-contract/session.js"></script>
+<script src="config.js"></script>
+<script src="scrpt.js"></script>
+<script src="js/api.js"></script>
+<script src="js/session.js"></script>
+<script src="js/navigation.js"></script>
 <script>
-// This page receives ?token=xxx&user=xxx from the backend after Google login
-// It saves them to localStorage exactly the same way the email login does
+// This page receives ?token=xxx&user=xxx from the backend after Google login.
+// It saves them through the canonical Auth module and redirects through
+// Navigation.afterAuth() so that account status, email verification, and
+// onboarding checks are all enforced — exactly the same post-auth flow as
+// email/password login.
 
 (function() {
   const params = new URLSearchParams(window.location.search);
@@ -90,22 +102,32 @@
     return;
   }
 
-  // ── Save token and user to localStorage ─────────────────
-  // Same format as email/password login uses
+  // ─ Parse user and save through canonical Auth module ─────
   try {
     const user = JSON.parse(decodeURIComponent(userRaw));
 
-    window.AniStrimSession.create('mobile').setTokens(decodeURIComponent(token));
-    localStorage.setItem('user', JSON.stringify(user));
+    // Use the canonical Auth.save() so the token + user are stored
+    // consistently with email/password login.
+    if (window.Auth) {
+      window.Auth.save(decodeURIComponent(token), user);
+    } else {
+      // Fallback: direct storage (should never happen — Auth is in config.js).
+      window.AniStrimSession.create('mobile').setTokens(decodeURIComponent(token));
+      localStorage.setItem('user', JSON.stringify(user));
+    }
     localStorage.setItem('isFirstVisit', 'true');
 
     document.getElementById('status-text').textContent = 'Signed in! Redirecting...';
 
-    // Redirect based on role — same logic as login.js
-    if (user.isAdmin) {
-      window.location.href = 'admin.html';
+    // ── Redirect through the canonical Navigation.afterAuth ─
+    // This enforces account status, email verification, onboarding,
+    // and admin detection — the same flow as email/password login.
+    if (window.redirectAfterAuthentication) {
+      window.redirectAfterAuthentication(user, decodeURIComponent(token), null);
     } else {
-      window.location.href = 'index.html';
+      // Fallback (should never happen — js/api.js sets this).
+      var dest = (user && user.isAdmin) ? 'admin.html' : 'index.html';
+      window.location.replace(dest);
     }
 
   } catch (e) {
