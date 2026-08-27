@@ -215,7 +215,7 @@ exports.googleCallback = async (req, res) => {
     // client and `redirect_uri` is applied deterministically — the same URI
     // used during authorization (`getCallbackUri(returnClient)`).
     // PKCE: Look up code_verifier by nonce and include it in token exchange.
-    let codeVerifier = '';
+    let codeVerifier = undefined;
     if (pkceNonce && pkceVerifierStore.has(pkceNonce)) {
       const pkceRecord = pkceVerifierStore.get(pkceNonce);
       if (Date.now() <= pkceRecord.expiresAt) {
@@ -223,8 +223,10 @@ exports.googleCallback = async (req, res) => {
       }
       pkceVerifierStore.delete(pkceNonce); // single-use
     }
+    const tokenParams = { code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient) };
+    if (codeVerifier) tokenParams.code_verifier = codeVerifier;
     const { tokens } = await tagged('token-exchange', () =>
-      client.getToken({ code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient), code_verifier: codeVerifier || undefined })
+      client.getToken(tokenParams)
     );
     client.setCredentials(tokens);
 
