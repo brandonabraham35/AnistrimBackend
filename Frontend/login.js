@@ -70,22 +70,71 @@ async function loginWithInAppBrowser() {
   // This returns an idToken directly — no browser, no deep links.
   if (isNative && CapGoogleSignIn) {
     try {
-      console.log('[GoogleAuth] OAuth started — native Google Sign-In');
+      // Check initialization state
+      if (window.__googleSignInInitInProgress) {
+        console.log('[GoogleAuth][SIGNIN] Init still in progress — waiting up to 3s');
+        var waited = 0;
+        while (window.__googleSignInInitInProgress && waited < 3000) {
+          await new Promise(function(r) { setTimeout(r, 100); });
+          waited += 100;
+        }
+        if (window.__googleSignInInitInProgress) {
+          console.error('[GoogleAuth][SIGNIN] Init did not complete within 3s');
+          showError('Google Sign-In is still loading. Please wait a moment and try again.');
+          return;
+        }
+      }
+      if (!window.__googleSignInInitialized) {
+        console.error('[GoogleAuth][SIGNIN] Plugin not initialized — skipping sign-in');
+        showError('Google Sign-In is not configured. Please contact support.');
+        return;
+      }
+
+      console.log('[GoogleAuth][SIGNIN] Starting native Google Sign-In');
       const result = await CapGoogleSignIn.signIn();
+
+      // Forensic: log result structure (never the token itself)
+      console.log('[GoogleAuth][SIGNIN] Success — result keys:', result ? Object.keys(result) : 'null');
+      console.log('[GoogleAuth][SIGNIN] has idToken:', !!result?.idToken);
+      console.log('[GoogleAuth][SIGNIN] has userId:', !!result?.userId);
+      console.log('[GoogleAuth][SIGNIN] email present:', !!result?.email);
+
       if (!result || !result.idToken) {
+        console.error('[GoogleAuth][SIGNIN] No idToken in result — result:', JSON.stringify(result));
         showError('Google sign-in failed. No credential received.');
         return;
       }
-      console.log('[GoogleAuth] Callback received — native Google Sign-In returned idToken');
+      console.log('[GoogleAuth][SIGNIN] idToken present — sending to backend');
       await sendIdTokenToBackend(result.idToken);
     } catch (err) {
-      // User canceled the sign-in flow
+      // Forensic: expose the full error object for diagnosis
+      var errCode = (err && (err.code || err.message)) ? (err.code || 'UNKNOWN') : 'UNKNOWN';
+      var errMsg = (err && err.message) ? err.message : String(err);
+      var errStack = err && err.stack ? String(err.stack).substring(0, 500) : 'N/A';
+      console.error('[GoogleAuth][ERROR]', JSON.stringify({
+        code: errCode,
+        message: errMsg,
+        details: err,
+        stack: errStack
+      }));
+
+      // User-cancelled — silent
       if (err && err.code === 'SIGN_IN_CANCELED') {
-        console.log('[GoogleAuth] User canceled Google sign-in');
+        console.log('[GoogleAuth][SIGNIN] User canceled Google sign-in');
         return;
       }
-      console.error('[GoogleAuth] Native Google sign-in error:', err?.message || err);
-      showError('Google sign-in failed. Please try again.');
+      // Not initialized — likely the init call never completed
+      if (errCode === 'NOT_INITIALIZED' || (errMsg && errMsg.includes('not initialized'))) {
+        showError('Google Sign-In is not configured. Please contact support.');
+        return;
+      }
+      // Client ID missing
+      if (errCode === 'CLIENT_ID_MISSING' || (errMsg && errMsg.includes('clientId'))) {
+        showError('Google Sign-In configuration error — missing client ID.');
+        return;
+      }
+      // All other errors — show the actual message
+      showError('Google sign-in failed: ' + errMsg);
     }
     return;
   }
@@ -122,14 +171,18 @@ window.loginWithInAppBrowser = loginWithInAppBrowser;
 
 // Send the ID token to POST /api/auth/google/verify (web GIS flow)
 async function sendIdTokenToBackend(idToken) {
-  console.log('[GoogleAuth] Login code exchange started — POST /api/auth/google/verify');
+  console.log('[GoogleAuth][BACKEND] Sending ID token to backend — token length:', idToken ? idToken.length : 0);
+  console.log('[GoogleAuth][BACKEND] Endpoint: POST /api/auth/google/verify');
   const { ok, data } = await window.apiFetch('/api/auth/google/verify', {
     method: 'POST',
     body: JSON.stringify({ idToken })
   });
 
   if (ok && data && data.token && data.user) {
-    console.log('[GoogleAuth] Login code exchange succeeded');
+    console.log('[GoogleAuth][BACKEND] Response status: 200 — OK');
+    console.log('[GoogleAuth][BACKEND] Token received:', !!data.token);
+    console.log('[GoogleAuth][BACKEND] Refresh token received:', !!data.refreshToken);
+    console.log('[GoogleAuth][BACKEND] User received:', !!data.user);
     if (window.setAuthTokens) window.setAuthTokens(data.token, data.refreshToken);
     else localStorage.setItem('token', data.token);
     console.log('[GoogleAuth] Tokens persisted');
