@@ -159,7 +159,8 @@
     var name = user && (user.displayName || user.username || user.email || '');
     var initial = name ? name.charAt(0).toUpperCase() : '?';
     var avatar = (user && user.avatar) || '';
-    h.innerHTML = '<nav class="nav"><div class="nav-inner">' +
+    h.innerHTML =
+      '<nav class="nav"><div class="nav-inner">' +
       '<button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle navigation" aria-expanded="false" onclick="AniStrimUI.toggleMobileNav()"><span class="bar"></span><span class="bar"></span><span class="bar"></span></button>' +
       '<a class="brand" href="#/">AniStrim</a>' +
       '<div class="nav-links"><a' + navActive('/') + ' href="#/">Home</a><a' + navActive('/search') + ' href="#/search">Search</a>' +
@@ -171,10 +172,11 @@
           (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) +
           '</a>'
         : '<a href="#/login" class="btn-outline btn-sm">Sign In</a><a href="#/signup" class="btn-primary btn-sm">Get Started</a>') +
-      '</div></div>' +
-      // Mobile navigation backdrop (closes menu on tap outside)
+      '</div></div></nav>' +
+      // Mobile navigation backdrop and panel rendered as siblings of <nav>,
+      // not children — otherwise backdrop-filter on .nav makes it the
+      // containing block for position:fixed, collapsing the panel to 0 height.
       '<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="AniStrimUI.closeMobileNav()"></div>' +
-      // Mobile navigation panel
       '<div class="mobile-nav" id="mobile-nav" role="dialog" aria-label="Navigation menu">' +
       '<div class="mobile-nav-header"><button class="mobile-nav-close" onclick="AniStrimUI.closeMobileNav()" aria-label="Close menu">\u2715</button></div>' +
       (logged && user ? '<div class="nav-user">' +
@@ -188,7 +190,7 @@
       (logged
         ? '<a href="#/profile" onclick="AniStrimUI.closeMobileNav()">Profile</a><a href="#" onclick="AniStrimUI.logout();AniStrimUI.closeMobileNav();return false">Logout</a>'
         : '<a href="#/login" onclick="AniStrimUI.closeMobileNav()">Sign In</a><a href="#/signup" onclick="AniStrimUI.closeMobileNav()">Sign Up</a>') +
-      '</div></nav>';
+      '</div>';
     var f = document.getElementById('site-footer');
     f.innerHTML = '<div class="footer-inner"><span>\u00a9 ' + new Date().getFullYear() + ' AniStrim</span>' +
             '<div class="footer-links"><a href="#/search">Search</a>' +
