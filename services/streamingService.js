@@ -46,6 +46,7 @@ const logger = require('../utils/logger');
 const streamCacheService = require('./streamCacheService');
 const streamCacheConfig = require('../config/streamCache');
 const animeHeavenImportService = require('./animeHeavenImportService');
+const streamCacheMetrics = require('./streamCacheMetrics');
 
 // The provider tag used for the persistent stream cache.
 const STREAM_CACHE_ENABLED = streamCacheConfig.enabled;
@@ -264,6 +265,7 @@ function buildCacheKey(animeTitle, episodeNumber, providerName) {
  * @returns {Promise<object>} Encapsulated outcome
  */
 async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}) {
+  streamCacheMetrics.increment('animeHeavenCalls');
   const healthKey = toHealthKey(ANIME_HEAVEN_TAG) || ANIME_HEAVEN_TAG;
   const start = Date.now();
 
@@ -443,6 +445,9 @@ async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}) {
  * @returns {Promise<object>} Encapsulated outcome
  */
 async function executeFallbackProvider(providerId, animeTitle, episodeNumber) {
+  if (providerId === 'consumet' || providerId === 'kickassanime' || providerId === 'hianime' || providerId === 'animepahe') {
+    streamCacheMetrics.increment('consumetCalls');
+  }
   const healthKey = toHealthKey(providerId) || providerId;
   const start = Date.now();
 

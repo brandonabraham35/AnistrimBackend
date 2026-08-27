@@ -405,6 +405,93 @@
                 </div>
                 <div id="analytics-activity" class="dashboard-list"></div>
             </div>
+
+            <!-- Stream Cache Metrics -->
+            <div class="section-card" id="stream-cache-section">
+                <div class="section-card-header">
+                    <h4 class="section-card-title"><i class="fas fa-server"></i> Stream Cache Metrics</h4>
+                </div>
+                <div class="stats-grid" id="stream-cache-overview">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Redis Hits</div>
+                            <div class="stat-card-value value" id="sc-redis-hits">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">MySQL Hits</div>
+                            <div class="stat-card-value value" id="sc-mysql-hits">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Cache Misses</div>
+                            <div class="stat-card-value value" id="sc-cache-misses">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Active Sources</div>
+                            <div class="stat-card-value value" id="sc-active-sources">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="height:16px"></div>
+                <div class="stats-grid" id="stream-cache-resolvers">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">AnimeHeaven Calls</div>
+                            <div class="stat-card-value value" id="sc-animeheaven">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Consumet Calls</div>
+                            <div class="stat-card-value value" id="sc-consumet">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Total Resolvers</div>
+                            <div class="stat-card-value value" id="sc-resolvers">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Avg Lifetime</div>
+                            <div class="stat-card-value value" id="sc-avg-lifetime">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="height:16px"></div>
+                <div class="stats-grid" id="stream-cache-health">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Verification Successes</div>
+                            <div class="stat-card-value value" id="sc-verify-ok">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Verification Failures</div>
+                            <div class="stat-card-value value" id="sc-verify-fail">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Known Expiry</div>
+                            <div class="stat-card-value value" id="sc-known-expiry">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Unknown Expiry</div>
+                            <div class="stat-card-value value" id="sc-unknown-expiry">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- ════════════════════════════════════════════════════════════════

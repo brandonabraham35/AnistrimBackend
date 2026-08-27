@@ -25,5 +25,6 @@ router.get('/views', analytics.getViews);
 router.get('/searches', analytics.getSearches);
 router.get('/activity', analytics.getActivity);
 router.get('/users', analytics.getUsers);
+router.get('/stream-cache', analytics.getStreamCacheMetrics);
 
 module.exports = router;

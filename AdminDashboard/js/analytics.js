@@ -28,15 +28,17 @@
 
   async function loadAnalytics() {
     try {
-      const [overview, activity] = await Promise.all([
+      const [overview, activity, streamCache] = await Promise.all([
         window.apiRequest(`/api/admin/analytics/overview?platform=${_currentPlatform}&days=${_currentRange}`),
         window.apiRequest(`/api/admin/analytics/activity?platform=${_currentPlatform}&limit=20`),
+        window.apiRequest('/api/admin/analytics/stream-cache'),
       ]);
 
       renderOverview(overview);
       // unwrapAdminEnvelope returns { items, rows, pagination } for array payloads.
       // Fall back to the raw value for non-envelope responses.
       renderActivity(activity.items || activity.rows || activity);
+      renderStreamCache(streamCache);
     } catch (err) {
       console.error('[Analytics] Failed to load:', err);
       const el = document.getElementById('analytics-overview');
@@ -99,6 +101,35 @@
       const time = window._timeAgo ? window._timeAgo(a.timestamp) : new Date(a.timestamp).toLocaleString();
       return `<div class="list-item"><span>${icon} <strong>${user}</strong> ${a.event}${platform}${anime}${episode}</span><span class="list-value">${time}</span></div>`;
     }).join('');
+  }
+
+  function renderStreamCache(data) {
+    if (!data) return;
+
+    function setEl(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    // Cache tier
+    setEl('sc-redis-hits', window._formatNumber(data.redisHits || 0));
+    setEl('sc-mysql-hits', window._formatNumber(data.mysqlHits || 0));
+    setEl('sc-cache-misses', window._formatNumber(data.cacheMisses || 0));
+    setEl('sc-active-sources', window._formatNumber(data.activeCachedSources || 0));
+
+    // Resolvers
+    setEl('sc-animeheaven', window._formatNumber(data.animeHeavenCalls || 0));
+    setEl('sc-consumet', window._formatNumber(data.consumetCalls || 0));
+    setEl('sc-resolvers', window._formatNumber(data.resolverCalls || 0));
+    setEl('sc-avg-lifetime', data.averageSourceLifetimeMs
+      ? Math.round(data.averageSourceLifetimeMs / 60000) + 'm'
+      : '—');
+
+    // Health
+    setEl('sc-verify-ok', window._formatNumber(data.verificationSuccesses || 0));
+    setEl('sc-verify-fail', window._formatNumber(data.verificationFailures || 0));
+    setEl('sc-known-expiry', window._formatNumber(data.knownExpirySources || 0));
+    setEl('sc-unknown-expiry', window._formatNumber(data.unknownExpirySources || 0));
   }
 
   window.initializeAnalyticsSection = initializeAnalyticsSection;

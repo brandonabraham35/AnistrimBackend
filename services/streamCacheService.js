@@ -44,6 +44,7 @@ const config = require('../config/streamCache');
 const { request } = require('../utils/providerHttp');
 const inFlightResolverManager = require('./inFlightResolverManager');
 const cache = require('../utils/cacheService');
+const streamCacheMetrics = require('./streamCacheMetrics');
 
 // Redis key prefix for stream sources.
 const REDIS_STREAM_KEY_PREFIX = 'stream:source:';
@@ -345,11 +346,13 @@ async function verifyAndRecord(cacheRowId, url, context = {}) {
         'UPDATE episode_stream_cache SET last_verified_at = ?, verification_status = ?, response_status = ?, content_type = ? WHERE id = ?',
         [now, 'active', result.status, result.contentType, cacheRowId]
       );
+      streamCacheMetrics.increment('verificationSuccesses');
     } else {
       await db.query(
         'UPDATE episode_stream_cache SET last_verified_at = ?, verification_status = ?, response_status = ?, content_type = ?, last_failed_at = ? WHERE id = ?',
         [now, 'invalid', result.status, result.contentType, now, cacheRowId]
       );
+      streamCacheMetrics.increment('verificationFailures');
     }
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (verify record)', { cacheRowId, error: err.message });
@@ -530,6 +533,7 @@ async function findCachedStream(episodeId, provider) {
     }
     if (!data || !Array.isArray(data.sources) || data.sources.length === 0) {
       // Malformed/empty cache — treat as a miss.
+      streamCacheMetrics.increment('invalidSources');
       return { row, result: null, state: 'invalid' };
     }
     row.stream_data = data;
@@ -544,6 +548,8 @@ async function findCachedStream(episodeId, provider) {
         detectedExpiresAt: row.detected_expires_at,
         verificationStatus: row.verification_status,
       });
+      if (state === 'expired') streamCacheMetrics.increment('expiredSources');
+      if (state === 'invalid') streamCacheMetrics.increment('invalidSources');
       return { row, result: null, state };
     }
 
@@ -700,6 +706,7 @@ async function getOrResolve(episodeId, provider, resolver) {
         : false;
       if (!upstreamExpired) {
         logger.info('[STREAM_CACHE] REDIS_HIT', { episodeId, provider });
+        streamCacheMetrics.increment('redisHits');
         return redisHit;
       }
       logger.info('[STREAM_CACHE] REDIS_EXPIRED', { episodeId, provider });
@@ -713,6 +720,7 @@ async function getOrResolve(episodeId, provider, resolver) {
   const memCached = inFlightResolverManager.getCached(key);
   if (memCached && memCached.sources && memCached.sources.length > 0) {
     logger.info('[STREAM_CACHE] MEMORY_HIT', { episodeId, provider });
+    streamCacheMetrics.increment('mysqlHits');
     return memCached;
   }
 
@@ -726,6 +734,7 @@ async function getOrResolve(episodeId, provider, resolver) {
       logger.debug('[STREAM_CACHE] Redis populate failed (non-fatal)', { error: err.message });
     }
     logger.info('[STREAM_CACHE] MYSQL_HIT', { episodeId, provider });
+    streamCacheMetrics.increment('mysqlHits');
     return dbHit.result;
   }
 
@@ -733,8 +742,10 @@ async function getOrResolve(episodeId, provider, resolver) {
   //    in-flight for this key, this ATTACHES to it (no duplicate execution).
   //    If a settled entry is still present (within grace), it returns the
   //    cached result. Otherwise it starts ONE resolver.
+  streamCacheMetrics.increment('cacheMisses');
   const { promise } = inFlightResolverManager.register(key, async () => {
     // Run the resolver ONCE. Normalize the output to a provider result.
+    streamCacheMetrics.increment('resolverCalls');
     const fresh = await resolver();
     const providerResult =
       fresh &&
@@ -747,6 +758,16 @@ async function getOrResolve(episodeId, provider, resolver) {
     // is NEVER discarded. The manager also caches it in memory.
     if (providerResult && Array.isArray(providerResult.sources) && providerResult.sources.length > 0) {
       await saveStream(episodeId, provider, providerResult);
+      // Record source lifetime: time from resolved_at to now.
+      try {
+        const [rows] = await db.query(
+          'SELECT TIMESTAMPDIFF(SECOND, resolved_at, NOW()) AS lifetime_sec FROM episode_stream_cache WHERE episode_id = ? AND provider = ? LIMIT 1',
+          [episodeId, provider]
+        );
+        if (rows[0]?.lifetime_sec) {
+          streamCacheMetrics.recordSourceLifetime(rows[0].lifetime_sec * 1000);
+        }
+      } catch (_) { /* non-fatal */ }
     }
     return providerResult;
   });

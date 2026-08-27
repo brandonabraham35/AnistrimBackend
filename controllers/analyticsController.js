@@ -9,6 +9,7 @@
 // (via req.clientPlatform) determines platform attribution.
 const db = require('../config/db');
 const { sendSuccess, sendPaginated } = require('../utils/response');
+const streamCacheMetrics = require('../services/streamCacheMetrics');
 
 // ── Event type allowlist ────────────────────────────────────
 const ALLOWED_EVENTS = new Set([
@@ -347,5 +348,18 @@ exports.getUsers = async (req, res) => {
   } catch (err) {
     console.error('[Analytics] users error:', err.message);
     return res.status(500).json({ message: 'Failed to load user analytics.' });
+  }
+};
+
+// ── GET /api/admin/analytics/stream-cache ──────────────────
+// Returns in-memory stream cache metrics + live DB source counts.
+// No provider credentials or raw upstream URLs are exposed.
+exports.getStreamCacheMetrics = async (req, res) => {
+  try {
+    const snapshot = await streamCacheMetrics.getSnapshot();
+    return sendSuccess(res, snapshot);
+  } catch (err) {
+    console.error('[Analytics] stream-cache metrics error:', err.message);
+    return res.status(500).json({ message: 'Failed to load stream cache metrics.' });
   }
 };
