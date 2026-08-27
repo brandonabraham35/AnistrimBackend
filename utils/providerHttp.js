@@ -12,6 +12,7 @@
 // =============================================================
 
 const axios = require('axios');
+const https = require('https');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const logger = require('./logger');
 const { getReferer } = require('../services/providerRegistry');
@@ -82,6 +83,33 @@ function createProxyAgent(proxyUrl) {
     logger.warn('Failed to create proxy agent', { proxy: proxyUrl ? '[REDACTED]' : null, error: err.message });
     return null;
   }
+}
+
+/**
+ * Creates an HTTPS agent with relaxed TLS verification for EPROTO workarounds.
+ * This disables strict certificate validation to work around servers that send
+ * malformed TLS records (e.g., animeheaven.me on Render/Node.js).
+ *
+ * WARNING: This makes the connection vulnerable to MITM attacks — use only
+ * as a fallback for scraping providers when strict TLS fails.
+ *
+ * @param {string|null} proxyUrl - Optional proxy URL
+ * @returns {HttpsProxyAgent|https.Agent} Configured agent
+ */
+function createRelaxedTlsAgent(proxyUrl) {
+  const agentOptions = {
+    rejectUnauthorized: false, // Relaxes TLS verification for EPROTO workarounds
+  };
+
+  if (proxyUrl) {
+    try {
+      return new HttpsProxyAgent(proxyUrl, agentOptions);
+    } catch (err) {
+      logger.warn('Failed to create relaxed TLS proxy agent', { proxy: '[REDACTED]', error: err.message });
+    }
+  }
+
+  return new https.Agent(agentOptions);
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -399,6 +427,7 @@ const ERROR_CATEGORIES = {
   DNS_FAILURE: 'DNS_FAILURE',   // DNS resolution failed
   CONNECTION_REFUSED: 'CONNECTION_REFUSED',
   CONNECTION_RESET: 'CONNECTION_RESET',
+  TLS_ERROR: 'TLS_ERROR',       // EPROTO/SSL handshake failures
   NETWORK_ERROR: 'NETWORK_ERROR',
   PROVIDER_DEGRADED: 'PROVIDER_DEGRADED',
   UNKNOWN: 'UNKNOWN',
@@ -447,6 +476,10 @@ function classifyError(err) {
   }
   if (code === 'ECONNRESET' || message.includes('socket hang up') || message.includes('econnreset')) {
     return { category: ERROR_CATEGORIES.CONNECTION_RESET, status: 0, retryable: true, description: 'Connection reset — socket hang up' };
+  }
+  // TLS/SSL handshake failures — EPROTO, SSL routines errors, packet length issues
+  if (code === 'EPROTO' || /ssl routines|tls_get_more_records|packet length|ssl_error/i.test(err.message || '')) {
+    return { category: ERROR_CATEGORIES.TLS_ERROR, status: 0, retryable: true, description: 'TLS/SSL handshake failure — server certificate or protocol issue' };
   }
   if (code === 'ERR_NETWORK' || message.includes('network')) {
     return { category: ERROR_CATEGORIES.NETWORK_ERROR, status: 0, retryable: true, description: 'Network error' };
@@ -529,11 +562,14 @@ async function request(config, options = {}) {
   const effectiveTimeout = config.timeout || timeout;
   // Streaming retries are DISABLED at the HTTP layer; the streaming pipeline
   // (streamingService.executeWithRetry) already coordinates per-provider retries.
-  const effectiveMaxRetries = streaming ? 0 : maxRetries;
+  // EXCEPTION: TLS errors get one retry with relaxed verification even in streaming mode.
+  let effectiveMaxRetries = streaming ? 0 : maxRetries;
   const startTime = Date.now();
 
   let lastError;
   let proxiedUrl = null;
+  let tlsRelaxed = false; // Track if we've tried with relaxed TLS
+  let relaxedHttpsAgent = null; // Cached relaxed TLS agent for retries
 
   for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
     // Check provider health before attempting
@@ -566,7 +602,7 @@ async function request(config, options = {}) {
         ...mergedHeaders,
         ...config.headers,
       },
-      httpsAgent: proxyAgent || config.httpsAgent || undefined,
+      httpsAgent: relaxedHttpsAgent || proxyAgent || config.httpsAgent || undefined,
       ...(Object.keys(mergedParams).length > 0 ? { params: mergedParams } : {}),
     };
 
@@ -615,6 +651,7 @@ async function request(config, options = {}) {
       const statusText = status ? `HTTP ${status}` : 'NETWORK_ERROR';
       const isTimeout = isTimeoutError(err);
       const cloudflareDetected = status === 403 || /cloudflare/i.test(err.message || '');
+      const isTlsError = err.code === 'EPROTO' || /ssl routines|tls_get_more_records|packet length|ssl_error/i.test(err.message || '');
 
       logger.stream({
         provider: providerName,
@@ -627,6 +664,27 @@ async function request(config, options = {}) {
         cloudflareDetected,
         timeoutStatus: isTimeout,
       });
+
+      // TLS error fallback: retry once with relaxed TLS verification
+      // This applies even in streaming mode where normal retries are disabled
+      if (isTlsError && !tlsRelaxed) {
+        tlsRelaxed = true;
+        // Allow one extra attempt for TLS errors (even in streaming mode)
+        effectiveMaxRetries = Math.max(effectiveMaxRetries, 1);
+        
+        logger.warn('[providerHttp] TLS error detected, retrying with relaxed TLS verification', {
+          provider: providerName,
+          url: config.url?.substring(0, 120),
+          error: err.message?.substring(0, 200),
+        });
+
+        // Create and cache relaxed TLS agent for subsequent attempts
+        relaxedHttpsAgent = createRelaxedTlsAgent(proxiedUrl);
+
+        const delay = BASE_DELAY_MS + Math.random() * 300;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
 
 // Track health on final failure only (to not count retries as separate failures).
       // Genuine timeouts are recorded via markTimeout (a failure + separate timeout

@@ -5,6 +5,7 @@ const express   = require('express');
 const router    = express.Router();
 const report    = require('../controllers/reportController');
 const { protect, adminOnly } = require('../middleware/auth');
+const { eventLimiter } = require('../middleware/rateLimit');
 
 // ─── User-facing: submit a report ──────────────────────────
 // POST /api/reports/stream
@@ -13,8 +14,6 @@ router.post('/stream', protect, report.submitReport);
 // ─── User-facing: client-side event logging ──────────────
 // POST /api/reports/client-event
 // Protected by auth + rate-limited to prevent log flooding abuse
-const { protect } = require('../middleware/auth');
-const { eventLimiter } = require('../middleware/rateLimit');
 router.post('/client-event', protect, eventLimiter, report.logClientEvent);
 
 // ─── Admin-only: view pending reports & update status ──────
