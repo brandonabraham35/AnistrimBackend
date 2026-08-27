@@ -43,6 +43,27 @@ const logger = require('../utils/logger');
 const config = require('../config/streamCache');
 const { request } = require('../utils/providerHttp');
 const inFlightResolverManager = require('./inFlightResolverManager');
+const cache = require('../utils/cacheService');
+
+// Redis key prefix for stream sources.
+const REDIS_STREAM_KEY_PREFIX = 'stream:source:';
+
+/**
+ * Build the Redis cache key for an episode+provider.
+ * @param {number|string} episodeId
+ * @param {string} provider
+ * @returns {string}
+ */
+function buildRedisKey(episodeId, provider) {
+  return `${REDIS_STREAM_KEY_PREFIX}${provider}:${episodeId}`;
+}
+
+/**
+ * Redis TTL in seconds — clamped to the same safe TTL as MySQL cache.
+ * Redis entries expire at the same time as MySQL entries to avoid serving
+ * stale data if the MySQL sweep hasn't run yet.
+ */
+const REDIS_TTL_SECONDS = config.safeTtlMinutes * 60;
 
 // ── Source URL Expiry Detection ────────────────────────────
 // Parses resolved source URLs for reliable expiry indicators.
@@ -441,11 +462,13 @@ async function markUsed(id) {
  *   • Waiting requests attach to the existing resolver — NO duplicate
  *     AnimeHeaven executions.
  *
- * Flow:
- *   1. Check the in-flight manager's memory cache (recently-resolved result).
- *   2. DB cache check — if a concurrent request persisted it, use it.
- *   3. Register with the InFlightResolverManager (starts OR attaches).
- *   4. Await the shared resolver promise — all waiters get the same result.
+ * REDIS-FIRST FLOW:
+ *   1. Check Redis — if VALID HIT, return immediately (no resolver, no MySQL).
+ *   2. Check in-flight manager's memory cache (recently-resolved result).
+ *   3. Check MySQL episode_stream_cache — if VALID HIT, populate Redis and return.
+ *   4. Register with the InFlightResolverManager (starts OR attaches).
+ *   5. Await the shared resolver promise — all waiters get the same result.
+ *   6. Persist success to MySQL + Redis.
  *
  * @param {number|string} episodeId
  * @param {string} provider
@@ -455,8 +478,28 @@ async function markUsed(id) {
 async function getOrResolve(episodeId, provider, resolver) {
   if (!episodeId) return resolver();
   const key = inFlightResolverManager.keyFor(provider, episodeId);
+  const redisKey = buildRedisKey(episodeId, provider);
 
-  // 1. Fast-path: in-memory cache (a recently-successful result, before it
+  // TIER 1: Redis cache — fastest path, no resolver, no MySQL.
+  try {
+    const redisHit = await cache.get(redisKey);
+    if (redisHit && redisHit.sources && redisHit.sources.length > 0) {
+      // Validate expiry: check both Redis TTL (handled by Redis itself) and
+      // any upstream expiry stored in the payload.
+      const upstreamExpired = redisHit.detectedExpiresAt
+        ? new Date(redisHit.detectedExpiresAt).getTime() <= Date.now()
+        : false;
+      if (!upstreamExpired) {
+        logger.info('[STREAM_CACHE] REDIS_HIT', { episodeId, provider });
+        return redisHit;
+      }
+      logger.info('[STREAM_CACHE] REDIS_EXPIRED', { episodeId, provider });
+    }
+  } catch (err) {
+    logger.debug('[STREAM_CACHE] Redis check failed (non-fatal)', { error: err.message });
+  }
+
+  // TIER 2: In-memory cache (a recently-successful result, before it
   //    reaches the DB cache on the next request).
   const memCached = inFlightResolverManager.getCached(key);
   if (memCached && memCached.sources && memCached.sources.length > 0) {
@@ -464,14 +507,20 @@ async function getOrResolve(episodeId, provider, resolver) {
     return memCached;
   }
 
-  // 2. DB cache check — a concurrent request may have persisted a result.
-  const second = await findCachedStream(episodeId, provider);
-  if (second.result) {
-    logger.info('[STREAM_CACHE] LOCK_HIT', { episodeId, provider });
-    return second.result;
+  // TIER 3: MySQL cache check — if a concurrent request persisted a result.
+  const dbHit = await findCachedStream(episodeId, provider);
+  if (dbHit.result) {
+    // Populate Redis from MySQL hit for next time.
+    try {
+      await cache.set(redisKey, dbHit.result, REDIS_TTL_SECONDS);
+    } catch (err) {
+      logger.debug('[STREAM_CACHE] Redis populate failed (non-fatal)', { error: err.message });
+    }
+    logger.info('[STREAM_CACHE] MYSQL_HIT', { episodeId, provider });
+    return dbHit.result;
   }
 
-  // 3. Register with the single-flight manager. If a resolver is already
+  // TIER 4: Register with the single-flight manager. If a resolver is already
   //    in-flight for this key, this ATTACHES to it (no duplicate execution).
   //    If a settled entry is still present (within grace), it returns the
   //    cached result. Otherwise it starts ONE resolver.
@@ -493,7 +542,7 @@ async function getOrResolve(episodeId, provider, resolver) {
     return providerResult;
   });
 
-  // 4. Await the SHARED resolver promise. There is NO per-caller timeout that
+  // Await the SHARED resolver promise. There is NO per-caller timeout that
   //    abandons the result — the resolver runs to completion and all waiters
   //    receive the same eventual result. (The manager's soft timeout only
   //    records observability; it never cancels the resolver or releases the lock.)
@@ -563,6 +612,8 @@ module.exports = {
   detectExpiryFromHeaders,
   detectSourceExpiry,
   parseTimestamp,
+  // Redis key builder (exposed for testing).
+  buildRedisKey,
   // Expose the single-flight manager for observability + tests.
   inFlightResolverManager,
 };
