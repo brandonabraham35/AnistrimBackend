@@ -521,6 +521,66 @@ video.video-element{width:100%;height:100%;display:block;outline:none}
 .settings-card .btn-primary:hover{box-shadow:0 6px 24px rgba(139,92,246,.4);transform:translateY(-1px)}
 .settings-card .btn-primary:active{transform:translateY(0);box-shadow:0 2px 8px rgba(139,92,246,.2)}
 
+/* ── 16.5 PROFILE SUPPORT SECTION ─────────────────────── */
+.support-section h3{font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);text-transform:uppercase;letter-spacing:.08em;color:var(--clr-text-muted);margin:0 0 var(--space-2);padding:0;border:none}
+.support-desc{font-size:var(--font-size-sm);color:var(--clr-text-secondary);margin:0 0 var(--space-3);line-height:1.5}
+.btn-support-link{display:block;margin-bottom:var(--space-2);text-align:center;padding:10px 16px;border-radius:var(--radius-sm);font-size:var(--font-size-sm);font-weight:var(--font-weight-semibold);transition:all var(--transition-fast);text-decoration:none}
+.btn-support-link.btn-outline{border-color:var(--clr-border);color:var(--clr-text-secondary)}
+.btn-support-link.btn-outline:hover{border-color:var(--clr-accent);color:var(--clr-accent);background:var(--clr-accent-muted)}
+.btn-support-link.btn-ghost{color:var(--clr-text-muted)}
+.btn-support-link.btn-ghost:hover{color:var(--clr-text);background:var(--clr-surface-hover)}
+
+/* ── 16.6 SUPPORT PAGE ───────────────────────────────── */
+.support-page{max-width:640px;margin:0 auto}
+.support-page h1{font-size:var(--font-size-2xl);font-weight:var(--font-weight-bold);margin:0 0 var(--space-2)}
+.support-intro{font-size:var(--font-size);color:var(--clr-text-secondary);margin:0 0 var(--space-6)}
+.support-form{background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-lg);padding:var(--space-6)}
+.support-field{margin-bottom:var(--space-4)}
+.support-field label{display:block;font-size:var(--font-size-sm);font-weight:var(--font-weight-semibold);color:var(--clr-text-secondary);margin-bottom:6px}
+.support-field select,.support-field input[type="text"]{width:100%;background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-sm);padding:10px 12px;font-size:var(--font-size);color:var(--clr-text);outline:none;transition:border-color var(--transition-fast),box-shadow var(--transition-fast);height:42px}
+.support-field select:hover,.support-field input[type="text"]:hover{border-color:var(--clr-border-hover)}
+.support-field select:focus,.support-field input[type="text"]:focus{border-color:var(--clr-accent);box-shadow:0 0 0 1px var(--clr-accent)}
+.support-field textarea{width:100%;background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-sm);padding:10px 12px;font-size:var(--font-size);color:var(--clr-text);outline:none;transition:border-color var(--transition-fast),box-shadow var(--transition-fast);resize:vertical;font-family:inherit;min-height:120px}
+.support-field textarea:hover{border-color:var(--clr-border-hover)}
+.support-field textarea:focus{border-color:var(--clr-accent);box-shadow:0 0 0 1px var(--clr-accent)}
+.field-counter{text-align:right;font-size:var(--font-size-xs);color:var(--clr-text-muted);margin-top:4px}
+.support-optional{opacity:.75}
+.support-optional label::after{content:' (optional)';font-weight:var(--font-weight-normal);color:var(--clr-text-muted)}
+
+/* Support success screen */
+.support-success{text-align:center;padding:var(--space-10) 0}
+.success-icon{width:72px;height:72px;border-radius:50%;background:var(--clr-success);color:#fff;font-size:2rem;display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-4);box-shadow:0 0 32px rgba(16,185,129,.3)}
+.support-success h1{font-size:var(--font-size-2xl);margin:0 0 var(--space-2)}
+.ticket-number{font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);color:var(--clr-accent);margin:0 0 var(--space-2)}
+.success-text{font-size:var(--font-size);color:var(--clr-text-secondary);margin:0 0 var(--space-1)}
+.success-email{font-size:var(--font-size-sm);color:var(--clr-text-muted);margin:0 0 var(--space-6)}
+.success-actions{display:flex;gap:var(--space-3);justify-content:center;flex-wrap:wrap}
+
+/* Support list page */
+.support-list-header{margin-bottom:var(--space-6)}
+.support-list-header h1{font-size:var(--font-size-2xl);margin:0}
+.support-list{display:flex;flex-direction:column;gap:var(--space-3)}
+.support-list-item{display:block;background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-lg);padding:var(--space-4);transition:all var(--transition-fast);text-decoration:none;color:inherit}
+.support-list-item:hover{border-color:var(--clr-accent);background:var(--clr-surface-hover)}
+.support-ticket-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.ticket-num{font-size:var(--font-size-sm);font-weight:var(--font-weight-semibold);color:var(--clr-accent)}
+.ticket-subject{font-size:var(--font-size);font-weight:var(--font-weight-medium);color:var(--clr-text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ticket-meta{font-size:var(--font-size-xs);color:var(--clr-text-muted)}
+.ticket-status{font-size:var(--font-size-xs);font-weight:var(--font-weight-semibold);padding:2px 8px;border-radius:var(--radius-full);text-transform:capitalize}
+.status-open{background:var(--clr-accent-muted);color:var(--clr-accent)}
+.status-resolved{background:rgba(16,185,129,.12);color:var(--clr-success)}
+.status-closed{background:rgba(110,106,133,.2);color:var(--clr-text-muted)}
+.status-other{background:rgba(110,106,133,.12);color:var(--clr-text-secondary)}
+
+/* Ticket detail page */
+.ticket-detail-header{display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-6);flex-wrap:wrap}
+.ticket-detail-header h2{font-size:var(--font-size-xl);margin:0;flex:1}
+.ticket-detail-body{background:var(--clr-surface);border:1px solid var(--clr-border);border-radius:var(--radius-lg);padding:var(--space-6)}
+.ticket-row{margin-bottom:var(--space-3)}
+.ticket-row:last-child{margin-bottom:0}
+.ticket-row strong{display:block;font-size:var(--font-size-xs);color:var(--clr-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.ticket-row pre{margin:0;font-family:inherit;font-size:var(--font-size);color:var(--clr-text);white-space:pre-wrap;background:var(--clr-bg2);border:1px solid var(--clr-border);border-radius:var(--radius-sm);padding:var(--space-3)}
+
 /* ── 17. TOAST NOTIFICATIONS ──────────────────────────── */
 .toast-root{position:fixed;bottom:24px;right:24px;z-index:1000;display:flex;flex-direction:column;gap:var(--space-2);pointer-events:none}
 .toast{background:var(--clr-card2);border:1px solid var(--clr-border);color:var(--clr-text);padding:12px 20px;border-radius:10px;box-shadow:var(--shadow-lg);opacity:0;transform:translateY(10px);transition:all var(--transition);max-width:340px;font-size:var(--font-size);pointer-events:auto}

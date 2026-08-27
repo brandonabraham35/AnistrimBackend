@@ -236,6 +236,11 @@
     checkout: function (plan) { return request('/api/payments/checkout', { method: 'POST', body: { plan: plan } }); },
     verifySubscription: function (ref) { return request('/api/payments/verify-subscription?reference=' + encodeURIComponent(ref)); },
 
+    // Support
+    createSupportTicket: function (data) { return request('/api/support', { method: 'POST', body: data }); },
+    listSupportTickets: function () { return request('/api/support'); },
+    getSupportTicket: function (ticketNumber) { return request('/api/support/' + encodeURIComponent(ticketNumber)); },
+
     // ── Analytics (Phase 50: cross-platform analytics) ──────
     // Fire-and-forget event recording. Never throws to caller.
     trackEvent: function (eventType, metadata) {

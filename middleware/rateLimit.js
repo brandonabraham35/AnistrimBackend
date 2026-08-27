@@ -228,6 +228,23 @@ const adminLimiter = rateLimit({
   handler,
 });
 
+// Support ticket submission: 5 requests / hour per authenticated user.
+// Prevents users from flooding the support queue while allowing reasonable
+// multi-issue submissions. Falls back to IP when no user id is present.
+const SUPPORT_WINDOW_MS = 60 * 60 * 1000;
+const SUPPORT_MAX_REQUESTS = 5;
+const supportLimiter = rateLimit({
+  windowMs: SUPPORT_WINDOW_MS,
+  max: SUPPORT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const uid = req.userId ?? req.user?.id;
+    return uid ? 'support:' + String(uid) : ipKeyGenerator(req.ip);
+  },
+  handler,
+});
+
 module.exports = {
   loginLimiter,
   otpLimiter,
@@ -244,4 +261,5 @@ module.exports = {
   ipnLimiter,
   paymentVerifyLimiter,
   adminLimiter,
+  supportLimiter,
 };

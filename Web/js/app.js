@@ -22,6 +22,9 @@
   Router.register('/profile', V.profile, V.afterProfile);
   Router.register('/settings', V.profile, V.afterProfile);
   Router.register('/upgrade', V.upgrade);
+  Router.register('/support', V.support, V.afterSupport);
+  Router.register('/support/my-requests', V.mySupport, V.afterMySupport);
+  Router.register('/support/ticket/:ticket_number', V.ticketDetail, V.afterTicketDetail);
   Router.register('/payment-return', V.paymentReturn, V.afterPaymentReturn);
   Router.register('/:fallback', function () {
     return '<div class="page"><div class="container"><h1>Not Found</h1><p>The page you requested does not exist.</p></div></div>';

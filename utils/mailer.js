@@ -272,4 +272,63 @@ async function sendEmail(to, subject, html, otpCode) {
   }
 }
 
-module.exports = { sendEmail, getTransporter, smtpConfigured, postmarkConfigured, verifyTransport };
+/**
+ * Build an HTML email notifying support that a new ticket was created.
+ */
+function buildSupportNotificationEmail(ticket) {
+  var rows = '';
+  function row(label, value) {
+    return '<tr><td style="padding:4px 0;font-size:14px;color:#a7a3bf">' + label + '</td><td style="padding:4px 0 4px 16px;font-size:14px;color:#ebe8f0">' + value + '</td></tr>';
+  }
+  rows += row('Ticket', escHtml(ticket.ticket_number));
+  rows += row('Name', escHtml(ticket.user_name));
+  rows += row('Email', escHtml(ticket.user_email));
+  rows += row('Category', escHtml(ticket.category_label));
+  rows += row('Subject', escHtml(ticket.subject));
+  rows += row('Message', '<pre style="margin:0;white-space:pre-wrap;font-family:inherit;font-size:14px;color:#ebe8f0">' + escHtml(ticket.message) + '</pre>');
+  if (ticket.anime_title) rows += row('Anime', escHtml(ticket.anime_title));
+  if (ticket.episode_title) rows += row('Episode', escHtml(ticket.episode_title));
+  rows += row('Submitted', escHtml(ticket.submitted_at));
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#08080e;font-family:Inter,system-ui,sans-serif">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#08080e"><tr><td align="center" style="padding:24px">' +
+    '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#13131e;border-radius:12px;border:1px solid #1e1e32">' +
+    '<tr><td style="padding:24px 24px 0"><h1 style="margin:0;font-size:20px;font-weight:700;color:#8b5cf6">New AniStrim Support Request</h1></td></tr>' +
+    '<tr><td style="padding:16px 24px 24px">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + rows +
+    '</table></td></tr>' +
+    '</table></td></tr></table></body></html>';
+}
+
+/**
+ * Build an HTML confirmation email to the user after ticket creation.
+ */
+function buildSupportConfirmationEmail(ticket) {
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#08080e;font-family:Inter,system-ui,sans-serif">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#08080e"><tr><td align="center" style="padding:24px">' +
+    '<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#13131e;border-radius:12px;border:1px solid #1e1e32">' +
+    '<tr><td style="padding:24px 24px 0"><h1 style="margin:0;font-size:20px;font-weight:700;color:#8b5cf6">AniStrim Support Request</h1></td></tr>' +
+    '<tr><td style="padding:16px 24px 24px">' +
+    '<p style="margin:0 0 12px;font-size:14px;color:#ebe8f0">Hello ' + escHtml(ticket.user_name) + ',</p>' +
+    '<p style="margin:0 0 12px;font-size:14px;color:#ebe8f0">We&#39;ve received your support request and our team will review it shortly.</p>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f1a;border-radius:8px;padding:16px">' +
+    '<tr><td style="padding:12px">' +
+    '<p style="margin:0 0 8px;font-size:14px;color:#a7a3bf">Ticket: <strong style="color:#8b5cf6">' + escHtml(ticket.ticket_number) + '</strong></p>' +
+    '<p style="margin:0 0 8px;font-size:14px;color:#a7a3bf">Category: ' + escHtml(ticket.category_label) + '</p>' +
+    '<p style="margin:0;font-size:14px;color:#a7a3bf">Subject: ' + escHtml(ticket.subject) + '</p>' +
+    '</td></tr></table>' +
+    '<p style="margin:16px 0 0;font-size:14px;color:#a7a3bf">Thank you,<br>AniStrim Support</p>' +
+    '</td></tr></table></td></tr></table></body></html>';
+}
+
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+module.exports = { sendEmail, getTransporter, smtpConfigured, postmarkConfigured, verifyTransport, buildSupportNotificationEmail, buildSupportConfirmationEmail };

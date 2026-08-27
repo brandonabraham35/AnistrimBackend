@@ -1522,6 +1522,10 @@
       '<label class="toggle-row"><span class="toggle-label"><span class="toggle-label-text">Reduce motion</span><span class="toggle-desc">Minimize animations and transitions</span></span><span class="toggle-wrap"><input type="checkbox" id="pref-reduce-motion" class="toggle-input"><span class="toggle-track"></span></span></label></div>' +
       '<div class="settings-group"><h3>Account</h3><div class="settings-divider"></div>' +
       '<label class="input-row"><span class="input-label"><span class="input-label-text">Username</span><span class="input-desc">Your display name on the platform</span></span><input id="pref-username" type="text" placeholder="Set username"></label></div>' +
+      '<div class="settings-divider"></div>' +
+      '<div class="support-section"><h3>Need Help?</h3><p class="support-desc">Having trouble with your account, playback, payments, or found a bug? Our support team is here to help.</p>' +
+      '<a href="#/support" class="btn-outline btn-block btn-support-link">Contact Support</a>' +
+      '<a href="#/support/my-requests" class="btn-ghost btn-block btn-support-link">View My Support Requests</a></div></div>' +
       '<button class="btn-primary btn-block" onclick="AniStrimUI.saveProfile()" id="profile-save-btn">Save Changes</button>' +
       '</div></div></div></div>';
   }
@@ -1678,6 +1682,194 @@
     checkPayment();
   }
 
+  // ── Support ─────────────────────────────────────────────
+  var CATEGORIES = [
+    { value: 'complaint', label: 'Complaint' },
+    { value: 'bug', label: 'Bug / Something isn\'t working' },
+    { value: 'account', label: 'Account problem' },
+    { value: 'payment', label: 'Payment problem' },
+    { value: 'video', label: 'Video / Playback problem' },
+    { value: 'episode', label: 'Anime / Episode problem' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  function supportView() {
+    renderHeader();
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/support' }); return ''; }
+    var user = Auth.state.user;
+    var cats = CATEGORIES.map(function (c) { return '<option value="' + esc(c.value) + '">' + esc(c.label) + '</option>'; }).join('');
+    return '<div class="page"><div class="container"><div class="support-page">' +
+      '<h1>Contact Support</h1>' +
+      '<p class="support-intro">Need help? Tell us what happened and we\'ll get back to you.</p>' +
+      '<form id="support-form" class="support-form" onsubmit="return AniStrimUI.submitSupport(event)">' +
+      '<div class="support-field">' +
+      '<label for="support-category">Category</label>' +
+      '<select id="support-category" required>' +
+      '<option value="" disabled selected>Select a category</option>' + cats +
+      '</select></div>' +
+      '<div class="support-field">' +
+      '<label for="support-subject">Subject</label>' +
+      '<input type="text" id="support-subject" required placeholder="e.g. Video won\'t play for One Piece Episode 1100" maxlength="150"></div>' +
+      '<div class="support-field">' +
+      '<label for="support-message">Message</label>' +
+      '<textarea id="support-message" required rows="6" placeholder="Please describe the problem in as much detail as possible..." maxlength="5000"></textarea>' +
+      '<span class="field-counter"><span id="msg-count">0</span>/5000</span></div>' +
+      '<div class="support-field support-optional">' +
+      '<label for="support-anime">Related Anime (optional)</label>' +
+      '<input type="text" id="support-anime" placeholder="e.g. One Piece"></div>' +
+      '<div class="support-field support-optional">' +
+      '<label for="support-episode">Related Episode (optional)</label>' +
+      '<input type="text" id="support-episode" placeholder="e.g. Episode 1100"></div>' +
+      '<div id="support-error" class="form-error" role="alert"></div>' +
+      '<button type="submit" class="btn-primary btn-block" id="support-submit-btn">Send Support Request</button>' +
+      '</form></div></div>';
+  }
+
+  function afterSupport() {
+    var msg = document.getElementById('support-message');
+    if (msg) {
+      msg.addEventListener('input', function () {
+        var counter = document.getElementById('msg-count');
+        if (counter) counter.textContent = msg.value.length;
+      });
+    }
+  }
+
+  async function submitSupport(e) {
+    e.preventDefault();
+    var errorEl = document.getElementById('support-error');
+    var submitBtn = document.getElementById('support-submit-btn');
+    if (errorEl) errorEl.style.display = 'none';
+    if (submitBtn) submitBtn.disabled = true;
+
+    var category = document.getElementById('support-category').value;
+    var subject = document.getElementById('support-subject').value.trim();
+    var message = document.getElementById('support-message').value.trim();
+    var animeName = document.getElementById('support-anime').value.trim();
+
+    try {
+      var data = await API.createSupportTicket({
+        category: category,
+        subject: subject,
+        message: message,
+      });
+
+      // Show success screen
+      var main = document.getElementById('site-main');
+      if (main) {
+        main.innerHTML = '<div class="page"><div class="container"><div class="support-success">' +
+          '<div class="success-icon">&#10004;</div>' +
+          '<h1>Support Request Sent!</h1>' +
+          '<p class="ticket-number">Ticket #' + esc(data.ticket_number) + '</p>' +
+          '<p class="success-text">We\'ve received your request and our support team will review it shortly.</p>' +
+          '<p class="success-email">A confirmation has been sent to your email.</p>' +
+          '<div class="success-actions">' +
+          '<a href="#/profile" class="btn-outline">Back to Profile</a>' +
+          '<a href="#/support/my-requests" class="btn-ghost">View My Support Requests</a>' +
+          '</div></div></div></div>';
+      }
+      window.scrollTo(0, 0);
+    } catch (err) {
+      if (errorEl) { errorEl.textContent = err.message || 'Failed to submit request. Please try again.'; errorEl.style.display = 'block'; }
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  function mySupportView() {
+    renderHeader();
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '/support/my-requests' }); return ''; }
+    return '<div class="page"><div class="container">' +
+      '<div class="support-list-header"><h1>My Support Requests</h1></div>' +
+      '<div id="support-list-loading" class="loading">Loading...</div>' +
+      '<div id="support-list" class="support-list" style="display:none"></div>' +
+      '<div id="support-list-empty" class="empty" style="display:none">' +
+      '<p>No support requests yet.</p>' +
+      '<a href="#/support" class="btn-outline">Submit a Request</a></div>' +
+      '</div></div>';
+  }
+
+  async function afterMySupport() {
+    var loading = document.getElementById('support-list-loading');
+    var list = document.getElementById('support-list');
+    var empty = document.getElementById('support-list-empty');
+    try {
+      var tickets = await API.listSupportTickets();
+      if (loading) loading.style.display = 'none';
+      if (!tickets || !tickets.length) {
+        if (empty) empty.style.display = 'block';
+        return;
+      }
+      if (list) {
+        list.style.display = 'block';
+        list.innerHTML = tickets.map(function (t) {
+          var statusClass = t.status === 'open' ? 'status-open' :
+            t.status === 'resolved' ? 'status-resolved' :
+            t.status === 'closed' ? 'status-closed' : 'status-other';
+          var date = t.created_at ? new Date(t.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+          return '<a class="support-list-item" href="#/support/ticket/' + esc(t.ticket_number) + '">' +
+            '<div class="support-ticket-row">' +
+            '<span class="ticket-num">' + esc(t.ticket_number) + '</span>' +
+            '<span class="ticket-status ' + statusClass + '">' + esc(t.status.charAt(0).toUpperCase() + t.status.slice(1)) + '</span>' +
+            '</div>' +
+            '<div class="ticket-subject">' + esc(t.subject) + '</div>' +
+            '<div class="ticket-meta">' + esc(t.category_label || t.category) + ' &middot; ' + date + '</div>' +
+            '</a>';
+        }).join('');
+      }
+    } catch (err) {
+      if (loading) loading.style.display = 'none';
+      if (list) { list.style.display = 'block'; list.innerHTML = '<div class="empty">Could not load support requests. ' + esc(err.message) + '</div>'; }
+    }
+  }
+
+  function ticketDetailView(params) {
+    renderHeader();
+    if (!Auth.state.isLoggedIn) { Router.navigate('/login', { redirect: '#/support/ticket/' + (params.ticket_number || '') }); return ''; }
+    return '<div class="page"><div class="container">' +
+      '<div id="ticket-detail-loading" class="loading">Loading ticket...</div>' +
+      '<div id="ticket-detail" class="ticket-detail" style="display:none"></div>' +
+      '<div id="ticket-detail-error" class="empty" style="display:none"></div>' +
+      '</div></div>';
+  }
+
+  async function afterTicketDetail(params) {
+    var loading = document.getElementById('ticket-detail-loading');
+    var detail = document.getElementById('ticket-detail');
+    var error = document.getElementById('ticket-detail-error');
+    try {
+      var ticket = await API.getSupportTicket(params.ticket_number);
+      if (loading) loading.style.display = 'none';
+      if (detail) {
+        detail.style.display = 'block';
+        var statusClass = ticket.status === 'open' ? 'status-open' :
+          ticket.status === 'resolved' ? 'status-resolved' :
+          ticket.status === 'closed' ? 'status-closed' : 'status-other';
+        var createdDate = ticket.created_at ? new Date(ticket.created_at).toLocaleString() : '';
+        var updatedDate = ticket.updated_at && ticket.updated_at !== ticket.created_at ? new Date(ticket.updated_at).toLocaleString() : null;
+        var resolvedDate = ticket.resolved_at ? new Date(ticket.resolved_at).toLocaleString() : null;
+        var h = '<div class="ticket-detail-header">' +
+          '<a href="#/support/my-requests" class="btn-ghost">&larr; Back to Requests</a>' +
+          '<h2>Ticket ' + esc(ticket.ticket_number) + '</h2>' +
+          '<span class="ticket-status ' + statusClass + '">' + esc(ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)) + '</span>' +
+          '</div>' +
+          '<div class="ticket-detail-body">' +
+          '<div class="ticket-row"><strong>Category:</strong> ' + esc(ticket.category_label || ticket.category) + '</div>' +
+          '<div class="ticket-row"><strong>Subject:</strong> ' + esc(ticket.subject) + '</div>' +
+          '<div class="ticket-row"><strong>Message:</strong><pre>' + esc(ticket.message) + '</pre></div>';
+        if (ticket.anime_title) h += '<div class="ticket-row"><strong>Anime:</strong> ' + esc(ticket.anime_title) + '</div>';
+        if (ticket.episode_title) h += '<div class="ticket-row"><strong>Episode:</strong> ' + esc(ticket.episode_title) + '</div>';
+        h += '<div class="ticket-row"><strong>Created:</strong> ' + createdDate + '</div>';
+        if (updatedDate) h += '<div class="ticket-row"><strong>Last Updated:</strong> ' + updatedDate + '</div>';
+        if (resolvedDate) h += '<div class="ticket-row"><strong>Resolved:</strong> ' + resolvedDate + '</div>';
+        h += '</div>';
+        detail.innerHTML = h;
+      }
+    } catch (err) {
+      if (loading) loading.style.display = 'none';
+      if (error) { error.style.display = 'block'; error.textContent = 'Could not load ticket: ' + (err.message || 'Not found'); }
+    }
+  }
+
   // ── Public API ──────────────────────────────────────────
   window.AniStrimUI = {
     fallback: fallback,
@@ -1781,6 +1973,7 @@
     saveProfile: saveProfile, uploadAvatar: uploadAvatar, doAvatarUpload: doAvatarUpload,
     switchRankTab: switchRankTab,
     checkout: checkout, renderHeader: renderHeader,
+    submitSupport: submitSupport,
   };
 
   window.AniStrimViews = {
@@ -1792,6 +1985,9 @@
     history: historyView, afterHistory: loadHistory,
     profile: profileView, afterProfile: afterProfile, upgrade: upgradeView,
     paymentReturn: paymentReturnView, afterPaymentReturn: afterPaymentReturn,
+    support: supportView, afterSupport: afterSupport,
+    mySupport: mySupportView, afterMySupport: afterMySupport,
+    ticketDetail: ticketDetailView, afterTicketDetail: afterTicketDetail,
   };
 
   Auth.state.onChange(renderHeader);
