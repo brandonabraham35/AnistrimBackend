@@ -60,14 +60,14 @@ app.use((_req, res, next) => {
 app.disable('x-powered-by');
 
 // ─ Vercel secret gate ──────────────────────────────────────
-// Ensures API requests come from Vercel (with the shared secret header)
+// Ensures sensitive API requests come from Vercel (with the shared secret header)
 // and not from direct Render URL access.
-// Public endpoints are EXEMPT — only sensitive endpoints are gated.
+// Public endpoints (anime, streaming, health, Google OAuth) are EXEMPT.
 const VERCEL_SECRET = process.env.VERCEL_SECRET;
 if (VERCEL_SECRET) {
-  const PUBLIC_API_PREFIXES = ['/api/anime/', '/api/stream/', '/api/health', '/api/auth/google/'];
+  // When mounted at /api, req.path is stripped of the /api prefix
+  const PUBLIC_API_PREFIXES = ['/anime/', '/stream/', '/health', '/auth/google/'];
   app.use('/api', (req, res, next) => {
-    // Exempt public endpoints
     if (PUBLIC_API_PREFIXES.some(p => req.path.startsWith(p))) return next();
     const provided = req.headers['x-vercel-secret'];
     if (!provided || provided !== VERCEL_SECRET) {
