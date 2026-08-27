@@ -70,7 +70,12 @@ exports.getOverview = async (req, res) => {
   try {
     const platform = req.query.platform || 'all';
     const days = Math.min(parseInt(req.query.days) || 30, 365);
-    const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
+
+    // Platform filter via parameterized query (no alias — table not aliased).
+    const ALLOWED_PLATFORMS = new Set(['web', 'mobile', 'desktop']);
+    const platformFilter = ALLOWED_PLATFORMS.has(platform) ? platform : null;
+    const platformWhere = platformFilter ? 'AND client_platform = ?' : '';
+    const platformParam = platformFilter ? [platformFilter] : [];
 
     const [users] = await db.query('SELECT COUNT(*) AS total FROM users');
 
@@ -83,41 +88,53 @@ exports.getOverview = async (req, res) => {
       [activeToday] = await db.query(
         `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
          WHERE event_type IN ('login','anime_view','episode_view','watch_start')
-           AND DATE(created_at) = CURDATE() ${platformWhere}`
+           AND DATE(created_at) = CURDATE() ${platformWhere}`,
+        platformParam
       );
       [activeWeek] = await db.query(
         `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
          WHERE event_type IN ('login','anime_view','episode_view','watch_start')
-           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ${platformWhere}`
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ${platformWhere}`,
+        platformParam
       );
       [activeMonth] = await db.query(
         `SELECT COUNT(DISTINCT user_id) AS total FROM analytics_events
          WHERE event_type IN ('login','anime_view','episode_view','watch_start')
-           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ${platformWhere}`
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ${platformWhere}`,
+        platformParam
       );
       [animeViews] = await db.query(
         `SELECT COUNT(*) AS total FROM analytics_events
-         WHERE event_type = 'anime_view' ${platformWhere}`
+         WHERE event_type = 'anime_view'
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
+        [days, ...platformParam]
       );
       [episodeViews] = await db.query(
         `SELECT COUNT(*) AS total FROM analytics_events
-         WHERE event_type IN ('episode_view','watch_start') ${platformWhere}`
+         WHERE event_type IN ('episode_view','watch_start')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
+        [days, ...platformParam]
       );
       [searches] = await db.query(
         `SELECT COUNT(*) AS total FROM analytics_events
-         WHERE event_type = 'search' ${platformWhere}`
+         WHERE event_type = 'search'
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
+        [days, ...platformParam]
       );
       [logins] = await db.query(
         `SELECT COUNT(*) AS total FROM analytics_events
-         WHERE event_type IN ('login','google_login') ${platformWhere}`
+         WHERE event_type IN ('login','google_login')
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
+        [days, ...platformParam]
       );
       [platformBreakdown] = await db.query(
         `SELECT client_platform, COUNT(*) AS views
          FROM analytics_events
          WHERE event_type IN ('anime_view','episode_view','watch_start')
            AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+           ${platformWhere}
          GROUP BY client_platform`,
-        [days]
+        [days, ...platformParam]
       );
     } catch (e) {
       // analytics_events table may not exist yet — return zeros
@@ -151,7 +168,10 @@ exports.getViews = async (req, res) => {
   try {
     const days = Math.min(parseInt(req.query.days) || 30, 365);
     const platform = req.query.platform || 'all';
-    const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
+    const ALLOWED_PLATFORMS = new Set(['web', 'mobile', 'desktop']);
+    const platformFilter = ALLOWED_PLATFORMS.has(platform) ? platform : null;
+    const platformWhere = platformFilter ? 'AND ae.client_platform = ?' : '';
+    const platformParam = platformFilter ? [platformFilter] : [];
 
     let rows = [];
     try {
@@ -163,7 +183,7 @@ exports.getViews = async (req, res) => {
            ${platformWhere}
          GROUP BY DATE(ae.created_at), ae.client_platform
          ORDER BY date ASC`,
-        [days]
+        [days, ...platformParam]
       );
     } catch (e) {
       console.warn('[Analytics] views: analytics_events not available:', e.message);
@@ -192,7 +212,10 @@ exports.getSearches = async (req, res) => {
   try {
     const days = Math.min(parseInt(req.query.days) || 30, 365);
     const platform = req.query.platform || 'all';
-    const platformWhere = platform === 'all' ? '' : `AND client_platform = '${db.escape(platform).slice(1, -1)}'`;
+    const ALLOWED_PLATFORMS = new Set(['web', 'mobile', 'desktop']);
+    const platformFilter = ALLOWED_PLATFORMS.has(platform) ? platform : null;
+    const platformWhere = platformFilter ? 'AND client_platform = ?' : '';
+    const platformParam = platformFilter ? [platformFilter] : [];
 
     let topTerms = [], totalSearches = [{ total: 0 }];
     try {
@@ -207,12 +230,12 @@ exports.getSearches = async (req, res) => {
          GROUP BY term, client_platform
          ORDER BY searches DESC
          LIMIT 50`,
-        [days]
+        [days, ...platformParam]
       );
       [totalSearches] = await db.query(
         `SELECT COUNT(*) AS total FROM analytics_events
          WHERE event_type = 'search' AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${platformWhere}`,
-        [days]
+        [days, ...platformParam]
       );
     } catch (e) {
       console.warn('[Analytics] searches: analytics_events not available:', e.message);
@@ -233,7 +256,10 @@ exports.getActivity = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const platform = req.query.platform || 'all';
-    const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
+    const ALLOWED_PLATFORMS = new Set(['web', 'mobile', 'desktop']);
+    const platformFilter = ALLOWED_PLATFORMS.has(platform) ? platform : null;
+    const platformWhere = platformFilter ? 'AND ae.client_platform = ?' : '';
+    const platformParam = platformFilter ? [platformFilter] : [];
 
     let rows = [];
     try {
@@ -250,7 +276,7 @@ exports.getActivity = async (req, res) => {
          WHERE 1=1 ${platformWhere}
          ORDER BY ae.created_at DESC
          LIMIT ?`,
-        [limit]
+        [...platformParam, limit]
       );
     } catch (e) {
       console.warn('[Analytics] activity: analytics_events not available:', e.message);
@@ -275,7 +301,10 @@ exports.getUsers = async (req, res) => {
   try {
     const days = Math.min(parseInt(req.query.days) || 30, 365);
     const platform = req.query.platform || 'all';
-    const platformWhere = platform === 'all' ? '' : `AND ae.client_platform = '${db.escape(platform).slice(1, -1)}'`;
+    const ALLOWED_PLATFORMS = new Set(['web', 'mobile', 'desktop']);
+    const platformFilter = ALLOWED_PLATFORMS.has(platform) ? platform : null;
+    const platformWhere = platformFilter ? 'AND ae.client_platform = ?' : '';
+    const platformParam = platformFilter ? [platformFilter] : [];
 
     // New users by day
     const [newByDay] = await db.query(
@@ -296,7 +325,7 @@ exports.getUsers = async (req, res) => {
            AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
            ${platformWhere}
          GROUP BY client_platform`,
-        [days]
+        [days, ...platformParam]
       );
       [loginMethods] = await db.query(
         `SELECT event_type, COUNT(*) AS count

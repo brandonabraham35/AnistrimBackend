@@ -34,7 +34,9 @@
       ]);
 
       renderOverview(overview);
-      renderActivity(activity);
+      // unwrapAdminEnvelope returns { items, rows, pagination } for array payloads.
+      // Fall back to the raw value for non-envelope responses.
+      renderActivity(activity.items || activity.rows || activity);
     } catch (err) {
       console.error('[Analytics] Failed to load:', err);
       const el = document.getElementById('analytics-overview');

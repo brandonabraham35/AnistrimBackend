@@ -180,6 +180,7 @@ app.use('/api/ads', require('./routes/adsRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/home', require('./routes/homeShelfRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/api/admin/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/support', require('./routes/supportRoutes'));
 
 // ─── SEO surface (crawlable path-based URLs) ────────────────
