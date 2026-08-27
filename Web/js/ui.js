@@ -184,12 +184,12 @@
         '<div><div style="font-weight:600">' + esc(name) + '</div>' +
         (user.email ? '<div style="font-size:.85rem;color:var(--clr-text-muted)">' + esc(user.email) + '</div>' : '') +
         '</div></div>' : '') +
-      '<a href="#/" onclick="AniStrimUI.closeMobileNav()">Home</a><a href="#/search" onclick="AniStrimUI.closeMobileNav()">Search</a>' +
-      (logged ? '<a href="#/watchlist" onclick="AniStrimUI.closeMobileNav()">Watchlist</a><a href="#/history" onclick="AniStrimUI.closeMobileNav()">History</a>' : '') +
-      '<a href="#/upgrade" onclick="AniStrimUI.closeMobileNav()">Upgrade</a>' +
+      '<a href="#/"' + navActive('/') + ' onclick="AniStrimUI.closeMobileNav()">Home</a><a href="#/search"' + navActive('/search') + ' onclick="AniStrimUI.closeMobileNav()">Search</a>' +
+      (logged ? '<a href="#/watchlist"' + navActive('/watchlist') + ' onclick="AniStrimUI.closeMobileNav()">Watchlist</a><a href="#/history"' + navActive('/history') + ' onclick="AniStrimUI.closeMobileNav()">History</a>' : '') +
+      '<a href="#/upgrade"' + navActive('/upgrade') + ' onclick="AniStrimUI.closeMobileNav()">Upgrade</a>' +
       (logged
-        ? '<a href="#/profile" onclick="AniStrimUI.closeMobileNav()">Profile</a><a href="#" onclick="AniStrimUI.logout();AniStrimUI.closeMobileNav();return false">Logout</a>'
-        : '<a href="#/login" onclick="AniStrimUI.closeMobileNav()">Sign In</a><a href="#/signup" onclick="AniStrimUI.closeMobileNav()">Sign Up</a>') +
+        ? '<a href="#/profile"' + navActive('/profile') + ' onclick="AniStrimUI.closeMobileNav()">Profile</a><a href="javascript:void(0)" onclick="AniStrimUI.logout();AniStrimUI.closeMobileNav();return false">Logout</a>'
+        : '<a href="#/login"' + navActive('/login') + ' onclick="AniStrimUI.closeMobileNav()">Sign In</a><a href="#/signup"' + navActive('/signup') + ' onclick="AniStrimUI.closeMobileNav()">Sign Up</a>') +
       '</div>';
     var f = document.getElementById('site-footer');
     f.innerHTML = '<div class="footer-inner"><span>\u00a9 ' + new Date().getFullYear() + ' AniStrim</span>' +
@@ -210,6 +210,11 @@
       if (btn) btn.setAttribute('aria-expanded', 'true');
       document.body.style.overflow = 'hidden'; // prevent background scroll
       document.addEventListener('keydown', mobileNavEscHandler);
+      // Focus the first link inside the nav for accessibility
+      if (el) {
+        var firstLink = el.querySelector('a');
+        if (firstLink) firstLink.focus();
+      }
     }
   }
   function mobileNavEscHandler(e) {
@@ -224,6 +229,8 @@
     if (btn) btn.setAttribute('aria-expanded', 'false');
     document.body.style.overflow = '';
     document.removeEventListener('keydown', mobileNavEscHandler);
+    // Restore focus to the hamburger button
+    if (btn) btn.focus();
   }
 
   // ── Slider state ──────────────────────────────────────────
