@@ -517,25 +517,33 @@
   }
   function forgotPasswordView() {
     renderHeader();
-    return authShell('Reset your password') +
-      '<p class="auth-switch">Enter your account email and we will send a reset link.</p>' +
-      '<form onsubmit="return AniStrimUI.doForgotPassword(event)"><label>Email<input type="email" id="forgot-email" required autocomplete="email"></label>' +
-      '<button class="btn-primary btn-block" type="submit">Send Reset Link</button></form>' +
+    return authShell('Reset your password', 'Enter your account email and we will send a reset link.') +
+      '<form id="forgot-form" onsubmit="return AniStrimUI.doForgotPassword(event)">' +
+      '<div class="auth-field"><label for="forgot-email">Email</label>' +
+      '<input type="email" id="forgot-email" required autocomplete="email" placeholder="you@example.com"></div>' +
+      '<button class="btn-primary btn-block btn-auth-submit" id="forgot-submit" type="submit">Send Reset Link</button></form>' +
       '<p class="auth-switch"><a href="#/login">Back to sign in</a></p></div></div>';
   }
   function resetPasswordView(params, query) {
     renderHeader();
     var token = (query && query.token) || '';
     if (!token) {
-      return authShell('Reset Password') +
-        '<p class="form-error">This reset link is invalid or incomplete. Please request a new one.</p></div></div>';
+      return authShell('Reset Password', 'Your reset link is invalid or incomplete. Please request a new one.') +
+        '<p class="auth-switch"><a href="#/forgot-password">Request a new reset link</a></p></div></div>';
     }
-    return authShell('Reset Password') +
-      '<p class="auth-switch">Choose a new password for your account.</p>' +
-      '<form onsubmit="return AniStrimUI.doResetPassword(event)">' +
-      '<label>New password<input type="password" id="reset-password" required minlength="6" autocomplete="new-password"></label>' +
-      '<label>Confirm password<input type="password" id="reset-password-confirm" required minlength="6" autocomplete="new-password"></label>' +
-      '<button class="btn-primary btn-block" type="submit">Reset Password</button></form></div></div>';
+    return authShell('Reset Password', 'Choose a new password for your account.') +
+      '<form id="reset-form" onsubmit="return AniStrimUI.doResetPassword(event)">' +
+      '<div class="auth-field"><label for="reset-password">New Password</label>' +
+      '<div class="auth-password-wrap">' +
+      '<input type="password" id="reset-password" required minlength="6" autocomplete="new-password" placeholder="Create a new password">' +
+      '<button type="button" class="auth-pw-toggle" onclick="AniStrimUI.togglePassword(\'reset-password\',this)" aria-label="Show password" tabindex="-1">&#128065;</button>' +
+      '</div></div>' +
+      '<div class="auth-field"><label for="reset-password-confirm">Confirm Password</label>' +
+      '<div class="auth-password-wrap">' +
+      '<input type="password" id="reset-password-confirm" required minlength="6" autocomplete="new-password" placeholder="Confirm your new password">' +
+      '<button type="button" class="auth-pw-toggle" onclick="AniStrimUI.togglePassword(\'reset-password-confirm\',this)" aria-label="Show password" tabindex="-1">&#128065;</button>' +
+      '</div></div>' +
+      '<button class="btn-primary btn-block btn-auth-submit" id="reset-submit" type="submit">Reset Password</button></form></div></div>';
   }
   function googleCallbackView(params, query) {
     renderHeader();
@@ -639,10 +647,18 @@
   async function doForgotPassword(e) {
     e.preventDefault();
     var err = document.getElementById('auth-error');
+    var email = document.getElementById('forgot-email');
+    var btn = document.getElementById('forgot-submit');
+    // Validate
+    if (!email.value.trim()) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; email.focus(); return false; }
+    // Loading state
+    err.style.display = 'none'; err.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending\u2026'; }
     try {
-      await API.forgotPassword(document.getElementById('forgot-email').value);
-      if (err) { err.textContent = 'If an account exists for that email, a reset link has been sent.'; }
-    } catch (e2) { if (err) err.textContent = e2.message || 'Could not request a reset link.'; }
+      await API.forgotPassword(email.value);
+      if (err) { err.textContent = 'If an account exists for that email, a reset link has been sent.'; err.style.display = 'block'; }
+    } catch (e2) { if (err) { err.textContent = e2.message || 'Could not request a reset link.'; err.style.display = 'block'; } }
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
     return false;
   }
   var POST_AUTH_ROUTE_KEY = 'anistrim.web.postAuthRoute';
@@ -671,22 +687,35 @@
     e.preventDefault();
     var err = document.getElementById('auth-error');
     var token = Router.query().token || '';
-    var password = document.getElementById('reset-password').value;
-    var confirm = document.getElementById('reset-password-confirm').value;
-    if (password !== confirm) {
-      if (err) err.textContent = 'Passwords do not match.';
-      return false;
-    }
+    var password = document.getElementById('reset-password');
+    var confirm = document.getElementById('reset-password-confirm');
+    var btn = document.getElementById('reset-submit');
+    // Validate
+    if (!password.value) { err.textContent = 'Please choose a new password.'; err.style.display = 'block'; password.focus(); return false; }
+    if (password.value.length < 6) { err.textContent = 'Password must be at least 6 characters.'; err.style.display = 'block'; password.focus(); return false; }
+    if (confirm.value !== password.value) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; confirm.focus(); return false; }
+    // Loading state
+    err.style.display = 'none'; err.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Resetting\u2026'; }
     try {
-      // The API contract calls this field newPassword; never put the reset
-      // token in a URL or persistent storage.
       await API.request('/api/auth/reset-password', {
         method: 'POST',
-        body: { token: token, newPassword: password },
+        body: { token: token, newPassword: password.value },
       });
       toast('Password reset successfully. Please sign in.');
       Router.navigate('/login');
-    } catch (e2) { if (err) err.textContent = e2.message || 'Could not reset password.'; }
+    } catch (e2) {
+      if (err) {
+        var msg = e2.message || '';
+        if (msg.indexOf('expired') !== -1 || msg.indexOf('invalid') !== -1 || msg.indexOf('token') !== -1) {
+          err.textContent = 'This reset link has expired or is invalid. Please request a new one.';
+        } else {
+          err.textContent = 'Could not reset password. Please try again.';
+        }
+        err.style.display = 'block';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Reset Password'; }
+    }
     return false;
   }
   async function completeGoogleCallback(query) {
