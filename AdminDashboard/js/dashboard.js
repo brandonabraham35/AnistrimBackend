@@ -330,6 +330,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const failed = (data.email.buckets || []).filter(b => b.status === 'failure').reduce((a, b) => a + (b.count || 0), 0);
         _set('hm-email-fails', failed);
       }
+      // ── Stream Cache Metrics ──
+      if (data.streamCache) {
+        const sc = data.streamCache;
+        _set('hm-sc-redis', sc.redisHits);
+        _set('hm-sc-mysql', sc.mysqlHits);
+        _set('hm-sc-misses', sc.cacheMisses);
+        _set('hm-sc-resolvers', sc.resolverCalls);
+        _set('hm-sc-animeheaven', sc.animeHeavenCalls);
+        _set('hm-sc-consumet', sc.consumetCalls);
+        _set('hm-sc-verify-ok', sc.verificationSuccesses);
+        _set('hm-sc-verify-fail', sc.verificationFailures);
+        _set('hm-sc-playback-fail', sc.playbackReportedFailures);
+        _set('hm-sc-active', sc.activeCachedSources);
+        _set('hm-sc-known-exp', sc.knownExpirySources);
+        _set('hm-sc-unknown-exp', sc.unknownExpirySources);
+      }
 
       // ── Health sparklines (component health history) ──
       if (data.health && data.health.points && data.health.points.length) {
@@ -383,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) {
       console.warn('[HealthMetrics] Failed to load:', e.message);
-      ['hm-p50','hm-p95','hm-5xx','hm-stream-fails','hm-payment-fails','hm-email-fails'].forEach(id => _set(id, null));
+      ['hm-p50','hm-p95','hm-5xx','hm-stream-fails','hm-payment-fails','hm-email-fails','hm-sc-redis','hm-sc-mysql','hm-sc-misses','hm-sc-resolvers','hm-sc-animeheaven','hm-sc-consumet','hm-sc-verify-ok','hm-sc-verify-fail','hm-sc-playback-fail','hm-sc-active','hm-sc-known-exp','hm-sc-unknown-exp'].forEach(id => _set(id, null));
       _destroyChart('chart-5xx-rate');
       _destroyChart('chart-health-sparkline');
       const topEl = document.getElementById('hm-top-episodes');

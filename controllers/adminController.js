@@ -1016,13 +1016,14 @@ case 'provider-usage': {
       const hours = req.query.hours;
       const component = req.query.component || null;
 
-      const [history, latency, fivexx, stream, payments, email] = await Promise.all([
+      const [history, latency, fivexx, stream, payments, email, streamCache] = await Promise.all([
         metrics.getHealthHistory({ component, hours }),
         metrics.getLatencyPercentiles({ hours }),
         metrics.get5xxRate({ hours }),
         metrics.getStreamFailures({ hours }),
         metrics.getPaymentFailures({ hours }),
         metrics.getEmailFailures({ hours }),
+        metrics.getStreamCacheMetrics(),
       ]);
 
       // Compute "degraded since <ts>" for the requested component (if any) or
@@ -1036,6 +1037,21 @@ case 'provider-usage': {
         stream: { byProvider: stream.byProvider, topEpisodes: stream.topEpisodes, liveProvider: stream.liveProvider, source: stream.source, hours: stream.hours },
         payments: { buckets: payments.buckets, source: payments.source, hours: payments.hours },
         email: { buckets: email.buckets, source: email.source, hours: email.hours },
+        streamCache: {
+          redisHits: streamCache.redisHits,
+          mysqlHits: streamCache.mysqlHits,
+          cacheMisses: streamCache.cacheMisses,
+          resolverCalls: streamCache.resolverCalls,
+          animeHeavenCalls: streamCache.animeHeavenCalls,
+          consumetCalls: streamCache.consumetCalls,
+          verificationSuccesses: streamCache.verificationSuccesses,
+          verificationFailures: streamCache.verificationFailures,
+          playbackReportedFailures: streamCache.playbackReportedFailures,
+          activeCachedSources: streamCache.activeCachedSources,
+          knownExpirySources: streamCache.knownExpirySources,
+          unknownExpirySources: streamCache.unknownExpirySources,
+          averageSourceLifetimeMs: streamCache.averageSourceLifetimeMs,
+        },
       });
     } catch (error) {
       console.error('[Admin] getHealthMetrics error:', error.message);

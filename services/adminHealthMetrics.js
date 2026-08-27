@@ -13,6 +13,7 @@
 // schema (migrations may not have run yet on some replica), and cap the
 // time-window so a mis-typed hours param can't do a table scan.
 const db = require('../config/db');
+const streamCacheMetrics = require('./streamCacheMetrics');
 
 const MAX_HOURS = 24 * 30; // cap the window at 30 days
 
@@ -308,5 +309,6 @@ module.exports = {
   getStreamFailures,
   getPaymentFailures,
   getEmailFailures,
+  getStreamCacheMetrics: () => streamCacheMetrics.getSnapshot(db),
   _clampHours: clampHours, // exposed for tests
 };

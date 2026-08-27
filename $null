@@ -1,0 +1,15 @@
+Invoke-WebRequest : Not found
+At line:1 char:2
++ (Invoke-WebRequest -Uri 'https://anistream.one/_app/immutable/manifes ...
++  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebExc 
+   eption
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+NOT : The term 'NOT' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the 
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:131
++ ... s' -UseBasicParsing).Content ; if ($LASTEXITCODE -ne 0) { NOT FOUND }
++                                                               ~~~
+    + CategoryInfo          : ObjectNotFound: (NOT:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 

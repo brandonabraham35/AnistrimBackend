@@ -5,6 +5,7 @@ const db = require('../config/db');
 const logger = require('../utils/logger');
 const { sendSuccess } = require('../utils/response');
 const streamCacheService = require('../services/streamCacheService');
+const streamCacheMetrics = require('../services/streamCacheMetrics');
 const cache = require('../utils/cacheService');
 
 // Rate limit: max 3 failure reports per user per 5 minutes.
@@ -85,6 +86,7 @@ exports.reportPlaybackFailure = async (req, res) => {
     // Invalidate Redis cache for the default provider.
     const provider = process.env.STREAM_CACHE_PROVIDER || 'animeheaven';
     const redisKey = streamCacheService.buildRedisKey(epId, provider);
+    streamCacheMetrics.increment('playbackReportedFailures');
     try {
       await cache.delByPrefix(redisKey);
     } catch (redisErr) {

@@ -148,6 +148,60 @@
                         <span class="health-metric-value" id="hm-email-fails">—</span>
                     </div>
                 </div>
+                <!-- Stream Cache Metrics -->
+                <div style="border-top:1px solid var(--border,#2a2c37);margin:0 1rem;padding:1rem 0;">
+                    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.5rem;font-weight:600;"><i class="fas fa-server"></i> Stream Cache (since restart)</div>
+                    <div class="health-metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:0.5rem;">
+                        <div class="health-metric">
+                            <span class="health-metric-label">Redis Hits</span>
+                            <span class="health-metric-value" id="hm-sc-redis">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">MySQL Hits</span>
+                            <span class="health-metric-value" id="hm-sc-mysql">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Cache Misses</span>
+                            <span class="health-metric-value" id="hm-sc-misses">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Resolvers</span>
+                            <span class="health-metric-value" id="hm-sc-resolvers">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">AnimeHeaven</span>
+                            <span class="health-metric-value" id="hm-sc-animeheaven">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Consumet</span>
+                            <span class="health-metric-value" id="hm-sc-consumet">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Verify OK</span>
+                            <span class="health-metric-value" id="hm-sc-verify-ok">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Verify Fail</span>
+                            <span class="health-metric-value" id="hm-sc-verify-fail">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Playback Fails</span>
+                            <span class="health-metric-value" id="hm-sc-playback-fail">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Active Sources</span>
+                            <span class="health-metric-value" id="hm-sc-active">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Known Expiry</span>
+                            <span class="health-metric-value" id="hm-sc-known-exp">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Unknown Expiry</span>
+                            <span class="health-metric-value" id="hm-sc-unknown-exp">—</span>
+                        </div>
+                    </div>
+                </div>
                 <div class="health-metrics-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;padding:0 1rem 1rem;">
                     <div>
                         <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">5xx / Total (per hour)</div>
