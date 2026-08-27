@@ -24,49 +24,14 @@ const clientAgnostic = require('../config/clientAgnostic');
 const pool = require('../config/db');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender.com';
-// Public web origin (Vercel). The web client's Google OAuth callback and its
-// post-OAuth redirect resolve against this origin so browser users stay on the
-// public anistrim.com domain and never land on the Render backend host.
 const FRONTEND_URL = process.env.FRONTEND_URL || BACKEND_URL;
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
 const APP_PACKAGE = process.env.APP_PACKAGE || 'com.anistrim.render';
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
 
-/**
- * The Google OAuth redirect_uri for a client. The web client returns to the
- * public origin (which Vercel rewrites/proxies to this backend), while the
- * mobile/desktop/deep-link clients keep the backend origin as before. The value
- * is carried in the OAuth `state` (via the client id) so the matching URI is
- * used again at token exchange.
- * @param {string|null} client client id (web|mobile|desktop|admin) or ''
- * @returns {string} absolute callback URL used with Google
- */
 function getCallbackUri(client) {
   const base = String(client === 'web' ? FRONTEND_URL : BACKEND_URL).replace(/\/+$/, '');
   return `${base}/api/auth/google/callback`;
-}
-
-// PKCE code verifier store — maps nonce → code_verifier. Cleaned up periodically.
-const pkceVerifierStore = new Map();
-const PKCE_VERIFIER_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-// Periodically clean up expired PKCE verifiers
-setInterval(() => {
-  const now = Date.now();
-  for (const [nonce] of pkceVerifierStore.entries()) {
-    if (now > pkceVerifierStore.get(nonce).expiresAt) pkceVerifierStore.delete(nonce);
-  }
-}, 60 * 1000).unref?.();
-
-// Generate a PKCE code_verifier (43-128 random chars, RFC 7636)
-function generateCodeVerifier() {
-  return crypto.randomBytes(32).toString('base64url');
-}
-
-// Compute PKCE code_challenge from code_verifier (SHA256, base64url-encoded, no padding)
-function generateCodeChallenge(verifier) {
-  const hash = crypto.createHash('sha256').update(verifier).digest();
-  return hash.toString('base64url').replace(/=/g, '');
 }
 
 const client = new OAuth2Client(
@@ -75,7 +40,6 @@ const client = new OAuth2Client(
   getCallbackUri('')
 );
 
-// ── OAuth login codes stored in DB (multi-instance safe) ──────
 async function createLoginCode(token, refreshToken, user, intent) {
   const code = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + LOGIN_CODE_TTL_MS);
@@ -92,12 +56,10 @@ async function consumeLoginCode(code) {
     [code]
   );
   if (!rows.length) return null;
-  // Delete the code (single-use)
   await pool.query('DELETE FROM oauth_login_codes WHERE code = ?', [code]).catch(() => {});
   return rows[0];
 }
 
-// Periodic cleanup of expired codes (every 5 minutes)
 setInterval(() => {
   pool.query('DELETE FROM oauth_login_codes WHERE expires_at < NOW()').catch(() => {});
 }, 5 * 60 * 1000).unref?.();
@@ -106,31 +68,15 @@ setInterval(() => {
 //    survives the round-trip through Google. Defaults to 'login'.
 exports.googleRedirect = (req, res) => {
   const intent = req.query.intent === 'signup' ? 'signup' : 'login';
-  // The browser navigation to this endpoint cannot carry X-Client headers.
-  // Preserve a validated client target in OAuth state so the callback can
-  // return a browser client to its own route after Google completes.
   const requestedClient = typeof req.query.client === 'string' ? req.query.client : '';
   const returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(requestedClient) ? requestedClient : '';
-
-  // PKCE: Generate code_verifier and code_challenge
-  const codeVerifier = generateCodeVerifier();
-  const codeChallenge = generateCodeChallenge(codeVerifier);
-  const pkceNonce = crypto.randomBytes(16).toString('hex');
-
-  // Store verifier keyed by nonce with TTL
-  pkceVerifierStore.set(pkceNonce, {
-    codeVerifier,
-    expiresAt: Date.now() + PKCE_VERIFIER_TTL_MS,
-  });
 
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['openid', 'email', 'profile'],
     prompt: 'select_account',
     redirect_uri: getCallbackUri(returnClient),
-    state: JSON.stringify({ intent, client: returnClient, pkceNonce }),
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
+    state: JSON.stringify({ intent, client: returnClient }),
   });
   res.redirect(url);
 };
@@ -177,13 +123,11 @@ exports.googleCallback = async (req, res) => {
 
   let intent = 'login';
   let returnClient = '';
-  let pkceNonce = '';
   try {
     if (state) {
       const parsedState = JSON.parse(state);
       intent = (parsedState.intent === 'signup') ? 'signup' : 'login';
       returnClient = ['web', 'mobile', 'desktop', 'admin'].includes(parsedState.client) ? parsedState.client : '';
-      pkceNonce = parsedState.pkceNonce || '';
     }
   } catch (e) { /* malformed state -> default login */ }
 
@@ -206,27 +150,9 @@ exports.googleCallback = async (req, res) => {
   }
 
   try {
-    // Stage 1 — Token exchange. Uses the SAME per-client redirect URI as the
-    // authorization request (web → anistrim.com callback). Object form is the
-    // only correct form for google-auth-library >= 10.
-        // Object form is the only correct form for google-auth-library >= 10
-    // (a second positional arg is treated as a callback). `client_id` is set
-    // explicitly so token exchange authenticates the right Google OAuth
-    // client and `redirect_uri` is applied deterministically — the same URI
-    // used during authorization (`getCallbackUri(returnClient)`).
-    // PKCE: Look up code_verifier by nonce and include it in token exchange.
-    let codeVerifier = undefined;
-    if (pkceNonce && pkceVerifierStore.has(pkceNonce)) {
-      const pkceRecord = pkceVerifierStore.get(pkceNonce);
-      if (Date.now() <= pkceRecord.expiresAt) {
-        codeVerifier = pkceRecord.codeVerifier;
-      }
-      pkceVerifierStore.delete(pkceNonce); // single-use
-    }
-    const tokenParams = { code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient) };
-    if (codeVerifier) tokenParams.code_verifier = codeVerifier;
+    // Stage 1 — Token exchange.
     const { tokens } = await tagged('token-exchange', () =>
-      client.getToken(tokenParams)
+      client.getToken({ code, client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: getCallbackUri(returnClient) })
     );
     client.setCredentials(tokens);
 
