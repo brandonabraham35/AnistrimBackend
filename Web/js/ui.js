@@ -400,7 +400,7 @@
   // ── Auth pages ──────────────────────────────────────────
   function authShell(title, subtitle) {
     return '<div class="page auth-page"><div class="auth-card">' +
-      '<div class="auth-brand"><img src="assets/logo.png" alt="AniStrim" class="auth-logo-img"><h1>' + title + '</h1>' +
+      '<div class="auth-brand"><img src="assets/logo2.png" alt="AniStrim" class="auth-logo-img"><h1>' + title + '</h1>' +
       (subtitle ? '<p class="auth-subtitle">' + subtitle + '</p>' : '') +
       '</div>' +
       '<div id="auth-error" class="form-error" role="alert"></div>';

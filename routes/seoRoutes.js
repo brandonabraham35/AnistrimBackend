@@ -19,6 +19,7 @@ router.get('/sitemap.xml', seo.getSitemap);
 router.get('/robots.txt', seo.getRobots);
 router.get('/browse', seo.getBrowseSeo);
 router.get('/search', seo.getSearchSeo);
+router.get('/genre/:name', seo.getGenreSeo);
 router.get('/anime/:id', seo.getAnimeSeo);
 
 module.exports = router;

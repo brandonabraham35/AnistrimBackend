@@ -1,4 +1,17 @@
 {
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.anistrim.com"
+        }
+      ],
+      "destination": "https://anistrim.com/$1",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
@@ -23,6 +36,10 @@
     {
       "source": "/search",
       "destination": "https://anistrimbackend.onrender.com/search"
+    },
+    {
+      "source": "/genre/:name",
+      "destination": "https://anistrimbackend.onrender.com/genre/:name"
     },
     {
       "source": "/(.*)",
