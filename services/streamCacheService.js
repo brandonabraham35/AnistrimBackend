@@ -399,7 +399,72 @@ async function isCachedSourceAlive(url, context = {}) {
 }
 
 /**
+ * Determine the source state for a cached row.
+ *
+ * States:
+ *   ACTIVE    — Source is known to be valid (verified recently or within AniStrim TTL)
+ *   EXPIRED   — Upstream expiry (detected_expires_at) has passed
+ *   INVALID   — Verification or playback failure marked it unusable
+ *   UNKNOWN   — No upstream expiry known, verification status unknown or stale
+ *
+ * NEVER classifies "no expiry detected" as "permanent".
+ *
+ * @param {object} row - DB row from episode_stream_cache
+ * @param {number} now - Date.now()
+ * @returns {string} 'active' | 'expired' | 'invalid' | 'unknown'
+ */
+function getSourceState(row, now = Date.now()) {
+  if (!row) return 'unknown';
+
+  // Rule 1: If detected_expires_at exists and is in the past → EXPIRED.
+  if (row.detected_expires_at) {
+    const detectedExpiry = new Date(row.detected_expires_at).getTime();
+    if (Number.isFinite(detectedExpiry) && detectedExpiry <= now) {
+      return 'expired';
+    }
+  }
+
+  // Rule 3: If verification_status is 'invalid' → INVALID.
+  if (row.verification_status === 'invalid') {
+    return 'invalid';
+  }
+
+  // Rule 2: If source has recently verified successfully → ACTIVE.
+  if (row.verification_status === 'active' && row.last_verified_at) {
+    return 'active';
+  }
+
+  // Rule 4: If AniStrim's cache TTL (expires_at) has passed → treat as expired.
+  if (isExpired(row, now)) {
+    return 'expired';
+  }
+
+  // Rule 4 continued: No upstream expiry known, but within AniStrim TTL → UNKNOWN.
+  // This means the source may still be valid, but we don't know for sure.
+  return 'unknown';
+}
+
+/**
+ * Check whether a cached row is reusable based on its source state.
+ *
+ * Reuse rules:
+ *   ACTIVE    → reuse
+ *   EXPIRED   → do not reuse
+ *   INVALID   → do not reuse
+ *   UNKNOWN   → reuse (within AniStrim TTL); verification will happen on next play
+ *
+ * @param {object} row - DB row from episode_stream_cache
+ * @param {number} now - Date.now()
+ * @returns {boolean}
+ */
+function isReusable(row, now = Date.now()) {
+  const state = getSourceState(row, now);
+  return state === 'active' || state === 'unknown';
+}
+
+/**
  * Check whether a cached row is still valid (not expired).
+ * Kept for backward compatibility with existing callers.
  * @param {object} row - DB row
  * @param {number} now - Date.now()
  * @returns {boolean}
@@ -433,26 +498,30 @@ function reconstructProviderResult(row) {
 }
 
 /**
- * Find a valid (non-expired) cached stream for an episode+provider.
- * Returns re-constructed provider-result data, or null if missing/expired.
+ * Find a valid (non-expired, non-invalid) cached stream for an episode+provider.
+ * Returns re-constructed provider-result data, or null if missing/expired/invalid.
+ *
+ * Uses the source state machine to determine reusability:
+ *   ACTIVE/UNKNOWN → reuse (return cached result)
+ *   EXPIRED/INVALID → do not reuse (return null, trigger resolution)
  *
  * On any DB error this logs and returns null so the caller resolves normally.
  *
  * @param {number|string} episodeId
  * @param {string} provider
- * @returns {Promise<{row: object|null, result: object|null}>}
+ * @returns {Promise<{row: object|null, result: object|null, state: string|null}>}
  */
 async function findCachedStream(episodeId, provider) {
-  if (!episodeId) return { row: null, result: null };
+  if (!episodeId) return { row: null, result: null, state: null };
   try {
     const [rows] = await db.query(
       'SELECT id, episode_id, provider, stream_type, stream_data, expires_at, ' +
-      'detected_expires_at, expiry_source, verification_status, last_used_at ' +
+      'detected_expires_at, expiry_source, verification_status, last_used_at, last_verified_at ' +
       'FROM episode_stream_cache WHERE episode_id = ? AND provider = ? LIMIT 1',
       [episodeId, provider]
     );
     const row = rows && rows[0] ? rows[0] : null;
-    if (!row) return { row: null, result: null };
+    if (!row) return { row: null, result: null, state: null };
 
     // Parse stream_data (mysql2 returns JSON columns as parsed objects).
     let data = row.stream_data;
@@ -461,35 +530,31 @@ async function findCachedStream(episodeId, provider) {
     }
     if (!data || !Array.isArray(data.sources) || data.sources.length === 0) {
       // Malformed/empty cache — treat as a miss.
-      return { row, result: null };
+      return { row, result: null, state: 'invalid' };
     }
     row.stream_data = data;
 
-    // Check both AniStrim cache TTL (expires_at) and upstream expiry (detected_expires_at).
-    // The source is considered expired if EITHER has passed.
+    // Determine source state using the state machine.
     const now = Date.now();
-    const aniStrimExpired = isExpired(row, now);
-    const upstreamExpired = row.detected_expires_at
-      ? new Date(row.detected_expires_at).getTime() <= now
-      : false;
+    const state = getSourceState(row, now);
 
-    if (aniStrimExpired || upstreamExpired) {
-      logger.info('[STREAM_CACHE] EXPIRED', {
-        episodeId, provider,
-        aniStrimExpired, upstreamExpired,
+    if (!isReusable(row, now)) {
+      logger.info('[STREAM_CACHE] NOT_REUSABLE', {
+        episodeId, provider, state,
         detectedExpiresAt: row.detected_expires_at,
+        verificationStatus: row.verification_status,
       });
-      return { row, result: null };
+      return { row, result: null, state };
     }
 
     // Refresh last_used_at opportunistically (best-effort, non-fatal).
     markUsed(row.id).catch(() => {});
 
-    logger.info('[STREAM_CACHE] HIT', { episodeId, provider });
-    return { row, result: reconstructProviderResult(row) };
+    logger.info('[STREAM_CACHE] HIT', { episodeId, provider, state });
+    return { row, result: reconstructProviderResult(row), state };
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (find)', { episodeId, provider, error: err.message });
-    return { row: null, result: null };
+    return { row: null, result: null, state: null };
   }
 }
 
@@ -755,6 +820,9 @@ module.exports = {
   verifySource,
   verifySourceWithRange,
   verifyAndRecord,
+  // Source state machine (exposed for testing + external use).
+  getSourceState,
+  isReusable,
   // Expiry detection functions (exposed for testing).
   detectExpiryFromUrl,
   detectExpiryFromHeaders,

@@ -74,4 +74,9 @@ module.exports = {
   get safeTtlMs() {
     return this.safeTtlMinutes * 60 * 1000;
   },
+
+  // Verification interval for UNKNOWN state sources (in minutes).
+  // Sources with no known upstream expiry but stale verification will be
+  // verified after this interval. Default: 30 minutes.
+  verificationIntervalMinutes: parsePositiveInt(process.env.STREAM_VERIFICATION_INTERVAL_MINUTES, 30),
 };
