@@ -209,7 +209,11 @@
       if (bd) bd.classList.add('open');
       if (btn) btn.setAttribute('aria-expanded', 'true');
       document.body.style.overflow = 'hidden'; // prevent background scroll
+      document.addEventListener('keydown', mobileNavEscHandler);
     }
+  }
+  function mobileNavEscHandler(e) {
+    if (e.key === 'Escape') closeMobileNav();
   }
   function closeMobileNav() {
     var el = document.getElementById('mobile-nav');
@@ -219,6 +223,7 @@
     if (bd) bd.classList.remove('open');
     if (btn) btn.setAttribute('aria-expanded', 'false');
     document.body.style.overflow = '';
+    document.removeEventListener('keydown', mobileNavEscHandler);
   }
 
   // ── Slider state ──────────────────────────────────────────
