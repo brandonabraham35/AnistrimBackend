@@ -214,6 +214,150 @@ function detectSourceExpiry(providerResult) {
 // AnimeHeaven resolution (gate.php → new token).
 const SOURCE_PROBE_TIMEOUT_MS = Number(process.env.STREAM_CACHE_SOURCE_PROBE_TIMEOUT_MS || 4000);
 
+// ── Cheap Source Verification (HEAD/Range) ─────────────────
+// Verifies a cached source URL without downloading the full media.
+// Order: HEAD → Range(0-1023) → fail-open.
+// Records verification results in episode_stream_cache.
+const VERIFY_TIMEOUT_MS = Number(process.env.STREAM_VERIFY_TIMEOUT_MS || 5000);
+const RANGE_SIZE = 1024; // Only fetch first 1KB for verification
+
+// Known media content types.
+const MEDIA_CONTENT_TYPES = new Set([
+  'video/mp4', 'video/webm', 'video/ogg',
+  'application/vnd.apple.mpegurl', 'application/x-mpegurl',
+  'application/octet-stream', // Some CDNs return this for MP4
+  'audio/mp4', 'audio/aac',
+]);
+
+/**
+ * Verify a single cached source URL using HEAD request.
+ * Falls back to Range request if HEAD is unsupported (405).
+ * NEVER downloads the full media — Range request fetches only first 1KB.
+ *
+ * @param {string} url - the raw (pre-proxy) CDN source URL
+ * @param {object} [context] - { referer, origin } used when probing
+ * @returns {Promise<{status: number|null, contentType: string|null, alive: boolean}>}
+ */
+async function verifySource(url, context = {}) {
+  if (!url) return { status: null, contentType: null, alive: true }; // fail-open
+
+  const extraHeaders = {};
+  if (context.referer) extraHeaders.Referer = String(context.referer);
+  if (context.origin) extraHeaders.Origin = String(context.origin);
+
+  // Step 1: Try HEAD request.
+  try {
+    const response = await request(
+      { method: 'head', url, maxRedirects: 3 },
+      {
+        providerName: config.provider,
+        streaming: true,
+        skipProxy: true,
+        dontTrackHealth: true,
+        extraHeaders,
+        timeout: VERIFY_TIMEOUT_MS,
+      }
+    );
+    // HEAD succeeded — extract status and content type from response.
+    return {
+      status: response.status || 200,
+      contentType: response.headers?.['content-type'] || null,
+      alive: true,
+    };
+  } catch (headErr) {
+    const headStatus = Number(headErr?.response?.status || 0);
+
+    // HEAD returned 405 (Method Not Allowed) — try Range fallback.
+    if (headStatus === 405) {
+      return verifySourceWithRange(url, context, extraHeaders);
+    }
+
+    // Explicit dead: 403/404.
+    if (headStatus === 403 || headStatus === 404) {
+      return { status: headStatus, contentType: null, alive: false };
+    }
+
+    // Any other HEAD failure (timeout, 5xx, network error) — fail-open.
+    return { status: headStatus, contentType: null, alive: true };
+  }
+}
+
+/**
+ * Fallback verification using a Range request (first 1KB only).
+ * Used when HEAD returns 405 (Method Not Allowed).
+ * NEVER downloads the full media — only requests bytes 0-1023.
+ *
+ * @param {string} url
+ * @param {object} context
+ * @param {object} extraHeaders
+ * @returns {Promise<{status: number|null, contentType: string|null, alive: boolean}>}
+ */
+async function verifySourceWithRange(url, context, extraHeaders) {
+  const rangeHeaders = { ...extraHeaders, Range: `bytes=0-${RANGE_SIZE - 1}` };
+
+  try {
+    const response = await request(
+      { method: 'get', url, maxRedirects: 3 },
+      {
+        providerName: config.provider,
+        streaming: true,
+        skipProxy: true,
+        dontTrackHealth: true,
+        extraHeaders: rangeHeaders,
+        timeout: VERIFY_TIMEOUT_MS,
+      }
+    );
+    return {
+      status: response.status || 200,
+      contentType: response.headers?.['content-type'] || null,
+      alive: true,
+    };
+  } catch (rangeErr) {
+    const rangeStatus = Number(rangeErr?.response?.status || 0);
+
+    // Explicit dead: 403/404.
+    if (rangeStatus === 403 || rangeStatus === 404) {
+      return { status: rangeStatus, contentType: null, alive: false };
+    }
+
+    // Any other failure — fail-open.
+    return { status: rangeStatus, contentType: null, alive: true };
+  }
+}
+
+/**
+ * Verify a cached source and record the result in episode_stream_cache.
+ * Updates: last_verified_at, verification_status, response_status, content_type,
+ *          last_failed_at (on failure).
+ *
+ * @param {number} cacheRowId - the DB row id
+ * @param {string} url - the source URL to verify
+ * @param {object} [context] - { referer, origin }
+ * @returns {Promise<{alive: boolean, status: number|null, contentType: string|null}>}
+ */
+async function verifyAndRecord(cacheRowId, url, context = {}) {
+  const result = await verifySource(url, context);
+  const now = new Date();
+
+  try {
+    if (result.alive) {
+      await db.query(
+        'UPDATE episode_stream_cache SET last_verified_at = ?, verification_status = ?, response_status = ?, content_type = ? WHERE id = ?',
+        [now, 'active', result.status, result.contentType, cacheRowId]
+      );
+    } else {
+      await db.query(
+        'UPDATE episode_stream_cache SET last_verified_at = ?, verification_status = ?, response_status = ?, content_type = ?, last_failed_at = ? WHERE id = ?',
+        [now, 'invalid', result.status, result.contentType, now, cacheRowId]
+      );
+    }
+  } catch (err) {
+    logger.warn('[STREAM_CACHE] FAILURE (verify record)', { cacheRowId, error: err.message });
+  }
+
+  return result;
+}
+
 /**
  * Probe a single cached source URL for aliveness. FAIL-OPEN.
  *
@@ -607,6 +751,10 @@ module.exports = {
   sweepExpired,
   startSweeper,
   isCachedSourceAlive,
+  // Verification functions (exposed for testing + external use).
+  verifySource,
+  verifySourceWithRange,
+  verifyAndRecord,
   // Expiry detection functions (exposed for testing).
   detectExpiryFromUrl,
   detectExpiryFromHeaders,
