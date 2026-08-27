@@ -44,6 +44,144 @@ const config = require('../config/streamCache');
 const { request } = require('../utils/providerHttp');
 const inFlightResolverManager = require('./inFlightResolverManager');
 
+// ── Source URL Expiry Detection ────────────────────────────
+// Parses resolved source URLs for reliable expiry indicators.
+// Supports common expiry parameter names and timestamp formats.
+// Returns { detectedExpiresAt: Date|null, expirySource: 'url'|'header'|'unknown' }
+
+// Known expiry parameter names (case-insensitive).
+const EXPIRY_PARAM_NAMES = new Set([
+  'expires', 'expiry', 'exp', 'expires_at', 'expiration',
+  'expire', 'token_expires', 'token_expiry',
+]);
+
+// Minimum timestamp threshold: 2020-01-01 in Unix seconds.
+// Any numeric value below this is NOT a valid timestamp.
+const MIN_VALID_TIMESTAMP = 1577836800;
+
+/**
+ * Parse a numeric string as a Unix timestamp (seconds or milliseconds).
+ * Returns a Date if valid, null otherwise.
+ * @param {string} value
+ * @returns {Date|null}
+ */
+function parseTimestamp(value) {
+  if (!value || typeof value !== 'string') return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < MIN_VALID_TIMESTAMP) return null;
+  // If the value is > 1e12, it's likely milliseconds; otherwise seconds.
+  const ms = num > 1e12 ? num : num * 1000;
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date;
+}
+
+/**
+ * Detect expiry from a source URL's query parameters.
+ * Only recognizes known expiry parameter names with reliable timestamp formats.
+ * @param {string} url
+ * @returns {{ detectedExpiresAt: Date|null, expirySource: string }}
+ */
+function detectExpiryFromUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return { detectedExpiresAt: null, expirySource: 'unknown' };
+  }
+
+  try {
+    const urlObj = new URL(url);
+    for (const [key, value] of urlObj.searchParams.entries()) {
+      const keyLower = key.toLowerCase();
+      if (EXPIRY_PARAM_NAMES.has(keyLower)) {
+        const date = parseTimestamp(value);
+        if (date) {
+          return { detectedExpiresAt: date, expirySource: 'url' };
+        }
+      }
+    }
+  } catch (e) {
+    // Invalid URL — cannot parse expiry.
+    return { detectedExpiresAt: null, expirySource: 'unknown' };
+  }
+
+  return { detectedExpiresAt: null, expirySource: 'unknown' };
+}
+
+/**
+ * Detect expiry from HTTP response headers.
+ * Recognizes Cache-Control max-age, Expires header.
+ * @param {object} headers - Response headers object
+ * @param {number} requestTime - Date.now() when the request was made
+ * @returns {{ detectedExpiresAt: Date|null, expirySource: string }}
+ */
+function detectExpiryFromHeaders(headers, requestTime) {
+  if (!headers || typeof headers !== 'object') {
+    return { detectedExpiresAt: null, expirySource: 'unknown' };
+  }
+
+  // Check Cache-Control for max-age
+  const cacheControl = headers['cache-control'] || headers['Cache-Control'] || '';
+  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/i);
+  if (maxAgeMatch) {
+    const maxAge = parseInt(maxAgeMatch[1], 10);
+    if (Number.isFinite(maxAge) && maxAge > 0) {
+      return {
+        detectedExpiresAt: new Date(requestTime + maxAge * 1000),
+        expirySource: 'header',
+      };
+    }
+  }
+
+  // Check Expires header
+  const expiresHeader = headers['expires'] || headers['Expires'];
+  if (expiresHeader) {
+    const date = new Date(expiresHeader);
+    if (Number.isFinite(date.getTime())) {
+      return { detectedExpiresAt: date, expirySource: 'header' };
+    }
+  }
+
+  return { detectedExpiresAt: null, expirySource: 'unknown' };
+}
+
+/**
+ * Detect the earliest expiry from all sources in a provider result.
+ * Checks each source URL for expiry parameters.
+ * @param {object} providerResult - { sources: [{url, ...}], ... }
+ * @returns {{ detectedExpiresAt: Date|null, expirySource: string }}
+ */
+function detectSourceExpiry(providerResult) {
+  if (!providerResult || !Array.isArray(providerResult.sources)) {
+    return { detectedExpiresAt: null, expirySource: 'unknown' };
+  }
+
+  let earliestExpiry = null;
+  let earliestSource = 'unknown';
+
+  for (const source of providerResult.sources) {
+    const { detectedExpiresAt, expirySource } = detectExpiryFromUrl(source.url);
+    if (detectedExpiresAt) {
+      if (!earliestExpiry || detectedExpiresAt < earliestExpiry) {
+        earliestExpiry = detectedExpiresAt;
+        earliestSource = expirySource;
+      }
+    }
+  }
+
+  // Also check the top-level streamUrl if sources didn't yield an expiry.
+  if (!earliestExpiry && providerResult.streamUrl) {
+    const { detectedExpiresAt, expirySource } = detectExpiryFromUrl(providerResult.streamUrl);
+    if (detectedExpiresAt) {
+      earliestExpiry = detectedExpiresAt;
+      earliestSource = expirySource;
+    }
+  }
+
+  return {
+    detectedExpiresAt: earliestExpiry,
+    expirySource: earliestSource,
+  };
+}
+
 // ── Cache-source liveness probe ────────────────────────────
 // A lightweight, FAIL-OPEN HEAD probe used to make cache-token freshness
 // decisions robust WITHOUT coupling the proxy layer to the DB. It only ever
@@ -143,7 +281,8 @@ async function findCachedStream(episodeId, provider) {
   if (!episodeId) return { row: null, result: null };
   try {
     const [rows] = await db.query(
-      'SELECT id, episode_id, provider, stream_type, stream_data, expires_at, last_used_at ' +
+      'SELECT id, episode_id, provider, stream_type, stream_data, expires_at, ' +
+      'detected_expires_at, expiry_source, verification_status, last_used_at ' +
       'FROM episode_stream_cache WHERE episode_id = ? AND provider = ? LIMIT 1',
       [episodeId, provider]
     );
@@ -161,12 +300,24 @@ async function findCachedStream(episodeId, provider) {
     }
     row.stream_data = data;
 
-    if (isExpired(row)) {
-      logger.info('[STREAM_CACHE] EXPIRED', { episodeId, provider });
+    // Check both AniStrim cache TTL (expires_at) and upstream expiry (detected_expires_at).
+    // The source is considered expired if EITHER has passed.
+    const now = Date.now();
+    const aniStrimExpired = isExpired(row, now);
+    const upstreamExpired = row.detected_expires_at
+      ? new Date(row.detected_expires_at).getTime() <= now
+      : false;
+
+    if (aniStrimExpired || upstreamExpired) {
+      logger.info('[STREAM_CACHE] EXPIRED', {
+        episodeId, provider,
+        aniStrimExpired, upstreamExpired,
+        detectedExpiresAt: row.detected_expires_at,
+      });
       return { row, result: null };
     }
 
-// Refresh last_used_at opportunistically (best-effort, non-fatal).
+    // Refresh last_used_at opportunistically (best-effort, non-fatal).
     markUsed(row.id).catch(() => {});
 
     logger.info('[STREAM_CACHE] HIT', { episodeId, provider });
@@ -197,6 +348,15 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
   const now = new Date();
   const expires = new Date(now.getTime() + ttl * 60 * 1000);
 
+  // Detect upstream source expiry from URL parameters.
+  const { detectedExpiresAt, expirySource } = detectSourceExpiry(providerResult);
+
+  // Determine verification status based on detected expiry.
+  let verificationStatus = 'unknown';
+  if (detectedExpiresAt) {
+    verificationStatus = detectedExpiresAt <= now ? 'expired' : 'active';
+  }
+
   // Infer stream type from the source URL (HLS manifest vs direct media).
   const firstSourceUrl = providerResult.sources?.[0]?.url || providerResult.streamUrl || '';
   const streamType = /\.m3u8(\?|$)/i.test(firstSourceUrl) ? 'hls' : 'direct';
@@ -211,17 +371,25 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
   try {
     await db.query(
       `INSERT INTO episode_stream_cache
-         (episode_id, provider, stream_type, stream_data, resolved_at, expires_at, last_used_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+         (episode_id, provider, stream_type, stream_data, resolved_at, expires_at,
+          detected_expires_at, expiry_source, verification_status, last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          stream_type = VALUES(stream_type),
          stream_data = VALUES(stream_data),
          resolved_at = VALUES(resolved_at),
          expires_at = VALUES(expires_at),
+         detected_expires_at = VALUES(detected_expires_at),
+         expiry_source = VALUES(expiry_source),
+         verification_status = VALUES(verification_status),
          last_used_at = VALUES(last_used_at)`,
-      [episodeId, provider, streamType, JSON.stringify(payload), now, expires, now]
+      [episodeId, provider, streamType, JSON.stringify(payload), now, expires,
+       detectedExpiresAt, expirySource, verificationStatus, now]
     );
-    logger.info('[STREAM_CACHE] SAVE', { episodeId, provider, ttlMin: ttl, streamType });
+    logger.info('[STREAM_CACHE] SAVE', {
+      episodeId, provider, ttlMin: ttl, streamType,
+      detectedExpiresAt, expirySource, verificationStatus,
+    });
     return true;
   } catch (err) {
     // Migration not applied / table missing / other DB error — never break playback.
@@ -390,6 +558,11 @@ module.exports = {
   sweepExpired,
   startSweeper,
   isCachedSourceAlive,
+  // Expiry detection functions (exposed for testing).
+  detectExpiryFromUrl,
+  detectExpiryFromHeaders,
+  detectSourceExpiry,
+  parseTimestamp,
   // Expose the single-flight manager for observability + tests.
   inFlightResolverManager,
 };
