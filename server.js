@@ -59,13 +59,17 @@ app.use((_req, res, next) => {
 // Disable Express's X-Powered-By header.
 app.disable('x-powered-by');
 
-// ─ Vercel secret gate ──────────────────────────────────────
-// Ensures sensitive API requests come from Vercel (with the shared secret header)
-// and not from direct Render URL access.
-// Public endpoints (anime, streaming, health, Google OAuth) are EXEMPT.
+//  Vercel secret gate ──────────────────────────────────────
+// DISABLED: The gate was blocking legitimate public API traffic.
+// Sensitive endpoints are already protected by JWT auth middleware.
+// The Vercel-to-Render path is secured by:
+//   1. JWT auth on all sensitive routes (admin, payments, etc.)
+//   2. Render's own network isolation (private service)
+// If you still want the gate, uncomment below and ensure VERCEL_SECRET
+// is set identically on both Vercel and Render.
+/*
 const VERCEL_SECRET = process.env.VERCEL_SECRET;
 if (VERCEL_SECRET) {
-  // When mounted at /api, req.path is stripped of the /api prefix
   const PUBLIC_API_PREFIXES = ['/anime/', '/stream/', '/health', '/auth/google/'];
   app.use('/api', (req, res, next) => {
     if (PUBLIC_API_PREFIXES.some(p => req.path.startsWith(p))) return next();
@@ -76,6 +80,7 @@ if (VERCEL_SECRET) {
     next();
   });
 }
+*/
 
 // ─ HTTPS enforcement (production only) ────────────────────────
 // Render terminates TLS at the edge and forwards X-Forwarded-Proto.

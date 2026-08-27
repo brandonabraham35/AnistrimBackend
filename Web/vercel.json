@@ -15,52 +15,31 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://anistrimbackend.onrender.com/api/:path*",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/api/:path*"
     },
     {
       "source": "/robots.txt",
-      "destination": "https://anistrimbackend.onrender.com/robots.txt",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/robots.txt"
     },
     {
       "source": "/sitemap.xml",
-      "destination": "https://anistrimbackend.onrender.com/sitemap.xml",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/sitemap.xml"
     },
     {
       "source": "/anime/:id",
-      "destination": "https://anistrimbackend.onrender.com/anime/:id",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/anime/:id"
     },
     {
       "source": "/browse",
-      "destination": "https://anistrimbackend.onrender.com/browse",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/browse"
     },
     {
       "source": "/search",
-      "destination": "https://anistrimbackend.onrender.com/search",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/search"
     },
     {
       "source": "/genre/:name",
-      "destination": "https://anistrimbackend.onrender.com/genre/:name",
-      "headers": [
-        { "key": "x-vercel-secret", "value": "${VERCEL_SECRET}" }
-      ]
+      "destination": "https://anistrimbackend.onrender.com/genre/:name"
     },
     {
       "source": "/(.*)",
