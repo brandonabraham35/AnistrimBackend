@@ -21,7 +21,10 @@ const webDirPath = path.join(ROOT, WEB_DIR);
 
 // Files that MUST exist in the webDir before we sync. If any is missing, the
 // native bundle would be broken (e.g. the unified admin dashboard absent).
-const REQUIRED_FILES = ['index.html', 'admin.html', 'config.js', 'scrpt.js'];
+const REQUIRED_FILES = [
+  'index.html', 'admin.html', 'config.js', 'scrpt.js',
+  'shared/client-contract/session.js',
+];
 
 let failed = false;
 
