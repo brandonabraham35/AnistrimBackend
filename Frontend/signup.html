@@ -69,7 +69,7 @@
 <script>
 // Initialize the native Google Sign-In plugin when running inside Capacitor.
 (function() {
-  if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNative) {
+  if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
     var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
     if (googleSignIn && typeof googleSignIn.initialize === 'function') {
       var backendUrl = (typeof window.getApiBaseUrl === 'function')

@@ -84,6 +84,12 @@ async function loginWithInAppBrowser() {
           return;
         }
       }
+      // Lazy initialization: if the initial init hasn't finished yet (e.g. a slow
+      // /client-id fetch on cold start), attempt it on demand before giving up.
+      if (!window.__googleSignInInitialized && typeof window.__ensureGoogleSignInInit === 'function') {
+        console.log('[GoogleAuth][SIGNIN] Plugin not yet initialized — attempting lazy init');
+        await window.__ensureGoogleSignInInit();
+      }
       if (!window.__googleSignInInitialized) {
         console.error('[GoogleAuth][SIGNIN] Plugin not initialized — skipping sign-in');
         showError('Google Sign-In is not configured. Please contact support.');

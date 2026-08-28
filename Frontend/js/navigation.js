@@ -28,7 +28,8 @@
   ]);
 
   function isCapacitor() {
-    return typeof window.Capacitor !== 'undefined' && window.Capacitor.isNative === true;
+    // Capacitor >=6 exposes the isNativePlatform() method; there is no isNative boolean.
+    return typeof window.Capacitor !== 'undefined' && !!window.Capacitor.isNativePlatform?.();
   }
 
   // Reject anything with a scheme or // (open redirect protection).

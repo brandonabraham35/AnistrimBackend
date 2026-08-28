@@ -68,54 +68,89 @@
 // Initialize the native Google Sign-In plugin when running inside Capacitor.
 // This must happen before the user taps the Google login button so the
 // Credential Manager API is ready. Uses the same web client ID as the backend.
-(function() {
-  if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNative) {
-    console.log('[GoogleAuth][INIT] Not in native context — skipping native init');
-    return;
-  }
-  var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
-  if (!googleSignIn) {
-    console.error('[GoogleAuth][INIT] GoogleSignIn plugin NOT available — Capacitor.Plugins:', Object.keys(window.Capacitor.Plugins || {}));
-    return;
-  }
-  if (typeof googleSignIn.initialize !== 'function') {
-    console.error('[GoogleAuth][INIT] GoogleSignIn.initialize is not a function');
-    return;
-  }
-
-  console.log('[GoogleAuth][INIT] Starting initialization');
-  // Mark that initialization is in progress so login.js can check.
-  window.__googleSignInInitInProgress = true;
-
-  // Fetch the Google Client ID from the backend (same as GIS uses).
-  var backendUrl = (typeof window.getApiBaseUrl === 'function')
-    ? window.getApiBaseUrl()
-    : 'https://anistrimbackend.onrender.com';
-  fetch(backendUrl + '/api/auth/google/client-id', {
-    headers: { 'Accept': 'application/json' }
-  })
-  .then(function(res) {
-    console.log('[GoogleAuth][INIT] Client ID response status:', res.status);
-    return res.json();
-  })
-  .then(function(data) {
-    var clientId = (data && data.success === true && data.data) ? data.data.clientId : data.clientId;
-    console.log('[GoogleAuth][INIT] Client ID configured:', clientId ? 'YES (length=' + clientId.length + ')' : 'NO');
-    if (clientId) {
-      return googleSignIn.initialize({ clientId: clientId }).then(function() {
-        console.log('[GoogleAuth][INIT] Initialization successful');
-        window.__googleSignInInitialized = true;
-      });
-    } else {
-      console.error('[GoogleAuth][INIT] Could not retrieve Google Client ID for native plugin');
+(function () {
+  // Capacitor exposes isNativePlatform() (a method) on the global; there is no
+  // isNative boolean. The plugin proxy only registers with the bridge after
+  // DOMContentLoaded on cold start, so we run on that event by default and
+  // can be forced again on demand (window.__ensureGoogleSignInInit).
+  function doInit() {
+    if (window.__googleSignInInitInProgress) {
+      // An init is already running (e.g. from the initial DOMContentLoaded
+      // attempt or a lazy tap retry). Wait for it to settle for the caller.
+      return window.__googleSignInInitInProgress;
     }
-  })
-  .catch(function(err) {
-    console.error('[GoogleAuth][INIT] Failed:', err?.message || err);
-  })
-  .finally(function() {
-    window.__googleSignInInitInProgress = false;
-  });
+    if (window.__googleSignInInitialized) {
+      return Promise.resolve();
+    }
+    if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) {
+      console.log('[GoogleAuth][INIT] Not in native context — skipping native init');
+      return Promise.resolve();
+    }
+    var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
+    if (!googleSignIn) {
+      console.warn('[GoogleAuth][INIT] GoogleSignIn plugin NOT available — Capacitor.Plugins:', Object.keys(window.Capacitor.Plugins || {}));
+      return Promise.resolve();
+    }
+    if (typeof googleSignIn.initialize !== 'function') {
+      console.error('[GoogleAuth][INIT] GoogleSignIn.initialize is not a function');
+      return Promise.resolve();
+    }
+
+    console.log('[GoogleAuth][INIT] Starting initialization');
+    // Mark that initialization is in progress so login.js can check/watch it.
+    var inProgress = (function () {
+      var resolve;
+      window.__googleSignInInitInProgress = new Promise(function (r) { resolve = r; });
+      return resolve;
+    })();
+
+    // Fetch the Google Client ID from the backend (same as GIS uses).
+    var backendUrl = (typeof window.getApiBaseUrl === 'function')
+      ? window.getApiBaseUrl()
+      : 'https://anistrimbackend.onrender.com';
+    fetch(backendUrl + '/api/auth/google/client-id', {
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(function(res) {
+      console.log('[GoogleAuth][INIT] Client ID response status:', res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      var clientId = (data && data.success === true && data.data) ? data.data.clientId : data.clientId;
+      console.log('[GoogleAuth][INIT] Client ID configured:', clientId ? 'YES (length=' + clientId.length + ')' : 'NO');
+      if (clientId) {
+        return googleSignIn.initialize({ clientId: clientId }).then(function() {
+          console.log('[GoogleAuth][INIT] Initialization successful');
+          window.__googleSignInInitialized = true;
+        });
+      } else {
+        console.error('[GoogleAuth][INIT] Could not retrieve Google Client ID for native plugin');
+      }
+    })
+    .catch(function(err) {
+      console.error('[GoogleAuth][INIT] Failed:', err?.message || err);
+    })
+    .finally(function() {
+      inProgress();
+    });
+    return window.__googleSignInInitInProgress;
+  }
+
+  window.__ensureGoogleSignInInit = function () {
+    if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) {
+      console.log('[GoogleAuth][INIT] Not in native context — skipping native init');
+      return Promise.resolve();
+    }
+    return doInit();
+  };
+
+  // Default: initialize once the DOM and Capacitor bridge are ready.
+  var start = () => doInit();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
 })();
 </script>
 </body>

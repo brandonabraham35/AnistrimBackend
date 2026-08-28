@@ -14,10 +14,11 @@
 (function() {
   var API_BASE_URL = 'https://anistrimbackend.onrender.com';
 
-  // Detect if we're running inside Capacitor native app
+  // Detect if we're running inside Capacitor native app.
+  // Capacitor >=6 exposes isNativePlatform() (a method); there is no isNative boolean.
   function isCapacitorNative() {
-    return typeof window.Capacitor !== 'undefined' 
-        && window.Capacitor.isNative === true;
+    return typeof window.Capacitor !== 'undefined'
+        && !!window.Capacitor.isNativePlatform?.();
   }
 
   // Get the correct API base URL for the current environment
