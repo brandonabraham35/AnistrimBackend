@@ -317,40 +317,113 @@
     console.debug('[api.js] canonical apiFetch installed. Envelope = { ok, status, data }.');
   }
 
-  // ── Startup health check with visible banner ──────────────
-  // Pings GET /api/health once on load. If the API is unreachable (CORS,
-  // DNS, network), shows a human-readable banner so failures are never
-  // silent. This makes B1-class bugs (CORS blocking) immediately visible.
+  // ── Resilient fetch + startup health check (Render cold-start aware) ──
+  // Free-tier hosts (e.g. Render) sleep after inactivity and take up to a
+  // minute to wake. The health check therefore waits longer and retries with
+  // backoff before ever showing a banner, and the "_checked" flag is only
+  // stored AFTER a success so a transient failure can always be retried.
+
+  // Reusable fetch helper: timeout + N retries with exponential backoff.
+  // Returns the final fetch Response, or throws the last error when retries run out.
+  function fetchWithRetry(url, options, opts) {
+    opts = opts || {};
+    var timeout = opts.timeout || 20000;
+    var retries = opts.retries || 0;
+    return attempt(url, options || {}, timeout, retries, 0);
+
+    function attempt(u, o, t, remaining, backoffMs) {
+      var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var timeoutId = controller ? setTimeout(function () { controller.abort(); }, t) : null;
+      return fetch(u, withSignal(o, controller)).then(function (res) {
+        if (timeoutId) clearTimeout(timeoutId);
+        return res;
+      }).catch(function (err) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (remaining <= 0) throw err;
+        var wait = backoffMs || 2000; // 2s, then 4s, then 8s…
+        return sleep(wait).then(function () {
+          return attempt(u, o, t, remaining - 1, wait * 2);
+        });
+      });
+    }
+
+    function withSignal(o, controller) {
+      if (!controller) return o;
+      var copy = {};
+      for (var k in o) {
+        if (Object.prototype.hasOwnProperty.call(o, k)) copy[k] = o[k];
+      }
+      copy.signal = controller.signal;
+      return copy;
+    }
+
+    function sleep(ms) {
+      return new Promise(function (r) { setTimeout(r, ms); });
+    }
+  }
+  window.fetchWithRetry = fetchWithRetry;
+
   (function startupHealthCheck() {
     var HEALTH_CHECKED_KEY = '__anistrim_health_checked';
-    // Only check once per session to avoid banner spam on navigation.
-    if (sessionStorage.getItem(HEALTH_CHECKED_KEY)) return;
-    sessionStorage.setItem(HEALTH_CHECKED_KEY, '1');
+    var HEALTH_TIMEOUT_MS = 20000; // 20s per attempt (was 8s)
+    var HEALTH_RETRIES = 3;        // 3 attempts total, backoff 2s/4s between
 
-    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timeoutId = controller ? setTimeout(function () { controller.abort(); }, 8000) : null;
+    var banner = null;
 
-    fetch(API_BASE + '/api/health', {
-      method: 'GET',
-      headers: { 'Accept': 'application/json', 'X-Client': 'mobile' },
-      signal: controller ? controller.signal : undefined
-    }).then(function (res) {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      console.log('[api.js] Health check passed:', API_BASE);
-    }).catch(function (err) {
-      if (timeoutId) clearTimeout(timeoutId);
-      var reason = 'network error';
-      if (err && err.name === 'AbortError') reason = 'timeout (8s)';
-      else if (err && err.message) reason = err.message;
-      console.error('[api.js] Health check FAILED:', API_BASE, reason);
-      showApiUnreachableBanner(reason);
-    });
+    function ping() {
+      return fetchWithRetry(API_BASE + '/api/health', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-Client': 'mobile' }
+      }, { timeout: HEALTH_TIMEOUT_MS, retries: HEALTH_RETRIES - 1 });
+    }
 
-    function showApiUnreachableBanner(reason) {
-      // Don't show banner if one already exists
+    // Layer 3 — warm-up: always fire one quiet ping when the app opens so a
+    // sleeping server starts waking immediately. Errors are intentionally silent.
+    function warmupPing() {
+      if (window.__anistrimWarmupFired) return;
+      window.__anistrimWarmupFired = true;
+      fetchWithRetry(API_BASE + '/api/health', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-Client': 'mobile' }
+      }, { timeout: HEALTH_TIMEOUT_MS, retries: 0 }).catch(function () { /* silent */ });
+    }
+
+    function runHealthCheck() {
+      ping().then(function (res) {
+        if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
+        // Only flag success AFTER the check actually passes, so a failed check
+        // can be retried (flag-before-result bug fixed).
+        sessionStorage.setItem(HEALTH_CHECKED_KEY, '1');
+        console.log('[api.js] Health check passed:', API_BASE);
+        removeBanner();
+      }).catch(function (err) {
+        var timedOut = !!(err && (err.name === 'AbortError' || /timeout|abort/i.test(err.message || '')));
+        console.error('[api.js] Health check FAILED after ' + HEALTH_RETRIES + ' attempts:', API_BASE, err && err.message);
+        showApiUnreachableBanner(timedOut);
+      });
+    }
+
+    function removeBanner() {
+      if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
+      banner = null;
+    }
+
+    // Manual "Retry": clear the flag and re-run the whole retry chain in place —
+    // no full WebView reload, and the "already checked" guard can't block it.
+    window.recheckApiHealth = function () {
+      sessionStorage.removeItem(HEALTH_CHECKED_KEY);
+      if (banner && banner.querySelector('button')) banner.querySelector('button').disabled = true;
+      if (banner && banner.querySelector('.ah-status')) {
+        banner.querySelector('.ah-status').textContent = 'Waking up server, please wait up to a minute…';
+      }
+      runHealthCheck();
+    };
+
+    // Banner shown only after all attempts fail. Wording distinguishes a cold
+    // start (timeout → "server is waking up") from a real outage.
+    function showApiUnreachableBanner(timedOut) {
       if (document.getElementById('api-health-banner')) return;
-      var banner = document.createElement('div');
+      banner = document.createElement('div');
       banner.id = 'api-health-banner';
       banner.setAttribute('role', 'alert');
       banner.style.cssText = [
@@ -359,20 +432,22 @@
         'font-family:system-ui,-apple-system,sans-serif', 'font-size:14px',
         'text-align:center', 'box-shadow:0 2px 8px rgba(0,0,0,0.3)'
       ].join(';');
+      var msg = timedOut
+        ? 'Server is waking up — this can take up to a minute. Retrying…'
+        : 'Cannot reach AniStrim servers. Check your internet connection.';
       banner.innerHTML = [
-        '<strong>⚠️ Cannot reach AniStrim servers.</strong><br>',
-        '<span style="font-size:12px;opacity:0.9">Check your internet connection. If this persists, the app may need an update.</span><br>',
-        '<span style="font-size:11px;opacity:0.7">(' + escapeHtml(reason) + ')</span>',
-        '<button onclick="this.parentElement.remove();window.location.reload();" ',
+        '<strong>⚠️ ' + escapeHtml(msg) + '</strong><br>',
+        '<span class="ah-status" style="font-size:12px;opacity:0.9">If this persists, the app may need an update.</span><br>',
+        '<button onclick="window.recheckApiHealth && window.recheckApiHealth()" ',
         'style="margin-left:12px;padding:4px 12px;background:#fff;color:#dc2626;border:none;border-radius:4px;cursor:pointer;font-weight:600">Retry</button>'
       ].join('');
       function escapeHtml(s) {
-        return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       }
       function insertBanner() {
         if (document.body) document.body.insertBefore(banner, document.body.firstChild);
         else document.addEventListener('DOMContentLoaded', function () {
-          document.body.insertBefore(banner, document.body.firstChild);
+          if (document.body) document.body.insertBefore(banner, document.body.firstChild);
         });
       }
       if (document.readyState === 'loading') {
@@ -380,6 +455,15 @@
       } else {
         insertBanner();
       }
+    }
+
+    // Kick off once. If already confirmed healthy this session, only do a
+    // silent warm-up ping (no banner spam on navigation); otherwise run the
+    // retrying check, whose first attempt doubles as the cold-start warm-up.
+    if (sessionStorage.getItem(HEALTH_CHECKED_KEY)) {
+      warmupPing();
+    } else {
+      runHealthCheck();
     }
   })();
 
