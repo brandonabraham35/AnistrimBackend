@@ -252,26 +252,4 @@
   } else {
     root.AniStrimHttp = { create: create };
   }
-
-  // ── Analytics helper for Desktop (Phase 50) ─────────────
-  // Fire-and-forget; never throws. Uses the same apiBase from endpoints.
-  if (typeof window !== 'undefined' && !root.trackEvent) {
-    root.trackEvent = function (eventType, metadata) {
-      try {
-        var apiBase = (typeof root.AniStrimEndpoints !== 'undefined' && root.AniStrimEndpoints.get)
-          ? root.AniStrimEndpoints.get('apiBase') : 'https://anistrimbackend.onrender.com';
-        var headers = { 'Content-Type': 'application/json', 'X-Client': 'desktop' };
-        if (root.AniStrimSession) {
-          var s = root.AniStrimSession.create('desktop');
-          var t = s && s.getToken ? s.getToken() : '';
-          if (t) headers['Authorization'] = 'Bearer ' + t;
-        }
-        fetch(apiBase + '/api/analytics/events', {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify({ event_type: eventType, metadata: metadata || {} }),
-        }).catch(function () {});
-      } catch (_) {}
-    };
-  }
 })(typeof window !== 'undefined' ? window : this);

@@ -105,12 +105,20 @@
     })();
 
     // Fetch the Google Client ID from the backend (same as GIS uses).
+    // Give the fetch a bounded timeout + retries so doInit always settles within
+    // ~1 minute (free-tier Render can take up to a minute to wake from sleep).
     var backendUrl = (typeof window.getApiBaseUrl === 'function')
       ? window.getApiBaseUrl()
       : 'https://anistrimbackend.onrender.com';
-    fetch(backendUrl + '/api/auth/google/client-id', {
-      headers: { 'Accept': 'application/json' }
-    })
+    var clientIdRequest = function () {
+      var url = backendUrl + '/api/auth/google/client-id';
+      var opts = { headers: { 'Accept': 'application/json' } };
+      if (typeof window.fetchWithRetry === 'function') {
+        return window.fetchWithRetry(url, opts, { timeout: 20000, retries: 2 });
+      }
+      return fetch(url, opts);
+    };
+    clientIdRequest()
     .then(function(res) {
       console.log('[GoogleAuth][INIT] Client ID response status:', res.status);
       return res.json();
@@ -132,6 +140,7 @@
     })
     .finally(function() {
       inProgress();
+      window.__googleSignInInitInProgress = null;
     });
     return window.__googleSignInInitInProgress;
   }

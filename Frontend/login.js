@@ -70,23 +70,31 @@ async function loginWithInAppBrowser() {
   // This returns an idToken directly — no browser, no deep links.
   if (isNative && CapGoogleSignIn) {
     try {
-      // Check initialization state
-      if (window.__googleSignInInitInProgress) {
-        console.log('[GoogleAuth][SIGNIN] Init still in progress — waiting up to 3s');
+      // Check initialization state. __googleSignInInitInProgress is cleared to
+      // null once init settles, so a settled initialization never looks "in
+      // progress" here. If init is genuinely still running (e.g. the server is
+      // cold-starting and the client-id fetch is slow), WAIT for it instead of
+      // showing a false "still loading" error.
+      var initWasInFlight = !!window.__googleSignInInitInProgress;
+      if (initWasInFlight) {
+        console.log('[GoogleAuth][SIGNIN] Init still in progress — waiting for it to settle');
+        var inFlight = window.__googleSignInInitInProgress;
         var waited = 0;
-        while (window.__googleSignInInitInProgress && waited < 3000) {
+        while (window.__googleSignInInitInProgress === inFlight && waited < 3000) {
           await new Promise(function(r) { setTimeout(r, 100); });
           waited += 100;
         }
-        if (window.__googleSignInInitInProgress) {
-          console.error('[GoogleAuth][SIGNIN] Init did not complete within 3s');
-          showError('Google Sign-In is still loading. Please wait a moment and try again.');
-          return;
+        if (window.__googleSignInInitInProgress === inFlight) {
+          // Init is still running — the client-id fetch has a bounded timeout
+          // (fetchWithRetry), so await completion rather than erroring.
+          console.log('[GoogleAuth][SIGNIN] Init still running — waiting for completion (server wake-up)');
+          await inFlight;
         }
       }
-      // Lazy initialization: if the initial init hasn't finished yet (e.g. a slow
-      // /client-id fetch on cold start), attempt it on demand before giving up.
-      if (!window.__googleSignInInitialized && typeof window.__ensureGoogleSignInInit === 'function') {
+      // Lazy initialization: only when NO init is in flight and none has ever
+      // completed. If we already awaited an in-flight init that settled, running
+      // it again now would only add another full fetch wait.
+      if (!window.__googleSignInInitialized && !initWasInFlight && typeof window.__ensureGoogleSignInInit === 'function') {
         console.log('[GoogleAuth][SIGNIN] Plugin not yet initialized — attempting lazy init');
         await window.__ensureGoogleSignInInit();
       }

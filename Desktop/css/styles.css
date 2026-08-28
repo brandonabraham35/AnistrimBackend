@@ -195,3 +195,17 @@ h2 { font-size: 1.15rem; margin: 24px 0 12px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+/* ── Watch / player ──────────────────────────────────────── */
+.watch { max-width: 960px; }
+.watch-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+.watch-head h2 { margin: 0; }
+.watch-head p { margin: 2px 0 0; font-size: 0.85rem; }
+.player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+  display: block;
+}
+.watch-nav { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }

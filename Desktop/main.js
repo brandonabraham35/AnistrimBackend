@@ -181,6 +181,30 @@ function registerMediaKeys() {
   globalShortcut.register('MediaPreviousTrack', () => mainWindow?.webContents.send('media-previous-episode'));
 }
 
+// ── Window control IPC (renderer bridge) ────────────────────
+// preload.js exposes window.anistrim.{minimize,maximize,close} which send
+// these channels; without handlers the bridge was dead. Each handler acts on
+// the window that sent the event (BrowserWindow.fromWebContents) so it stays
+// correct even with multiple windows. Close goes through win.close() so the
+// existing 'close' hook still persists window bounds.
+ipcMain.on('window-minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.minimize();
+});
+
+ipcMain.on('window-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  // Toggle so the single channel provides both maximize and restore.
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+});
+
+ipcMain.on('window-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.close();
+});
+
 // ── App lifecycle ───────────────────────────────────────────
 app.whenReady().then(() => {
   buildMenu();

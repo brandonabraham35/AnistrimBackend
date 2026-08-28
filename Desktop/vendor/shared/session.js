@@ -28,6 +28,8 @@
     sessionToken: 'session_token',
     webToken: 'web_token',
     webRefreshToken: 'web_refresh_token',
+    adminToken: 'admin_token',
+    adminRefreshToken: 'admin_refresh_token',
   };
 
   /**
@@ -87,6 +89,18 @@
           store.removeItem(LEGACY_KEYS.webRefreshToken);
           migrated = true;
         }
+      } else if (client === 'admin') {
+        var adminToken = store.getItem(LEGACY_KEYS.adminToken);
+        var adminRefresh = store.getItem(LEGACY_KEYS.adminRefreshToken);
+        if (adminToken) {
+          store.setItem(key('token'), adminToken);
+          if (adminRefresh) store.setItem(key('refreshToken'), adminRefresh);
+          store.removeItem(LEGACY_KEYS.adminToken);
+          store.removeItem(LEGACY_KEYS.adminRefreshToken);
+          migrated = true;
+        }
+      } else if (client === 'desktop') {
+        // Desktop has no legacy storage keys to migrate.
       }
       // Mark migration complete to avoid running again
       store.setItem(key('migrated'), '1');
