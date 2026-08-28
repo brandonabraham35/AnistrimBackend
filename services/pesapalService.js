@@ -57,7 +57,7 @@ async function getToken() {
     );
 
     if (!response.data || !response.data.token) {
-      console.error('❌ Pesapal token response invalid:', JSON.stringify(response.data));
+      console.error('❌ Pesapal token response invalid: no token field present');
       throw new Error('Pesapal did not return a token. Check your API credentials.');
     }
 
@@ -149,7 +149,7 @@ async function registerNewIPN(token, ipnUrl) {
     );
 
     if (!response.data || !response.data.ipn_id) {
-      throw new Error('Pesapal did not return an IPN ID. Response: ' + JSON.stringify(response.data));
+      throw new Error('Pesapal did not return an IPN ID.');
     }
 
     console.log('✅ IPN registered successfully, ID:', response.data.ipn_id);
@@ -206,7 +206,7 @@ async function submitOrder(token, orderData) {
     );
 
     if (!response.data || !response.data.redirect_url) {
-      console.error('❌ Pesapal submitOrder invalid response:', JSON.stringify(response.data));
+      console.error('❌ Pesapal submitOrder invalid response: no redirect_url field');
       throw new Error('Pesapal did not return a redirect URL');
     }
 

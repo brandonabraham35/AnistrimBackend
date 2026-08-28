@@ -1,7 +1,10 @@
 {
   "scripts": {
     "start": "node server.js",
-    "cap:sync": "node scripts/capacitor-preflight.js && cap copy android && cap sync android",
+    "cap:sync": "node scripts/capacitor-preflight.js && cap copy && cap sync",
+    "cap:sync:force": "cap copy && cap sync",
+    "cap:sync:android": "node scripts/capacitor-preflight.js && cap copy android && cap sync android",
+    "cap:sync:ios": "node scripts/capacitor-preflight.js && cap copy ios && cap sync ios",
     "migrate": "node scripts/migrate.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

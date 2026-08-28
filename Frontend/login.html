@@ -65,9 +65,53 @@
 <script src="google-auth-handler.js"></script>
 <script src="login.js"></script>
 <script>
+// ── Login Recovery Layer (runs before init code) ──────────
+// Handles cold-start recovery, destination preservation, and stale
+// auth cleanup so the user is never silently stuck on login.html.
+(function () {
+  if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) return;
+
+  var REDIRECT_KEY = '__loginRedirect';
+  var PENDING_KEY = '__authPending';
+
+  // ── Destination preservation ───────────────────────────
+  // Capture redirect param early so it survives page reloads/kills.
+  var redirectParam = new URLSearchParams(window.location.search).get('redirect');
+  if (redirectParam) {
+    try { sessionStorage.setItem(REDIRECT_KEY, redirectParam); } catch (e) {}
+  } else {
+    try { redirectParam = sessionStorage.getItem(REDIRECT_KEY); } catch (e) {}
+  }
+
+  // ── Stale auth attempt cleanup ─────────────────────────
+  // If auth was in progress when the page was killed/reloaded, clear it.
+  try {
+    if (sessionStorage.getItem(PENDING_KEY)) {
+      sessionStorage.removeItem(PENDING_KEY);
+    }
+  } catch (e) {}
+
+  // ── Cold-start recovery ────────────────────────────────
+  // If a valid session exists but we're still on login.html, the app
+  // was likely killed after authentication but before navigation completed.
+  var token = (window.Auth && window.Auth.token) ||
+              localStorage.getItem('token') ||
+              localStorage.getItem('anistrim.mobile.token') || '';
+  if (token && window.State && window.State.isLoggedIn) {
+    console.log('[LoginRecovery] Valid session on login page — recovering');
+    try { sessionStorage.removeItem(REDIRECT_KEY); } catch (e) {}
+    if (window.Navigation && window.Navigation.afterAuth) {
+      window.Navigation.afterAuth(window.State.user, redirectParam);
+    } else if (window.State.user) {
+      window.location.replace(redirectParam || 'index.html');
+    }
+  }
+})();
+
 // Initialize the native Google Sign-In plugin when running inside Capacitor.
 // This must happen before the user taps the Google login button so the
 // Credential Manager API is ready. Uses the same web client ID as the backend.
+// Integrates with window.__GoogleAuth state machine (defined in login.js).
 (function () {
   // Capacitor exposes isNativePlatform() (a method) on the global; there is no
   // isNative boolean. The plugin proxy only registers with the bridge after
@@ -80,6 +124,7 @@
       return window.__googleSignInInitInProgress;
     }
     if (window.__googleSignInInitialized) {
+      if (window.__GoogleAuth) window.__GoogleAuth.setState(window.__GoogleAuth.STATES.READY);
       return Promise.resolve();
     }
     if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) {
@@ -97,6 +142,9 @@
     }
 
     console.log('[GoogleAuth][INIT] Starting initialization');
+    // Update state machine if available
+    if (window.__GoogleAuth) window.__GoogleAuth.setState(window.__GoogleAuth.STATES.INITIALIZING);
+
     // Mark that initialization is in progress so login.js can check/watch it.
     var inProgress = (function () {
       var resolve;
@@ -130,6 +178,7 @@
         return googleSignIn.initialize({ clientId: clientId }).then(function() {
           console.log('[GoogleAuth][INIT] Initialization successful');
           window.__googleSignInInitialized = true;
+          if (window.__GoogleAuth) window.__GoogleAuth.setState(window.__GoogleAuth.STATES.READY);
         });
       } else {
         console.error('[GoogleAuth][INIT] Could not retrieve Google Client ID for native plugin');
