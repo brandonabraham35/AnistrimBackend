@@ -75,6 +75,8 @@ router.get('/episodes/:id',                 admin.getEpisode);
 router.put('/episodes/:id',                 admin.updateEpisode);
 router.delete('/episodes/:id',              admin.deleteEpisode);
 router.post('/episodes/bulk-delete',        admin.bulkDeleteEpisodes);
+// Stream Diagnostic (Phase 6 — read-only cached stream inspection)
+router.get('/streams/:episodeId/diagnostic', admin.getStreamDiagnostic);
 
 // Settings
 router.get('/settings',                     admin.getSettings);

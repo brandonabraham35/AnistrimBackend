@@ -236,7 +236,7 @@ function normalizeProviderResult(result) {
 }
 
 // ── Cache Helpers ──────────────────────────────────────────
-const STREAM_CACHE_TTL = parseInt(process.env.STREAM_CACHE_TTL_SECONDS || '300', 10);
+const STREAM_CACHE_TTL = parseInt(process.env.STREAM_CACHE_TTL_SECONDS || '3600', 10);
 
 function buildCacheKey(animeTitle, episodeNumber, providerName) {
   return `stream:${animeTitle.toLowerCase().replace(/\s+/g, '-')}:ep${episodeNumber}:${providerName || 'all'}`;
@@ -843,10 +843,53 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     deadlineMs: PIPELINE_TIMEOUT_MS,
   });
 
-  // ── Persistent DB cache (episode-scoped, AnimeHeaven only) ──
+  // ── Persistent cache (Redis-first, MySQL-backed) ──────────
+  // Uses the canonical episodeId + provider key so Redis entries
+  // populated by streamCacheService.getOrResolve() are found here.
   const usePersistentCache = STREAM_CACHE_ENABLED && !skipCache && episodeId != null && episodeId !== '';
 
   if (usePersistentCache) {
+    // Tier 1: Redis (shared fast cache, canonical key).
+    // Checked before MySQL so a Redis hit saved by a previous
+    // getOrResolve() call avoids a DB read entirely.
+    const redisKey = streamCacheService.buildRedisKey(episodeId, STREAM_CACHE_PROVIDER);
+    try {
+      const redisHit = await cache.get(redisKey);
+      if (redisHit && redisHit.sources && redisHit.sources.length > 0) {
+        // Check upstream expiry from the cached payload.
+        const upstreamExpired = redisHit.detectedExpiresAt
+          ? new Date(redisHit.detectedExpiresAt).getTime() <= Date.now()
+          : false;
+        if (!upstreamExpired) {
+          logger.debugStream('Redis stream cache hit', { anime: animeTitle, episode: episodeNumber, episodeId });
+          streamCacheMetrics.increment('redisHits');
+          const filteredSources = filterSourcesByTier(redisHit.sources, isPremium);
+          if (filteredSources.length > 0) {
+            const best = pickBestSource(filteredSources);
+            const payload = {
+              provider: redisHit.provider || STREAM_CACHE_PROVIDER,
+              streamUrl: best.url,
+              sources: filteredSources,
+              downloadSources: Array.isArray(redisHit.downloadSources) ? redisHit.downloadSources : [],
+              subtitles: Array.isArray(redisHit.subtitles) ? redisHit.subtitles : [],
+              bestQuality: best.quality || 'auto',
+              tier,
+              cached: true,
+            };
+            logger.streamAttempt({
+              provider: payload.provider, anime: animeTitle, episode: episodeNumber,
+              result: 'success', httpStatus: 0, timedOut: false, cloudflareDetected: false,
+              searchSuccess: true, streamSuccess: true, sources: filteredSources.length,
+              bestQuality: payload.bestQuality, startTime: new Date(overallStart).toISOString(),
+              endTime: new Date().toISOString(), latencyMs: Date.now() - overallStart,
+            });
+            return { ...payload, providerUsed: payload.provider, fallbackActivated: false, attemptCount: 1 };
+          }
+        }
+      }
+    } catch (cacheErr) {
+      logger.debug('[STREAM_CACHE] Redis check failed (non-fatal)', { error: cacheErr.message });
+    }
     const cachedLookup = await streamCacheService.findCachedStream(episodeId, STREAM_CACHE_PROVIDER);
     if (cachedLookup.result) {
       logger.debugStream('Persistent stream cache hit', { anime: animeTitle, episode: episodeNumber, episodeId });

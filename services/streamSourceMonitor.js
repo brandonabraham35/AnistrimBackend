@@ -29,7 +29,7 @@ function parsePositiveInt(value, fallback) {
 
 const CONFIG = {
   // Master switch — disabled by default.
-  enabled: process.env.STREAM_MONITOR_ENABLED === 'true',
+  enabled: process.env.STREAM_MONITOR_ENABLED !== 'false',
 
   // Interval between monitoring runs (in milliseconds).
   // Default: 1 hour.

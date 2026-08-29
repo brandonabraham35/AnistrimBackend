@@ -342,15 +342,32 @@ async function verifyAndRecord(cacheRowId, url, context = {}) {
 
   try {
     if (result.alive) {
+      // Update observation tracking: first success, last success, lifetime.
       await db.query(
-        'UPDATE episode_stream_cache SET last_verified_at = ?, verification_status = ?, response_status = ?, content_type = ? WHERE id = ?',
-        [now, 'active', result.status, result.contentType, cacheRowId]
+        `UPDATE episode_stream_cache
+         SET last_verified_at = ?,
+             verification_status = ?,
+             response_status = ?,
+             content_type = ?,
+             observed_first_success_at = COALESCE(observed_first_success_at, ?),
+             observed_last_success_at = ?,
+             observed_lifetime_seconds = TIMESTAMPDIFF(SECOND, COALESCE(observed_first_success_at, ?), ?)
+         WHERE id = ?`,
+        [now, 'active', result.status, result.contentType, now, now, now, now, cacheRowId]
       );
       streamCacheMetrics.increment('verificationSuccesses');
     } else {
+      // Update observation tracking: first failure.
       await db.query(
-        'UPDATE episode_stream_cache SET last_verified_at = ?, verification_status = ?, response_status = ?, content_type = ?, last_failed_at = ? WHERE id = ?',
-        [now, 'invalid', result.status, result.contentType, now, cacheRowId]
+        `UPDATE episode_stream_cache
+         SET last_verified_at = ?,
+             verification_status = ?,
+             response_status = ?,
+             content_type = ?,
+             last_failed_at = ?,
+             observed_first_failure_at = COALESCE(observed_first_failure_at, ?)
+         WHERE id = ?`,
+        [now, 'invalid', result.status, result.contentType, now, now, cacheRowId]
       );
       streamCacheMetrics.increment('verificationFailures');
     }
@@ -519,7 +536,9 @@ async function findCachedStream(episodeId, provider) {
   try {
     const [rows] = await db.query(
       'SELECT id, episode_id, provider, stream_type, stream_data, expires_at, ' +
-      'detected_expires_at, expiry_source, verification_status, last_used_at, last_verified_at ' +
+      'detected_expires_at, expiry_source, verification_status, last_used_at, last_verified_at, ' +
+      'url_classification, classification_confidence, classification_reason, ' +
+      'observed_first_success_at, observed_last_success_at, observed_first_failure_at, observed_lifetime_seconds ' +
       'FROM episode_stream_cache WHERE episode_id = ? AND provider = ? LIMIT 1',
       [episodeId, provider]
     );
@@ -565,6 +584,133 @@ async function findCachedStream(episodeId, provider) {
 }
 
 /**
+ * Classify a cached stream source based on available evidence.
+ *
+ * Classification rules:
+ *   TEMPORARY:
+ *     - explicit URL expiry detected (detected_expires_at is set)
+ *     - or verification_status is 'invalid' after a previous successful check
+ *     - or observed_first_failure_at is set (source has been seen to fail)
+ *
+ *   STABLE:
+ *     - no detected URL expiry
+ *     - verification_status is 'active' for at least 24 hours
+ *     - at least 3 successful observations
+ *     - no observed failures
+ *
+ *   UNKNOWN:
+ *     - insufficient evidence for either TEMPORARY or STABLE
+ *
+ * Confidence:
+ *   HIGH:   multiple independent evidence sources agree
+ *   MEDIUM: one meaningful evidence source
+ *   LOW:    insufficient observation history
+ *
+ * @param {object} row - DB row from episode_stream_cache
+ * @param {number} [now] - Optional timestamp override (for testing)
+ * @returns {{ classification: string, confidence: string, reason: string }}
+ */
+function classifySource(row, now = Date.now()) {
+  if (!row) return { classification: 'UNKNOWN', confidence: 'LOW', reason: 'No cache row.' };
+
+  const evidence = [];
+
+  // ── Check for TEMPORARY evidence ──────────────────────────
+  const isTemporary = [];
+
+  // Explicit URL expiry parameter detected.
+  if (row.detected_expires_at) {
+    const detectedExpiry = new Date(row.detected_expires_at).getTime();
+    if (Number.isFinite(detectedExpiry)) {
+      isTemporary.push(true);
+      evidence.push('explicit URL expiry detected');
+    }
+  }
+
+  // Previously successful source now invalid.
+  if (row.verification_status === 'invalid' && row.last_verified_at) {
+    isTemporary.push(true);
+    evidence.push('source was previously valid, now invalid');
+  }
+
+  // Source has been observed to fail.
+  if (row.observed_first_failure_at) {
+    isTemporary.push(true);
+    evidence.push('source has been observed to fail');
+  }
+
+  // ── Check for STABLE evidence ────────────────────────────
+  const isStable = [];
+
+  // No detected URL expiry.
+  if (!row.detected_expires_at && row.expiry_source === 'unknown') {
+    isStable.push(true);
+    evidence.push('no URL expiry detected');
+  }
+
+  // Repeated successful observations over time.
+  if (row.observed_first_success_at && row.observed_last_success_at) {
+    const firstSuccess = new Date(row.observed_first_success_at).getTime();
+    const lastSuccess = new Date(row.observed_last_success_at).getTime();
+    const observationDurationMs = lastSuccess - firstSuccess;
+
+    if (observationDurationMs >= 24 * 60 * 60 * 1000) {
+      isStable.push(true);
+      evidence.push('observed healthy for at least 24 hours');
+    }
+    // Count successful observations via failure_count not being elevated.
+    if (row.failure_count === 0) {
+      isStable.push(true);
+      evidence.push('no observed failures');
+    }
+  }
+
+  // ── Determine classification ──────────────────────────────
+  let classification = 'UNKNOWN';
+  let confidence = 'LOW';
+
+  if (isTemporary.length > 0 && isStable.length === 0) {
+    // TEMPORARY evidence exists and there is no countervailing STABLE evidence.
+    classification = 'TEMPORARY';
+    confidence = isTemporary.length >= 2 ? 'HIGH' : 'MEDIUM';
+  } else if (isStable.length >= 2 && isTemporary.length === 0) {
+    // Multiple STABLE evidence sources and no TEMPORARY evidence.
+    classification = 'STABLE';
+    confidence = isStable.length >= 3 ? 'HIGH' : 'MEDIUM';
+  } else if (isStable.length > 0 && isTemporary.length > 0) {
+    // Conflicting evidence — TEMPORARY wins (conservative).
+    classification = 'TEMPORARY';
+    confidence = 'LOW';
+  } else {
+    classification = 'UNKNOWN';
+    confidence = 'LOW';
+  }
+
+  // Ensure 24-hour observation requirement for STABLE.
+  if (classification === 'STABLE') {
+    if (row.observed_first_success_at && row.observed_last_success_at) {
+      const firstSuccess = new Date(row.observed_first_success_at).getTime();
+      const lastSuccess = new Date(row.observed_last_success_at).getTime();
+      if (lastSuccess - firstSuccess < 24 * 60 * 60 * 1000) {
+        classification = 'UNKNOWN';
+        confidence = 'LOW';
+        evidence.push('observation period < 24 hours');
+      }
+    } else {
+      classification = 'UNKNOWN';
+      confidence = 'LOW';
+      evidence.push('no observation history');
+    }
+  }
+
+  return {
+    classification,
+    confidence,
+    reason: evidence.length > 0 ? evidence.join('; ') : 'insufficient evidence',
+  };
+}
+
+/**
  * Save (or upsert) a successfully-resolved provider result into the cache.
  * Uses INSERT ... ON DUPLICATE KEY UPDATE so a single row per (episode,provider)
  * is maintained — no duplicate rows on repeated playback.
@@ -598,6 +744,19 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
   const firstSourceUrl = providerResult.sources?.[0]?.url || providerResult.streamUrl || '';
   const streamType = /\.m3u8(\?|$)/i.test(firstSourceUrl) ? 'hls' : 'direct';
 
+  // Compute initial classification based on available evidence.
+  // At save time, the only evidence is URL expiry detection.
+  const classification = classifySource({
+    detected_expires_at: detectedExpiresAt,
+    expiry_source: expirySource,
+    verification_status: verificationStatus,
+    last_verified_at: null,
+    observed_first_success_at: null,
+    observed_last_success_at: null,
+    observed_first_failure_at: null,
+    failure_count: 0,
+  }, now.getTime());
+
   const payload = {
     provider: providerResult.provider || provider,
     streamUrl: providerResult.streamUrl || (providerResult.sources?.[0]?.url || null),
@@ -609,8 +768,9 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
     await db.query(
       `INSERT INTO episode_stream_cache
          (episode_id, provider, stream_type, stream_data, resolved_at, expires_at,
-          detected_expires_at, expiry_source, verification_status, last_used_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          detected_expires_at, expiry_source, verification_status, last_used_at,
+          url_classification, classification_confidence, classification_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          stream_type = VALUES(stream_type),
          stream_data = VALUES(stream_data),
@@ -619,9 +779,13 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
          detected_expires_at = VALUES(detected_expires_at),
          expiry_source = VALUES(expiry_source),
          verification_status = VALUES(verification_status),
-         last_used_at = VALUES(last_used_at)`,
+         last_used_at = VALUES(last_used_at),
+         url_classification = VALUES(url_classification),
+         classification_confidence = VALUES(classification_confidence),
+         classification_reason = VALUES(classification_reason)`,
       [episodeId, provider, streamType, JSON.stringify(payload), now, expires,
-       detectedExpiresAt, expirySource, verificationStatus, now]
+       detectedExpiresAt, expirySource, verificationStatus, now,
+       classification.classification, classification.confidence, classification.reason]
     );
     logger.info('[STREAM_CACHE] SAVE', {
       episodeId, provider, ttlMin: ttl, streamType,
@@ -646,6 +810,13 @@ async function deleteInvalidCache(episodeId, provider) {
   try {
     await db.query('DELETE FROM episode_stream_cache WHERE episode_id = ? AND provider = ?', [episodeId, provider]);
     logger.info('[STREAM_CACHE] DELETE', { episodeId, provider });
+    // Best-effort Redis invalidation: delete the corresponding Redis key.
+    // A Redis failure must NOT cause MySQL deletion to fail, so this is
+    // deliberately non-awaited and errors are only logged.
+    const redisKey = buildRedisKey(episodeId, provider);
+    cache.del(redisKey).catch(err => {
+      logger.warn('[STREAM_CACHE] Redis delete failed (non-fatal)', { episodeId, provider, error: err && err.message });
+    });
     return true;
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (delete)', { episodeId, provider, error: err.message });
@@ -845,6 +1016,8 @@ module.exports = {
   // Source state machine (exposed for testing + external use).
   getSourceState,
   isReusable,
+  // Source classification (exposed for testing + external use).
+  classifySource,
   // Expiry detection functions (exposed for testing).
   detectExpiryFromUrl,
   detectExpiryFromHeaders,

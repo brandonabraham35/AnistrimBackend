@@ -1165,6 +1165,106 @@ case 'provider-usage': {
       return sendSuccess(res, []);
     }
   },
-};
+  /**
+   * GET /api/admin/streams/:episodeId/diagnostic
+   * Read-only cached stream diagnostic for authenticated admins.
+   *
+   * NEVER:
+   *   - Resolves a new stream (no AnimeHeaven / Thordata call)
+   *   - Modifies the cache
+   *   - Deletes cache rows
+   *   - Returns cookies, credentials, or proxy secrets
+   *   - Consumes Thordata traffic
+   */
+  async getStreamDiagnostic(req, res) {
+    const streamCacheService = require('../services/streamCacheService');
+    const streamCacheConfig = require('../config/streamCache');
 
+    const episodeId = Number(req.params.episodeId);
+    if (!Number.isInteger(episodeId) || episodeId < 1) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PARAM', message: 'Invalid episode ID.' } });
+    }
+
+    try {
+      const [epRows] = await db.query('SELECT id, episode_number, anime_id FROM episodes WHERE id = ?', [episodeId]);
+      if (!epRows || !epRows[0]) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Episode not found.' } });
+      }
+      const episode = epRows[0];
+
+      const provider = streamCacheConfig.provider;
+      const cached = await streamCacheService.findCachedStream(episodeId, provider);
+
+      const diagnostic = {
+        episodeId,
+        episodeNumber: episode.episode_number,
+        animeId: episode.anime_id,
+        provider,
+        cacheExists: !!cached.row,
+        cacheState: cached.state,
+      };
+
+      if (cached.row) {
+        const row = cached.row;
+        diagnostic.cacheRowId = row.id;
+        diagnostic.streamType = row.stream_type || null;
+        diagnostic.expiresAt = row.expires_at || null;
+        diagnostic.detectedExpiresAt = row.detected_expires_at || null;
+        diagnostic.expirySource = row.expiry_source || 'unknown';
+        diagnostic.verificationStatus = row.verification_status || 'unknown';
+        diagnostic.lastVerifiedAt = row.last_verified_at || null;
+        diagnostic.lastUsedAt = row.last_used_at || null;
+        diagnostic.resolvedAt = row.resolved_at || null;
+        diagnostic.redisKey = streamCacheService.buildRedisKey(episodeId, provider);
+        diagnostic.cacheTtlMinutes = streamCacheConfig.ttlMinutes;
+
+        const data = row.stream_data || {};
+        const sources = Array.isArray(data.sources) ? data.sources : [];
+        diagnostic.sourceCount = sources.length;
+        diagnostic.sourceQualities = sources.map(s => s.quality || 'auto').filter(Boolean);
+
+        const primaryUrl = data.streamUrl || (sources.length > 0 ? sources[0].url : null);
+        if (primaryUrl) {
+          try {
+            const u = new URL(primaryUrl);
+            diagnostic.urlHost = u.host;
+            diagnostic.urlPath = u.pathname;
+            diagnostic.urlQueryParamNames = [...u.searchParams.keys()];
+            const redactedParams = new URLSearchParams();
+            for (const [k, v] of u.searchParams) {
+              if (/expires|expiry|exp|expires_at|expiration|expire|token_expires|token_expiry/i.test(k)) {
+                redactedParams.set(k, v);
+              } else {
+                redactedParams.set(k, '[REDACTED]');
+              }
+            }
+            const qs = redactedParams.toString();
+            diagnostic.urlRedacted = u.protocol + '//' + u.host + u.pathname + (qs ? '?' + qs : '');
+          } catch (_) { diagnostic.urlRedacted = '[invalid URL]'; }
+
+          const sourceExpiry = streamCacheService.detectSourceExpiry({
+            streamUrl: primaryUrl,
+            sources: sources.map(s => ({ url: s.url })),
+          });
+          diagnostic.detectedUrlExpiry = sourceExpiry.detectedExpiresAt ? sourceExpiry.detectedExpiresAt.toISOString() : null;
+          diagnostic.detectedUrlExpirySource = sourceExpiry.expirySource;
+
+          const verifyContext = {};
+          if (sources.length > 0) {
+            if (sources[0].referer) verifyContext.referer = sources[0].referer;
+            if (sources[0].origin) verifyContext.origin = sources[0].origin;
+          }
+          const verification = await streamCacheService.verifySource(primaryUrl, verifyContext);
+          diagnostic.verification = { alive: verification.alive, status: verification.status, contentType: verification.contentType, skipProxy: true, thordataUsed: false };
+        }
+      }
+
+      logActivity(req, 'Stream diagnostic for episode #' + episodeId, 'episode', episodeId).catch(() => {});
+      return sendSuccess(res, diagnostic);
+    } catch (error) {
+      console.error('[Admin] getStreamDiagnostic error:', error.message);
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve stream diagnostic.' } });
+    }
+  },
+};
 module.exports = adminController;

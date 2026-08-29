@@ -49,7 +49,7 @@
       _updateBulkDeleteButton();
     });
 
-    // Table delegation (edit, delete, checkbox)
+    // Table delegation (edit, delete, inspect, checkbox)
     _$el('episodes-table')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.btn-action');
       if (!btn) return;
@@ -58,6 +58,8 @@
         _openEpisodeModal(id);
       } else if (btn.classList.contains('delete')) {
         _deleteEpisode(id);
+      } else if (btn.classList.contains('inspect-stream')) {
+        _inspectStream(id);
       }
     });
 
@@ -147,12 +149,91 @@
         <td>${(ep.view_count || 0).toLocaleString()}</td>
         <td style="white-space:nowrap;">
           <button class="btn-action edit" data-id="${ep.id}" title="Edit Episode"><i class="fas fa-edit"></i></button>
+          <button class="btn-action inspect-stream" data-id="${ep.id}" title="Inspect Stream"><i class="fas fa-search"></i></button>
           <button class="btn-action delete" data-id="${ep.id}" title="Delete Episode"><i class="fas fa-trash"></i></button>
         </td>
       </tr>`;
     }).join('');
 
     _updateBulkDeleteButton();
+  }
+
+  // ─── Stream Diagnostic ──────────────────────────────────────────────
+  async function _inspectStream(episodeId) {
+    const modal = window.ModalManager.open({
+      title: 'Stream Diagnostic — Episode #' + episodeId,
+      body: '<div style="text-align:center;padding:2rem;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;"></i><p style="margin-top:0.5rem;color:var(--text-muted);">Loading diagnostic...</p></div>',
+      dialogClass: 'stream-diagnostic-dialog',
+    });
+
+    try {
+      const data = await window.apiRequest('/api/admin/streams/' + episodeId + '/diagnostic');
+
+      const val = (v, fallback) => v !== undefined && v !== null ? v : (fallback || '—');
+      const bool = (v) => v ? '✅ Yes' : '❌ No';
+      const time = (v) => v ? new Date(v).toLocaleString() : '—';
+
+      // State badge
+      const stateBadge = (state) => {
+        const colors = { active: '#4caf50', expired: '#f44336', invalid: '#ff9800', unknown: '#9e9e9e' };
+        return `<span class="shared-badge" style="background:${colors[state] || '#9e9e9e'};color:#fff;">${state || 'unknown'}</span>`;
+      };
+
+      // Verification badge
+      const aliveBadge = (v) => v ? '<span class="shared-badge shared-badge-success">Alive</span>' : '<span class="shared-badge shared-badge-error">Dead</span>';
+
+      const rows = [
+        { label: 'Episode ID', value: val(data.episodeId) },
+        { label: 'Episode Number', value: val(data.episodeNumber) },
+        { label: 'Anime ID', value: val(data.animeId) },
+        { label: 'Provider', value: val(data.provider) },
+        { label: 'Cache Exists', value: bool(data.cacheExists) },
+        { label: 'Cache State', value: stateBadge(data.cacheState) },
+      ];
+
+      if (data.cacheExists && data.cacheState) {
+        rows.push(
+          { label: 'Stream Type', value: val(data.streamType) },
+          { label: 'Cache Expiry', value: time(data.expiresAt) },
+          { label: 'Detected Expiry', value: time(data.detectedExpiresAt) },
+          { label: 'Expiry Source', value: val(data.expirySource) },
+          { label: 'Verification Status', value: stateBadge(data.verificationStatus) },
+          { label: 'Last Verified', value: time(data.lastVerifiedAt) },
+          { label: 'Last Used', value: time(data.lastUsedAt) },
+          { label: 'Resolved At', value: time(data.resolvedAt) },
+          { label: 'Redis Key', value: '<code style="font-size:0.7rem;word-break:break-all;">' + window._escapeHTML(data.redisKey || '') + '</code>' },
+          { label: 'Cache TTL', value: val(data.cacheTtlMinutes, '360') + ' min' },
+          { label: 'Source Count', value: val(data.sourceCount) },
+          { label: 'Source Qualities', value: (data.sourceQualities || []).join(', ') || '—' },
+          { label: 'CDN Host', value: window._escapeHTML(data.urlHost || '') || '—' },
+          { label: 'CDN Path', value: window._escapeHTML(data.urlPath || '') || '—' },
+          { label: 'Stream URL', value: '<code style="font-size:0.7rem;word-break:break-all;">' + window._escapeHTML(data.urlRedacted || '') + '</code>' },
+        );
+
+        if (data.verification) {
+          rows.push(
+            { label: 'HTTP Status', value: val(data.verification.status) },
+            { label: 'Content Type', value: val(data.verification.contentType) },
+            { label: 'Alive', value: aliveBadge(data.verification.alive) },
+            { label: 'skipProxy', value: bool(data.verification.skipProxy) },
+            { label: 'Thordata', value: bool(data.verification.thordataUsed) },
+          );
+        }
+      }
+
+      const html = '<table class="stream-diag-table" style="width:100%;border-collapse:collapse;">' +
+        rows.map(r => '<tr><td style="padding:6px 10px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border,#2a2c37);white-space:nowrap;width:160px;">' +
+          window._escapeHTML(r.label) + '</td><td style="padding:6px 10px;border-bottom:1px solid var(--border,#2a2c37);">' + r.value + '</td></tr>').join('') +
+        '</table>';
+
+      window.ModalManager.update(modal, { body: html });
+    } catch (error) {
+      window.ModalManager.update(modal, {
+        body: '<div style="text-align:center;padding:2rem;color:var(--danger,#f44336);">' +
+          '<i class="fas fa-exclamation-triangle" style="font-size:2rem;"></i>' +
+          '<p style="margin-top:0.5rem;">' + window._escapeHTML(error.message) + '</p></div>',
+      });
+    }
   }
 
   function _updateBulkDeleteButton() {

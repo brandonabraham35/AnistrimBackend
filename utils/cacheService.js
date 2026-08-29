@@ -39,6 +39,12 @@ async function set(key, value, ttlSeconds) {
   return value;
 }
 
+async function del(key) {
+  const redis = await redisClient();
+  if (redis) await redis.del(key);
+  memory.delete(key);
+}
+
 async function delByPrefix(prefix) {
   for (const key of memory.keys()) if (key.startsWith(prefix)) memory.delete(key);
   const redis = await redisClient();
@@ -46,4 +52,4 @@ async function delByPrefix(prefix) {
   for await (const keys of redis.scanIterator({ MATCH: `${prefix}*`, COUNT: 100 })) if (keys.length) await redis.del(keys);
 }
 
-module.exports = { get, set, delByPrefix };
+module.exports = { get, set, del, delByPrefix };
