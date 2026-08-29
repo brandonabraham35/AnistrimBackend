@@ -125,8 +125,8 @@
       if (!btn) return;
       const page = btn.dataset.page;
       if (page === 'prev') _currentPage = Math.max(1, _currentPage - 1);
-      else if (page === 'next') _currentPage = _currentPage + 1;
-      else _currentPage = parseInt(page, 10);
+      else if (page === 'next') _currentPage = Math.min(_totalPages, _currentPage + 1);
+      else _currentPage = Math.min(_totalPages, Math.max(1, parseInt(page, 10)));
       _loadAllEpisodes();
     });
   }
