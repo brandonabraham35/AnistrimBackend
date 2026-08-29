@@ -367,8 +367,44 @@ const adminController = {
   async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); return sendSuccess(res, { id: r.insertId, name: req.body.name.trim() }, null, 201); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : error.message }); } },
   async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); return sendSuccess(res, null, { message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
 
-  async getAllEpisodes(req, res) { try { const [rows] = await db.query('SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC'); return sendSuccess(res, rows.map(DTO.episodeDto)); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getAnimeEpisodes(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number', [req.params.animeId]); return sendSuccess(res, rows.map(DTO.episodeDto)); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAllEpisodes(req, res) {
+    try {
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+      const offset = (page - 1) * limit;
+
+      const [countResult] = await db.query(
+        'SELECT COUNT(*) AS total FROM episodes'
+      );
+      const total = countResult[0]?.total || 0;
+
+      const [rows] = await db.query(
+        'SELECT e.*, a.title anime_title FROM episodes e JOIN anime a ON a.id = e.anime_id ORDER BY e.created_at DESC LIMIT ? OFFSET ?',
+        [limit, offset]
+      );
+      return sendPaginated(res, rows.map(DTO.episodeDto), { page, perPage: limit, totalItems: total });
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
+  async getAnimeEpisodes(req, res) {
+    try {
+      const animeId = req.params.animeId;
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+      const offset = (page - 1) * limit;
+
+      const [countResult] = await db.query(
+        'SELECT COUNT(*) AS total FROM episodes WHERE anime_id = ?',
+        [animeId]
+      );
+      const total = countResult[0]?.total || 0;
+
+      const [rows] = await db.query(
+        'SELECT * FROM episodes WHERE anime_id = ? ORDER BY episode_number LIMIT ? OFFSET ?',
+        [animeId, limit, offset]
+      );
+      return sendPaginated(res, rows.map(DTO.episodeDto), { page, perPage: limit, totalItems: total });
+    } catch (error) { res.status(500).json({ message: error.message }); }
+  },
   async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); return sendSuccess(res, DTO.episodeDto(rows[0])); } catch (error) { res.status(500).json({ message: error.message }); } },
   // P2: server-side premium timing. Maps an admin-chosen duration label to a
   // premium_until timestamp (server clock, not device clock). 'permanent'/null

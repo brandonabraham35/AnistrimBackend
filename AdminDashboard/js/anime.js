@@ -15,6 +15,7 @@ let _editId = null;
 let _importResults = [];
 let _genreList = [];
 let _isLoading = false;
+let _totalPages = 1;
 
 // ─── DOM Cache ────────────────────────────────────────────────────────────────
 function _$el(id) { return document.getElementById(id); }
@@ -181,11 +182,10 @@ function _setupEventListeners() {
     const btn = e.target.closest('.pagination-btn');
     if (!btn) return;
     const page = btn.dataset.page;
-    const totalPages = Math.ceil((_filteredAnime.length || 1) / _perPage);
     if (page === 'prev') _currentPage = Math.max(1, _currentPage - 1);
-    else if (page === 'next') _currentPage = Math.min(totalPages, _currentPage + 1);
-    else _currentPage = parseInt(page, 10);
-    _renderPage();
+    else if (page === 'next') _currentPage = Math.min(_totalPages, _currentPage + 1);
+    else _currentPage = Math.min(_totalPages, Math.max(1, parseInt(page, 10)));
+    _fetchAnime();
   });
 
   // Add Anime button
@@ -260,18 +260,23 @@ async function _fetchAnime() {
       _allAnime = response;
       _filteredAnime = response;
       _currentPage = 1;
+      _totalPages = Math.ceil(_allAnime.length / _perPage) || 1;
       _renderPage();
       _renderPaginationSimple();
     } else if (response.items || response.rows) {
       // After envelope unwrap: paginated responses expose .items and .rows
       _allAnime = response.items || response.rows || [];
       _filteredAnime = _allAnime;
+      _totalPages = response.pagination?.totalPages || 1;
+      _currentPage = response.pagination?.page || 1;
       _renderPage();
       _renderPagination(response.pagination);
     } else if (response.data) {
       // Legacy shape (pre-unwrap compatibility)
       _allAnime = response.data || [];
       _filteredAnime = _allAnime;
+      _totalPages = response.pagination?.totalPages || 1;
+      _currentPage = response.pagination?.page || 1;
       _renderPage();
       _renderPagination(response.pagination);
     } else {

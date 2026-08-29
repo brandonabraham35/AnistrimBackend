@@ -10,26 +10,64 @@
   let _episodesEditId = null;
   let _episodesData = [];
   let _animeList = [];
+  let _currentPage = 1;
+  let _perPage = 20;
+  let _totalEpisodes = 0;
+  let _totalPages = 1;
+  let _setupComplete = false;
+  let _sectionActive = false;
+  let _pendingLoadFromManage = false;
 
   // ─── DOM Cache ──────────────────────────────────────────────────────────
   function _$el(id) { return document.getElementById(id); }
 
+  // ─── manageEpisodes (always available, lazy init if needed) ────────────
+  window.manageEpisodes = function(animeId, animeTitle) {
+    // Lazy setup if the Episodes section has never been initialized
+    if (!_setupComplete) {
+      _setupEventListeners();
+      _setupComplete = true;
+    }
+
+    _currentAnimeId = animeId;
+    _currentAnimeTitle = animeTitle || '';
+    _currentPage = 1;
+    _pendingLoadFromManage = true;
+    const titleEl = document.getElementById('current-anime-title');
+    if (titleEl) titleEl.textContent = animeTitle ? `Episodes: ${window._escapeHTML(animeTitle)}` : 'All Episodes';
+    // Navigate to Episodes section — triggers hashchange + observer
+    window.location.hash = '#episodes';
+    // Load immediately; observer/hashchange handlers skip because _pendingLoadFromManage is set
+    _loadAllEpisodes();
+  };
+
   // ─── Initialization ─────────────────────────────────────────────────────
-  function initializeEpisodesSection() {
+  function initializeEpisodesSection(fromAnimeId, fromAnimeTitle) {
     console.log('[Episodes] Initializing...');
 
-    _setupEventListeners();
+    // One-time setup (event listeners only; manageEpisodes is already global)
+    if (!_setupComplete) {
+      _setupEventListeners();
+      _setupComplete = true;
+    }
+
+    // Apply anime filter if this activation came with arguments
+    if (fromAnimeId !== undefined) {
+      _currentAnimeId = fromAnimeId;
+      _currentAnimeTitle = fromAnimeTitle || '';
+      _currentPage = 1;
+      const titleEl = document.getElementById('current-anime-title');
+      if (titleEl) titleEl.textContent = fromAnimeTitle ? `Episodes: ${window._escapeHTML(fromAnimeTitle)}` : 'All Episodes';
+    }
+
+    // If manageEpisodes already triggered a load, skip to avoid a duplicate API call
+    if (_pendingLoadFromManage) {
+      _pendingLoadFromManage = false;
+      return;
+    }
+
     _loadAnimeList();
     _loadAllEpisodes();
-
-    // Expose manageEpisodes for anime.js to call
-    window.manageEpisodes = function(animeId, animeTitle) {
-      _currentAnimeId = animeId;
-      _currentAnimeTitle = animeTitle || '';
-      const titleEl = document.getElementById('current-anime-title');
-      if (titleEl) titleEl.textContent = animeTitle ? `Episodes: ${window._escapeHTML(animeTitle)}` : 'All Episodes';
-      _loadAllEpisodes();
-    };
   }
 
   // ─── Event Listeners ────────────────────────────────────────────────────
@@ -80,6 +118,17 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') _closeEpisodeModal();
     });
+
+    // Pagination
+    _$el('episode-pagination')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.pagination-btn');
+      if (!btn) return;
+      const page = btn.dataset.page;
+      if (page === 'prev') _currentPage = Math.max(1, _currentPage - 1);
+      else if (page === 'next') _currentPage = _currentPage + 1;
+      else _currentPage = parseInt(page, 10);
+      _loadAllEpisodes();
+    });
   }
 
   // ─── Data Loading ───────────────────────────────────────────────────────
@@ -97,21 +146,26 @@
     const tbody = _$el('episodes-table')?.querySelector('tbody');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="7">' + window.SkeletonLoader.table(5, 7) + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8">' + window.SkeletonLoader.table(5, 7) + '</td></tr>';
 
     try {
+      const params = '?page=' + _currentPage + '&limit=' + _perPage;
       let data;
       if (_currentAnimeId) {
-        data = await window.apiRequest(`/api/admin/anime/${_currentAnimeId}/episodes`);
+        data = await window.apiRequest('/api/admin/anime/' + _currentAnimeId + '/episodes' + params);
       } else {
-        data = await window.apiRequest('/api/admin/episodes');
+        data = await window.apiRequest('/api/admin/episodes' + params);
       }
-      // unwrapAdminEnvelope exposes .items/.rows for array responses
+      // unwrapAdminEnvelope exposes .items/.rows and .pagination
       _episodesData = Array.isArray(data) ? data : (data.items || data.rows || []);
+      // Read pagination metadata from the backend response.
+      _totalEpisodes = data.pagination?.totalItems || data.totalItems || _episodesData.length;
+      _totalPages = data.pagination?.totalPages || data.totalPages || Math.max(1, Math.ceil(_totalEpisodes / _perPage));
       _renderEpisodes(tbody);
+      _renderPagination();
     } catch (error) {
       console.error('[Episodes] Failed to load:', error);
-      tbody.innerHTML = '<tr><td colspan="7">' + window.ErrorState.render({
+      tbody.innerHTML = '<tr><td colspan="9">' + window.ErrorState.render({
         message: 'Failed to load episodes',
         retryFn: () => _loadAllEpisodes()
       }) + '</td></tr>';
@@ -124,7 +178,7 @@
     if (!tbody) return;
 
     if (_episodesData.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7">' + window.EmptyState.render({
+      tbody.innerHTML = '<tr><td colspan="9">' + window.EmptyState.render({
         icon: '🎬',
         title: 'No Episodes Found',
         description: _currentAnimeId ? 'This anime has no episodes yet.' : 'No episodes in the database.',
@@ -236,6 +290,42 @@
     }
   }
 
+function _renderPagination() {
+    var infoEl = _$el('episode-table-info');
+    if (infoEl) {
+      infoEl.textContent = _totalEpisodes + ' episodes total' +
+        (_totalPages > 1 ? ' · Page ' + _currentPage + ' of ' + _totalPages : '');
+    }
+
+    var pagEl = _$el('episode-pagination');
+    if (!pagEl) return;
+    if (_totalPages <= 1) {
+      pagEl.innerHTML = '';
+      return;
+    }
+
+    var html = '';
+    var current = _currentPage;
+    var total = _totalPages;
+
+    html += '<button class="pagination-btn" data-page="prev"' + (current <= 1 ? ' disabled' : '') + '>« Prev</button>';
+    var start = Math.max(1, current - 2);
+    var end = Math.min(total, current + 2);
+    if (start > 1) {
+      html += '<button class="pagination-btn" data-page="1">1</button>';
+      if (start > 2) html += '<span style="color:var(--text-muted);padding:0 4px;">...</span>';
+    }
+    for (var i = start; i <= end; i++) {
+      html += '<button class="pagination-btn' + (i === current ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+    }
+    if (end < total) {
+      if (end < total - 1) html += '<span style="color:var(--text-muted);padding:0 4px;">...</span>';
+      html += '<button class="pagination-btn" data-page="' + total + '">' + total + '</button>';
+    }
+    html += '<button class="pagination-btn" data-page="next"' + (current >= total ? ' disabled' : '') + '>Next »</button>';
+
+    pagEl.innerHTML = html;
+  }
   function _updateBulkDeleteButton() {
     const selected = document.querySelectorAll('.episode-select-checkbox:checked');
     const btn = _$el('bulkDeleteBtn-episodes');
@@ -423,11 +513,76 @@
   // ─── Global Exposure ────────────────────────────────────────────────────
   window.initializeEpisodesSection = initializeEpisodesSection;
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // ─── Section-Activation Observer ───────────────────────────────────────
+  // Detect whenever #episodes gains the `active` class (sidebar click,
+  // hash change, popstate, direct load) and reload data.  This handles
+  // re-entry (nav away → return) without modifying dashboard.js.
+  (function _watchEpisodesSection() {
+    const section = document.getElementById('episodes');
+    if (!section) return;
+
+    const observer = new MutationObserver(function(mutations) {
+      for (const m of mutations) {
+        if (m.type === 'attributes' && m.attributeName === 'class') {
+          const isActive = section.classList.contains('active');
+          // Only react on transition to active (ignore deactivation)
+          if (isActive && !_sectionActive) {
+            _sectionActive = true;
+            if (_setupComplete) {
+              if (!_pendingLoadFromManage) {
+                // Fresh entry (sidebar click, hash change, back/forward, direct load)
+                // — reset filter and pagination for a clean "All Episodes" view.
+                _currentAnimeId = null;
+                _currentAnimeTitle = '';
+                _currentPage = 1;
+                const titleEl = document.getElementById('current-anime-title');
+                if (titleEl) titleEl.textContent = 'All Episodes';
+                _loadAnimeList();
+                _loadAllEpisodes();
+              }
+              // Entry from manageEpisodes — filter is already set, skip the reload.
+            }
+            _pendingLoadFromManage = false;
+          } else if (!isActive) {
+            _sectionActive = false;
+          }
+        }
+      }
+    });
+
+    // Defer observer start to avoid capturing the initial class toggle
+    // that happens during dashboard.js `showSection()` on page load.
+    // The initial data load is handled by initializeEpisodesSection() directly.
+    setTimeout(function() {
+      _sectionActive = section.classList.contains('active');
+      observer.observe(section, { attributes: true, attributeFilter: ['class'] });
+    }, 0);
+  })();
+
+  // Also listen for hashchange/popstate for extra coverage (browser nav)
+  window.addEventListener('hashchange', _onHashChange);
+  window.addEventListener('popstate', _onHashChange);
+
+  function _onHashChange() {
     if (window.location.hash === '#episodes') {
-      initializeEpisodesSection();
+      const section = document.getElementById('episodes');
+      if (section && section.classList.contains('active') && !_sectionActive) {
+        _sectionActive = true;
+        if (_setupComplete) {
+          if (!_pendingLoadFromManage) {
+            _currentAnimeId = null;
+            _currentAnimeTitle = '';
+            _currentPage = 1;
+            const titleEl = document.getElementById('current-anime-title');
+            if (titleEl) titleEl.textContent = 'All Episodes';
+            _loadAnimeList();
+            _loadAllEpisodes();
+          }
+        }
+        _pendingLoadFromManage = false;
+      }
     }
-  });
+  }
 
 })();
 
