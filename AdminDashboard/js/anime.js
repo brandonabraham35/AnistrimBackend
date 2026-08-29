@@ -258,9 +258,10 @@ async function _fetchAnime() {
     // into { items:[...], rows:[...], pagination:{...} }. Support all shapes.
     if (Array.isArray(response)) {
       _allAnime = response;
-      _filteredAnime = response;
-      _currentPage = 1;
       _totalPages = Math.ceil(_allAnime.length / _perPage) || 1;
+      // For client-side (array) mode, slice the current page into _filteredAnime
+      const start = (_currentPage - 1) * _perPage;
+      _filteredAnime = _allAnime.slice(start, start + _perPage);
       _renderPage();
       _renderPaginationSimple();
     } else if (response.items || response.rows) {
@@ -439,32 +440,33 @@ function _showError(msg) {
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 function _getPageItems() {
-  const start = (_currentPage - 1) * _perPage;
-  return _filteredAnime.slice(start, start + _perPage);
+  // _filteredAnime already contains exactly the current page's items
+  // (set by _fetchAnime for server-paginated mode, or sliced for array mode).
+  return _filteredAnime;
 }
 
 function _renderPagination(pagination) {
   if (!_pagination) return;
   if (!pagination || pagination.totalPages <= 1) {
     _pagination.innerHTML = '';
-    if (_tableInfo) _tableInfo.textContent = pagination ? `${pagination.total} anime total` : '';
+    if (_tableInfo) _tableInfo.textContent = pagination ? `${pagination.totalItems || pagination.total || ''} anime total` : '';
     return;
   }
-  const { page, totalPages, total } = pagination;
+  const { page, totalPages } = pagination;
+  const total = pagination.totalItems || pagination.total || _filteredAnime.length;
   if (_tableInfo) _tableInfo.textContent = `${total} anime total · Page ${page} of ${totalPages}`;
   _pagination.innerHTML = _buildPaginationHTML(page, totalPages);
 }
 
 function _renderPaginationSimple() {
   if (!_pagination) return;
-  const totalPages = Math.ceil(_filteredAnime.length / _perPage);
-  if (totalPages <= 1) {
+  if (_totalPages <= 1) {
     _pagination.innerHTML = '';
-    if (_tableInfo) _tableInfo.textContent = `${_filteredAnime.length} anime total`;
+    if (_tableInfo) _tableInfo.textContent = `${_allAnime.length} anime total`;
     return;
   }
-  if (_tableInfo) _tableInfo.textContent = `${_filteredAnime.length} anime total · Page ${_currentPage} of ${totalPages}`;
-  _pagination.innerHTML = _buildPaginationHTML(_currentPage, totalPages);
+  if (_tableInfo) _tableInfo.textContent = `${_allAnime.length} anime total · Page ${_currentPage} of ${_totalPages}`;
+  _pagination.innerHTML = _buildPaginationHTML(_currentPage, _totalPages);
 }
 
 function _buildPaginationHTML(current, total) {

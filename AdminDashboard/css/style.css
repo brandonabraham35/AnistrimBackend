@@ -1176,6 +1176,28 @@ th.sortable.sorted-desc i::before { content: '\f0dd'; } /* fa-sort-down */
   animation: spin 0.6s linear infinite;
 }
 
+/* Table row action buttons */
+.btn-action {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem 0.45rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  transition: all 0.2s;
+  vertical-align: middle;
+  line-height: 1;
+}
+.btn-action:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.btn-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Mobile Cards */
 .mobile-cards {
   display: grid;
