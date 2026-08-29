@@ -148,8 +148,8 @@
       <tr>
         <td>${window._escapeHTML(g.name)}</td>
         <td style="white-space:nowrap;">
-          <button class="btn-action edit" data-id="${g.id}" title="Edit"><i class="fas fa-edit"></i></button>
-          <button class="btn-action delete" data-id="${g.id}" title="Delete"><i class="fas fa-trash"></i></button>
+          <button class="btn-action edit" data-id="${g.id}" title="Edit Genre" aria-label="Edit Genre"><i class="fas fa-edit"></i></button>
+          <button class="btn-action delete" data-id="${g.id}" title="Delete Genre" aria-label="Delete Genre"><i class="fas fa-trash"></i></button>
         </td>
       </tr>
     `).join('');

@@ -202,9 +202,9 @@
         <td>${window.Badge.premium(ep.is_premium)}</td>
         <td>${(ep.view_count || 0).toLocaleString()}</td>
         <td style="white-space:nowrap;">
-          <button class="btn-action edit" data-id="${ep.id}" title="Edit Episode"><i class="fas fa-edit"></i></button>
-          <button class="btn-action inspect-stream" data-id="${ep.id}" title="Inspect Stream"><i class="fas fa-search"></i></button>
-          <button class="btn-action delete" data-id="${ep.id}" title="Delete Episode"><i class="fas fa-trash"></i></button>
+          <button class="btn-action edit" data-id="${ep.id}" title="Edit Episode" aria-label="Edit Episode"><i class="fas fa-edit"></i></button>
+          <button class="btn-action inspect-stream" data-id="${ep.id}" title="Inspect Stream" aria-label="Inspect Stream"><i class="fas fa-search"></i></button>
+          <button class="btn-action delete" data-id="${ep.id}" title="Delete Episode" aria-label="Delete Episode"><i class="fas fa-trash"></i></button>
         </td>
       </tr>`;
     }).join('');

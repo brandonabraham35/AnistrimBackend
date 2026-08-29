@@ -364,13 +364,13 @@ function _renderTableRows(items) {
         <td>${(anime.view_count || 0).toLocaleString()}</td>
         <td style="text-align:center;">${ahStatus}${ahMeta}<br>${playbackBadge}</td>
         <td style="white-space:nowrap;">
-          <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes"><i class="fas fa-video"></i></button>
-          <button class="btn-action ah-sync" data-id="${anime.id}" title="Sync from AnimeHeaven" ${ahImported ? '' : 'disabled'}><i class="fas fa-sync"></i></button>
-          <button class="btn-action ah-import-now" data-id="${anime.id}" title="Import from AnimeHeaven Record"><i class="fas fa-download"></i></button>
-          <button class="btn-action ah-check" data-id="${anime.id}" title="Check Playback Readiness"><i class="fas fa-check-circle"></i></button>
-          <button class="btn-action details" data-id="${anime.id}" title="View Details"><i class="fas fa-eye"></i></button>
-          <button class="btn-action edit" data-id="${anime.id}" title="Edit"><i class="fas fa-edit"></i></button>
-          <button class="btn-action delete" data-id="${anime.id}" title="Delete"><i class="fas fa-trash"></i></button>
+          <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes" aria-label="Manage Episodes"><i class="fas fa-video"></i></button>
+          <button class="btn-action ah-sync" data-id="${anime.id}" title="Sync from AnimeHeaven" aria-label="Sync from AnimeHeaven" ${ahImported ? '' : 'disabled'}><i class="fas fa-sync"></i></button>
+          <button class="btn-action ah-import-now" data-id="${anime.id}" title="Import from AnimeHeaven" aria-label="Import from AnimeHeaven"><i class="fas fa-download"></i></button>
+          <button class="btn-action ah-check" data-id="${anime.id}" title="Check Playback Readiness" aria-label="Check Playback Readiness"><i class="fas fa-check-circle"></i></button>
+          <button class="btn-action details" data-id="${anime.id}" title="View Details" aria-label="View Details"><i class="fas fa-eye"></i></button>
+          <button class="btn-action edit" data-id="${anime.id}" title="Edit Anime" aria-label="Edit Anime"><i class="fas fa-edit"></i></button>
+          <button class="btn-action delete" data-id="${anime.id}" title="Delete Anime" aria-label="Delete Anime"><i class="fas fa-trash"></i></button>
         </td>
       </tr>
     `;
@@ -398,9 +398,9 @@ function _renderMobileCards(items) {
           </div>
           <div class="card-genres">${genres.map(g => `<span>${g}</span>`).join('')}</div>
           <div class="card-actions">
-            <button class="btn-action details" data-id="${anime.id}"><i class="fas fa-eye"></i> Details</button>
-            <button class="btn-action edit" data-id="${anime.id}"><i class="fas fa-edit"></i> Edit</button>
-            <button class="btn-action delete" data-id="${anime.id}"><i class="fas fa-trash"></i> Delete</button>
+            <button class="btn-action details" data-id="${anime.id}" title="View Details" aria-label="View Details"><i class="fas fa-eye"></i> Details</button>
+            <button class="btn-action edit" data-id="${anime.id}" title="Edit Anime" aria-label="Edit Anime"><i class="fas fa-edit"></i> Edit</button>
+            <button class="btn-action delete" data-id="${anime.id}" title="Delete Anime" aria-label="Delete Anime"><i class="fas fa-trash"></i> Delete</button>
           </div>
         </div>
       </div>

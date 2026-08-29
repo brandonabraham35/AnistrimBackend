@@ -1187,11 +1187,25 @@ th.sortable.sorted-desc i::before { content: '\f0dd'; } /* fa-sort-down */
   font-size: 0.78rem;
   transition: all 0.2s;
   vertical-align: middle;
-  line-height: 1;
+  line-height: 1.2;
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .btn-action:hover {
   color: var(--primary);
   border-color: var(--primary);
+}
+.btn-action:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.btn-action.delete:hover,
+.btn-action.delete:focus-visible {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 .btn-action:disabled {
   opacity: 0.4;

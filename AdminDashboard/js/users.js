@@ -102,11 +102,11 @@
         <td>${window.Badge.status(user.status)}</td>
         <td style="font-size:0.78rem;color:var(--text-muted);">${premiumExpiry}</td>
         <td style="white-space:nowrap;">
-          <button class="btn-action edit" data-id="${user.id}" title="Edit User"><i class="fas fa-edit"></i></button>
-          <button class="btn-action ban" data-id="${user.id}" data-status="${user.status}" title="${user.status === 'banned' ? 'Unban' : 'Ban'}">
+          <button class="btn-action edit" data-id="${user.id}" title="Edit User" aria-label="Edit User"><i class="fas fa-edit"></i></button>
+          <button class="btn-action ban" data-id="${user.id}" data-status="${user.status}" title="${user.status === 'banned' ? 'Unban User' : 'Ban User'}" aria-label="${user.status === 'banned' ? 'Unban User' : 'Ban User'}">
             ${user.status === 'banned' ? '<i class="fas fa-check-circle" style="color:var(--success);"></i>' : '<i class="fas fa-ban" style="color:var(--warning);"></i>'}
           </button>
-          <button class="btn-action delete" data-id="${user.id}" title="Delete User"><i class="fas fa-trash"></i></button>
+          <button class="btn-action delete" data-id="${user.id}" title="Delete User" aria-label="Delete User"><i class="fas fa-trash"></i></button>
         </td>
       </tr>`;
     }).join('');
