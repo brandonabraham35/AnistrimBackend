@@ -60,11 +60,11 @@ function buildRedisKey(episodeId, provider) {
 }
 
 /**
- * Redis TTL in seconds — clamped to the same safe TTL as MySQL cache.
- * Redis entries expire at the same time as MySQL entries to avoid serving
- * stale data if the MySQL sweep hasn't run yet.
+ * Redis TTL in seconds — matches the MySQL cache TTL so Redis entries expire
+ * at the same time as MySQL entries, avoiding stale data if the MySQL sweep
+ * hasn't run yet.
  */
-const REDIS_TTL_SECONDS = config.safeTtlMinutes * 60;
+const REDIS_TTL_SECONDS = config.ttlMinutes * 60;
 
 // ── Source URL Expiry Detection ────────────────────────────
 // Parses resolved source URLs for reliable expiry indicators.
@@ -577,10 +577,11 @@ async function findCachedStream(episodeId, provider) {
  */
 async function saveStream(episodeId, provider, providerResult, ttlMin) {
   if (!episodeId || !providerResult) return false;
-  // Effective TTL: an explicit override wins, otherwise the clamped safe TTL
-  // (config.safeTtlMinutes) is used so the cache never outlives the AnimeHeaven
-  // CDN playback-context lifetime.
-  const ttl = ttlMin || config.safeTtlMinutes;
+  // Effective TTL: an explicit override wins, otherwise the configured global
+  // TTL is used.  If per-source URL expiry detection found an expiration
+  // parameter in the source URL (detectedExpiresAt), the effective expiry is
+  // further bounded by that value below.
+  const ttl = ttlMin || config.ttlMinutes;
   const now = new Date();
   const expires = new Date(now.getTime() + ttl * 60 * 1000);
 

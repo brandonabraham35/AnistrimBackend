@@ -44,22 +44,50 @@ function buildProxyUrl(host, port, user, pass) {
 }
 
 function buildProxyList() {
-  // 1. Check PROXY_LIST first
+  // Precedence: PROXY_HOST / PORT / USER / PASS (explicit single-proxy
+  // configuration) are authoritative when ALL are set. This ensures newly
+  // provisioned Thordata credentials actually take effect rather than being
+  // silently shadowed by a stale PROXY_LIST.
+  //
+  // PROXY_LIST is retained as a fallback / multi-proxy rotation mechanism:
+  //   - If PROXY_HOST is NOT set (or empty), PROXY_LIST is used as before.
+  //   - If PROXY_HOST IS set, the single-proxy vars are the ONLY source and
+  //     PROXY_LIST is ignored (avoiding dangerous credential shadowing).
+  //
+  // 1. Check single-proxy vars first (authoritative when PROXY_HOST is set).
+  const hasHost = process.env.PROXY_HOST && process.env.PROXY_HOST.trim().length > 0;
+  const hasPort = process.env.PROXY_PORT && process.env.PROXY_PORT.trim().length > 0;
+  if (hasHost) {
+    const single = buildProxyUrl(
+      process.env.PROXY_HOST,
+      hasPort ? process.env.PROXY_PORT : undefined,
+      process.env.PROXY_USER,
+      process.env.PROXY_PASS
+    );
+    if (single) {
+      logger.info('[Proxy] Using single-proxy configuration (PROXY_HOST/PORT/USER/PASS)', {
+        host: process.env.PROXY_HOST,
+        port: hasPort ? process.env.PROXY_PORT : undefined,
+        userPresent: !!(process.env.PROXY_USER),
+      });
+      return [single];
+    }
+  }
+
+  // 2. Fallback to PROXY_LIST (multi-proxy rotation or legacy config).
   const list = (process.env.PROXY_LIST || '')
     .split(',')
     .map(p => p.trim())
     .filter(Boolean);
 
-  if (list.length > 0) return list;
+  if (list.length > 0) {
+    logger.info('[Proxy] Using PROXY_LIST (' + list.length + ' entries)', {
+      proxyCount: list.length,
+    });
+    return list;
+  }
 
-  // 2. Fallback to legacy single proxy
-  const single = buildProxyUrl(
-    process.env.PROXY_HOST,
-    process.env.PROXY_PORT,
-    process.env.PROXY_USER,
-    process.env.PROXY_PASS
-  );
-  return single ? [single] : [];
+  return [];
 }
 
 const PROXY_LIST = buildProxyList();
@@ -427,7 +455,8 @@ const ERROR_CATEGORIES = {
   DNS_FAILURE: 'DNS_FAILURE',   // DNS resolution failed
   CONNECTION_REFUSED: 'CONNECTION_REFUSED',
   CONNECTION_RESET: 'CONNECTION_RESET',
-  TLS_ERROR: 'TLS_ERROR',       // EPROTO/SSL handshake failures
+  TLS_ERROR: 'TLS_ERROR',       // EPROTO/SSL handshake failures (genuine, not proxy-caused)
+  PROXY_AUTH_FAILED: 'PROXY_AUTH_FAILED', // Proxy returned 407 / proxy auth rejected
   NETWORK_ERROR: 'NETWORK_ERROR',
   PROVIDER_DEGRADED: 'PROVIDER_DEGRADED',
   UNKNOWN: 'UNKNOWN',
@@ -448,6 +477,11 @@ function classifyError(err) {
   // Provider was health-skipped
   if (err.code === 'PROVIDER_DEGRADED') {
     return { category: ERROR_CATEGORIES.PROVIDER_DEGRADED, status: 0, retryable: false, description: 'Provider marked degraded — skipped' };
+  }
+
+  // Proxy authentication failure (explicitly thrown by request()).
+  if (err.code === 'PROXY_AUTH_FAILED') {
+    return { category: ERROR_CATEGORIES.PROXY_AUTH_FAILED, status: 0, retryable: false, description: 'Proxy authentication failed — check PROXY_HOST/PORT/USER/PASS' };
   }
 
   // HTTP status-based classification
@@ -603,6 +637,16 @@ async function request(config, options = {}) {
         ...config.headers,
       },
       httpsAgent: relaxedHttpsAgent || proxyAgent || config.httpsAgent || undefined,
+      // Also set httpAgent so HTTP (plaintext) provider destinations also use
+      // the Thordata CONNECT tunnel, not just HTTPS destinations. The
+      // HttpsProxyAgent handles both HTTP and HTTPS through CONNECT.
+      httpAgent: proxyAgent || config.httpAgent || undefined,
+      // Explicitly disable axios's built-in proxy resolution (env HTTP(S)_PROXY /
+      // ALL_PROXY) so the ONLY mechanism is the provider-selected agent above.
+      // Prevents a double/conflicting proxy layering that can otherwise make the
+      // client TLS directly against the (plaintext) proxy and fail with
+      // EPROTO "tls_get_more_records:packet length too long".
+      proxy: false,
       ...(Object.keys(mergedParams).length > 0 ? { params: mergedParams } : {}),
     };
 
@@ -652,6 +696,12 @@ async function request(config, options = {}) {
       const isTimeout = isTimeoutError(err);
       const cloudflareDetected = status === 403 || /cloudflare/i.test(err.message || '');
       const isTlsError = err.code === 'EPROTO' || /ssl routines|tls_get_more_records|packet length|ssl_error/i.test(err.message || '');
+      // Detect proxy authentication failure: EPROTO on a proxied request with
+      // no HTTP response almost certainly means the proxy returned a plaintext
+      // 407 which OpenSSL cannot parse as TLS.  Do NOT treat this as a TLS
+      // certificate issue — the only fix is to check proxy credentials/session.
+      const isProxyAuthFailure = !skipProxy && PROXY_LIST.length > 0 &&
+        err.code === 'EPROTO' && !err.response;
 
       logger.stream({
         provider: providerName,
@@ -665,9 +715,26 @@ async function request(config, options = {}) {
         timeoutStatus: isTimeout,
       });
 
+      // Proxy authentication failure — fail fast, do NOT retry with relaxed TLS.
+      if (isProxyAuthFailure) {
+        logger.warn('[providerHttp] Proxy authentication failure (EPROTO on proxied request)', {
+          provider: providerName,
+          url: config.url?.substring(0, 120),
+        });
+        // Track as failure (one attempt only — no retry for auth failures).
+        if (!dontTrackHealth) {
+          markFailure(providerName, responseTime);
+        }
+        throw Object.assign(new Error('Proxy authentication failed — check PROXY_HOST/PROXY_PORT/PROXY_USER/PROXY_PASS'), {
+          code: 'PROXY_AUTH_FAILED',
+          proxyContext: { provider: providerName, proxied: true, authFailure: true },
+        });
+      }
+
       // TLS error fallback: retry once with relaxed TLS verification
-      // This applies even in streaming mode where normal retries are disabled
-      if (isTlsError && !tlsRelaxed) {
+      // This applies even in streaming mode where normal retries are disabled.
+      // IMPORTANT: only fires for genuine TLS errors, NOT proxy auth failures.
+      if (isTlsError && !tlsRelaxed && !isProxyAuthFailure) {
         tlsRelaxed = true;
         // Allow one extra attempt for TLS errors (even in streaming mode)
         effectiveMaxRetries = Math.max(effectiveMaxRetries, 1);
