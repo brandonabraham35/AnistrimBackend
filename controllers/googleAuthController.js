@@ -182,7 +182,11 @@ exports.googleCallback = async (req, res) => {
     // Stage 5 — Build the canonical user DTO.
     const dto = await tagged('user-dto', () => buildUserDto(user));
 
+    console.log('[googleCallback] stage start: login-code');
     const loginCode = await createLoginCode(accessToken, refreshToken, dto, intent);
+    console.log('[googleCallback] stage ok: login-code code=present length=' + loginCode.length);
+
+    console.log('[googleCallback] stage start: success-page');
 
     // Client-agnostic path: return structured result + suggested deep link.
     // B7 fix: per-client return target resolved from X-Client header with
@@ -212,7 +216,10 @@ exports.googleCallback = async (req, res) => {
       }
     }
 
-    return res.send(successPage(loginCode));
+    console.log('[googleCallback] sending successPage');
+    res.send(successPage(loginCode));
+    console.log('[googleCallback] success-page sent');
+    return;
   } catch (err) {
     console.error(`[googleCallback] callback FAILED | code=${(err && err.code) || ''} status=${(err && err.status) || ''} msg=${(err && err.message) || err}`);
     if (err && err.stack) console.error(err.stack);
@@ -278,6 +285,7 @@ exports.exchangeLoginCode = async (req, res) => {
 };
 
 function successPage(code) {
+  console.log('[googleCallback] successPage generating bridge');
   const encodedCode = encodeURIComponent(code);
   const deepLink = `${APP_SCHEME}://auth?code=${encodedCode}`;
   // Browsers (including Chrome Custom Tabs used by Capacitor Browser) need
@@ -287,6 +295,7 @@ function successPage(code) {
   const fallbackUrl = encodeURIComponent(`${BACKEND_URL}/api/auth/google/callback-fallback?code=${encodedCode}`);
   const androidIntent = `intent://auth?code=${encodedCode}#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};S.browser_fallback_url=${fallbackUrl};end`;
 
+  console.log('[googleCallback] successPage generated');
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -334,7 +343,7 @@ function successPage(code) {
   </script>
 </body>
 </html>`;
-}
+} // <-- closing brace for successPage function
 
 function errorPage(message) {
   // Build HTML entities programmatically so they survive transport encoding.
