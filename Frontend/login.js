@@ -44,23 +44,44 @@ async function googleLogin() {
       // catches the fallback navigation and processes the login code
       // directly, before any deep-link handoff is attempted.
       var _browserCodeProcessed = false;
+      console.log('[GOOGLE-OAUTH-TRACE] Registering browserPageLoaded listener');
       CapBrowser.addListener('browserPageLoaded', function (event) {
-        if (_browserCodeProcessed) return;
-        if (!event || !event.url) return;
-        if (!event.url.includes('code=')) return;
+        console.log('[GOOGLE-OAUTH-TRACE] browserPageLoaded fired, event:', JSON.stringify(event || {}));
+        if (_browserCodeProcessed) {
+          console.log('[GOOGLE-OAUTH-TRACE] Code already processed, skipping');
+          return;
+        }
+        if (!event || !event.url) {
+          console.log('[GOOGLE-OAUTH-TRACE] No event.url available');
+          return;
+        }
+        console.log('[GOOGLE-OAUTH-TRACE] browserPageLoaded URL:', event.url);
+        if (!event.url.includes('code=')) {
+          console.log('[GOOGLE-OAUTH-TRACE] URL does not contain code parameter');
+          return;
+        }
         // Only process the one-time login code URL patterns, not
         // the intermediate Google OAuth code on the callback page.
-        if (!event.url.includes('/callback-fallback') && !event.url.includes('anistrim://auth')) return;
+        if (!event.url.includes('/callback-fallback') && !event.url.includes('anistrim://auth')) {
+          console.log('[GOOGLE-OAUTH-TRACE] URL does not match callback-fallback or anistrim://auth pattern');
+          return;
+        }
+        console.log('[GOOGLE-OAUTH-TRACE] Browser callback detected - URL matches expected pattern');
         _browserCodeProcessed = true;
         var code = (typeof window.__googleAuthGetCodeFromUrl === 'function')
           ? window.__googleAuthGetCodeFromUrl(event.url)
           : null;
+        console.log('[GOOGLE-OAUTH-TRACE] extracted code =', code ? 'YES (length: ' + code.length + ')' : 'NO');
         if (!code) { _browserCodeProcessed = false; return; }
         // Close the browser, then let the shared handler complete
         // the token exchange, persist the session, and redirect.
+        console.log('[GOOGLE-OAUTH-TRACE] Closing browser');
         CapBrowser.close().catch(function () {});
         if (typeof window.__googleAuthFetchAndLogin === 'function') {
+          console.log('[GOOGLE-OAUTH-TRACE] Calling __googleAuthFetchAndLogin');
           window.__googleAuthFetchAndLogin(code);
+        } else {
+          console.log('[GOOGLE-OAUTH-TRACE] ERROR: __googleAuthFetchAndLogin not available');
         }
       });
       await CapBrowser.open({ url: backend + '/api/auth/google', windowName: '_self', presentationStyle: 'fullscreen' });

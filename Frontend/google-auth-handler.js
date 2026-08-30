@@ -28,34 +28,48 @@
   async function fetchAndLogin(code) {
     if (!code) return;
     if (_codeProcessed) {
-      console.log('[GoogleAuth] Code already processed - skipping duplicate');
+      console.log('[GOOGLE-OAUTH-TRACE] Code already processed - skipping duplicate');
       return;
     }
     _codeProcessed = true;
+    console.log('[GOOGLE-OAUTH-TRACE] fetchAndLogin START, code length:', code.length);
 
     showOverlay('Signing you in...');
     try {
+      console.log('[GOOGLE-OAUTH-TRACE] token endpoint START');
       var res = await fetch(BACKEND + '/api/auth/google/token?code=' + encodeURIComponent(code));
+      console.log('[GOOGLE-OAUTH-TRACE] token endpoint RESPONSE status:', res.status);
       var raw = await res.json();
+      console.log('[GOOGLE-OAUTH-TRACE] token endpoint RESPONSE body keys:', Object.keys(raw || {}).join(', '));
       var data = (raw && raw.success === true && raw.data) ? raw.data : raw;
 
       if (!res.ok || !data.token) {
+        console.log('[GOOGLE-OAUTH-TRACE] token endpoint FAILED:', data && data.message ? data.message : 'Unknown error');
         hideOverlay();
         showDLError(data && data.message ? data.message : 'Sign-in failed. Please try again.');
         return;
       }
 
+      console.log('[GOOGLE-OAUTH-TRACE] token received (length:', data.token.length, ')');
       if (data.user) {
-        try { localStorage.setItem('user', JSON.stringify(data.user)); } catch (e) {}
+        try { 
+          localStorage.setItem('user', JSON.stringify(data.user));
+          console.log('[GOOGLE-OAUTH-TRACE] user saved to localStorage');
+        } catch (e) {
+          console.log('[GOOGLE-OAUTH-TRACE] ERROR saving user:', e.message);
+        }
+      } else {
+        console.log('[GOOGLE-OAUTH-TRACE] WARNING: No user data in response');
       }
       localStorage.setItem('isFirstVisit', 'true');
       window.history.replaceState({}, document.title, window.location.pathname);
       hideOverlay();
+      console.log('[GOOGLE-OAUTH-TRACE] redirectAfterAuthentication START');
       window.redirectAfterAuthentication(data.user, data.token, data.refreshToken);
     } catch (e) {
       hideOverlay();
       _codeProcessed = false;
-      console.error('Deep link auth error:', e);
+      console.error('[GOOGLE-OAUTH-TRACE] Deep link auth error:', e);
       showDLError('Could not complete sign-in. Please check your connection and try again.');
     }
   }
@@ -74,16 +88,29 @@
     if (!window.Capacitor.Plugins || !window.Capacitor.Plugins.App) return;
 
     try {
+      console.log('[GOOGLE-OAUTH-TRACE] Registering appUrlOpen listener');
       window.Capacitor.Plugins.App.addListener('appUrlOpen', function (data) {
+        console.log('[GOOGLE-OAUTH-TRACE] appUrlOpen received, URL:', data && data.url ? data.url : 'none');
         if (!data || !data.url) return;
-        if (!data.url.includes('anistrim://auth')) return;
+        if (!data.url.includes('anistrim://auth')) {
+          console.log('[GOOGLE-OAUTH-TRACE] URL does not match anistrim://auth pattern');
+          return;
+        }
+        console.log('[GOOGLE-OAUTH-TRACE] Deep link detected - anistrim://auth');
         try { window.Capacitor.Plugins.Browser.close(); } catch (e) {}
-        if (data.url.includes('error=') || data.url.includes('auth-error')) return;
+        if (data.url.includes('error=') || data.url.includes('auth-error')) {
+          console.log('[GOOGLE-OAUTH-TRACE] Error URL detected, skipping');
+          return;
+        }
         var code = getCodeFromUrl(data.url);
-        if (code) fetchAndLogin(code);
+        console.log('[GOOGLE-OAUTH-TRACE] extracted code =', code ? 'YES (length: ' + code.length + ')' : 'NO');
+        if (code) {
+          console.log('[GOOGLE-OAUTH-TRACE] Calling fetchAndLogin from appUrlOpen');
+          fetchAndLogin(code);
+        }
       });
     } catch (e) {
-      console.log('[GoogleAuth] Deep link listener error:', e.message);
+      console.log('[GOOGLE-OAUTH-TRACE] Deep link listener error:', e.message);
     }
   }
 

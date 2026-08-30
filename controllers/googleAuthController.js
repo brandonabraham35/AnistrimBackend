@@ -311,12 +311,19 @@ function successPage(code) {
   <script>
     const androidIntent = ${JSON.stringify(androidIntent)};
     const deepLink = ${JSON.stringify(deepLink)};
+    const fallbackUrl = '${BACKEND_URL}/api/auth/google/callback-fallback?code=${encodedCode}';
 
     function openApp() {
+      // Try Android intent first (may trigger appUrlOpen)
+      console.log('[GOOGLE-OAUTH-TRACE] Bridge page: attempting androidIntent');
       window.location.href = androidIntent;
+      
+      // After 500ms, if we're still here, explicitly navigate to HTTP fallback
+      // This ensures the browser loads a real HTTP URL that can be detected
       setTimeout(function () {
-        window.location.href = deepLink;
-      }, 1200);
+        console.log('[GOOGLE-OAUTH-TRACE] Bridge page: intent did not close browser, navigating to fallback');
+        window.location.href = fallbackUrl;
+      }, 500);
     }
 
     setTimeout(openApp, 300);
