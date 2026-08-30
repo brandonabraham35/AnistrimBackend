@@ -59,6 +59,7 @@ const {
 // proxy controllers share utils/hlsRewriter so they can never diverge.
 const { rewriteHlsManifest, isHlsUri, isHlsContentType } = require('../utils/hlsRewriter');
 
+const streamDiag = require('../utils/streamDiagnostics');
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024; // 2MB cap for HLS manifests
 const PROXY_BASE = '/api/stream-proxy';
@@ -200,6 +201,7 @@ exports.streamMedia = async (req, res) => {
   // for one user/episode from playing another user's/episode's context.
   const ctx = streamProxyStore.get(streamId);
   if (!ctx) {
+streamDiag.logPlaybackFailure(null, { status: 404, contentType: null, error: 'Stream context not found or expired' }, { type: 'context_expired', detail: 'ctx not found in streamProxyStore' });
     return res.status(404).json({ error: 'Stream context not found or expired.' });
   }
 
@@ -359,6 +361,13 @@ exports.streamMedia = async (req, res) => {
         streamId: streamId.slice(0, 8),
       });
       return;
+// ── DIAG: log upstream fetch failure ─────────────────────
+    const pipeStatus = pipeError?.response?.status || 0;
+    let pipeFailureType = 'upstream_error';
+    if (pipeStatus === 403 || pipeStatus === 404) pipeFailureType = 'cdn_rejected';
+    else if (pipeError?.code === 'ECONNRESET' || pipeError?.code === 'ETIMEDOUT') pipeFailureType = 'upstream_timeout';
+    else if (pipeStatus === 0) pipeFailureType = 'connection_error';
+    streamDiag.logPlaybackFailure(ctx, { status: pipeStatus, contentType: null, error: pipeError?.message }, { type: pipeFailureType, detail: pipeError?.message });
     }
 
     // ── HLS path: manifest rewrite ─────────────────────────
@@ -375,6 +384,13 @@ exports.streamMedia = async (req, res) => {
       contentLength,
       isHls,
     });
+// ── DIAG: log proxy playback upstream result ─────────────
+    streamDiag.logProxyPlayback(streamId, ctx, {
+      status: upstream.status,
+      contentType,
+      contentLength,
+      durationMs: Date.now() - started,
+    }, 'success', ctx.episodeId);
 
     if (isHls) {
       // Enforce the size cap (pre-check via header, then hard-stop while
@@ -486,6 +502,13 @@ exports.streamMedia = async (req, res) => {
       latencyMs: Date.now() - started,
       streamId: streamId.slice(0, 8),
     });
+// ── DIAG: log proxy playback failure ────────────────────
+    const errStatus = err.response?.status || 0;
+    let failureType = 'upstream_error';
+    if (errStatus === 403 || errStatus === 404) failureType = 'cdn_rejected';
+    else if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') failureType = 'upstream_timeout';
+    else if (errStatus === 0) failureType = 'connection_error';
+    streamDiag.logPlaybackFailure(ctx, { status: errStatus, contentType: null, error: err.message }, { type: failureType, detail: err.message });
   }
 };
 

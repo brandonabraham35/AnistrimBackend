@@ -1301,6 +1301,93 @@ case 'provider-usage': {
       console.error('[Admin] getStreamDiagnostic error:', error.message);
       return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve stream diagnostic.' } });
     }
+},
+
+  /**
+   * POST /api/admin/streams/sync/:animeId
+   * Sync stream observation for all episodes of an anime.
+   * Observes current URLs, refreshes only confirmed-dead sources.
+   * Admin-only, rate-limited.
+   */
+  async syncStreamObservation(req, res) {
+    const animeId = Number(req.params.animeId);
+    if (!Number.isInteger(animeId) || animeId < 1) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PARAM', message: 'Invalid anime ID.' } });
+    }
+    try {
+      const streamObservationService = require('../services/streamObservationService');
+      const forceRefresh = req.query.force === '1' || req.query.force === 'true';
+      const report = await streamObservationService.syncAnime(animeId, { forceRefresh: forceRefresh });
+      logActivity(req, 'Stream sync for anime #' + animeId, 'anime', animeId).catch(function() {});
+      return res.status(200).json({ success: true, report: report });
+    } catch (error) {
+      console.error('[Admin] syncStreamObservation error:', error.message);
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Stream sync failed.' } });
+    }
+  },
+
+  /**
+   * GET /api/admin/streams/observation/:episodeId
+   * Get observation report for a single episode.
+   */
+  async getStreamObservationReport(req, res) {
+    const episodeId = Number(req.params.episodeId);
+    if (!Number.isInteger(episodeId) || episodeId < 1) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PARAM', message: 'Invalid episode ID.' } });
+    }
+    try {
+      const streamCacheService = require('../services/streamCacheService');
+      const streamCacheConfig = require('../config/streamCache');
+      const provider = streamCacheConfig.provider;
+      const cached = await streamCacheService.findCachedStream(episodeId, provider);
+      if (!cached.row) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No cached stream for this episode.' } });
+      }
+      const row = cached.row;
+      const report = {
+        episodeId: episodeId,
+        provider: provider,
+        streamType: row.stream_type || null,
+        expiresAt: row.expires_at || null,
+        detectedExpiresAt: row.detected_expires_at || null,
+        expirySource: row.expiry_source || 'unknown',
+        verificationStatus: row.verification_status || 'unknown',
+        classification: row.url_classification || 'UNKNOWN',
+        classificationConfidence: row.classification_confidence || 'LOW',
+        classificationReason: row.classification_reason || null,
+        lastDirectCheckAt: row.last_direct_check_at || null,
+        lastDirectStatus: row.last_direct_status || null,
+        lastProxyCheckAt: row.last_proxy_check_at || null,
+        lastProxyStatus: row.last_proxy_status || null,
+        lastCheckPath: row.last_check_path || null,
+        lastCheckDurationMs: row.last_check_duration_ms || null,
+        lastCheckContentType: row.last_check_content_type || null,
+        lastVerifiedAt: row.last_verified_at || null,
+        lastFailedAt: row.last_failed_at || null,
+        failureCount: row.failure_count || 0,
+        urlObservedLifetimeSeconds: row.url_observed_lifetime_seconds || null,
+        urlFirstFailureAt: row.url_first_failure_at || null,
+        urlLastFailureAt: row.url_last_failure_at || null,
+        urlFailureCount: row.url_failure_count || 0,
+        probePlaybackMatchCount: row.probe_playback_match_count || 0,
+        probeFalsePositiveCount: row.probe_false_positive_count || 0,
+        probeFalseNegativeCount: row.probe_false_negative_count || 0,
+        rotationCount: row.rotation_count || 0,
+        originalHost: row.original_host || null,
+        currentHost: row.current_host || null,
+        hostChangedAt: row.host_changed_at || null,
+        tokenChangedAt: row.token_changed_at || null,
+        observedLifetimeSeconds: row.observed_lifetime_seconds || null,
+        observedFirstSuccessAt: row.observed_first_success_at || null,
+        observedLastSuccessAt: row.observed_last_success_at || null,
+        observedFirstFailureAt: row.observed_first_failure_at || null,
+      };
+      logActivity(req, 'Stream observation for episode #' + episodeId, 'episode', episodeId).catch(function() {});
+      return res.status(200).json({ success: true, report: report });
+    } catch (error) {
+      console.error('[Admin] getStreamObservationReport error:', error.message);
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve observation report.' } });
+    }
   },
 };
 module.exports = adminController;

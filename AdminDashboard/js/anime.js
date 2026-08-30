@@ -114,6 +114,7 @@ function _setupEventListeners() {
                      actionBtn.classList.contains('ah-sync') ? 'ah-sync' :
                      actionBtn.classList.contains('ah-import-now') ? 'ah-import-now' :
                      actionBtn.classList.contains('ah-check') ? 'ah-check' :
+actionBtn.classList.contains('sync-streams') ? 'sync-streams' :
                      actionBtn.classList.contains('details') ? 'details' : null;
       if (action) { window.animeAction?.(action, id, actionBtn) || _handleRowAction(action, id, actionBtn); }
       return;
@@ -368,6 +369,7 @@ function _renderTableRows(items) {
           <button class="btn-action ah-sync" data-id="${anime.id}" title="Sync from AnimeHeaven" aria-label="Sync from AnimeHeaven" ${ahImported ? '' : 'disabled'}><i class="fas fa-sync"></i></button>
           <button class="btn-action ah-import-now" data-id="${anime.id}" title="Import from AnimeHeaven" aria-label="Import from AnimeHeaven"><i class="fas fa-download"></i></button>
           <button class="btn-action ah-check" data-id="${anime.id}" title="Check Playback Readiness" aria-label="Check Playback Readiness"><i class="fas fa-check-circle"></i></button>
+          <button class="btn-action sync-streams" data-id="${anime.id}" title="Synchronize Streams — check all cached CDN URLs for this anime" aria-label="Synchronize Streams"><i class="fas fa-shield-alt"></i><span style="font-size:0.6rem;display:block;">SYNC</span></button>
           <button class="btn-action details" data-id="${anime.id}" title="View Details" aria-label="View Details"><i class="fas fa-eye"></i></button>
           <button class="btn-action edit" data-id="${anime.id}" title="Edit Anime" aria-label="Edit Anime"><i class="fas fa-edit"></i></button>
           <button class="btn-action delete" data-id="${anime.id}" title="Delete Anime" aria-label="Delete Anime"><i class="fas fa-trash"></i></button>
@@ -578,6 +580,9 @@ async function _handleRowAction(action, id, button) {
       break;
     case 'ah-check':
       await _handleAnimeHeavenPlaybackCheck(id, button);
+      break;
+    case 'sync-streams':
+      await _handleSyncStreams(id, button);
       break;
     case 'details':
       await _showDetails(id);
@@ -1209,6 +1214,47 @@ async function _importAllAnimeHeavenResults(button) {
 // ─── Utility ──────────────────────────────────────────────────────────────────
 // Use shared _debounce from shared.js — no duplicate needed
 
+// ─── Stream Sync ────────────────────────────────────────────────────────────
+async function _handleSyncStreams(animeId, button) {
+  if (!animeId) return;
+  var anime = _allAnime.find(function(a) { return String(a.id) === String(animeId); });
+  var title = anime ? anime.title : 'Anime #' + animeId;
+
+  if (!await window._confirm('Synchronize Streams', 'Check all cached CDN URLs for "' + title + '"? This will observe each cached stream and refresh only confirmed-dead sources.')) return;
+
+  var modal = window.ModalManager.open({
+    title: 'Stream Sync: ' + window._escapeHTML(title),
+    body: '<div style="text-align:center;padding:2rem;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;"></i><p style="margin-top:0.5rem;color:var(--text-muted);">Synchronizing streams...<br>This may take a moment.</p></div>',
+    dialogClass: 'stream-sync-dialog',
+  });
+
+  try {
+    var data = await window.apiRequest('/api/admin/streams/sync/' + animeId, { method: 'POST' });
+    var report = data.report || data;
+
+    var html = '<div style="min-width:400px;">';
+    html += '<h3 style="margin-bottom:0.5rem;">Sync Complete</h3>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1rem;">';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;"><strong style="font-size:1.5rem;">' + (report.episodesChecked || 0) + '</strong><br><small style="color:var(--text-muted);">Checked</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#4caf50;"><strong style="font-size:1.5rem;">' + (report.healthy || 0) + '</strong><br><small style="color:var(--text-muted);">Healthy</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#2196f3;"><strong style="font-size:1.5rem;">' + (report.refreshed || 0) + '</strong><br><small style="color:var(--text-muted);">Refreshed</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#f44336;"><strong style="font-size:1.5rem;">' + (report.dead || 0) + '</strong><br><small style="color:var(--text-muted);">Dead</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#ff9800;"><strong style="font-size:1.5rem;">' + (report.rotating || 0) + '</strong><br><small style="color:var(--text-muted);">Rotating</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#9e9e9e;"><strong style="font-size:1.5rem;">' + (report.longLived || 0) + '</strong><br><small style="color:var(--text-muted);">Long-Lived</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#ff9800;"><strong style="font-size:1.5rem;">' + (report.temporary || 0) + '</strong><br><small style="color:var(--text-muted);">Temporary</small></div>';
+    html += '<div style="background:var(--bg-card,#1e1e2e);padding:0.75rem;border-radius:6px;text-align:center;color:#f44336;"><strong style="font-size:1.5rem;">' + (report.errors || 0) + '</strong><br><small style="color:var(--text-muted);">Errors</small></div>';
+    html += '</div>';
+    html += '<div style="margin-top:0.5rem;"><small style="color:var(--text-muted);">' + (report.episodesChecked || 0) + ' episodes checked. Refresh the page to see updated cache status.</small></div>';
+    html += '</div>';
+    window.ModalManager.update(modal, { body: html });
+    window.showToast?.('Stream sync completed for ' + title, 'success');
+  } catch (error) {
+    window.ModalManager.update(modal, {
+      body: '<div style="text-align:center;padding:2rem;color:var(--danger,#f44336);"><i class="fas fa-exclamation-triangle" style="font-size:2rem;"></i><p style="margin-top:0.5rem;">' + window._escapeHTML(error.message) + '</p></div>',
+    });
+    window.showToast?.('Stream sync failed: ' + error.message, 'error');
+  }
+}
 // ─── Setup ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   window.initializeAnimeSection = initializeAnimeSection;

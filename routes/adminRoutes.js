@@ -77,6 +77,9 @@ router.delete('/episodes/:id',              admin.deleteEpisode);
 router.post('/episodes/bulk-delete',        admin.bulkDeleteEpisodes);
 // Stream Diagnostic (Phase 6 — read-only cached stream inspection)
 router.get('/streams/:episodeId/diagnostic', admin.getStreamDiagnostic);
+// Stream Observation (Phase 6 — empirical URL lifetime tracking)
+router.post('/streams/sync/:animeId', admin.syncStreamObservation);
+router.get('/streams/observation/:episodeId', admin.getStreamObservationReport);
 
 // Settings
 router.get('/settings',                     admin.getSettings);

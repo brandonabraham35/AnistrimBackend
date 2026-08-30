@@ -98,6 +98,8 @@
         _deleteEpisode(id);
       } else if (btn.classList.contains('inspect-stream')) {
         _inspectStream(id);
+      } else if (btn.classList.contains('obs-report')) {
+        _showObservationReport(id);
       }
     });
 
@@ -204,6 +206,7 @@
         <td style="white-space:nowrap;">
           <button class="btn-action edit" data-id="${ep.id}" title="Edit Episode" aria-label="Edit Episode"><i class="fas fa-edit"></i></button>
           <button class="btn-action inspect-stream" data-id="${ep.id}" title="Inspect Stream" aria-label="Inspect Stream"><i class="fas fa-search"></i></button>
+          <button class="btn-action obs-report" data-id="${ep.id}" title="Stream Observation Report" aria-label="Stream Observation Report"><i class="fas fa-chart-bar"></i></button>
           <button class="btn-action delete" data-id="${ep.id}" title="Delete Episode" aria-label="Delete Episode"><i class="fas fa-trash"></i></button>
         </td>
       </tr>`;
@@ -582,6 +585,79 @@ function _renderPagination() {
         _pendingLoadFromManage = false;
       }
     }
+// ─── Stream Observation Report ───────────────────────────────────────
+  async function _showObservationReport(episodeId) {
+    var modal = window.ModalManager.open({
+      title: 'Observation Report — Episode #' + episodeId,
+      body: '<div style="text-align:center;padding:2rem;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;"></i><p style="margin-top:0.5rem;color:var(--text-muted);">Loading observation data...</p></div>',
+      dialogClass: 'obs-report-dialog',
+    });
+
+    try {
+      var data = await window.apiRequest('/api/admin/streams/observation/' + episodeId);
+      var r = data.report || data;
+
+      var val = function(v, fb) { return v !== undefined && v !== null && v !== '' ? v : (fb || '—'); };
+      var time = function(v) { return v ? new Date(v).toLocaleString() : '—'; };
+      var clsBadge = function(cls) {
+        var colors = { UNKNOWN: '#9e9e9e', LONG_LIVED: '#4caf50', TEMPORARY: '#ff9800', ROTATING: '#2196f3', DEAD: '#f44336', PERMANENT: '#9c27b0' };
+        return '<span class="shared-badge" style="background:' + (colors[cls] || '#9e9e9e') + ';color:#fff;">' + (cls || 'UNKNOWN') + '</span>';
+      };
+
+      var rows = [
+        { label: 'Episode ID', value: val(r.episodeId) },
+        { label: 'Provider', value: val(r.provider) },
+        { label: 'Classification', value: clsBadge(r.classification) },
+        { label: 'Confidence', value: val(r.classificationConfidence) },
+        { label: 'Reason', value: val(r.classificationReason) },
+        { label: '', value: '' },
+        { label: 'Current CDN Host', value: val(r.currentHost) },
+        { label: 'Original CDN Host', value: val(r.originalHost) },
+        { label: 'Host Changed At', value: time(r.hostChangedAt) },
+        { label: 'Token Changed At', value: time(r.tokenChangedAt) },
+        { label: 'Rotation Count', value: val(r.rotationCount) },
+        { label: '', value: '' },
+        { label: 'Last Direct Check', value: time(r.lastDirectCheckAt) },
+        { label: 'Last Direct Status', value: val(r.lastDirectStatus) },
+        { label: 'Last Proxy Check', value: time(r.lastProxyCheckAt) },
+        { label: 'Last Proxy Status', value: val(r.lastProxyStatus) },
+        { label: 'Last Check Path', value: val(r.lastCheckPath) },
+        { label: 'Last Check Duration', value: r.lastCheckDurationMs ? r.lastCheckDurationMs + ' ms' : '—' },
+        { label: '', value: '' },
+        { label: 'Observed Lifetime', value: r.urlObservedLifetimeSeconds ? Math.round(r.urlObservedLifetimeSeconds / 3600) + ' hours' : 'Not enough data' },
+        { label: 'First Failure', value: time(r.urlFirstFailureAt) },
+        { label: 'Last Failure', value: time(r.urlLastFailureAt) },
+        { label: 'Failure Count', value: val(r.urlFailureCount) },
+        { label: '', value: '' },
+        { label: 'Probe/Playback Matches', value: val(r.probePlaybackMatchCount) },
+        { label: 'False Positives', value: val(r.probeFalsePositiveCount) },
+        { label: 'False Negatives', value: val(r.probeFalseNegativeCount) },
+        { label: '', value: '' },
+        { label: 'Verification Status', value: val(r.verificationStatus) },
+        { label: 'Last Verified', value: time(r.lastVerifiedAt) },
+        { label: 'Last Failed', value: time(r.lastFailedAt) },
+        { label: 'Last Check Content-Type', value: val(r.lastCheckContentType) },
+      ];
+
+      var html = '<table class="obs-report-table" style="width:100%;border-collapse:collapse;">' +
+        rows.map(function(row) {
+          if (row.label === '' && row.value === '') {
+            return '<tr><td colspan="2" style="border-bottom:1px solid var(--border,#2a2c37);padding:2px;"></td></tr>';
+          }
+          return '<tr><td style="padding:5px 10px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border,#2a2c37);white-space:nowrap;width:180px;font-size:0.8rem;">' +
+            window._escapeHTML(row.label) + '</td><td style="padding:5px 10px;border-bottom:1px solid var(--border,#2a2c37);font-size:0.8rem;">' + row.value + '</td></tr>';
+        }).join('') +
+        '</table>';
+
+      window.ModalManager.update(modal, { body: html });
+    } catch (error) {
+      window.ModalManager.update(modal, {
+        body: '<div style="text-align:center;padding:2rem;color:var(--danger,#f44336);">' +
+          '<i class="fas fa-exclamation-triangle" style="font-size:2rem;"></i>' +
+          '<p style="margin-top:0.5rem;">' + window._escapeHTML(error.message) + '</p></div>',
+      });
+    }
+  }
   }
 
 })();

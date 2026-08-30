@@ -47,6 +47,8 @@ const streamCacheService = require('./streamCacheService');
 const streamCacheConfig = require('../config/streamCache');
 const animeHeavenImportService = require('./animeHeavenImportService');
 const streamCacheMetrics = require('./streamCacheMetrics');
+const streamDiag = require('../utils/streamDiagnostics');
+const streamObservationService = require('./streamObservationService');
 
 // The provider tag used for the persistent stream cache.
 const STREAM_CACHE_ENABLED = streamCacheConfig.enabled;
@@ -943,6 +945,8 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
           endTime: new Date().toISOString(),
           latencyMs: Date.now() - overallStart,
         });
+// ── DIAG: deferred observation for URL lifetime tracking ─
+        streamObservationService.observeOnCacheHit(episodeId, STREAM_CACHE_PROVIDER, cachedLookup.row, { referer: bestSource.referer, origin: bestSource.origin });
         return {
           ...payload,
           providerUsed: payload.provider,
@@ -1064,6 +1068,8 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       bestQuality: best.quality || 'auto',
       tier,
     };
+// ── DIAG: log fresh resolution result ──────────────────
+    streamDiag.logFreshResolution(episodeId, payload.provider, winner, Date.now() - overallStart, true);
 
     // ── Cache the result ────────────────────────────────
     try {

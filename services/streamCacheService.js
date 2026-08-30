@@ -45,6 +45,7 @@ const { request } = require('../utils/providerHttp');
 const inFlightResolverManager = require('./inFlightResolverManager');
 const cache = require('../utils/cacheService');
 const streamCacheMetrics = require('./streamCacheMetrics');
+const streamDiag = require('../utils/streamDiagnostics');
 
 // Redis key prefix for stream sources.
 const REDIS_STREAM_KEY_PREFIX = 'stream:source:';
@@ -391,6 +392,7 @@ async function isCachedSourceAlive(url, context = {}) {
   const extraHeaders = {};
   if (context.referer) extraHeaders.Referer = String(context.referer);
   if (context.origin) extraHeaders.Origin = String(context.origin);
+  const _probeStart = Date.now();
 
   try {
     // axios (via providerHttp.request) rejects on non-2xx. A HEAD that
@@ -406,14 +408,21 @@ async function isCachedSourceAlive(url, context = {}) {
         timeout: SOURCE_PROBE_TIMEOUT_MS,
       }
     );
+    // DIAG: log successful probe
+    streamDiag.logCacheProbe(url, { method: 'head', skipProxy: true, hadCookies: false, hadReferer: !!context.referer, hadOrigin: !!context.origin }, { status: 200, contentType: null, alive: true, durationMs: Date.now() - _probeStart });
     return true; // 2xx/3xx (or a resolved HEAD) → source is alive
   } catch (err) {
     const status = Number(err?.response?.status || 0);
+    const probeResult = { status, contentType: null, alive: false, durationMs: Date.now() - _probeStart };
     // Only explicit 403/404 mean the token/context is rejected/dead.
-    if (status === 403 || status === 404) return false;
+    if (status === 403 || status === 404) {
+      streamDiag.logCacheProbe(url, { method: 'head', skipProxy: true, hadCookies: false, hadReferer: !!context.referer, hadOrigin: !!context.origin }, { ...probeResult, alive: false });
+      return false;
+    }
     // Network error / timeout / 5xx / 429 / redirect-loop etc. — cannot
     // conclude it is dead. Fail-open: keep the cached source (playback must
     // not break).
+    streamDiag.logCacheProbe(url, { method: 'head', skipProxy: true, hadCookies: false, hadReferer: !!context.referer, hadOrigin: !!context.origin }, { ...probeResult, alive: true });
     return true;
   }
 }
@@ -577,6 +586,16 @@ async function findCachedStream(episodeId, provider) {
 
     logger.info('[STREAM_CACHE] HIT', { episodeId, provider, state });
     return { row, result: reconstructProviderResult(row), state };
+// ── DIAG: log cache hit with context age check ──────────
+    try {
+      const { getPlaybackContext } = require('./animeHeavenProvider');
+      const result = reconstructProviderResult(row);
+      const firstSrc = result?.sources?.[0];
+      const playbackCtx = getPlaybackContext(firstSrc?.url, firstSrc?.referer || null);
+      const cacheAge = row.resolved_at ? Date.now() - new Date(row.resolved_at).getTime() : 0;
+      const remaining = new Date(row.expires_at).getTime() - Date.now();
+      streamDiag.logCacheHit(episodeId, provider, row, result, cacheAge, remaining, playbackCtx);
+    } catch (_) { /* non-fatal diagnostic */ }
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (find)', { episodeId, provider, error: err.message });
     return { row: null, result: null, state: null };
@@ -792,6 +811,7 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
       detectedExpiresAt, expirySource, verificationStatus,
     });
     return true;
+streamDiag.logCacheCreation(episodeId, provider, providerResult, ttl * 60 * 1000, expires);
   } catch (err) {
     // Migration not applied / table missing / other DB error — never break playback.
     logger.warn('[STREAM_CACHE] FAILURE (save)', { episodeId, provider, error: err.message });
@@ -803,6 +823,7 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
  * Delete an invalid/expired cache row (best-effort).
  * @param {number|string} episodeId
  * @param {string} provider
+streamDiag.logCacheInvalidation(episodeId, provider, 'probe_dead', null, null);
  * @returns {Promise<boolean>}
  */
 async function deleteInvalidCache(episodeId, provider) {
