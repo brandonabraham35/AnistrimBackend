@@ -1,189 +1,31 @@
-// login.js — BACKEND defined in scrpt.js
+﻿// login.js â€” BACKEND defined in scrpt.js
 //
 // Google login supports two environments:
-//   • Native (Capacitor WebView): Native Google Sign-In via the
+//   â€¢ Native (Capacitor WebView): Native Google Sign-In via the
 //     @capawesome/capacitor-google-sign-in plugin. Returns an idToken
-//     directly to JavaScript — no browser, no deep links, no race conditions.
-//   • Web (plain browser): Google Identity Services (GIS) via the shared
+//     directly to JavaScript â€” no browser, no deep links, no race conditions.
+//   â€¢ Web (plain browser): Google Identity Services (GIS) via the shared
 //     google-auth-handler.js module.
 //
 // Email/password login uses the shared apiFetch wrapper (js/api.js), which
-// handles 403 (requiresVerification → OTP screen), 401 (clear + login.html),
+// handles 403 (requiresVerification â†’ OTP screen), 401 (clear + login.html),
 // and throws ApiError with a friendly message for other errors.
 //
-// No ES-module imports are used — this file is a plain script, matching the
+// No ES-module imports are used â€” this file is a plain script, matching the
 // rest of the codebase, so it runs in the raw WebView without a bundler.
 
-// ── Capacitor plugin handles (present only inside the native app) ──
+// â”€â”€ Capacitor plugin handles (present only inside the native app) â”€â”€
 const CapBrowser = window.Capacitor?.Plugins?.Browser;
 const CapApp     = window.Capacitor?.Plugins?.App;
 const CapGoogleSignIn = window.Capacitor?.Plugins?.GoogleSignIn;
 const isNative   = !!window.Capacitor?.isNativePlatform?.();
 
-// ── Single-use guard for deep-link callback processing ──
+// â”€â”€ Single-use guard for deep-link callback processing â”€â”€
 // Prevents the same login code from being consumed twice when both
 // login.js and google-auth-handler.js receive the same appUrlOpen event.
 var _googleCallbackProcessed = false;
 
-// ── Google Auth Reliability (native path only) ────────────
-// Single state machine, timeouts, error types for native Google sign-in.
-// The web GIS path (google-auth-handler.js) has its own authInProgress guard.
-(function () {
-  'use strict';
-
-  var _gState = 'IDLE';
-  var _gAttemptId = null;
-  var _gTimeoutId = null;
-  var _gPausedWhileActive = false;
-
-  var S = {
-    IDLE: 'IDLE',
-    READY: 'READY',
-    SIGNING_IN: 'SIGNING_IN',
-    EXCHANGING: 'EXCHANGING',
-    PERSISTING: 'PERSISTING',
-    VERIFYING: 'VERIFYING',
-    NAVIGATING: 'NAVIGATING',
-    SUCCESS: 'SUCCESS',
-    CANCELLED: 'CANCELLED',
-    TIMEOUT: 'TIMEOUT',
-    NETWORK_ERROR: 'NETWORK_ERROR',
-    BACKEND_ERROR: 'BACKEND_ERROR',
-    CONFIG_ERROR: 'CONFIG_ERROR',
-    UNKNOWN_ERROR: 'UNKNOWN_ERROR',
-  };
-
-  var T = {
-    SIGN_IN: 60000,
-    BACKEND: 30000,
-    SESSION_VERIFY: 15000,
-    NAVIGATION: 10000,
-  };
-
-  var E = {
-    CANCELLED:        { code: 'AUTH_CANCELLED',          userMessage: '' },
-    TIMEOUT:          { code: 'AUTH_TIMEOUT',            userMessage: 'Google sign-in is taking too long. Please try again.' },
-    NETWORK:          { code: 'AUTH_NETWORK',            userMessage: 'Connection problem. Check your internet connection and try again.' },
-    BACKEND:          { code: 'AUTH_BACKEND',            userMessage: "AniStrim couldn't complete your sign-in. Please try again." },
-    INVALID_ID_TOKEN: { code: 'AUTH_INVALID_ID_TOKEN',   userMessage: "Google sign-in didn't complete. Please try again." },
-    CONFIG:           { code: 'AUTH_NATIVE_CONFIGURATION', userMessage: 'Google sign-in is temporarily unavailable. Please try another sign-in method.' },
-    TRANSIENT:        { code: 'AUTH_TRANSIENT',          userMessage: "Google sign-in didn't complete. Please try again." },
-    UNKNOWN:          { code: 'AUTH_UNKNOWN',            userMessage: 'Google sign-in failed. Please try again.' },
-  };
-
-  function _genId() { return Math.random().toString(16).substring(2, 10).toUpperCase(); }
-  function _log(m)   { console.log('[GoogleAuth][' + (_gAttemptId || '------') + '] ' + m); }
-  function _err(m)   { console.error('[GoogleAuth][' + (_gAttemptId || '------') + '] ' + m); }
-
-  function _setState(s) {
-    var prev = _gState;
-    _gState = s;
-    _log('State: ' + prev + ' \u2192 ' + s);  // arrow character
-  }
-
-  function _clearT() { if (_gTimeoutId) { clearTimeout(_gTimeoutId); _gTimeoutId = null; } }
-
-  function _setT(ms, fn) { _clearT(); _gTimeoutId = setTimeout(fn, ms); }
-
-  function _reset() {
-    _clearT();
-    _gState = 'IDLE';
-    _gAttemptId = null;
-    _gPausedWhileActive = false;
-    // ── Recovery: clear pending flag on every reset
-    try { sessionStorage.removeItem('__authPending'); } catch (e) {}
-  }
-
-  // Expose on window — consumed by loginWithInAppBrowser() and login.html init IIFE.
-  window.__GoogleAuth = {
-    STATES: S,
-    TIMEOUTS: T,
-    ERRORS: E,
-    log: _log,
-    err: _err,
-    setState: _setState,
-    clearTimeout: _clearT,
-    setTimeout: _setT,
-    reset: _reset,
-    genId: _genId,
-    get state() { return _gState; },
-    get attemptId() { return _gAttemptId; },
-    set attemptId(v) { _gAttemptId = v; },
-    get isActive() { return _gState === S.SIGNING_IN || _gState === S.EXCHANGING || _gState === S.PERSISTING || _gState === S.VERIFYING || _gState === S.NAVIGATING; },
-    get pausedWhileActive() { return _gPausedWhileActive; },
-    set pausedWhileActive(v) { _gPausedWhileActive = v; },
-    // ── Configuration audit (development diagnostic) ─────────
-    // Reports native configuration status without exposing secrets.
-    // Called once at boot and exposed for console inspection.
-    audit: function () {
-      var report = { platform: null, packageId: null, googleSignInPlugin: false, configOk: false, warnings: [] };
-      try {
-        if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
-          report.platform = 'native';
-          report.packageId = 'com.anistrim.render';
-          report.googleSignInPlugin = !!(window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleSignIn);
-          report.configOk = report.googleSignInPlugin;
-          // Check init status
-          if (window.__googleSignInInitialized) {
-            report.initialized = true;
-          } else if (window.__googleSignInInitInProgress) {
-            report.initializing = true;
-          }
-        } else if (typeof window.Capacitor !== 'undefined') {
-          report.platform = 'capacitor-but-not-native';
-        } else {
-          report.platform = 'browser';
-        }
-      } catch (e) {
-        report.warnings.push('audit-error: ' + (e.message || String(e)));
-      }
-      return report;
-    },
-  };
-
-  // ── Boot diagnostic ──────────────────────────────────────
-  // Safe configuration check — never exposes secrets.
-  // Logs diagnostic at application start so developers can see
-  // whether native Google Sign-In is wired correctly.
-  (function () {
-    try {
-      var isCapNative = typeof window.Capacitor !== 'undefined' && !!window.Capacitor.isNativePlatform?.();
-      if (!isCapNative) return;
-      var hasPlugin = !!(window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleSignIn);
-      var hasInitFn = hasPlugin && typeof window.Capacitor.Plugins.GoogleSignIn.initialize === 'function';
-      var hasInitFlag = !!window.__googleSignInInitialized;
-      var prefix = '[GoogleAuth][CONFIG]';
-      console.log(prefix + ' Platform: Capacitor native');
-      console.log(prefix + ' Package ID: com.anistrim.render');
-      console.log(prefix + ' GoogleSignIn plugin: ' + (hasPlugin ? 'PRESENT' : 'MISSING'));
-      if (hasPlugin) {
-        console.log(prefix + ' Plugin initialize: ' + (hasInitFn ? 'OK' : 'NOT A FUNCTION'));
-      }
-      console.log(prefix + ' Initialized: ' + (hasInitFlag ? 'YES' : 'NO (will lazy-init on tap)'));
-      if (hasPlugin && !hasInitFn) {
-        console.warn(prefix + ' WARNING: GoogleSignIn plugin loaded but initialize() missing');
-      }
-    } catch (e) {
-      console.error('[GoogleAuth][CONFIG] Diagnostic error:', (e && e.message) || String(e));
-    }
-  })();
-})();
-
-// ── Google button state helpers ───────────────────────────
-function setGoogleBtnLoading(text) {
-  var btn = document.getElementById('google-login-btn');
-  var lbl = document.getElementById('google-btn-text');
-  if (btn) btn.disabled = true;
-  if (lbl) lbl.textContent = text || 'Signing in\u2026';
-}
-function setGoogleBtnReady() {
-  var btn = document.getElementById('google-login-btn');
-  var lbl = document.getElementById('google-btn-text');
-  if (btn) btn.disabled = false;
-  if (lbl) lbl.textContent = 'Continue with Google';
-}
-
-// ── Email/Password Login ────────────────────────────────────
+// â”€â”€ Email/Password Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function handleLogin() {
   const email    = document.getElementById('login-email')?.value?.trim();
   const password = document.getElementById('login-pass')?.value;
@@ -222,18 +64,18 @@ async function handleLogin() {
 }
 window.handleLogin = handleLogin;
 
-// ── Google Login (native + web) ─────────────────────────────
+// â”€â”€ Google Login (native + web) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function loginWithInAppBrowser() {
   // NATIVE PATH: Use the native Google Sign-In plugin (already installed).
-  // This returns an idToken directly — no browser, no deep links.
+  // This returns an idToken directly â€” no browser, no deep links.
   // Uses the shared __GoogleAuth state machine for reliability.
   if (isNative && CapGoogleSignIn) {
     var _auth = window.__GoogleAuth;
     if (!_auth) { showError('Auth state machine not initialized.'); return; }
 
-    // ── Guard: prevent duplicate taps ────────────────────
+    // â”€â”€ Guard: prevent duplicate taps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (_auth.isActive) {
-      _auth.log('Duplicate tap prevented — auth already active');
+      _auth.log('Duplicate tap prevented â€” auth already active');
       return;
     }
 
@@ -242,31 +84,31 @@ async function loginWithInAppBrowser() {
     _auth.log('Attempt started');
     setGoogleBtnLoading();
 
-    // ── Recovery: mark auth as pending so a kill/reload mid-flight recovers
+    // â”€â”€ Recovery: mark auth as pending so a kill/reload mid-flight recovers
     try { sessionStorage.setItem('__authPending', '1'); } catch (e) {}
 
     try {
-      // ── Ensure initialization ──────────────────────────
+      // â”€â”€ Ensure initialization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // __googleSignInInitInProgress is cleared to null once init settles.
       var initWasInFlight = !!window.__googleSignInInitInProgress;
       if (initWasInFlight) {
-        _auth.log('Init still in progress — waiting');
+        _auth.log('Init still in progress â€” waiting');
         await window.__googleSignInInitInProgress;
       }
       // Lazy init: only when NO init is in flight and none has ever completed.
       if (!window.__googleSignInInitialized && !initWasInFlight && typeof window.__ensureGoogleSignInInit === 'function') {
-        _auth.log('Plugin not yet initialized — lazy init');
+        _auth.log('Plugin not yet initialized â€” lazy init');
         await window.__ensureGoogleSignInInit();
       }
       if (!window.__googleSignInInitialized) {
-        _auth.err('Plugin not initialized — can\'t sign in');
+        _auth.err('Plugin not initialized â€” can\'t sign in');
         setGoogleBtnReady();
         showError(_auth.ERRORS.CONFIG.userMessage);
         _auth.reset();
         return;
       }
 
-      // ── Start native sign-in with timeout ──────────────
+      // â”€â”€ Start native sign-in with timeout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       _auth.setState('SIGNING_IN');
       _auth.log('Native sign-in started');
       _auth.setTimeout(_auth.TIMEOUTS.SIGN_IN, function () {
@@ -280,7 +122,7 @@ async function loginWithInAppBrowser() {
       var result = await CapGoogleSignIn.signIn();
       _auth.clearTimeout();
 
-      // ── Handle result ──────────────────────────────────
+      // â”€â”€ Handle result â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Log result structure (never the credential values themselves).
       _auth.log('Native sign-in succeeded');
       _auth.log('Result keys: ' + (result ? Object.keys(result).join(', ') : 'null'));
@@ -304,9 +146,9 @@ async function loginWithInAppBrowser() {
 
       var errCode = (err && err.code) || 'UNKNOWN';
       var errMsg = (err && err.message) || String(err);
-      _auth.err('Sign-in error — code=' + errCode + ' msg=' + errMsg);
+      _auth.err('Sign-in error â€” code=' + errCode + ' msg=' + errMsg);
 
-      // User cancelled — silent return
+      // User cancelled â€” silent return
       if (errCode === 'SIGN_IN_CANCELED') {
         _auth.log('User cancelled');
         _auth.setState('CANCELLED');
@@ -315,7 +157,7 @@ async function loginWithInAppBrowser() {
         return;
       }
 
-      // Configuration errors — not retryable
+      // Configuration errors â€” not retryable
       if (errCode === 'NOT_INITIALIZED' || errMsg.toLowerCase().indexOf('not initialized') >= 0 ||
           errCode === 'CLIENT_ID_MISSING' || errMsg.indexOf('clientId') >= 0) {
         _auth.setState('CONFIG_ERROR');
@@ -325,7 +167,7 @@ async function loginWithInAppBrowser() {
         return;
       }
 
-      // All other errors — transient
+      // All other errors â€” transient
       _auth.setState('TRANSIENT_ERROR');
       setGoogleBtnReady();
       showError(_auth.ERRORS.TRANSIENT.userMessage);
@@ -339,7 +181,7 @@ async function loginWithInAppBrowser() {
   const oauthUrl = `${BACKEND}/api/auth/google/start?intent=login`;
 
   if (isNative && CapBrowser) {
-    console.log('[GoogleAuth] OAuth started — In-App Browser fallback');
+    console.log('[GoogleAuth] OAuth started â€” In-App Browser fallback');
     try {
       await CapBrowser.open({ url: oauthUrl, windowName: '_blank' });
     } catch (err) {
@@ -356,7 +198,7 @@ async function loginWithInAppBrowser() {
       showError('Google sign-in failed. No credential received.');
       return;
     }
-    console.log('[GoogleAuth] Callback received — web GIS returned credential');
+    console.log('[GoogleAuth] Callback received â€” web GIS returned credential');
     await sendIdTokenToBackend(response.credential);
   } catch (err) {
     console.error('[GoogleAuth] Web GIS auth error:', err?.message || err);
@@ -372,10 +214,10 @@ async function sendIdTokenToBackend(idToken) {
   var _auth = window.__GoogleAuth;
   var _isNative = _auth && (_auth.attemptId || _auth.isActive);
 
-  // ── State tracking ─────────────────────────────────────
+  // â”€â”€ State tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (_isNative) {
     _auth.setState('EXCHANGING');
-    _auth.log('Backend exchange started — POST /api/auth/google/verify');
+    _auth.log('Backend exchange started â€” POST /api/auth/google/verify');
     _auth.setTimeout(_auth.TIMEOUTS.BACKEND, function () {
       _auth.log('Backend timed out after ' + _auth.TIMEOUTS.BACKEND + 'ms');
       _auth.setState('TIMEOUT');
@@ -387,7 +229,7 @@ async function sendIdTokenToBackend(idToken) {
     console.log('[GoogleAuth][BACKEND] ID token present:', Boolean(idToken));
   }
 
-  // ── Backend request ─────────────────────────────────────
+  // â”€â”€ Backend request â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { ok, data } = await window.apiFetch('/api/auth/google/verify', {
     method: 'POST',
     body: JSON.stringify({ idToken })
@@ -395,17 +237,17 @@ async function sendIdTokenToBackend(idToken) {
 
   if (_isNative) _auth.clearTimeout();
 
-  // ── Success ─────────────────────────────────────────────
+  // â”€â”€ Success â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (ok && data && data.token && data.user) {
     if (!_isNative) {
-      console.log('[GoogleAuth][BACKEND] Response: 200 — OK');
+      console.log('[GoogleAuth][BACKEND] Response: 200 â€” OK');
       console.log('[GoogleAuth][BACKEND] Token received:', !!data.token);
       console.log('[GoogleAuth][BACKEND] User received:', !!data.user);
     } else {
-      _auth.log('Backend exchange succeeded — status 200');
+      _auth.log('Backend exchange succeeded â€” status 200');
     }
 
-    // ── Persist session ────────────────────────────────────
+    // â”€â”€ Persist session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (_isNative) {
       _auth.setState('PERSISTING');
       _auth.log('Session persistence started');
@@ -433,14 +275,14 @@ async function sendIdTokenToBackend(idToken) {
 
     if (_isNative) _auth.log('Session persisted');
 
-    // ── Verify session ─────────────────────────────────────
+    // â”€â”€ Verify session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (_isNative) {
       _auth.setState('VERIFYING');
       _auth.log('Session verification started');
       // Check that the token was actually written to storage.
       var stored = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
       if (!stored) {
-        _auth.err('Session verification failed — no token in storage');
+        _auth.err('Session verification failed â€” no token in storage');
         setGoogleBtnReady();
         showError('Could not save session. Please try again.');
         _auth.reset();
@@ -449,7 +291,7 @@ async function sendIdTokenToBackend(idToken) {
       _auth.log('Session verified');
     }
 
-    // ── Navigate ───────────────────────────────────────────
+    // â”€â”€ Navigate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (_isNative) {
       _auth.setState('NAVIGATING');
       _auth.log('Navigation started');
@@ -457,12 +299,12 @@ async function sendIdTokenToBackend(idToken) {
       console.log('[GoogleAuth] Redirecting after authentication');
     }
 
-    // ── Clear pending flag before navigation
+    // â”€â”€ Clear pending flag before navigation
     try { sessionStorage.removeItem('__authPending'); } catch (e) {}
 
     window.redirectAfterAuthentication?.(data.user, data.token, data.refreshToken);
 
-    // ── Navigation watchdog ─────────────────────────────────
+    // â”€â”€ Navigation watchdog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // If navigation fails (redirectAfterAuthentication is undefined, throws,
     // or the redirect is blocked), we're still on login.html with a valid
     // session. Detect this and recover.
@@ -470,11 +312,11 @@ async function sendIdTokenToBackend(idToken) {
       _auth.setTimeout(_auth.TIMEOUTS.NAVIGATION, function () {
         var stillOnLogin = window.location.pathname.split('/').pop() === 'login.html';
         if (stillOnLogin) {
-          _auth.err('Navigation watchdog — still on login.html after ' + _auth.TIMEOUTS.NAVIGATION + 'ms');
-          // Session was already verified — attempt recovery redirect
+          _auth.err('Navigation watchdog â€” still on login.html after ' + _auth.TIMEOUTS.NAVIGATION + 'ms');
+          // Session was already verified â€” attempt recovery redirect
           var stored = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
           if (stored && window.State && window.State.isLoggedIn) {
-            _auth.log('Navigation watchdog — session valid, recovering');
+            _auth.log('Navigation watchdog â€” session valid, recovering');
             var redirectParam = '';
             try { redirectParam = sessionStorage.getItem('__loginRedirect') || ''; } catch (e) {}
             if (window.Navigation && window.Navigation.afterAuth) {
@@ -483,7 +325,7 @@ async function sendIdTokenToBackend(idToken) {
               window.location.replace(redirectParam || 'index.html');
             }
           } else {
-            _auth.err('Navigation watchdog — no valid session, showing error');
+            _auth.err('Navigation watchdog â€” no valid session, showing error');
             setGoogleBtnReady();
             showError('Sign-in completed but navigation failed. Please try again.');
           }
@@ -492,7 +334,7 @@ async function sendIdTokenToBackend(idToken) {
       });
     }
 
-    // ── Terminal success ────────────────────────────────────
+    // â”€â”€ Terminal success â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (_isNative) {
       _auth.setState('SUCCESS');
       _auth.log('Authentication complete');
@@ -501,7 +343,7 @@ async function sendIdTokenToBackend(idToken) {
     return;
   }
 
-  // ── Backend error — classify ────────────────────────────
+  // â”€â”€ Backend error â€” classify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   var code = data && data.code;
   var msg = (data && data.message) || 'Google sign-in failed. Please try again.';
   var isServerError = !ok && (!data || data.status >= 500 || data.status === 429 || data.status === 0);
@@ -514,10 +356,10 @@ async function sendIdTokenToBackend(idToken) {
   else if (isServerError)                             msg = "AniStrim couldn't complete your sign-in. Please try again.";
 
   if (_isNative) {
-    _auth.err('Backend error — code=' + (code || 'none') + ' ok=' + ok);
+    _auth.err('Backend error â€” code=' + (code || 'none') + ' ok=' + ok);
     _auth.setState(isServerError ? 'BACKEND_ERROR' : 'BACKEND_ERROR');
   } else {
-    console.error('[GoogleAuth] Backend verification failed:', data || ok);
+    console.error('[GoogleAuth] Backend verification failed: code=' + ((data && data.code) || 'none') + ' ok=' + ok);
   }
 
   setGoogleBtnReady();
@@ -525,7 +367,7 @@ async function sendIdTokenToBackend(idToken) {
   if (_isNative) _auth.reset();
 }
 
-// ── Deep Link Handler (native only — fallback for legacy browser OAuth) ──
+// â”€â”€ Deep Link Handler (native only â€” fallback for legacy browser OAuth) â”€â”€
 // This handler is the fallback path for the legacy In-App Browser OAuth flow.
 // It processes anistrim://auth?code=XXX deep links delivered via appUrlOpen.
 // A single-use guard prevents duplicate processing when multiple listeners
@@ -533,14 +375,14 @@ async function sendIdTokenToBackend(idToken) {
 async function handleAppUrlOpen(data) {
   // Single-use guard: prevent the same callback from being processed twice
   if (_googleCallbackProcessed) {
-    console.log('[GoogleAuth] Callback already processed — ignoring duplicate');
+    console.log('[GoogleAuth] Callback already processed â€” ignoring duplicate');
     return;
   }
 
   try {
     await CapBrowser?.close();
   } catch (e) {
-    // Browser may already be closed — safe to ignore
+    // Browser may already be closed â€” safe to ignore
   }
 
   if (!data || !data.url) return;
@@ -551,7 +393,7 @@ async function handleAppUrlOpen(data) {
     const token = url.searchParams.get('token');
 
     if (token) {
-      console.log('[GoogleAuth] Token detected — direct token path');
+      console.log('[GoogleAuth] Token detected â€” direct token path');
       _googleCallbackProcessed = true;
       if (window.setAuthTokens) window.setAuthTokens(token, null);
       else { localStorage.setItem('session_token', token); localStorage.setItem('token', token); }
@@ -565,9 +407,9 @@ async function handleAppUrlOpen(data) {
 
     const code = url.searchParams.get('code');
     if (code) {
-      console.log('[GoogleAuth] Login code detected — code exchange path');
+      console.log('[GoogleAuth] Login code detected â€” code exchange path');
       _googleCallbackProcessed = true;
-      console.log('[GoogleAuth] Login code exchange started — GET /api/auth/google/token');
+      console.log('[GoogleAuth] Login code exchange started â€” GET /api/auth/google/token');
       const res = await fetch(`${BACKEND}/api/auth/google/token?code=${encodeURIComponent(code)}`);
       const raw2 = await res.json();
       const data2 = (raw2 && raw2.success === true && raw2.data) ? raw2.data : raw2;
@@ -582,18 +424,18 @@ async function handleAppUrlOpen(data) {
         console.log('[GoogleAuth] Redirecting after authentication');
         window.redirectAfterAuthentication?.(data2.user, data2.token, data2.refreshToken);
       } else {
-        // Code may have already been consumed by another handler — check for
+        // Code may have already been consumed by another handler â€” check for
         // the specific "invalid or expired" message to avoid showing a generic
         // error when the login actually succeeded elsewhere.
         if (data2.message && data2.message.includes('invalid or expired')) {
-          console.log('[GoogleAuth] Login code already consumed by another handler — login may have succeeded');
-          // Don't show an error — the other handler may have already redirected.
+          console.log('[GoogleAuth] Login code already consumed by another handler â€” login may have succeeded');
+          // Don't show an error â€” the other handler may have already redirected.
           // Check if we're still on login.html and if tokens exist.
           var hasToken = localStorage.getItem('anistrim.mobile.token') ||
                          localStorage.getItem('token') ||
                          localStorage.getItem('session_token');
           if (hasToken && window.State && window.State.isLoggedIn) {
-            console.log('[GoogleAuth] Tokens found — redirecting anyway');
+            console.log('[GoogleAuth] Tokens found â€” redirecting anyway');
             window.redirectAfterAuthentication?.(window.State.user, hasToken, null);
           }
         } else {
@@ -617,35 +459,9 @@ if (CapApp?.addListener) {
   console.log('[GoogleAuth] appUrlOpen listener registered');
 }
 
-// ── Error Display ─────────────────────────────────────────
-function showError(msg) {
-  if (!msg) return;
-  let el = document.getElementById('auth-error');
-  if (!el) {
-    el = document.createElement('p');
-    el.id = 'auth-error';
-    el.style.cssText = 'color:#f87171;font-size:0.85rem;text-align:center;margin-bottom:10px;';
-    const btn = document.getElementById('google-login-btn');
-    if (btn && btn.parentNode) {
-      btn.parentNode.insertBefore(el, btn.nextSibling);
-    } else {
-      document.querySelector('.auth-submit')?.before(el);
-    }
-  }
-  el.style.display = 'block';
-  el.textContent = msg;
-  if (el._clearTimer) clearTimeout(el._clearTimer);
-  el._clearTimer = setTimeout(() => {
-    if (el && el.parentNode) {
-      el.style.display = 'none';
-      el.textContent = '';
-    }
-  }, 10000);
-}
-
-// ── Event Listeners ──────────────────────────────────────
+// â”€â”€ Event Listeners â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 document.addEventListener('DOMContentLoaded', () => {
-  // ── Stale auth attempt recovery ─────────────────────────
+  // â”€â”€ Stale auth attempt recovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // If the page was killed/reloaded while auth was in progress,
   // the pending flag is still set. Clear it and restore the UI.
   var _auth = window.__GoogleAuth;
@@ -653,12 +469,12 @@ document.addEventListener('DOMContentLoaded', () => {
     var hadPending = false;
     try { hadPending = sessionStorage.getItem('__authPending') === '1'; } catch (e) {}
     if (hadPending) {
-      _auth.log('Stale auth attempt detected on load — clearing');
+      _auth.log('Stale auth attempt detected on load â€” clearing');
       try { sessionStorage.removeItem('__authPending'); } catch (e) {}
       // Ensure button is restored (auth was interrupted).
       setGoogleBtnReady();
       // If we have a valid session, the login.html recovery layer already
-      // redirected. If we're here, auth didn't complete — show a message.
+      // redirected. If we're here, auth didn't complete â€” show a message.
       var stored = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
       if (!stored || !window.State || !window.State.isLoggedIn) {
         showError('Previous sign-in was interrupted. Please try again.');
@@ -676,54 +492,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// ── App Lifecycle (pause/resume during native Google auth) ─
-// Google's native account selector is an overlay that does NOT pause the app,
-// but some In-App Browser fallback paths may cause the app to go into the
-// background. We must NOT reset the auth attempt on pause — only note it.
-// On resume, we check whether the auth attempt is still valid or needs recovery.
-if (CapApp?.addListener && window.__GoogleAuth) {
-  CapApp.addListener('appStateChange', function (state) {
-    var _auth = window.__GoogleAuth;
-    if (!_auth) return;
-    if (!state.isActive && _auth.isActive) {
-      // App backgrounded while auth is pending — note it, do NOT reset.
-      _auth.pausedWhileActive = true;
-      _auth.log('App paused while auth active');
-    } else if (state.isActive && _auth.pausedWhileActive) {
-      // App resumed after being paused during auth — check state.
-      _auth.pausedWhileActive = false;
-      _auth.log('App resumed after pause during auth');
-      if (_auth.isActive) {
-        // Auth still pending — continue waiting (timeouts still running).
-        _auth.log('Auth still active after resume — continuing');
-      } else {
-        // Auth completed while paused — check if we're still on login.html
-        // (navigation may not have completed while app was backgrounded).
-        var stillOnLogin = window.location.pathname.split('/').pop() === 'login.html';
-        if (stillOnLogin) {
-          var stored = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
-          if (stored && window.State && window.State.isLoggedIn) {
-            _auth.log('Resume recovery — session valid, navigating');
-            var redirectParam = '';
-            try { redirectParam = sessionStorage.getItem('__loginRedirect') || ''; } catch (e) {}
-            if (window.Navigation && window.Navigation.afterAuth) {
-              window.Navigation.afterAuth(window.State.user, redirectParam);
-            } else {
-              window.location.replace(redirectParam || 'index.html');
-            }
-          } else if (_auth.state !== 'SUCCESS' && _auth.state !== 'CANCELLED') {
-            // Auth failed while paused — ensure UI is restored.
-            _auth.err('Resume recovery — auth failed while paused');
-            setGoogleBtnReady();
-            showError('Google sign-in was interrupted. Please try again.');
-          }
-        }
-      }
-    }
-  });
-}
-
-// Export globally
+// â”€Export globally
 window.handleLogin = handleLogin;
 window.loginWithInAppBrowser = loginWithInAppBrowser;
-window.showError = showError;

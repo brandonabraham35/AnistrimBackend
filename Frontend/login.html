@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -42,8 +42,8 @@
   <div class="input-group">
     <label>Password</label>
     <div class="password-wrapper">
-      <input type="password" id="login-pass" placeholder="••••••••">
-      <button class="toggle-pw" onclick="togglePasswordVisibility('login-pass')">👁️</button>
+      <input type="password" id="login-pass" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
+      <button class="toggle-pw" onclick="togglePasswordVisibility('login-pass')">ðŸ‘ï¸</button>
     </div>
   </div>
 
@@ -62,152 +62,25 @@
 <script src="js/api.js"></script>
 <script src="js/session.js"></script>
 <script src="js/navigation.js"></script>
+<script src="js/google-auth-core.js"></script>
 <script src="google-auth-handler.js"></script>
 <script src="login.js"></script>
 <script>
-// ── Login Recovery Layer (runs before init code) ──────────
-// Handles cold-start recovery, destination preservation, and stale
-// auth cleanup so the user is never silently stuck on login.html.
 (function () {
   if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) return;
-
   var REDIRECT_KEY = '__loginRedirect';
   var PENDING_KEY = '__authPending';
-
-  // ── Destination preservation ───────────────────────────
-  // Capture redirect param early so it survives page reloads/kills.
   var redirectParam = new URLSearchParams(window.location.search).get('redirect');
-  if (redirectParam) {
-    try { sessionStorage.setItem(REDIRECT_KEY, redirectParam); } catch (e) {}
-  } else {
-    try { redirectParam = sessionStorage.getItem(REDIRECT_KEY); } catch (e) {}
-  }
-
-  // ── Stale auth attempt cleanup ─────────────────────────
-  // If auth was in progress when the page was killed/reloaded, clear it.
+  if (redirectParam) { try { sessionStorage.setItem(REDIRECT_KEY, redirectParam); } catch (e) {} }
+  else { try { redirectParam = sessionStorage.getItem(REDIRECT_KEY); } catch (e) {} }
   try {
-    if (sessionStorage.getItem(PENDING_KEY)) {
-      sessionStorage.removeItem(PENDING_KEY);
-    }
+    var pending = sessionStorage.getItem(PENDING_KEY);
+    if (pending === '1') { sessionStorage.removeItem(PENDING_KEY); }
   } catch (e) {}
-
-  // ── Cold-start recovery ────────────────────────────────
-  // If a valid session exists but we're still on login.html, the app
-  // was likely killed after authentication but before navigation completed.
-  var token = (window.Auth && window.Auth.token) ||
-              localStorage.getItem('token') ||
-              localStorage.getItem('anistrim.mobile.token') || '';
+  var token = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
   if (token && window.State && window.State.isLoggedIn) {
-    console.log('[LoginRecovery] Valid session on login page — recovering');
-    try { sessionStorage.removeItem(REDIRECT_KEY); } catch (e) {}
-    if (window.Navigation && window.Navigation.afterAuth) {
-      window.Navigation.afterAuth(window.State.user, redirectParam);
-    } else if (window.State.user) {
-      window.location.replace(redirectParam || 'index.html');
-    }
-  }
-})();
-
-// Initialize the native Google Sign-In plugin when running inside Capacitor.
-// This must happen before the user taps the Google login button so the
-// Credential Manager API is ready. Uses the same web client ID as the backend.
-// Integrates with window.__GoogleAuth state machine (defined in login.js).
-(function () {
-  // Capacitor exposes isNativePlatform() (a method) on the global; there is no
-  // isNative boolean. The plugin proxy only registers with the bridge after
-  // DOMContentLoaded on cold start, so we run on that event by default and
-  // can be forced again on demand (window.__ensureGoogleSignInInit).
-  function doInit() {
-    if (window.__googleSignInInitInProgress) {
-      // An init is already running (e.g. from the initial DOMContentLoaded
-      // attempt or a lazy tap retry). Wait for it to settle for the caller.
-      return window.__googleSignInInitInProgress;
-    }
-    if (window.__googleSignInInitialized) {
-      if (window.__GoogleAuth) window.__GoogleAuth.setState(window.__GoogleAuth.STATES.READY);
-      return Promise.resolve();
-    }
-    if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) {
-      console.log('[GoogleAuth][INIT] Not in native context — skipping native init');
-      return Promise.resolve();
-    }
-    var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
-    if (!googleSignIn) {
-      console.warn('[GoogleAuth][INIT] GoogleSignIn plugin NOT available — Capacitor.Plugins:', Object.keys(window.Capacitor.Plugins || {}));
-      return Promise.resolve();
-    }
-    if (typeof googleSignIn.initialize !== 'function') {
-      console.error('[GoogleAuth][INIT] GoogleSignIn.initialize is not a function');
-      return Promise.resolve();
-    }
-
-    console.log('[GoogleAuth][INIT] Starting initialization');
-    // Update state machine if available
-    if (window.__GoogleAuth) window.__GoogleAuth.setState(window.__GoogleAuth.STATES.INITIALIZING);
-
-    // Mark that initialization is in progress so login.js can check/watch it.
-    var inProgress = (function () {
-      var resolve;
-      window.__googleSignInInitInProgress = new Promise(function (r) { resolve = r; });
-      return resolve;
-    })();
-
-    // Fetch the Google Client ID from the backend (same as GIS uses).
-    // Give the fetch a bounded timeout + retries so doInit always settles within
-    // ~1 minute (free-tier Render can take up to a minute to wake from sleep).
-    var backendUrl = (typeof window.getApiBaseUrl === 'function')
-      ? window.getApiBaseUrl()
-      : 'https://anistrimbackend.onrender.com';
-    var clientIdRequest = function () {
-      var url = backendUrl + '/api/auth/google/client-id';
-      var opts = { headers: { 'Accept': 'application/json' } };
-      if (typeof window.fetchWithRetry === 'function') {
-        return window.fetchWithRetry(url, opts, { timeout: 20000, retries: 2 });
-      }
-      return fetch(url, opts);
-    };
-    clientIdRequest()
-    .then(function(res) {
-      console.log('[GoogleAuth][INIT] Client ID response status:', res.status);
-      return res.json();
-    })
-    .then(function(data) {
-      var clientId = (data && data.success === true && data.data) ? data.data.clientId : data.clientId;
-      console.log('[GoogleAuth][INIT] Client ID configured:', clientId ? 'YES (length=' + clientId.length + ')' : 'NO');
-      if (clientId) {
-        return googleSignIn.initialize({ clientId: clientId }).then(function() {
-          console.log('[GoogleAuth][INIT] Initialization successful');
-          window.__googleSignInInitialized = true;
-          if (window.__GoogleAuth) window.__GoogleAuth.setState(window.__GoogleAuth.STATES.READY);
-        });
-      } else {
-        console.error('[GoogleAuth][INIT] Could not retrieve Google Client ID for native plugin');
-      }
-    })
-    .catch(function(err) {
-      console.error('[GoogleAuth][INIT] Failed:', err?.message || err);
-    })
-    .finally(function() {
-      inProgress();
-      window.__googleSignInInitInProgress = null;
-    });
-    return window.__googleSignInInitInProgress;
-  }
-
-  window.__ensureGoogleSignInInit = function () {
-    if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) {
-      console.log('[GoogleAuth][INIT] Not in native context — skipping native init');
-      return Promise.resolve();
-    }
-    return doInit();
-  };
-
-  // Default: initialize once the DOM and Capacitor bridge are ready.
-  var start = () => doInit();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start);
-  } else {
-    start();
+    if (window.Navigation && window.Navigation.afterAuth) { window.Navigation.afterAuth(window.State.user, redirectParam); }
+    else { window.location.replace(redirectParam || 'index.html'); }
   }
 })();
 </script>

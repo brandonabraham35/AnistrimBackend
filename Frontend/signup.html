@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -45,8 +45,8 @@
   <div class="input-group">
     <label>Password</label>
     <div class="password-wrapper">
-      <input type="password" id="signup-pass" placeholder="••••••••">
-      <button class="toggle-pw" onclick="togglePasswordVisibility('signup-pass')">👁️</button>
+      <input type="password" id="signup-pass" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
+      <button class="toggle-pw" onclick="togglePasswordVisibility('signup-pass')">ðŸ‘ï¸</button>
     </div>
   </div>
 
@@ -64,37 +64,25 @@
 <script src="js/api.js"></script>
 <script src="js/session.js"></script>
 <script src="js/navigation.js"></script>
+<script src="js/google-auth-core.js"></script>
 <script src="google-auth-handler.js"></script>
 <script src="signup.js"></script>
 <script>
-// Initialize the native Google Sign-In plugin when running inside Capacitor.
-(function() {
-  if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform?.()) {
-    var googleSignIn = window.Capacitor.Plugins?.GoogleSignIn;
-    if (googleSignIn && typeof googleSignIn.initialize === 'function') {
-      var backendUrl = (typeof window.getApiBaseUrl === 'function')
-        ? window.getApiBaseUrl()
-        : 'https://anistrimbackend.onrender.com';
-      fetch(backendUrl + '/api/auth/google/client-id', {
-        headers: { 'Accept': 'application/json' }
-      })
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        var clientId = (data && data.success === true && data.data) ? data.data.clientId : data.clientId;
-        if (clientId) {
-          googleSignIn.initialize({ clientId: clientId });
-          console.log('[GoogleAuth] Native Google Sign-In plugin initialized (signup)');
-        } else {
-          console.warn('[GoogleAuth] Could not retrieve Google Client ID for native plugin (signup)');
-        }
-      })
-      .catch(function(err) {
-        console.warn('[GoogleAuth] Failed to initialize native Google Sign-In plugin (signup):', err?.message || err);
-      });
-    }
+(function () {
+  if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) return;
+  var PENDING_KEY = '__authPending';
+  try {
+    var pending = sessionStorage.getItem(PENDING_KEY);
+    if (pending === '1') { sessionStorage.removeItem(PENDING_KEY); }
+  } catch (e) {}
+  var token = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
+  if (token && window.State && window.State.isLoggedIn) {
+    if (window.Navigation && window.Navigation.afterAuth) { window.Navigation.afterAuth(window.State.user, ''); }
+    else { window.location.replace('index.html'); }
   }
 })();
 </script>
+
 </body>
 </html>
 
