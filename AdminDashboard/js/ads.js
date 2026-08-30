@@ -235,8 +235,8 @@
         <td>${ad.target_free_only ? 'Free Only' : 'All Users'}</td>
         <td style="font-size:0.78rem;color:var(--text-muted);">${window._escapeHTML(scheduleInfo)}</td>
         <td style="white-space:nowrap;">
-          <button class="btn-action edit" data-id="${ad.id}" title="Edit Ad" aria-label="Edit Ad"><i class="fas fa-edit"></i></button>
-          <button class="btn-action delete" data-id="${ad.id}" title="Delete Ad" aria-label="Delete Ad"><i class="fas fa-trash"></i></button>
+          <button class="btn-action edit" data-id="${ad.id}" title="Edit Ad" aria-label="Edit Ad"><i class="fas fa-edit"></i> Edit</button>
+          <button class="btn-action delete" data-id="${ad.id}" title="Delete Ad" aria-label="Delete Ad"><i class="fas fa-trash"></i> Delete</button>
         </td>
       </tr>`;
     }).join('');

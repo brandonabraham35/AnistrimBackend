@@ -365,14 +365,14 @@ function _renderTableRows(items) {
         <td>${(anime.view_count || 0).toLocaleString()}</td>
         <td style="text-align:center;">${ahStatus}${ahMeta}<br>${playbackBadge}</td>
         <td style="white-space:nowrap;">
-          <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes" aria-label="Manage Episodes"><i class="fas fa-video"></i></button>
-          <button class="btn-action ah-sync" data-id="${anime.id}" title="Sync from AnimeHeaven" aria-label="Sync from AnimeHeaven" ${ahImported ? '' : 'disabled'}><i class="fas fa-sync"></i></button>
-          <button class="btn-action ah-import-now" data-id="${anime.id}" title="Import from AnimeHeaven" aria-label="Import from AnimeHeaven"><i class="fas fa-download"></i></button>
-          <button class="btn-action ah-check" data-id="${anime.id}" title="Check Playback Readiness" aria-label="Check Playback Readiness"><i class="fas fa-check-circle"></i></button>
+          <button class="btn-action episodes" data-id="${anime.id}" title="Manage Episodes" aria-label="Manage Episodes"><i class="fas fa-video"></i> Episodes</button>
+          <button class="btn-action ah-sync" data-id="${anime.id}" title="Sync from AnimeHeaven" aria-label="Sync from AnimeHeaven" ${ahImported ? '' : 'disabled'}><i class="fas fa-sync"></i> Sync</button>
+          <button class="btn-action ah-import-now" data-id="${anime.id}" title="Import from AnimeHeaven" aria-label="Import from AnimeHeaven"><i class="fas fa-download"></i> Import</button>
+          <button class="btn-action ah-check" data-id="${anime.id}" title="Check Playback Readiness" aria-label="Check Playback Readiness"><i class="fas fa-check-circle"></i> Check</button>
           <button class="btn-action sync-streams" data-id="${anime.id}" title="Synchronize Streams — check all cached CDN URLs for this anime" aria-label="Synchronize Streams"><i class="fas fa-shield-alt"></i><span style="font-size:0.6rem;display:block;">SYNC</span></button>
-          <button class="btn-action details" data-id="${anime.id}" title="View Details" aria-label="View Details"><i class="fas fa-eye"></i></button>
-          <button class="btn-action edit" data-id="${anime.id}" title="Edit Anime" aria-label="Edit Anime"><i class="fas fa-edit"></i></button>
-          <button class="btn-action delete" data-id="${anime.id}" title="Delete Anime" aria-label="Delete Anime"><i class="fas fa-trash"></i></button>
+          <button class="btn-action details" data-id="${anime.id}" title="View Details" aria-label="View Details"><i class="fas fa-eye"></i> Details</button>
+          <button class="btn-action edit" data-id="${anime.id}" title="Edit Anime" aria-label="Edit Anime"><i class="fas fa-edit"></i> Edit</button>
+          <button class="btn-action delete" data-id="${anime.id}" title="Delete Anime" aria-label="Delete Anime"><i class="fas fa-trash"></i> Delete</button>
         </td>
       </tr>
     `;
