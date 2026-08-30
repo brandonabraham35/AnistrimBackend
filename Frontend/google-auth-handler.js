@@ -117,6 +117,12 @@
     el.textContent = msg;
   }
 
+  // Expose helpers for login.js / signup.js browserPageLoaded listener
+  // so the Capacitor Browser callback can be detected INSIDE the browser
+  // without relying on Android intent delivery.
+  window.__googleAuthGetCodeFromUrl = getCodeFromUrl;
+  window.__googleAuthFetchAndLogin = fetchAndLogin;
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       if (!checkUrlOnLoad()) listenForDeepLink();

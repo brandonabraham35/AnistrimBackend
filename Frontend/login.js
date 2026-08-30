@@ -38,11 +38,29 @@ async function googleLogin() {
   try {
     const backend = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : 'https://anistrimbackend.onrender.com';
     if (CapBrowser) {
-      CapBrowser.addListener('browserFinished', function () {
-        var t = localStorage.getItem('token') || '';
-        var u = localStorage.getItem('user');
-        if (t && u) {
-          try { var ud = JSON.parse(u); window.location.href = (ud && ud.isAdmin) ? 'admin.html' : 'index.html'; } catch (e) { }
+      // ── Detect the OAuth callback INSIDE the browser ──────────
+      // Chrome Custom Tab does not reliably deliver intent:// URLs to
+      // the Android app, so appUrlOpen may never fire. This listener
+      // catches the fallback navigation and processes the login code
+      // directly, before any deep-link handoff is attempted.
+      var _browserCodeProcessed = false;
+      CapBrowser.addListener('browserPageLoaded', function (event) {
+        if (_browserCodeProcessed) return;
+        if (!event || !event.url) return;
+        if (!event.url.includes('code=')) return;
+        // Only process the one-time login code URL patterns, not
+        // the intermediate Google OAuth code on the callback page.
+        if (!event.url.includes('/callback-fallback') && !event.url.includes('anistrim://auth')) return;
+        _browserCodeProcessed = true;
+        var code = (typeof window.__googleAuthGetCodeFromUrl === 'function')
+          ? window.__googleAuthGetCodeFromUrl(event.url)
+          : null;
+        if (!code) { _browserCodeProcessed = false; return; }
+        // Close the browser, then let the shared handler complete
+        // the token exchange, persist the session, and redirect.
+        CapBrowser.close().catch(function () {});
+        if (typeof window.__googleAuthFetchAndLogin === 'function') {
+          window.__googleAuthFetchAndLogin(code);
         }
       });
       await CapBrowser.open({ url: backend + '/api/auth/google', windowName: '_self', presentationStyle: 'fullscreen' });
