@@ -142,6 +142,15 @@ router.get('/google/client-id', (req, res) => {
 
 // ── Google OAuth redirect flow (Capacitor / mobile deep-link) ──
 
+// @route   GET /api/auth/google (backward-compatible alias)
+// @desc    Backward-compatible alias for /api/auth/google/start.
+//          The original Capacitor Android app called GET /api/auth/google
+//          to begin the OAuth redirect flow — this route preserves that
+//          contract while delegating to the same googleRedirect handler.
+//          Defaults to ?intent=login when no intent is specified.
+// @access  Public
+router.get('/google', googleAuthController.googleRedirect);
+
 // @route   GET /api/auth/google/start
 // @desc    Begin the Google OAuth redirect flow (mobile). ?intent=login|signup
 // @access  Public
