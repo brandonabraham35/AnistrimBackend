@@ -3,6 +3,31 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+// ── Google OAuth configuration validation ─────────────────────────
+(function () {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const env = process.env.NODE_ENV || 'development';
+
+  if (!clientId) {
+    console.warn('⚠️  [Config] GOOGLE_CLIENT_ID is not configured. Google Sign-In will be unavailable.');
+    return;
+  }
+
+  const validFormat = /^\d+[-][a-zA-Z0-9]+\.apps\.googleusercontent\.com$/;
+  if (!validFormat.test(clientId)) {
+    console.error(`❌ [Config] GOOGLE_CLIENT_ID has an invalid format in ${env} environment.`);
+    if (env === 'production') {
+      console.error('   Google Sign-In will fail. Fix the environment variable.');
+    }
+  } else {
+    const prefix = clientId.split('-')[0];
+    const suffixStart = clientId.split('-')[1]?.substring(0, 4) || '????';
+    console.log(`[Config] GOOGLE_CLIENT_ID configured (project ${prefix}, suffix ${suffixStart}..., env: ${env})`);
+  }
+})();
+
+// ── End Google OAuth validation ──────────────────────────────
+
 // Global Error Boundaries to prevent Render crashes
 process.on('unhandledRejection', (reason, promise) => {
     console.error('⚠️ [CRASH PREVENTION] Unhandled Rejection at:', promise, 'reason:', reason);
@@ -266,6 +291,40 @@ if (process.env.NODE_ENV !== 'production') {
 // ─── Health Check ──────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   sendSuccess(res, { status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development' });
+});
+
+// ─── Google Auth Configuration Status ─────────────────────
+// Exposes safe diagnostic info about the Google OAuth config.
+// NEVER exposes: secrets, tokens, passwords.
+app.get('/api/config/google-oauth', (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const env = process.env.NODE_ENV || 'development';
+  let status = 'missing';
+  let prefix = null;
+  let formatValid = false;
+
+  if (clientId) {
+    const validFormat = /^\d+[-][a-zA-Z0-9]+\.apps\.googleusercontent\.com$/;
+    formatValid = validFormat.test(clientId);
+    if (formatValid) {
+      status = 'configured';
+      prefix = clientId.split('-')[0];
+    } else {
+      status = 'invalid_format';
+    }
+  }
+
+  sendSuccess(res, {
+    status,
+    environment: env,
+    projectNumber: prefix,
+    formatValid,
+    android: {
+      packageName: 'com.anistrim.render',
+      debugSha1: '08:5D:52:D2:9C:B0:A0:56:CE:9F:BF:B0:61:68:DA:FB:93:3D:E3:AA',
+    },
+    helpUrl: 'https://console.cloud.google.com/apis/credentials',
+  });
 });
 
 app.get('/health/provider', (req, res) => {

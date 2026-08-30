@@ -126,6 +126,7 @@ async function loginWithInAppBrowser() {
       // Log result structure (never the credential values themselves).
       _auth.log('Native sign-in succeeded');
       _auth.log('Result keys: ' + (result ? Object.keys(result).join(', ') : 'null'));
+      _auth.log('Duration: ' + (Date.now() - (_auth.DIAG ? _auth.DIAG.signInStart || Date.now() : Date.now())) + 'ms');
       _auth.log('Has idToken: ' + !!(result && result.idToken));
 
       if (!result || !result.idToken) {
@@ -168,10 +169,34 @@ async function loginWithInAppBrowser() {
       }
 
       // All other errors â€” transient
-      _auth.setState('TRANSIENT_ERROR');
-      setGoogleBtnReady();
-      showError(_auth.ERRORS.TRANSIENT.userMessage);
-      _auth.reset();
+            if (errCode === 'CREDENTIAL_CONFIG_FAILURE') {
+              _auth.log('Credential config failure');
+              _auth.setState('CONFIG_ERROR');
+              setGoogleBtnReady();
+              showError(_auth.ERRORS.CONFIG.userMessage);
+              _auth.reset();
+              return;
+            }
+            if (errCode === 'CREDENTIAL_NO_CREDENTIAL') {
+              _auth.log('No saved credential');
+              _auth.setState('CONFIG_ERROR');
+              setGoogleBtnReady();
+              showError(_auth.ERRORS.CONFIG.userMessage);
+              _auth.reset();
+              return;
+            }
+            if (errCode === 'CREDENTIAL_PROVIDER_FAILURE') {
+              _auth.log('Provider error');
+              _auth.setState('PROVIDER_FAILURE');
+              setGoogleBtnReady();
+              showError(_auth.ERRORS.TRANSIENT.userMessage);
+              _auth.reset();
+              return;
+            }
+            _auth.setState('TRANSIENT_ERROR');
+            setGoogleBtnReady();
+            showError(_auth.ERRORS.TRANSIENT.userMessage);
+            _auth.reset();
     }
     return;
   }

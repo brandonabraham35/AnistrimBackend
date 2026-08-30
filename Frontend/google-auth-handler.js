@@ -326,11 +326,6 @@
    *   }
    */
   function initGoogleAuth(buttonId, options) {
-    // In Capacitor native mode, the @capawesome/capacitor-google-sign-in plugin
-    // handles authentication. GIS-based auth must not be used here.
-    if (isCapacitorNative()) {
-      return Promise.reject(new Error('Use native Google Sign-In plugin in Capacitor mode.'));
-    }
     options = options || {};
     var ctx = {
       suppressErrors: options.suppressErrors || false,
@@ -471,12 +466,26 @@
 
   // ── Capacitor native detection ─────────────────────────
   // Returns true when running inside Capacitor native WebView.
-  // Used to suppress the official GIS button on native (it would appear
-  // alongside the native @capawesome/capacitor-google-sign-in button).
+  // Used to suppress the entire GIS module on native — the native
+  // @capawesome/capacitor-google-sign-in plugin is the sole auth path.
   function isCapacitorNative() {
     return typeof window.Capacitor !== 'undefined'
         && typeof window.Capacitor.isNativePlatform === 'function'
         && window.Capacitor.isNativePlatform();
+  }
+
+  // ── REGRESSION GUARD: In Capacitor native mode, skip all GIS operations. ──
+  // GIS should never initialize, render buttons, or handle auth inside the
+  // native WebView. The native plugin is the only auth path on Android/iOS.
+  // This guard is the first thing checked — before any GIS API is called.
+  if (isCapacitorNative()) {
+    console.log('[GoogleAuth] Capacitor native detected — GIS module disabled.');
+    // Export a stub initGoogleAuth that immediately rejects so any accidental
+    // caller in the native path gets a clear error instead of a silent failure.
+    window.initGoogleAuth = function () {
+      return Promise.reject(new Error('Use native Google Sign-In plugin in Capacitor mode.'));
+    };
+    return; // ← EXIT EARLY — skip everything GIS-related
   }
 
   // ── On Page Load: Pre-initialize GIS (warm up) ──────────
@@ -485,8 +494,6 @@
   // when the user clicks the button, everything is ready. After init it also
   // pre-renders the official GIS button next to any known custom button so a
   // visible, guaranteed account-chooser target exists immediately.
-  // NOTE: In Capacitor native mode, pre-rendering is skipped — the native
-  //       @capawesome/capacitor-google-sign-in plugin is the sole auth path.
   var KNOWN_BUTTON_IDS = ['admin-google-btn', 'google-login-btn', 'google-signup-btn'];
 
   function preRenderOfficialButtons() {
