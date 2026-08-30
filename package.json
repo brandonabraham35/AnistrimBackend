@@ -1,8 +1,8 @@
 {
   "scripts": {
     "start": "node server.js",
-    "cap:sync": "node scripts/capacitor-preflight.js && cap copy && cap sync",
-    "cap:sync:force": "cap copy && cap sync",
+    "cap:sync": "node scripts/capacitor-preflight.js && cap copy android && cap sync android && cap copy ios && cap sync ios",
+    "cap:sync:force": "cap copy android && cap sync android && cap copy ios && cap sync ios",
     "cap:sync:android": "node scripts/capacitor-preflight.js && cap copy android && cap sync android",
     "cap:sync:ios": "node scripts/capacitor-preflight.js && cap copy ios && cap sync ios",
     "migrate": "node scripts/migrate.js",

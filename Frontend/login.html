@@ -62,25 +62,29 @@
 <script src="js/api.js"></script>
 <script src="js/session.js"></script>
 <script src="js/navigation.js"></script>
+<script src="js/login-recovery.js"></script>
 <script src="js/google-auth-core.js"></script>
 <script src="google-auth-handler.js"></script>
 <script src="login.js"></script>
 <script>
 (function () {
-  if (typeof window.Capacitor === 'undefined' || !window.Capacitor.isNativePlatform?.()) return;
-  var REDIRECT_KEY = '__loginRedirect';
-  var PENDING_KEY = '__authPending';
-  var redirectParam = new URLSearchParams(window.location.search).get('redirect');
-  if (redirectParam) { try { sessionStorage.setItem(REDIRECT_KEY, redirectParam); } catch (e) {} }
-  else { try { redirectParam = sessionStorage.getItem(REDIRECT_KEY); } catch (e) {} }
-  try {
-    var pending = sessionStorage.getItem(PENDING_KEY);
-    if (pending === '1') { sessionStorage.removeItem(PENDING_KEY); }
-  } catch (e) {}
+  // Login Recovery Layer Initialisation
+  if (window.LoginRecovery) {
+    var redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    if (redirectParam) {
+      try { sessionStorage.setItem('__loginRedirect', redirectParam); } catch (e) {}
+    }
+    window.LoginRecovery.init();
+  }
   var token = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
   if (token && window.State && window.State.isLoggedIn) {
-    if (window.Navigation && window.Navigation.afterAuth) { window.Navigation.afterAuth(window.State.user, redirectParam); }
-    else { window.location.replace(redirectParam || 'index.html'); }
+    var storedRedirect = '';
+    try { storedRedirect = sessionStorage.getItem('__loginRedirect') || ''; } catch (e) {}
+    if (window.Navigation && window.Navigation.afterAuth) {
+      window.Navigation.afterAuth(window.State.user, storedRedirect);
+    } else {
+      window.location.replace(storedRedirect || 'index.html');
+    }
   }
 })();
 </script>
