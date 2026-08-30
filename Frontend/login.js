@@ -230,10 +230,35 @@ async function sendIdTokenToBackend(idToken) {
   }
 
   // â”€â”€ Backend request â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const { ok, data } = await window.apiFetch('/api/auth/google/verify', {
+    var _timeoutMs = 30000;
+  if (_isNative && _auth.TIMEOUTS && _auth.TIMEOUTS.BACKEND) {
+    _timeoutMs = _auth.TIMEOUTS.BACKEND;
+  }
+  var fetchRes = await window.apiFetch('/api/auth/google/verify', {
     method: 'POST',
-    body: JSON.stringify({ idToken })
+    body: JSON.stringify({ idToken }),
+    timeout: _timeoutMs
   });
+  var ok = fetchRes.ok;
+  var data = fetchRes.data;
+  var timedOut = fetchRes.timedOut;
+
+  if (_isNative) _auth.clearTimeout();
+
+  if (timedOut) {
+    if (_isNative) {
+      _auth.setState('TIMEOUT');
+      _auth.log('Backend request timed out');
+    } else {
+      console.log('[GoogleAuth][BACKEND] Request timed out');
+    }
+    setGoogleBtnReady();
+    showError('Google sign-in is taking too long. Please try again.');
+    if (_isNative) _auth.reset();
+    return;
+  }
+
+  if (_isNative) _auth.setState('BACKEND_RESPONSE');
 
   if (_isNative) _auth.clearTimeout();
 

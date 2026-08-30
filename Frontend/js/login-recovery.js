@@ -77,8 +77,15 @@
   function naa(user,token,refreshToken){
     var s2=null;
     if(root.AniStrimSession&&typeof root.AniStrimSession.create==="function"){s2=root.AniStrimSession.create("mobile");}
+    try{
     if(s2){s2.setTokens(token,refreshToken);}else{try{localStorage.setItem("token",token);if(refreshToken){localStorage.setItem("refresh_token",refreshToken);}}catch(e){}}
-    if(root.Auth){root.Auth.save(token,user,refreshToken);}else{try{localStorage.setItem("user",JSON.stringify(user));}catch(e){}}
+    if(root.Auth){root.Auth.save(token,user,refreshToken);}else{try{localStorage.setItem("user",JSON.stringify(user));}catch(e){}
+    }
+  }catch(ex){
+    e("Persistence failed: "+(ex.message||ex));
+    se("Could not save session. Please check device storage.");
+    rgb();cpa();return false;
+  }
     var rb2=cs();if(!rb2.valid||!rb2.token){se("Session verification failed.");rgb();cpa();return false;}
     try{sessionStorage.setItem(ni,"1");}catch(e){}
     vws(rb2.token).then(function(su){if(su){user=su;}var dest=rd(user,grp());rsb();try{sessionStorage.setItem("__authRedirecting","1");}catch(e){}go(dest);snw(user,rb2.token);});
