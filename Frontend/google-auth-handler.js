@@ -326,6 +326,11 @@
    *   }
    */
   function initGoogleAuth(buttonId, options) {
+    // In Capacitor native mode, the @capawesome/capacitor-google-sign-in plugin
+    // handles authentication. GIS-based auth must not be used here.
+    if (isCapacitorNative()) {
+      return Promise.reject(new Error('Use native Google Sign-In plugin in Capacitor mode.'));
+    }
     options = options || {};
     var ctx = {
       suppressErrors: options.suppressErrors || false,
@@ -464,15 +469,33 @@
     }
   }
 
+  // ── Capacitor native detection ─────────────────────────
+  // Returns true when running inside Capacitor native WebView.
+  // Used to suppress the official GIS button on native (it would appear
+  // alongside the native @capawesome/capacitor-google-sign-in button).
+  function isCapacitorNative() {
+    return typeof window.Capacitor !== 'undefined'
+        && typeof window.Capacitor.isNativePlatform === 'function'
+        && window.Capacitor.isNativePlatform();
+  }
+
   // ── On Page Load: Pre-initialize GIS (warm up) ──────────
   // This runs on every page that includes google-auth-handler.js.
   // It loads the GIS library and fetches the client ID so that
   // when the user clicks the button, everything is ready. After init it also
   // pre-renders the official GIS button next to any known custom button so a
   // visible, guaranteed account-chooser target exists immediately.
+  // NOTE: In Capacitor native mode, pre-rendering is skipped — the native
+  //       @capawesome/capacitor-google-sign-in plugin is the sole auth path.
   var KNOWN_BUTTON_IDS = ['admin-google-btn', 'google-login-btn', 'google-signup-btn'];
 
   function preRenderOfficialButtons() {
+    // Do NOT render the official GIS button in Capacitor native mode.
+    // The native plugin (login.js → CapGoogleSignIn.signIn()) handles auth.
+    if (isCapacitorNative()) {
+      console.log('[GoogleAuth] Capacitor native detected — skipping official GIS button render.');
+      return;
+    }
     for (var i = 0; i < KNOWN_BUTTON_IDS.length; i++) {
       var btn = document.getElementById(KNOWN_BUTTON_IDS[i]);
       if (btn) {
