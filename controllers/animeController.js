@@ -49,7 +49,18 @@ async function attachGenres(animeList) {
     if (!map[r.anime_id]) map[r.anime_id] = [];
     map[r.anime_id].push(r.name);
   });
-  return animeList.map(a => publicAnime({ ...a, genres: map[a.id] || [] }));
+  return animeList.map(a => {
+    const row = publicAnime({ ...a, genres: map[a.id] || [] });
+    // Phase 4 (BUG-3): expose explicit content-classification fields derived
+    // from the authorization source of truth (anime.access_tier). These are
+    // CLASSIFICATION only — they never express whether the current user is
+    // locked (per-episode `locked`/`accessState` remain the caller-specific
+    // concepts). `is_premium` stays for legacy card consumers and is kept in
+    // sync with access_tier by the admin write path (resolveAnimeAccessTier).
+    row.accessTier = row.access_tier || 'free';
+    row.isPremiumContent = row.accessTier === 'premium';
+    return row;
+  });
 }
 
 // GET /api/anime/genres — active genres, ordered (Bug 3).
@@ -96,7 +107,7 @@ exports.getTrending = async (req, res) => {
 
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
-              rating, year, studio, status, is_premium, is_featured, view_count, created_at
+              rating, year, studio, status, is_premium, access_tier, is_featured, view_count, created_at
        FROM anime a WHERE ${PUBLIC_ANIME_FILTER}
        ORDER BY view_count DESC, rating DESC, created_at DESC
        LIMIT ? OFFSET ?`,
@@ -121,7 +132,7 @@ exports.getLatest = async (req, res) => {
     const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 10, 1), 50);
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
-              rating, year, studio, status, is_premium, is_featured, view_count, created_at
+              rating, year, studio, status, is_premium, access_tier, is_featured, view_count, created_at
        FROM anime a WHERE ${PUBLIC_ANIME_FILTER} ORDER BY created_at DESC, id DESC LIMIT ?`,
       [limit]
     );
@@ -140,7 +151,7 @@ exports.getRecommendations = async (req, res) => {
     if (!Number.isInteger(id)) return res.status(400).json({ message: 'Invalid anime id.' });
     const [rows] = await db.query(
       `SELECT DISTINCT a.id, a.title, a.title_japanese, a.description, a.cover_image, a.banner_image,
-              a.rating, a.year, a.studio, a.status, a.is_premium, a.is_featured, a.view_count, a.created_at,
+              a.rating, a.year, a.studio, a.status, a.is_premium, a.access_tier, a.is_featured, a.view_count, a.created_at,
               COUNT(ag2.genre_id) AS matching_genres
        FROM anime a
        LEFT JOIN anime_genres ag2 ON ag2.anime_id = a.id
@@ -162,7 +173,7 @@ exports.getFeatured = async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT id, title, title_japanese, description, cover_image, banner_image,
-              rating, year, studio, status, is_premium, is_featured
+              rating, year, studio, status, is_premium, access_tier, is_featured
        FROM anime a WHERE is_featured = 1 AND ${PUBLIC_ANIME_FILTER} ORDER BY rating DESC LIMIT 6`
     );
     const result = await attachGenres(rows);
@@ -182,7 +193,7 @@ exports.search = async (req, res) => {
     const offset = (pageNum - 1) * perPageNum;
 
     let sql = `SELECT a.id, a.title, a.title_japanese, a.cover_image, a.banner_image,
-                      a.rating, a.year, a.studio, a.status, a.is_premium, a.is_featured, a.view_count, a.created_at
+                      a.rating, a.year, a.studio, a.status, a.is_premium, a.access_tier, a.is_featured, a.view_count, a.created_at
                FROM anime a`;
     const params = [];
 
@@ -324,8 +335,13 @@ exports.getById = async (req, res) => {
       video_url: ep.video_url || null,
       durationSec: ep.duration_sec,
       duration_sec: ep.duration_sec,
-      isPremium: ep.premium || Boolean(ep.is_premium),
-      is_premium: ep.premium || Boolean(ep.is_premium),
+      // Phase 4 (BUG-4): content CLASSIFICATION only — never caller lock state.
+      // effectiveTier==='premium' means the CONTENT is premium-tier; `locked`
+      // separately expresses whether THIS user may play it, and `accessState`
+      // carries the full UI state (free/premium/premium_required/…).
+      isPremiumContent: ep.effectiveTier === 'premium',
+      isPremium: ep.premium,
+      is_premium: ep.premium,
       effectiveTier: ep.effectiveTier,
       locked: ep.locked,
       availableAt: ep.availableAt,

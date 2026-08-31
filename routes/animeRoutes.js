@@ -90,8 +90,12 @@ router.get('/:animeId/episodes', optionalAuth, async (req, res) => {
             video_url: m.video_url || null,
             durationSec: m.duration_sec,
             duration_sec: m.duration_sec,
-            isPremium: m.premium || Boolean(m.is_premium),
-            is_premium: m.premium || Boolean(m.is_premium),
+            // Phase 4 (BUG-4): content CLASSIFICATION only — never caller lock state
+            // (see utils/episodeAccess.js — `premium` now derives purely from
+            // effectiveTier; `locked`/`accessState` remain separate concepts).
+            isPremiumContent: m.effectiveTier === 'premium',
+            isPremium: m.premium,
+            is_premium: m.premium,
             viewCount: m.view_count,
             view_count: m.view_count,
             locked: m.locked,

@@ -337,7 +337,7 @@ async function maskEpisode(episode, user) {
   episode.availableAt = availableAt;
   episode.locked = locked;
   episode.accessState = accessState;
-  episode.premium = effectiveTier === 'premium' || locked;
+  episode.premium = effectiveTier === 'premium';
 
   if (locked) {
     // Never leak the raw video source for a locked premium episode.
@@ -389,7 +389,7 @@ async function maskEpisodes(episodes, user) {
     masked.availableAt = availableAt;
     masked.locked = locked;
     masked.accessState = accessState;
-    masked.premium = effectiveTier === 'premium' || locked;
+    masked.premium = effectiveTier === 'premium';
 
     if (locked) {
       if ('video_url' in masked) masked.video_url = null;

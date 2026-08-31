@@ -81,6 +81,10 @@ function publicAnime(row) {
     status: row.status || 'completed',
     media_type: row.media_type || 'TV',
     is_premium: Boolean(row.is_premium),
+    // Phase 4 (BUG-3): explicit content-classification fields derived from
+    // the authorization source of truth (anime.access_tier).
+    accessTier: row.access_tier || 'free',
+    isPremiumContent: (row.access_tier || 'free') === 'premium',
     is_featured: Boolean(row.is_featured),
     view_count: Number(row.view_count) || 0,
     daily_views: Number(row.daily_views) || 0,
@@ -93,7 +97,7 @@ function publicAnime(row) {
 const SHELF_COLUMNS = `
   a.id, a.title, a.title_japanese, a.description, a.cover_image, a.banner_image,
   a.rating, a.year, a.premiere_date, a.studio, a.status, a.media_type,
-  a.is_premium, a.is_featured, a.view_count, a.daily_views, a.watchlist_count`;
+  a.is_premium, a.access_tier, a.is_featured, a.view_count, a.daily_views, a.watchlist_count`;
 
 /**
  * Fill a section up to MIN_ITEMS using a fallback pool, skipping any anime
