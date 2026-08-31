@@ -15,7 +15,9 @@
 //   • clamp position ≤ duration
 //   • mark completed=1 when percent ≥ 95 or duration - position ≤ 60
 //   • ignore writes where position < 5s and no prior row (avoids junk)
-//   • accept out-of-order heartbeats by taking MAX(updated_at) semantics
+//   • position is monotonic for every event: GREATEST(existing, incoming)
+//     prevents a stale write from a background tab/another device ever moving
+//     progress backwards (Phase 3 B2 multi-device regression fix)
 const db = require('../config/db');
 const { fetchSkipTimes } = require('../services/aniSkipService');
 const streamingService = require('../services/streamingService');
@@ -73,11 +75,13 @@ exports.saveProgress = async (req, res) => {
       return sendSuccess(res, { ignored: true }, { message: 'Progress too small to record.' });
     }
 
-    // Out-of-order heartbeats: only update if the new position is >= existing
-    // (MAX semantics) unless the event is 'seek' or 'ended' (authoritative).
-    const isAuthoritative = event === 'seek' || event === 'ended' || event === 'exit';
-    if (existing.length && !isAuthoritative && position < existing[0].position_sec) {
-      return sendSuccess(res, { ignored: true }, { message: 'Out-of-order heartbeat ignored.' });
+    // Multi-device safety: position NEVER moves backwards, regardless of the
+    // event. Completion writes position==duration (always the maximum) and
+    // "Restart from beginning" clears the row via POST /api/watch/restart/:animeId
+    // instead of regressing position_sec — so GREATEST semantics cannot let a
+    // stale late write from another device/tab clobber a newer position.
+    if (existing.length && position < existing[0].position_sec) {
+      return sendSuccess(res, { ignored: true }, { message: 'Out-of-order progress ignored (position already newer).' });
     }
 
     const device = req.headers?.['user-agent']?.includes('Android') ? 'android'
@@ -88,7 +92,7 @@ exports.saveProgress = async (req, res) => {
          (user_id, anime_id, episode_id, episode_number, position_sec, duration_sec, completed, completed_at, device, client_platform)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         position_sec = VALUES(position_sec),
+         position_sec = GREATEST(watch_progress.position_sec, VALUES(position_sec)),
          -- FIX 7 (Phase 3): never overwrite a known duration with 0
          duration_sec = GREATEST(VALUES(duration_sec), watch_progress.duration_sec),
          completed    = VALUES(completed),

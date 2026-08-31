@@ -1466,10 +1466,9 @@ function setupPlayer(video) {
       }
     }
 
-    // Progress save (throttled — every 30 seconds)
-    if (currentEpId && Math.floor(video.currentTime) % 30 === 0 && video.currentTime > 0) {
-      saveProgress(currentEpId, Math.floor(video.currentTime), false, Math.floor(video.duration));
-    }
+    // Phase 3 R7: periodic heartbeats are written by the single 15 s
+    // Progress.startAutoSave writer — this extra %30 timeupdate writer is
+    // removed to avoid duplicate progress PUTs.
   });
 
   // Save duration once metadata is available
@@ -1984,22 +1983,15 @@ async function switchToEpisode(epNum) {
     playerSetupDone = false;
     setupPlayer(video);
 
-    // Wait for metadata then restore position
-    const savedProgress = episodeProgressMap[String(epNumber)];
-    let restorePos = 0;
-    if (savedProgress && savedProgress.progressSec > 10 && savedProgress.durationSec > 0
-        && savedProgress.progressSec < savedProgress.durationSec * 0.95) {
-      restorePos = savedProgress.progressSec;
-    }
+    // Phase 3 R8: restore from FRESH server progress (never the possibly-stale
+    // batched map) so in-player navigation sees progress from other devices.
+    if (currentEpId) loadProgress(video, currentAnimeId, epNumber);
 
     video.addEventListener('loadedmetadata', function() {
       video.volume = wasMuted ? 0 : 1;
       video.muted = wasMuted;
       updateVolumeIcon();
       updateVolumeSlider();
-      if (restorePos > 0 && restorePos < (video.duration || Infinity)) {
-        video.currentTime = restorePos;
-      }
       if (wasPlaying) {
         video.play()['catch'](function(){});
       }
@@ -2291,6 +2283,14 @@ function showResumePrompt(progressData) {
   document.getElementById('resume-restart-btn').onclick = function() {
     hideResumePrompt();
     if (video) { video.currentTime = 0; }
+    // Phase 3 R6: "Restart from Beginning" must also clear the server-side
+    // progress row — otherwise the old position is pinned by the position-MAX
+    // guard on the next write and re-appears on other devices.
+    if (currentAnimeId) {
+      apiFetch('/api/watch/restart/' + currentAnimeId, { method: 'POST' })
+        .catch(function(e) { console.warn('[WATCH] restart progress clear failed (non-fatal):', e && e.message); });
+    }
+    if (currentEpId) delete episodeProgressMap[String(currentEp)];
     video.play()['catch'](function(){});
   };
 
@@ -2515,17 +2515,10 @@ async function playNextEp() {
       updateVolumeIcon();
       updateVolumeSlider();
 
-      // Seek to saved position or 0
-      const savedProgress = episodeProgressMap[String(nextEpNum)];
+      // Phase 3 R8: restore from FRESH server progress (the batched map can be
+      // stale after progress is saved on another device).
+      if (currentEpId) loadProgress(video, currentAnimeId, nextEpNum);
       video.addEventListener('loadedmetadata', function() {
-        let restorePos = 0;
-        if (savedProgress && savedProgress.progressSec > 10 && savedProgress.durationSec > 0
-            && savedProgress.progressSec < savedProgress.durationSec * 0.95) {
-          restorePos = savedProgress.progressSec;
-        }
-        if (restorePos > 0 && restorePos < (video.duration || Infinity)) {
-          video.currentTime = restorePos;
-        }
         video.play()['catch'](function(){});
       }, { once: true });
 

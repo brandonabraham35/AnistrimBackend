@@ -1389,8 +1389,11 @@
     video.addEventListener('seeked', seeked);
     video.addEventListener('ended', ended, { once: true });
     document.addEventListener('visibilitychange', onVisibility);
+    // Phase 3 R9: pagehide is the SINGLE unload lifecycle event for the exit
+    // progress save. The duplicate beforeunload registration (which fired the
+    // same onPageHide) is removed to avoid duplicate exit writes. Any other
+    // beforeunload needs would be registered separately.
     window.addEventListener('pagehide', onPageHide);
-    window.addEventListener('beforeunload', onPageHide);
     window.addEventListener('online', flushProgressQueue);
     progressCleanup = function () {
       save('exit', true);
@@ -1399,7 +1402,6 @@
       video.removeEventListener('ended', ended);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
-      window.removeEventListener('beforeunload', onPageHide);
       window.removeEventListener('online', flushProgressQueue);
     };
     flushProgressQueue();
