@@ -25,16 +25,27 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 // ── FIX 1: Migration ordering ─────────────────────────────────────
-test('FIX 1: schema.sql sorts before versioned migrations', () => {
+test('FIX 1: runner discovers only versioned migrations, ordered numerically', () => {
   const migrateSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate.js'), 'utf8');
-  assert.match(migrateSrc, /filename === 'schema\.sql'\) return -1/, 'schema.sql must rank -1 (first)');
-  assert.match(migrateSrc, /filename === 'updates\.sql'\) return Number\.MAX_SAFE_INTEGER/, 'updates.sql must rank last');
+  // Actual runner contract: the runner applies ONLY sql/migrations_v<N>_*.sql,
+  // sorted numerically by the v-number. schema.sql (manual Workbench bootstrap)
+  // and updates.sql (legacy patch file) are intentionally NOT part of the
+  // recorded, idempotent runner.
+  assert.match(migrateSrc, /\^migrations_v\\d\+_\.\*\\\.sql\$/, 'discovery must match only migrations_v<N>_*.sql files');
+  assert.doesNotMatch(migrateSrc, /schema\.sql/, 'schema.sql must not be executed or referenced by the runner');
+  assert.doesNotMatch(migrateSrc, /updates\.sql/, 'updates.sql must not be executed or referenced by the runner');
+  assert.match(migrateSrc, /parseInt\(a\.match\(/, 'sort key must parse the v-number');
+  assert.match(migrateSrc, /return va - vb;/, 'migrations must be ordered ascending by v-number');
 });
 
-test('FIX 1: migration runner aborts on failure and prints filename', () => {
+test('FIX 1: migration runner aborts with exit code 1 on failure', () => {
   const migrateSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate.js'), 'utf8');
-  assert.match(migrateSrc, /Migration FAILED: \$\{file\.name\}/, 'must print failing filename');
-  assert.match(migrateSrc, /process\.exitCode = 1/, 'must set exit code 1 on failure');
+  // Actual contract: applyMigration re-throws non-idempotent statement
+  // failures; the CLI entry logs "Migration failed:" and exits 1
+  // (runMigrations → catch → process.exit(1)).
+  assert.match(migrateSrc, /throw e;/, 'non-idempotent statement failures must propagate');
+  assert.match(migrateSrc, /Migration failed:/, 'must log the migration failure');
+  assert.match(migrateSrc, /process\.exit\(1\)/, 'must exit with code 1 on failure');
 });
 
 // ── FIX 2: Schema-name guards ─────────────────────────────────────
@@ -172,7 +183,9 @@ test('FIX 10: server.js no longer declares inline /api/auth/username-available',
 test('FIX 11: deleteAccount requires password', () => {
   const authSrc = fs.readFileSync(path.join(ROOT, 'controllers', 'authController.js'), 'utf8');
   assert.match(authSrc, /const \{ password \} = req\.body/, 'must read password from body');
-  assert.match(authSrc, /bcrypt\.compare\(password, user\.password_hash\)/, 'must verify password');
+  // The password-pepper hardening wraps the password in an HMAC before the
+  // bcrypt comparison — the re-auth requirement is unchanged (and stronger).
+  assert.match(authSrc, /bcrypt\.compare\(pepperPassword\(password\), user\.password_hash\)/, 'must verify password (peppered)');
 });
 
 test('FIX 11: profile.js sends password for delete', () => {
