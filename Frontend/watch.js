@@ -256,6 +256,214 @@ let subtitleTracksList = [];
 let audioTracksList = [];
 let playerSetupDone = false;
 
+// ── Server-backed playback preferences (Phase 2C) ────────────────
+// The server (user_preferences) is the authoritative source for ACCOUNT-
+// specific playback preferences:
+//     server preference  ->  localStorage fallback  ->  hardcoded default
+// localStorage stays as a device-local / offline fallback. Synchronization is
+// strictly best-effort: it must NEVER block or break playback, log the user
+// out, or clear authentication.
+let serverPlaybackPrefs = null;     // resolved account preference object
+let serverPrefsLoaded = false;      // sync resolution attempted
+let serverPrefsRefreshing = false;  // async refresh in flight
+
+function isAuthenticatedUser() {
+  try {
+    if (window.Auth && typeof window.Auth.isLoggedIn !== 'undefined') {
+      return (typeof window.Auth.isLoggedIn === 'function') ? !!window.Auth.isLoggedIn() : !!window.Auth.isLoggedIn;
+    }
+    if (window.State && typeof window.State.isLoggedIn === 'boolean') return !!window.State.isLoggedIn;
+  } catch (e) {}
+  try {
+    return !!((window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token'));
+  } catch (e) { return false; }
+}
+
+function currentUserDto() {
+  try {
+    if (window.Auth && window.Auth.user) return window.Auth.user;
+    if (window.Auth && typeof window.Auth.getUser === 'function') {
+      const cached = window.Auth.getUser();
+      if (cached) return cached;
+    }
+    if (window.State && window.State.user) return window.State.user;
+    const raw = localStorage.getItem('user');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return null;
+}
+
+// Synchronous best-effort resolution from the CURRENT authenticated user DTO.
+// Returns the preference object (or null) without waiting on the network.
+function loadServerPlaybackPreferences() {
+  try {
+    if (serverPrefsLoaded) return serverPlaybackPrefs;
+    if (!isAuthenticatedUser()) {
+      serverPrefsLoaded = true;
+      serverPlaybackPrefs = null;
+      return null;
+    }
+    const user = currentUserDto();
+    const prefs = (user && user.preferences && typeof user.preferences === 'object') ? user.preferences : null;
+    if (!prefs) {
+      // No cached preferences — leave the flag open so the async refresh path
+      // (quiet GET /api/profile/preferences) can populate them.
+      serverPlaybackPrefs = null;
+      return null;
+    }
+    serverPrefsLoaded = true;
+    serverPlaybackPrefs = prefs;
+    applyServerPlaybackPrefs(prefs);
+    return prefs;
+  } catch (e) {
+    console.warn('[WATCH] loadServerPlaybackPreferences failed (non-fatal):', e && e.message);
+    return null;
+  }
+}
+
+// Map server preference fields onto the existing player state.
+//   autoplayNext       -> autoplayEnabled
+//   autoplayCountdown  -> autoplayCountdownSeconds
+//   playbackRate       -> speedValue
+function applyServerPlaybackPrefs(prefs) {
+  if (!prefs || typeof prefs !== 'object') return false;
+  try {
+    if (typeof prefs.autoplayNext === 'boolean') autoplayEnabled = prefs.autoplayNext;
+    if (typeof prefs.autoplayCountdown === 'number' && isFinite(prefs.autoplayCountdown) && prefs.autoplayCountdown > 0) {
+      autoplayCountdownSeconds = Math.round(prefs.autoplayCountdown);
+    }
+    if (typeof prefs.playbackRate === 'number' && isFinite(prefs.playbackRate) && prefs.playbackRate > 0) {
+      speedValue = prefs.playbackRate;
+    }
+    return true;
+  } catch (e) {
+    console.warn('[WATCH] applyServerPlaybackPrefs failed (non-fatal):', e && e.message);
+    return false;
+  }
+}
+
+// Quiet GET to the profile preference API. Only used when the cached user DTO
+// has no preferences yet. Never touches auth state and never redirects.
+async function refreshServerPlaybackPreferences() {
+  if (serverPrefsLoaded && serverPlaybackPrefs) return serverPlaybackPrefs;
+  if (!isAuthenticatedUser()) return null;
+  if (serverPrefsRefreshing) return serverPlaybackPrefs;
+  serverPrefsRefreshing = true;
+  try {
+    const base = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : '';
+    const token = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
+    if (!base || !token) return null;
+    const res = await fetch(base + '/api/profile/preferences', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'X-Client': 'mobile' }
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(function () { return {}; });
+    const prefs = (body && body.data && body.data.preferences) ||
+                  (body && body.preferences) || null;
+    if (prefs && typeof prefs === 'object') {
+      serverPrefsLoaded = true;
+      serverPlaybackPrefs = prefs;
+      applyServerPlaybackPrefs(prefs);
+      return prefs;
+    }
+  } catch (e) {
+    console.warn('[WATCH] refreshServerPlaybackPreferences failed (non-fatal):', e && e.message);
+  } finally {
+    serverPrefsRefreshing = false;
+  }
+  return serverPlaybackPrefs;
+}
+
+// Persist a partial account-preference update to the server when allowed
+// (authenticated user). Non-critical: on ANY failure keep the localStorage
+// value, keep playback working, and never affect the session/auth state.
+// Uses the project's own Auth token + base URL with the same client header
+// the API expects (a quiet request — unlike apiFetch's hard-401 path, a
+// preference-sync failure must never clear tokens or redirect).
+function persistPlaybackPreference(updates) {
+  try {
+    if (!isAuthenticatedUser()) return;
+    if (!updates || typeof updates !== 'object') return;
+    const payload = {};
+    Object.keys(updates).forEach(function (k) {
+      const v = updates[k];
+      if (v === undefined || v === null || Number.isNaN(v)) return;
+      payload[k] = v;
+    });
+    if (!Object.keys(payload).length) return;
+    const base = (typeof window.getApiBaseUrl === 'function') ? window.getApiBaseUrl() : '';
+    const token = (window.Auth && window.Auth.token) || localStorage.getItem('token') || localStorage.getItem('anistrim.mobile.token') || '';
+    if (!base || !token) return;
+    fetch(base + '/api/profile/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-Client': 'mobile' },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    }).catch(function (err) {
+      console.warn('[WATCH] Preference sync failed (non-fatal, keeping local):', err && err.message);
+    });
+  } catch (e) {
+    console.warn('[WATCH] Preference sync error (non-fatal):', e && e.message);
+  }
+}
+
+// Server skipIntroAuto  ->  device playerPrefs.autoSkipIntro  ->  false
+function resolveAccountSkipIntroAuto() {
+  try {
+    const prefs = loadServerPlaybackPreferences();
+    if (prefs && typeof prefs.skipIntroAuto === 'boolean') return prefs.skipIntroAuto;
+    if (typeof playerPrefs !== 'undefined' && playerPrefs && typeof playerPrefs.autoSkipIntro === 'boolean') return playerPrefs.autoSkipIntro;
+  } catch (e) {}
+  return false;
+}
+
+// Apply account subtitle state (subtitlesOn / subtitleLang) through the
+// player's existing subtitle-track mechanism. Device-local appearance prefs
+// (anistrim_subtitle_prefs) are intentionally left untouched.
+function applyAccountSubtitlePrefs() {
+  try {
+    const prefs = loadServerPlaybackPreferences();
+    if (!prefs) return;
+    // Account disabled subtitles (or language 'none') => subtitle Off.
+    if (prefs.subtitlesOn === false || prefs.subtitleLang === 'none') {
+      if (currentSubtitleMode() !== -1) setSubtitle(-1);
+      return;
+    }
+    // Account-level preferred language: enable the matching track when one is
+    // available and nothing is currently selected yet.
+    if (prefs.subtitleLang && typeof prefs.subtitleLang === 'string' && subtitleTracksList.length) {
+      const lang = String(prefs.subtitleLang).toLowerCase();
+      if (lang && lang !== 'en' && currentSubtitleMode() === -1) {
+        let matchIdx = -1;
+        for (let i = 0; i < subtitleTracksList.length; i++) {
+          const label = String(subtitleTracksList[i].label || '').toLowerCase();
+          if (label.indexOf(lang) !== -1) { matchIdx = i; break; }
+        }
+        if (matchIdx >= 0) setSubtitle(matchIdx);
+      }
+    }
+  } catch (e) {}
+}
+
+// Apply account defaultQuality to the HLS quality selector if a compatible
+// level exists. Best-effort; leaves quality Auto when nothing matches.
+function applyAccountQualityPref() {
+  try {
+    const prefs = loadServerPlaybackPreferences();
+    if (!prefs || !prefs.defaultQuality || prefs.defaultQuality === 'auto') return;
+    if (!(hlsInstance && window.Hls && hlsInstance.levels && hlsInstance.levels.length)) return;
+    const targetHeight = parseInt(prefs.defaultQuality, 10);
+    if (!isFinite(targetHeight)) return;
+    if (currentQualityIndex !== -1) return; // user already chose a quality
+    for (let i = 0; i < hlsInstance.levels.length; i++) {
+      const h = hlsInstance.levels[i] && hlsInstance.levels[i].height;
+      if (h && h >= targetHeight) { setQuality(i); return; }
+    }
+  } catch (e) {}
+}
+
 // ── Episode list / season / progress state ──────────────────
 let allEpisodes = [];          // full episode list (all seasons)
 let seasonEpisodes = [];       // episodes filtered by current season
@@ -463,6 +671,20 @@ async function loadWatch() {
   console.log('[WATCH DEBUG] apiFetch type =', typeof window.apiFetch);
   console.log('[WATCH DEBUG] getApiBaseUrl type =', typeof window.getApiBaseUrl);
   console.log('[WATCH DEBUG] API base =', typeof window.getApiBaseUrl === 'function' ? window.getApiBaseUrl() : 'N/A');
+
+  // ── Phase 2C: Server playback preferences ─────────────────────
+  // The server (user_preferences) is the authoritative source for account
+  // playback preferences. Resolve synchronously from the cached user DTO
+  // (no delay), then quietly refresh once if that DTO lacks preferences.
+  // Best-effort: failures never block or break playback.
+  try {
+    loadServerPlaybackPreferences();
+    if (!serverPrefsLoaded && isAuthenticatedUser()) {
+      refreshServerPlaybackPreferences();
+    }
+  } catch (prefErr) {
+    console.warn('[WATCH] Playback preference load error (non-fatal):', prefErr && prefErr.message);
+  }
 
   // Global safety timeout — never leave the user stuck on "Preparing player..."
   const PLAYBACK_TOTAL_TIMEOUT_MS = 90000;
@@ -812,6 +1034,8 @@ function ensurePlayerCoreInitialized(video) {
       populateAudioOptions();
       refreshSubtitleTracks();
       populateSubtitleOptions();
+      applyAccountSubtitlePrefs();
+      applyAccountQualityPref();
     },
     onLevelSwitched: function (level) {
       if (level >= 0) {
@@ -1389,6 +1613,7 @@ function setupPlayer(video) {
     btn.addEventListener('click', () => {
       autoplayCountdownSeconds = parseInt(btn.getAttribute('data-countdown'), 10);
       localStorage.setItem('anistrim_autoplay_seconds', String(autoplayCountdownSeconds));
+      persistPlaybackPreference({ autoplayCountdown: autoplayCountdownSeconds });
       updateAutoplayUI();
       const presets = document.getElementById('countdown-presets');
       if (presets) presets.style.display = 'none';
@@ -1402,6 +1627,7 @@ function setupPlayer(video) {
   initPlayerPrefsUI();
   applySubtitlePrefs();
   applyPlayerPrefs();
+  applyAccountSubtitlePrefs();
 
   // End-of-episode overlay controls
   document.getElementById('play-next-btn')?.addEventListener('click', playNextEp);
@@ -1514,7 +1740,7 @@ function setupPlayer(video) {
         getToken: function() { return State.token || localStorage.getItem('token') || ''; },
         skipButtonEl: skipBtn,
         onSkip: function(marker) { watchLog('skip marker used', { kind: marker.kind }); },
-        skipIntroAuto: !!(playerPrefs && playerPrefs.autoSkipIntro)
+        skipIntroAuto: resolveAccountSkipIntroAuto()
       });
     }
 
@@ -2472,6 +2698,7 @@ function populateSpeedOptions() {
       const video = document.getElementById('animePlayer');
       if (video) video.playbackRate = speedValue;
       localStorage.setItem('anistrim_speed', String(speedValue));
+      persistPlaybackPreference({ playbackRate: speedValue });
       updateSpeedUI();
       populateSpeedOptions();
       showControls();
@@ -2653,6 +2880,7 @@ function setAudioTrack(idx) {
 function toggleAutoplaySetting() {
   autoplayEnabled = !autoplayEnabled;
   localStorage.setItem('anistrim_autoplay', autoplayEnabled ? 'on' : 'off');
+  persistPlaybackPreference({ autoplayNext: autoplayEnabled });
   updateAutoplayUI();
   showControls();
 }

@@ -256,6 +256,18 @@
         if (session) session.clear();
         localStorage.removeItem(USER_KEY);
         localStorage.removeItem('isFirstVisit');
+        // ── Phase 2C: account-specific playback preference cleanup ──
+        // These can contain account-related settings (playback speed, autoplay,
+        // autoplay countdown, subtitle/player preference caches). They must not
+        // leak from User A into User B on shared devices. Device-independent
+        // offline data (anistrim_offline_episodes, pending_tx_ref,
+        // pending_subscription_ref) is intentionally PRESERVED.
+        localStorage.removeItem('anistrim_autoplay');
+        localStorage.removeItem('anistrim_autoplay_seconds');
+        localStorage.removeItem('anistrim_speed');
+        localStorage.removeItem('anistrim_subtitle_prefs');
+        localStorage.removeItem('anistrim_player_prefs');
+        localStorage.removeItem('anistrim.web.playbackRate');
         sessionStorage.removeItem('pendingEmail');
         sessionStorage.removeItem('otpEmailSent');
         sessionStorage.removeItem('__authRedirecting');
