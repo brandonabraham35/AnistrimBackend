@@ -38,49 +38,147 @@
     if (idbPromise) return idbPromise;
     if (typeof indexedDB === 'undefined') return Promise.resolve(null);
     idbPromise = new Promise(function (resolve) {
-      var req = indexedDB.open(DB_NAME, 1);
+      var req = indexedDB.open(DB_NAME, 2);
       req.onupgradeneeded = function () {
         var db = req.result;
         if (!db.objectStoreNames.contains(DB_STORE)) {
-          db.createObjectStore(DB_STORE, { keyPath: 'id', autoIncrement: true });
+          var newStore = db.createObjectStore(DB_STORE, { keyPath: 'id', autoIncrement: true });
+          newStore.createIndex('byUserEpisode', ['userId', 'episodeId'], { unique: false });
+        } else {
+          // DB already exists from v1 — only add the ownership index needed for
+          // per-account deduplication and safe flushing.
+          var existingStore = req.transaction.objectStore(DB_STORE);
+          if (!existingStore.indexNames.contains('byUserEpisode')) {
+            existingStore.createIndex('byUserEpisode', ['userId', 'episodeId'], { unique: false });
+          }
         }
       };
       req.onsuccess = function () { resolve(req.result); };
       req.onerror = function () { resolve(null); };
+      req.onblocked = function () { resolve(null); };
     });
     return idbPromise;
   }
 
+  // ── Account identity for the offline queue ────────────────
+  // Records are tagged with the authenticated user's stable numeric id (from
+  // the cached user DTO), so a queued write can NEVER be flushed under
+  // another account's token. Emails and raw tokens are intentionally avoided.
+  function currentUserId() {
+    try {
+      var auth = window.Auth;
+      if (auth) {
+        var u = (auth.user && typeof auth.user === 'object') ? auth.user
+          : (typeof auth.getUser === 'function' ? auth.getUser() : null);
+        if (u && u.id !== undefined && u.id !== null) return String(u.id);
+      }
+      if (window.State && window.State.user && window.State.user.id !== undefined) {
+        return String(window.State.user.id);
+      }
+      var cached = localStorage.getItem('user');
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        if (parsed && parsed.id !== undefined && parsed.id !== null) return String(parsed.id);
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function episodeKeyOf(payload) {
+    return String(payload && payload.episodeId !== undefined && payload.episodeId !== null ? payload.episodeId : '');
+  }
+
   function queueWrite(payload) {
+    var userId = currentUserId();
+    var episodeId = episodeKeyOf(payload);
+    // Security: never queue progress without an authenticated account, and
+    // never queue a record that has no episode to attach to.
+    if (!userId || !episodeId) return Promise.resolve(false);
+    return openDB().then(function (db) {
+      if (!db) return Promise.resolve(false);
+      return new Promise(function (resolve) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        var store = tx.objectStore(DB_STORE);
+        var idx = store.index('byUserEpisode');
+        var getReq = idx.get([userId, episodeId]);
+        getReq.onsuccess = function () {
+          var existing = getReq.result;
+          if (existing && existing.id) {
+            // Deduplicate per (user, episode): replace the older queued write
+            // with this newest one so a stale heartbeat can never clobber a
+            // fresher position and repeated failures do not grow unboundedly.
+            store.delete(existing.id);
+          }
+          store.add({ userId: userId, episodeId: episodeId, payload: payload, queuedAt: Date.now() });
+        };
+        getReq.onerror = function () {
+          // Index lookup failed — fall back to a plain append rather than lose
+          // the write entirely.
+          try { store.add({ userId: userId, episodeId: episodeId, payload: payload, queuedAt: Date.now() }); } catch (e) {}
+        };
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { resolve(false); };
+        tx.onabort = function () { resolve(false); };
+      });
+    });
+  }
+
+  function deleteQueuedItem(id) {
+    if (id === undefined || id === null) return Promise.resolve();
     return openDB().then(function (db) {
       if (!db) return Promise.resolve();
       return new Promise(function (resolve) {
         var tx = db.transaction(DB_STORE, 'readwrite');
-        tx.objectStore(DB_STORE).add({ payload: payload, ts: Date.now() });
+        tx.objectStore(DB_STORE).delete(id);
         tx.oncomplete = function () { resolve(); };
         tx.onerror = function () { resolve(); };
       });
     });
   }
 
+  var flushInFlight = null;
+
   function flushQueue() {
-    return openDB().then(function (db) {
-      if (!db) return Promise.resolve();
+    var userId = currentUserId();
+    // Security: without an authenticated user we never transmit queued
+    // progress and we NEVER delete it — a record may belong to another
+    // account and deleting it would silently drop that user's data.
+    if (!userId) return Promise.resolve(false);
+    if (flushInFlight) return flushInFlight;
+
+    flushInFlight = openDB().then(function (db) {
+      if (!db) return false;
       return new Promise(function (resolve) {
-        var tx = db.transaction(DB_STORE, 'readwrite');
-        var store = tx.objectStore(DB_STORE);
-        var req = store.getAll();
+        var tx = db.transaction(DB_STORE, 'readonly');
+        var req = tx.objectStore(DB_STORE).getAll();
         req.onsuccess = function () {
-          var items = req.result || [];
-          items.forEach(function (item) {
-            sendProgress(item.payload);
-            store.delete(item.id);
+          var items = (req.result || []).filter(function (it) {
+            return it && String(it.userId) === String(userId);
           });
-          resolve();
+          resolve(items);
         };
-        req.onerror = function () { resolve(); };
+        req.onerror = function () { resolve([]); };
       });
+    }).then(function (items) {
+      // Send sequentially (insertion order), awaiting each attempt. Delete a
+      // record ONLY after the server confirms success; on failure the original
+      // record is retained for a later retry — no duplicate copy is created.
+      return items.reduce(function (chain, item) {
+        return chain.then(function () {
+          return sendProgress(item.payload, false, true).then(function (ok) {
+            if (ok) return deleteQueuedItem(item.id);
+            return undefined;
+          });
+        });
+      }, Promise.resolve());
+    }).then(function () {
+      flushInFlight = null;
+      return true;
+    }, function () {
+      flushInFlight = null;
+      return false;
     });
+    return flushInFlight;
   }
 
   // ── Core send logic ──────────────────────────────────────
@@ -88,7 +186,7 @@
     return (window.Auth && window.Auth.token) || localStorage.getItem('token') || '';
   }
 
-  function sendProgress(payload, useBeacon) {
+  function sendProgress(payload, useBeacon, avoidRequeue) {
     var token = getToken();
     if (!token) return Promise.resolve(false);
 
@@ -104,9 +202,13 @@
         // sendBeacon can't send custom headers; use fetch with keepalive.
         fetch(url, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-Client': 'mobile' },
           body: body,
           keepalive: true,
+        }).catch(function () {
+          // Keepalive still failed (e.g. offline) — queue it for later when
+          // the record did not originate from the queue itself.
+          if (!avoidRequeue) queueWrite(payload);
         });
         return Promise.resolve(true);
       } catch (e) { /* fall through */ }
@@ -114,12 +216,15 @@
 
     return fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'X-Client': 'mobile' },
       body: body,
     })
       .then(function (res) { return res.ok; })
       .catch(function () {
-        // Offline — queue it.
+        // Offline — queue it, unless this send already came from the queue
+        // (in that case the original record is retained for a later retry and
+        // re-queuing here would create a duplicate).
+        if (avoidRequeue) return false;
         return queueWrite(payload).then(function () { return true; });
       });
   }

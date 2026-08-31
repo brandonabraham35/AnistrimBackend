@@ -268,6 +268,18 @@
         localStorage.removeItem('anistrim_subtitle_prefs');
         localStorage.removeItem('anistrim_player_prefs');
         localStorage.removeItem('anistrim.web.playbackRate');
+        // ── Phase 3: account-scoped offline watch-progress queue cleanup ──
+        // The IndexedDB progress queue (anistrim-progress) can hold progress
+        // writes belonging to the account being logged out. It must NEVER be
+        // flushed under the next account's token. Offline episode downloads
+        // use a SEPARATE IndexedDB database (AnistrimOfflineDB) plus the
+        // anistrim_offline_episodes key — both intentionally PRESERVED.
+        localStorage.removeItem('anistrim.web.pendingProgress');
+        try {
+          if (typeof indexedDB !== 'undefined' && indexedDB.deleteDatabase) {
+            indexedDB.deleteDatabase('anistrim-progress');
+          }
+        } catch (e) { /* non-fatal */ }
         sessionStorage.removeItem('pendingEmail');
         sessionStorage.removeItem('otpEmailSent');
         sessionStorage.removeItem('__authRedirecting');

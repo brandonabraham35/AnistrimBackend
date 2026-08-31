@@ -69,6 +69,9 @@
     clear: function () {
       API.clearTokens();
       writeUser(null);
+      // ── Phase 3: never let the previous account's offline progress queue
+      // flush under the next account's token.
+      try { localStorage.removeItem('anistrim.web.pendingProgress'); } catch (e) { void e; }
       notify();
     },
     onChange: function (cb) { listeners.push(cb); return cb; },
