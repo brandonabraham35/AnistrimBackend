@@ -467,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const user = State.user;
   if (user) {
-    document.querySelectorAll('.profile-name').forEach(el => el.textContent  = user.name  || '');
+    document.querySelectorAll('.profile-name').forEach(el => el.textContent  = user.displayName || user.name || '');
     document.querySelectorAll('.profile-email').forEach(el => el.textContent = user.email || '');
     // NOTE: #profile-avatar is intentionally NOT overwritten here. The shared
     // Avatar module (js/avatar.js) owns avatar rendering and hydrates from

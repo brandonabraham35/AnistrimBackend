@@ -22,6 +22,24 @@ async function buildUserDto(user) {
   // Entitlement is looked up per request (never from a stale JWT claim).
   const entitlement = await resolveEntitlement(user);
 
+  // Auto-onboard eligible users: if they have a name and verified email
+  // but have never completed the Android onboarding flow, mark them as
+  // onboarded automatically. This ensures accounts created on Web (which
+  // has no onboarding page) do not trigger Android's onboarding redirect.
+  // The SQL is idempotent (COALESCE guards against race conditions).
+  if (!user.onboarded_at && user.name && (user.email_verified_at || user.is_verified)) {
+    try {
+      await pool.query(
+        'UPDATE users SET onboarded_at = COALESCE(onboarded_at, NOW()) WHERE id = ? AND onboarded_at IS NULL',
+        [user.id]
+      );
+      user.onboarded_at = new Date();
+    } catch (_) {
+      // Non-fatal — the DTO will still return onboarded:false and
+      // Navigation.afterAuth will redirect to onboarding as before.
+    }
+  }
+
   return {
     id: user.id,
     email: user.email,
