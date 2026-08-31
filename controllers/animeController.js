@@ -286,8 +286,11 @@ exports.getById = async (req, res) => {
     if (animeRows.length === 0) return res.status(404).json({ error: 'Anime not found' });
     const [anime] = await attachGenres(animeRows);
 
-    // 2. Increment view counters (lifetime + daily for Viral Threshold premium automation)
-    await db.query('UPDATE anime SET view_count = view_count + 1, daily_views = daily_views + 1 WHERE id = ?', [animeId]);
+    // 2. Increment the lifetime view counter only (used for trending/popular
+    //    ordering and display). Phase 4 (BUG-2): daily_views is deliberately
+    //    NOT incremented here — a GET/read must never feed the viral-threshold
+    //    premium classification (itself disabled by default since BUG-1).
+    await db.query('UPDATE anime SET view_count = view_count + 1 WHERE id = ?', [animeId]);
 
     // 3. FETCH THE EPISODES from the local database (explicit column whitelist).
     const [episodeRows] = await db.query(
