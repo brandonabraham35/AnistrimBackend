@@ -65,26 +65,11 @@ async function googleSignUp() {
     const url = backend + '/api/auth/google/start?intent=signup';
 
     if (CapBrowser) {
-      // ── Detect the OAuth callback INSIDE the browser ──────────
-      // Same pattern as login.js — catches the fallback navigation
-      // and processes the one-time login code directly.
-      var _browserCodeProcessed = false;
-      CapBrowser.addListener('browserPageLoaded', function (event) {
-        if (_browserCodeProcessed) return;
-        if (!event || !event.url) return;
-        if (!event.url.includes('code=')) return;
-        if (!event.url.includes('/callback-fallback') && !event.url.includes('anistrim://auth')) return;
-        _browserCodeProcessed = true;
-        var code = (typeof window.__googleAuthGetCodeFromUrl === 'function')
-          ? window.__googleAuthGetCodeFromUrl(event.url)
-          : null;
-        if (!code) { _browserCodeProcessed = false; return; }
-        CapBrowser.close().catch(function () {});
-        if (typeof window.__googleAuthFetchAndLogin === 'function') {
-          window.__googleAuthFetchAndLogin(code);
-        }
-      });
-
+      // The OAuth callback is handled by google-auth-handler.js via
+      // App.addListener('appUrlOpen') and App.getLaunchUrl().
+      // No browserPageLoaded listener needed — Chrome Custom Tabs does
+      // not reliably deliver the callback URL through that event on Android.
+      console.log('[GOOGLE-OAUTH-TRACE] Opening Google signup in Capacitor Browser');
       await CapBrowser.open({
         url: url,
         windowName: '_self',

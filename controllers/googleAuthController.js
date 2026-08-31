@@ -1,4 +1,4 @@
-// controllers/googleAuthController.js
+﻿// controllers/googleAuthController.js
 // Google OAuth redirect flow for Capacitor mobile app using deep-link handoff.
 // Supports two intents (identical business rules to the web flows):
 //   /google/start?intent=login   -> existing account only (never creates)
@@ -27,7 +27,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'https://anistrimbackend.onrender
 const FRONTEND_URL = process.env.FRONTEND_URL || BACKEND_URL;
 const APP_SCHEME = process.env.APP_SCHEME || 'anistrim';
 const APP_PACKAGE = process.env.APP_PACKAGE || 'com.anistrim.render';
-const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
+const LOGIN_CODE_TTL_MS = 10 * 60 * 1000;
 
 function getCallbackUri(client) {
   const base = String(client === 'web' ? FRONTEND_URL : BACKEND_URL).replace(/\/+$/, '');
@@ -252,14 +252,39 @@ exports.googleCallback = async (req, res) => {
 // In-App Browser (Chrome Custom Tab). This minimal page gives the browser a
 // valid URL to navigate to, which triggers it to close and allows the
 // Capacitor app to receive the appUrlOpen event from the intent.
-exports.callbackFallback = (_req, res) => {
-  res.send(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Returning to AniStrim...</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:sans-serif;padding:20px}.spinner{width:52px;height:52px;border:4px solid rgba(108,43,217,0.2);border-top-color:#6c2bd9;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}p{color:#aaa;font-size:.9rem;text-align:center}.logo{font-size:1.3rem;font-weight:800;color:#fff}.logo span{color:#6c2bd9}</style>
-</head><body><div class="logo">Ani<span>Strim</span></div><div class="spinner"></div><p>Returning to AniStrim...</p></body></html>`);
-};
+exports.callbackFallback = (req, res) => {
+  const code = (req.query && req.query.code) ? req.query.code : '';
+  const encodedCode = encodeURIComponent(code);
+  const customSchemeUrl = 'anistrim://auth?code=' + encodedCode;
 
+  // Recovery page: show an immediately-visible manual "Open AniStrim" button.
+  // We do NOT attempt a gestureless window.location.href = deepLink on load
+  // because Chrome blocks external-scheme navigations without a user gesture.
+  // The user-activated anchor below is the reliable path.
+  const html = [
+    '<!DOCTYPE html>',
+    '<html><head>',
+    '<meta charset="UTF-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>Return to AniStrim</title>',
+    '<style>',
+    '*{margin:0;padding:0;box-sizing:border-box}',
+    'body{background:#0a0a0f;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:sans-serif;padding:20px}',
+    'p{color:#aaa;font-size:.9rem;text-align:center;line-height:1.5}',
+    '.logo{font-size:1.3rem;font-weight:800;color:#fff}.logo span{color:#6c2bd9}',
+    '.btn{margin-top:16px;background:#6c2bd9;color:white;border:none;text-decoration:none;padding:14px 28px;border-radius:10px;font-size:1rem;font-weight:700;display:inline-block;cursor:pointer;}',
+    '</style>',
+    '</head>',
+    '<body>',
+    '<div class="logo">Ani<span>Strim</span></div>',
+    '<p>Tap the button below to return to the app.</p>',
+    '<a class="btn" href="' + customSchemeUrl + '">Open AniStrim &rarr;</a>',
+    '</body>',
+    '</html>'
+  ].join('\n');
+
+  res.send(html);
+};
 exports.exchangeLoginCode = async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).json({ message: 'Missing login code.' });
@@ -309,37 +334,37 @@ function successPage(code) {
     @keyframes spin{to{transform:rotate(360deg)}}
     p{color:#aaa;font-size:0.9rem;text-align:center;line-height:1.5;}
     .logo{font-size:1.3rem;font-weight:800;color:#fff;}.logo span{color:#6c2bd9;}
-    .btn{margin-top:16px;background:#6c2bd9;color:white;border:none;text-decoration:none;padding:14px 28px;border-radius:10px;font-size:1rem;font-weight:700;display:inline-block;}
+    .btn{margin-top:16px;background:#6c2bd9;color:white;border:none;text-decoration:none;padding:14px 28px;border-radius:10px;font-size:1rem;font-weight:700;display:inline-block;cursor:pointer;}
   </style>
 </head>
 <body>
   <div class="logo">Ani<span>Strim</span></div>
   <div class="spinner" id="spin"></div>
-  <p id="msg">Signed in successfully. Returning to AniStrim...</p>
-  <a class="btn" id="btn" href="${androidIntent}">Open AniStrim →</a>
+  <p id="msg">Signed in successfully. Tap the button below to return to AniStrim.</p>
+  <a class="btn" id="btn" href="${deepLink}">Open AniStrim &rarr;</a>
   <script>
-    const androidIntent = ${JSON.stringify(androidIntent)};
-    const deepLink = ${JSON.stringify(deepLink)};
-    const fallbackUrl = '${BACKEND_URL}/api/auth/google/callback-fallback?code=${encodedCode}';
-
-    function openApp() {
-      // Try Android intent first (may trigger appUrlOpen)
-      console.log('[GOOGLE-OAUTH-TRACE] Bridge page: attempting androidIntent');
+    // Attempt the Android intent URL once on load — if Chrome resolves the
+    // scheme+package the browser hands off to the app; otherwise the page stays
+    // on screen with the manual anchor above. We do NOT schedule a timed
+    // fallback to callback-fallback because:
+    //   1. Gestureless external-scheme navigations are blocked by Chrome.
+    //   2. A timed window.location.href overwrites the intent attempt.
+    //   3. The user-activated anchor above is the reliable path.
+    (function () {
+      var androidIntent = ${JSON.stringify(androidIntent)};
+      console.log('[GOOGLE-OAUTH-TRACE] Bridge page loaded, attempting androidIntent');
+      // Single intent attempt — no timer-based override.
       window.location.href = androidIntent;
-      
-      // After 500ms, if we're still here, explicitly navigate to HTTP fallback
-      // This ensures the browser loads a real HTTP URL that can be detected
-      setTimeout(function () {
-        console.log('[GOOGLE-OAUTH-TRACE] Bridge page: intent did not close browser, navigating to fallback');
-        window.location.href = fallbackUrl;
-      }, 500);
-    }
 
-    setTimeout(openApp, 300);
-    setTimeout(function () {
-      document.getElementById('spin').style.display = 'none';
-      document.getElementById('msg').textContent = 'Tap Open AniStrim if you are not returned automatically.';
-    }, 2000);
+      // After 3s, hide the spinner and update the message so the user sees the
+      // manual button clearly.
+      setTimeout(function () {
+        var spin = document.getElementById('spin');
+        var msg  = document.getElementById('msg');
+        if (spin) spin.style.display = 'none';
+        if (msg)  msg.textContent = 'Tap "Open AniStrim" to return to the app.';
+      }, 3000);
+    })();
   </script>
 </body>
 </html>`;
