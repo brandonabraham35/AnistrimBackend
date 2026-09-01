@@ -13,9 +13,9 @@
     "validate:quick": "node validation/index.js --quick",
     "validate:concurrency": "node validation/index.js --skipConcurrency",
     "verify:schema": "node scripts/verify-schema.js",
-    "test": "node --test test/**/*.test.js",
-    "test:hls": "node --test test/hlsRewriter.test.js",
-    "test:ssrf": "node --test test/ssrfGuard.test.js"
+    "test": "POSTMARK_TEST_MODE=true node --test test/**/*.test.js",
+    "test:hls": "POSTMARK_TEST_MODE=true node --test test/hlsRewriter.test.js",
+    "test:ssrf": "POSTMARK_TEST_MODE=true node --test test/ssrfGuard.test.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

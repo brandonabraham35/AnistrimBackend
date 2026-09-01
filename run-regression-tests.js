@@ -4,6 +4,11 @@
 // =============================================================
 const http = require('http');
 const url = require('url');
+
+// ── Test environment ─────────────────────────────────────────
+// Ensure Postmark test mode is active so test-triggered signup
+// emails never reach the production Postmark server.
+process.env.POSTMARK_TEST_MODE = 'true';
 const BASE = 'http://localhost:5000';
 
 // ── Test state ──────────────────────────────────────────────

@@ -20,6 +20,13 @@
 const db = require('../config/db');
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_TEST_MODE = process.env.POSTMARK_TEST_MODE === 'true';
+
+// Postmark's official test-mode API token. When used as the server token,
+// Postmark accepts all API requests and returns success responses but NEVER
+// actually sends the email. Nothing counts against delivery stats or bounce
+// rates. See: https://postmarkapp.com/developer/api/overview#test-mode
+const POSTMARK_TEST_TOKEN = 'POSTMARK_API_TEST';
 
 // ── Placeholder detection ────────────────────────────────────────
 // Any value containing these markers (case-insensitive) is treated as a
@@ -42,6 +49,9 @@ function smtpConfigured() {
 }
 
 function postmarkConfigured() {
+  // In test mode, Postmark's test API token (POSTMARK_API_TEST) is used.
+  // It accepts requests but never sends emails — perfect for CI/test suites.
+  if (IS_TEST_MODE) return true;
   return Boolean(
     isRealValue(process.env.POSTMARK_SERVER_TOKEN) &&
     isRealValue(process.env.POSTMARK_FROM_EMAIL)
@@ -68,6 +78,8 @@ function getTimeoutMs() {
 // Logs (never throws, never crashes) warnings about missing/placeholder
 // Postmark env vars. Never logs the actual token value.
 function runStartupConfigWarnings() {
+  // In test mode, Postmark test token is used — no warnings needed.
+  if (IS_TEST_MODE) return;
   const token = process.env.POSTMARK_SERVER_TOKEN;
   const fromEmail = process.env.POSTMARK_FROM_EMAIL;
 
@@ -199,7 +211,9 @@ async function sendEmail(to, subject, html, otpCode) {
   const from = getFrom();
   const messageStream = process.env.POSTMARK_MESSAGE_STREAM || 'outbound';
 
-  console.log(`[Postmark] Email send started -> ${to} (${subject})`);
+  const postmarkToken = IS_TEST_MODE ? POSTMARK_TEST_TOKEN : process.env.POSTMARK_SERVER_TOKEN;
+
+  console.log(`[Postmark] Email send started -> ${to} (${subject})${IS_TEST_MODE ? ' [TEST MODE]' : ''}`);
 
   // AbortController-based hard timeout so a hung Postmark request can never
   // stall the signup/OTP flow. On abort we record a failure event with the
@@ -218,7 +232,7 @@ async function sendEmail(to, subject, html, otpCode) {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'X-Postmark-Server-Token': process.env.POSTMARK_SERVER_TOKEN,
+        'X-Postmark-Server-Token': postmarkToken,
       },
       body: JSON.stringify({
         From: from,
