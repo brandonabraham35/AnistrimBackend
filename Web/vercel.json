@@ -22,22 +22,6 @@
       "destination": "https://anistrimbackend.onrender.com/robots.txt"
     },
     {
-      "source": "/anime/:id",
-      "destination": "https://anistrimbackend.onrender.com/anime/:id"
-    },
-    {
-      "source": "/browse",
-      "destination": "https://anistrimbackend.onrender.com/browse"
-    },
-    {
-      "source": "/search",
-      "destination": "https://anistrimbackend.onrender.com/search"
-    },
-    {
-      "source": "/genre/:name",
-      "destination": "https://anistrimbackend.onrender.com/genre/:name"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
