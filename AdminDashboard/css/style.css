@@ -1337,3 +1337,34 @@ th.sortable.sorted-desc i::before { content: '\f0dd'; } /* fa-sort-down */
 #confirm-modal .anime-import-dialog {
   max-width: 420px;
 }
+
+/* ─── Dashboard Recent Payments Table ──────────────────────── */
+#recent-payments-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+#recent-payments-table thead th {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+#recent-payments-table tbody td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(42, 44, 55, 0.5);
+  color: var(--text-main);
+}
+#recent-payments-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+#recent-payments-table .empty-cell {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 1.5rem 0.75rem;
+}

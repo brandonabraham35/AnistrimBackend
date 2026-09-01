@@ -1,6 +1,6 @@
-// AdminDashboard/js/analytics.js — Unified cross-platform analytics section.
-// Loads data from /api/admin/analytics/* endpoints and renders overview cards,
-// platform breakdown, and recent activity feed.
+// AdminDashboard/js/analytics.js — Unified analytics section.
+// Uses existing /api/admin/dashboard/* endpoints to render overview cards,
+// platform breakdown, recent activity feed, and stream cache metrics.
 
 (function () {
   'use strict';
@@ -11,13 +11,11 @@
   function initializeAnalyticsSection() {
     console.log('[Analytics] Initializing...');
 
-    // Platform filter
     document.getElementById('analytics-platform')?.addEventListener('change', (e) => {
       _currentPlatform = e.target.value;
       loadAnalytics();
     });
 
-    // Date range filter
     document.getElementById('analytics-range')?.addEventListener('change', (e) => {
       _currentRange = parseInt(e.target.value);
       loadAnalytics();
@@ -28,17 +26,17 @@
 
   async function loadAnalytics() {
     try {
-      const [overview, activity, streamCache] = await Promise.all([
-        window.apiRequest(`/api/admin/analytics/overview?platform=${_currentPlatform}&days=${_currentRange}`),
-        window.apiRequest(`/api/admin/analytics/activity?platform=${_currentPlatform}&limit=20`),
-        window.apiRequest('/api/admin/analytics/stream-cache'),
+      const [overviewResp, activityResp, healthMetricsResp] = await Promise.all([
+        window.apiRequest('/api/admin/dashboard/overview'),
+        window.apiRequest('/api/admin/dashboard/activity/recent'),
+        window.apiRequest('/api/admin/dashboard/health/metrics?hours=24'),
       ]);
 
-      renderOverview(overview);
+      renderOverview(overviewResp);
       // unwrapAdminEnvelope returns { items, rows, pagination } for array payloads.
-      // Fall back to the raw value for non-envelope responses.
-      renderActivity(activity.items || activity.rows || activity);
-      renderStreamCache(streamCache);
+      const activityList = (activityResp && activityResp.items) || (activityResp && activityResp.rows) || activityResp;
+      renderActivity(activityList);
+      renderStreamCache(healthMetricsResp);
     } catch (err) {
       console.error('[Analytics] Failed to load:', err);
       const el = document.getElementById('analytics-overview');
@@ -49,17 +47,20 @@
   function renderOverview(data) {
     if (!data) return;
 
-    const totalUsers = document.getElementById('analytics-total-users');
-    if (totalUsers) totalUsers.textContent = (data.users && data.users.total) || '0';
+    const overview = data.overview || data;
+    const users = overview.users || {};
+    const content = overview.content || {};
 
-    const activeToday = document.getElementById('analytics-active-today');
-    if (activeToday) activeToday.textContent = (data.users && data.users.activeToday) || '0';
+    const setEl = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val != null ? String(val) : '0';
+    };
 
-    const totalViews = document.getElementById('analytics-total-views');
-    if (totalViews) totalViews.textContent = window._formatNumber((data.views && data.views.anime) || 0);
-
-    const totalSearches = document.getElementById('analytics-total-searches');
-    if (totalSearches) totalSearches.textContent = window._formatNumber((data.engagement && data.engagement.searches) || 0);
+    setEl('analytics-total-users', users.total || 0);
+    setEl('analytics-active-today', users.activeToday || 0);
+    setEl('analytics-total-views', window._formatNumber ? window._formatNumber(content.totalViews || 0) : (content.totalViews || 0));
+    // Searches not available from dashboard overview, show 0
+    setEl('analytics-total-searches', 0);
 
     // Platform breakdown
     const container = document.getElementById('analytics-platform-breakdown');
@@ -73,7 +74,7 @@
 
     container.innerHTML = breakdown.map(b => {
       const icon = b.platform === 'web' ? '🌐' : b.platform === 'mobile' ? '📱' : b.platform === 'desktop' ? '💻' : '❓';
-      return `<div class="list-item"><span>${icon} ${b.platform.charAt(0).toUpperCase() + b.platform.slice(1)}</span><span class="list-value">${window._formatNumber(b.views)} views</span></div>`;
+      return `<div class="list-item"><span>${icon} ${b.platform.charAt(0).toUpperCase() + b.platform.slice(1)}</span><span class="list-value">${window._formatNumber ? window._formatNumber(b.views) : b.views} views</span></div>`;
     }).join('');
   }
 
@@ -81,55 +82,50 @@
     const container = document.getElementById('analytics-activity');
     if (!container) return;
 
-    if (!items || !items.length) {
+    if (!items || !Array.isArray(items) || !items.length) {
       container.innerHTML = '<div class="empty-state"><p>No recent activity.</p></div>';
       return;
     }
 
     const iconMap = {
-      anime_view: '👁️', episode_view: '▶️', watch_start: '🎬', watch_complete: '✅',
-      search: '🔍', login: '🔑', google_login: '🔑', favorite_add: '❤️',
-      download_start: '⬇️', stream_start: '📺', stream_error: '⚠️',
+      anime: '📺', user: '👤', payment: '💰', admin_action: '⚙️',
     };
 
     container.innerHTML = items.slice(0, 20).map(a => {
-      const icon = iconMap[a.event] || '📌';
-      const platform = a.platform ? ` (${a.platform})` : '';
-      const anime = a.anime ? ` — ${window._escapeHTML(a.anime)}` : '';
-      const episode = a.episode ? ` — ${window._escapeHTML(a.episode)}` : '';
-      const user = window._escapeHTML(a.user || 'Anonymous');
-      const time = window._timeAgo ? window._timeAgo(a.timestamp) : new Date(a.timestamp).toLocaleString();
-      return `<div class="list-item"><span>${icon} <strong>${user}</strong> ${a.event}${platform}${anime}${episode}</span><span class="list-value">${time}</span></div>`;
+      const icon = iconMap[a.type] || '📌';
+      const user = window._escapeHTML(a.label || 'Anonymous');
+      const detail = a.detail ? ` — ${window._escapeHTML(a.detail)}` : '';
+      const time = window._timeAgo ? window._timeAgo(a.created_at) : new Date(a.created_at).toLocaleString();
+      return `<div class="list-item"><span>${icon} <strong>${user}</strong>${detail}</span><span class="list-value">${time}</span></div>`;
     }).join('');
   }
 
   function renderStreamCache(data) {
     if (!data) return;
 
+    const sc = data.streamCache || data;
+
     function setEl(id, value) {
       const el = document.getElementById(id);
-      if (el) el.textContent = value;
+      if (el) el.textContent = value == null ? '—' : String(value);
     }
 
-    // Cache tier
-    setEl('sc-redis-hits', window._formatNumber(data.redisHits || 0));
-    setEl('sc-mysql-hits', window._formatNumber(data.mysqlHits || 0));
-    setEl('sc-cache-misses', window._formatNumber(data.cacheMisses || 0));
-    setEl('sc-active-sources', window._formatNumber(data.activeCachedSources || 0));
+    setEl('sc-redis-hits', window._formatNumber ? window._formatNumber(sc.redisHits || 0) : (sc.redisHits || 0));
+    setEl('sc-mysql-hits', window._formatNumber ? window._formatNumber(sc.mysqlHits || 0) : (sc.mysqlHits || 0));
+    setEl('sc-cache-misses', window._formatNumber ? window._formatNumber(sc.cacheMisses || 0) : (sc.cacheMisses || 0));
+    setEl('sc-active-sources', window._formatNumber ? window._formatNumber(sc.activeCachedSources || 0) : (sc.activeCachedSources || 0));
 
-    // Resolvers
-    setEl('sc-animeheaven', window._formatNumber(data.animeHeavenCalls || 0));
-    setEl('sc-consumet', window._formatNumber(data.consumetCalls || 0));
-    setEl('sc-resolvers', window._formatNumber(data.resolverCalls || 0));
-    setEl('sc-avg-lifetime', data.averageSourceLifetimeMs
-      ? Math.round(data.averageSourceLifetimeMs / 60000) + 'm'
+    setEl('sc-animeheaven', window._formatNumber ? window._formatNumber(sc.animeHeavenCalls || 0) : (sc.animeHeavenCalls || 0));
+    setEl('sc-consumet', window._formatNumber ? window._formatNumber(sc.consumetCalls || 0) : (sc.consumetCalls || 0));
+    setEl('sc-resolvers', window._formatNumber ? window._formatNumber(sc.resolverCalls || 0) : (sc.resolverCalls || 0));
+    setEl('sc-avg-lifetime', sc.averageSourceLifetimeMs
+      ? Math.round(sc.averageSourceLifetimeMs / 60000) + 'm'
       : '—');
 
-    // Health
-    setEl('sc-verify-ok', window._formatNumber(data.verificationSuccesses || 0));
-    setEl('sc-verify-fail', window._formatNumber(data.verificationFailures || 0));
-    setEl('sc-known-expiry', window._formatNumber(data.knownExpirySources || 0));
-    setEl('sc-unknown-expiry', window._formatNumber(data.unknownExpirySources || 0));
+    setEl('sc-verify-ok', window._formatNumber ? window._formatNumber(sc.verificationSuccesses || 0) : (sc.verificationSuccesses || 0));
+    setEl('sc-verify-fail', window._formatNumber ? window._formatNumber(sc.verificationFailures || 0) : (sc.verificationFailures || 0));
+    setEl('sc-known-expiry', window._formatNumber ? window._formatNumber(sc.knownExpirySources || 0) : (sc.knownExpirySources || 0));
+    setEl('sc-unknown-expiry', window._formatNumber ? window._formatNumber(sc.unknownExpirySources || 0) : (sc.unknownExpirySources || 0));
   }
 
   window.initializeAnalyticsSection = initializeAnalyticsSection;

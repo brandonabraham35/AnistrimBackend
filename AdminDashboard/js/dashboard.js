@@ -413,8 +413,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!container) return;
 
     try {
-      const activities = await window.apiRequest('/api/admin/dashboard/activity/recent');
-      if (!activities || activities.length === 0) {
+      // unwrapAdminEnvelope returns { items: [...], rows: [...] } for array payloads.
+      const resp = await window.apiRequest('/api/admin/dashboard/activity/recent');
+      const activities = resp && resp.items ? resp.items : (resp && resp.rows ? resp.rows : resp);
+      if (!activities || !Array.isArray(activities) || activities.length === 0) {
         EmptyState.render({ container, icon: '📋', title: 'No recent activity', description: 'Activity will appear here as users interact with the platform.' });
         return;
       }
@@ -427,6 +429,42 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join('');
     } catch (e) {
       console.warn('[Activity] Failed to load:', e.message);
+    }
+  }
+
+  // ─── Load Recent Subscriber Transactions ─────────────────────
+  // Populates the #recent-payments-table on the dashboard.
+  async function loadRecentPayments() {
+    const tbody = document.querySelector('#recent-payments-table tbody');
+    if (!tbody) return;
+
+    try {
+      const resp = await window.apiRequest('/api/admin/payments?limit=5&sort=created_at&order=desc');
+      // unwrapAdminEnvelope for paginated lists returns { items, rows, pagination }
+      const payments = (resp && resp.items) || (resp && resp.rows) || (Array.isArray(resp) ? resp : []);
+      if (!payments.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty-cell">No recent payments.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = payments.map(p => {
+        const name = window._escapeHTML(p.name || p.email || 'Unknown');
+        const amount = p.amount != null ? p.amount : '—';
+        const currency = p.currency || 'UGX';
+        const status = window._escapeHTML(p.status || '—');
+        const statusClass = p.status === 'successful' ? 'shared-badge-success'
+                         : p.status === 'failed' ? 'shared-badge-error'
+                         : p.status === 'refunded' ? 'shared-badge-warning'
+                         : 'shared-badge-muted';
+        return `<tr>
+          <td>${name}</td>
+          <td>${currency} ${window._formatNumber ? window._formatNumber(amount) : amount}</td>
+          <td><span class="shared-badge ${statusClass}">${status}</span></td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      console.warn('[RecentPayments] Failed to load:', e.message);
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-cell">Failed to load payments.</td></tr>';
     }
   }
 
@@ -539,6 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCharts();
     loadAdsMetrics();
     loadActivityTimeline();
+    loadRecentPayments();
 
     // Auto-refresh setup
     let autoRefreshTimer = null;
@@ -563,6 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadCharts();
       loadAdsMetrics();
       loadActivityTimeline();
+      loadRecentPayments();
       const refreshEl = document.getElementById('last-refresh-time');
       if (refreshEl) refreshEl.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
     }
