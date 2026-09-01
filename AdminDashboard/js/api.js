@@ -52,24 +52,37 @@ if (token) {
     const response = await fetch(url, { ...options, headers, signal: controller.signal });
 
     if (!response.ok) {
-      // If the token is expired or invalid, the API will return a 401.
-      // We should clear the session and redirect to the login page.
+      // ── SILENT TOKEN REFRESH ON 401 ─────────────────────────
+      // Access tokens are short-lived (15 min). When one expires, the backend
+      // returns 401. Instead of immediately logging out, attempt a silent
+      // refresh via the stored refresh token (30-day lifetime).
+      //
+      // If refresh succeeds, retry the original request with the new token.
+      // Only if the refresh also fails do we log out.
+      //
+      // This keeps the Admin Dashboard authenticated indefinitely without
+      // weakening security — the admin is still authenticated on every API
+      // call, just with automatically refreshed credentials.
       if (response.status === 401) {
+        const refreshed = await _tryTokenRefresh(BASE_URL, session);
+        if (refreshed) {
+          // Retry the original request with the fresh token.
+          headers['Authorization'] = `Bearer ${session.getToken()}`;
+          const retryResponse = await fetch(url, { ...options, headers, signal: controller.signal });
+          if (retryResponse.ok) {
+            const body = await retryResponse.json();
+            return unwrapAdminEnvelope(body);
+          }
+          // If retry also gets a non-ok status, handle it below.
+          return _handleHttpError(retryResponse, session);
+        }
+        // Refresh failed — session is genuinely expired or revoked.
         if (session) session.clear();
         localStorage.removeItem('admin_user');
         window.location.replace('index.html');
-        // Throw an error to prevent the rest of the code from executing
         throw new Error('Session expired. Please log in again.');
       }
-      // Try to parse error message from backend, otherwise use status text
-      let message = response.statusText;
-      try {
-        const errorData = await response.json();
-        message = errorData.message || message;
-      } catch (e) {
-        // Not a JSON response, stick with status text
-      }
-      throw new Error(`API Error: ${message} (Status: ${response.status})`);
+      return _handleHttpError(response, session);
     }
 
     const body = await response.json();
@@ -117,6 +130,58 @@ function unwrapAdminEnvelope(body) {
     return inner;
   }
   return body;
+}
+
+/**
+ * Attempt a silent token refresh using the stored refresh token.
+ * Returns true if the refresh succeeded, false otherwise.
+ * The new tokens are stored in the session so subsequent requests
+ * automatically use the fresh access token.
+ */
+async function _tryTokenRefresh(baseUrl, session) {
+  if (!session) return false;
+  const refreshToken = session.getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const res = await fetch(`${baseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Client': 'admin' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return false;
+    const raw = await res.json();
+    const data = (raw && raw.success === true && raw.data) ? raw.data : raw;
+    if (data && data.token) {
+      session.setTokens(data.token, data.refreshToken || refreshToken);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.warn('[API] Token refresh failed:', e.message);
+    return false;
+  }
+}
+
+/**
+ * Handle a non-ok HTTP response by parsing the error body and throwing.
+ * Shared between the initial request path and the post-refresh retry path.
+ */
+function _handleHttpError(response, session) {
+  // If the retry also returns 401, the session is genuinely invalid.
+  if (response.status === 401) {
+    if (session) session.clear();
+    localStorage.removeItem('admin_user');
+    window.location.replace('index.html');
+    throw new Error('Session expired. Please log in again.');
+  }
+  // Try to parse error message from backend, otherwise use status text
+  return response.json().then(function (errorData) {
+    var message = errorData.message || response.statusText;
+    throw new Error('API Error: ' + message + ' (Status: ' + response.status + ')');
+  }).catch(function (e) {
+    if (e && e.message && e.message.indexOf('API Error') === 0) throw e;
+    throw new Error('API Error: ' + response.statusText + ' (Status: ' + response.status + ')');
+  });
 }
 
 // Expose the function globally for other scripts (auth.js, anime.js, etc.)
