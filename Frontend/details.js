@@ -33,6 +33,7 @@ function episodeAccessLabel(ep) {
     case 'premium':         return 'Premium';
     case 'in_grace':        return 'In grace period';
     case 'subscription_expired': return 'Subscription expired';
+    case 'unavailable':     return 'Unavailable';
     case 'scheduled': {
       const d = ep && ep.availableAt ? new Date(ep.availableAt) : null;
       if (d && !isNaN(d.getTime())) {

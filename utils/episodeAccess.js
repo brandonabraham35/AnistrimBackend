@@ -278,6 +278,10 @@ async function canWatchWithEntitlement(ent, episodeId, isAdmin = false) {
  *   scheduled            — locked, future availableAt → "Free on {date}"
  */
 function computeAccessState(effectiveTier, entitled, entState, hasExpiredSubscription, availableAt) {
+  // Phase 4 (BUG-6): distinguish 'unknown' (infrastructure/data error) from
+  // 'premium' (the content is actually premium). The frontend still shows a
+  // locked/gated state, but the label is 'Unavailable' not 'Premium required'.
+  if (effectiveTier === 'unknown') return 'unavailable';
   if (effectiveTier === 'free') return 'free';
   if (entitled) {
     return entState === 'grace' ? 'in_grace' : 'premium';

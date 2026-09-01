@@ -40,6 +40,7 @@
       '<div class="anime-card-img"><img src="' + (img || fallback(title)) + '" alt="' + esc(title) + '" loading="lazy" ' +
       'onerror="this.src=AniStrimUI.fallback(\'' + esc(title) + '\')">' +
       (type ? '<span class="anime-card-badge">' + esc(type) + '</span>' : '') +
+      (a && (a.isPremiumContent || a.isPremium || a.is_premium) ? '<span class="anime-card-premium">👑 Premium</span>' : '') +
       (a && a.rating ? '<span class="anime-card-rating">&#9733; ' + esc(a.rating) + '</span>' : '') +
       '</div><div class="anime-card-body"><div class="anime-card-title">' + esc(title) + '</div>' +
       '<div class="anime-card-sub">' +

@@ -62,6 +62,7 @@ function episodeAccessLabel(ep) {
     case 'premium':         return 'Premium';
     case 'in_grace':        return 'In grace period';
     case 'subscription_expired': return 'Subscription expired';
+    case 'unavailable':     return 'Unavailable';
     case 'scheduled': {
       const d = ep && ep.availableAt ? new Date(ep.availableAt) : null;
       if (d && !isNaN(d.getTime())) {
@@ -3350,6 +3351,8 @@ function showPremiumGate(epTitle, requiredTier, availableAt, accessState) {
     // Prompt 6: distinguish the access states the server emitted.
     if (accessState === 'subscription_expired') {
       msgEl.textContent = 'Your subscription has expired. Renew to keep watching premium episodes.';
+    } else if (accessState === 'unavailable') {
+      msgEl.textContent = 'This episode is currently unavailable. Please try again later.';
     } else if (accessState === 'scheduled' && availableAt) {
       const d = new Date(availableAt);
       if (!isNaN(d.getTime())) {
