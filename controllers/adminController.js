@@ -419,18 +419,18 @@ const adminController = {
     return d.toISOString().slice(0, 19).replace('T', ' ');
   },
   async addEpisode(req, res) {
-    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, thumbnail_public_id, video_url, duration_sec, is_premium = 0, public_id, cloudinary_public_id, intro_start_time, intro_end_time, access_tier, premium_duration, premium_until } = req.body;
+    const animeId = Number(req.params.animeId); const { episode_number, title, description, thumbnail_url, thumbnail_public_id, video_url, manual_video_url, duration_sec, is_premium = 0, public_id, cloudinary_public_id, intro_start_time, intro_end_time, access_tier, premium_duration, premium_until } = req.body;
     if (!Number.isInteger(animeId) || !Number.isInteger(Number(episode_number))) return res.status(400).json({ message: 'A valid episode number is required.' });
     try {
       const resolvedTier = ['inherit', 'free', 'premium'].includes(access_tier) ? access_tier : 'inherit';
       const resolvedUntil = adminController.resolvePremiumUntil(resolvedTier, premium_duration, premium_until);
-      const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, access_tier: resolvedTier, premium_until: resolvedUntil, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) });
+      const r = await insertExistingColumns('episodes', { anime_id: animeId, episode_number: Number(episode_number), title: title || null, description: description || null, thumbnail_url: thumbnail_url || null, thumbnail_public_id: thumbnail_public_id || null, video_url: video_url || null, manual_video_url: manual_video_url || null, duration_sec: numberOrNull(duration_sec), is_premium: toBool(is_premium) ? 1 : 0, access_tier: resolvedTier, premium_until: resolvedUntil, cloudinary_public_id: cloudinary_public_id || public_id || null, intro_start_time: numberOrNull(intro_start_time), intro_end_time: numberOrNull(intro_end_time) });
       await logActivity(req, `Created episode ${episode_number}`, 'episode', r.insertId); invalidateCatalogue(animeId);
       return sendSuccess(res, { id: r.insertId }, { message: 'Episode created.' }, 201);
     } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
   async updateEpisode(req, res) {
-    const schema = await getSchema(); const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'thumbnail_public_id', 'video_url', 'duration_sec', 'is_premium', 'cloudinary_public_id', 'intro_start_time', 'intro_end_time', 'access_tier', 'premium_until']; const updates = []; const values = [];
+    const schema = await getSchema(); const fields = ['episode_number', 'title', 'description', 'thumbnail_url', 'thumbnail_public_id', 'video_url', 'manual_video_url', 'duration_sec', 'is_premium', 'cloudinary_public_id', 'intro_start_time', 'intro_end_time', 'access_tier', 'premium_until']; const updates = []; const values = [];
     const hasReq = k => Object.prototype.hasOwnProperty.call(req.body, k);
     if (hasReq('access_tier')) { updates.push('access_tier = ?'); values.push(['inherit','free','premium'].includes(req.body.access_tier) ? req.body.access_tier : 'inherit'); }
     if (hasReq('premium_duration') || hasReq('premium_until')) {
@@ -613,7 +613,29 @@ const adminController = {
   },
 
   async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); return sendSuccess(res, null, { message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async getVideoStatus(req, res) { try { const video = await cloudinaryVideo.getVideo(req.params.videoId); return sendSuccess(res, { ...video, status: 'ready', video_status: 'ready', encodeProgress: 100 }); } catch (error) { res.status(502).json({ message: error.message }); } },
+  async uploadEpisodeVideo(req, res) {
+    const episodeId = Number(req.params.id);
+    if (!Number.isInteger(episodeId)) return res.status(400).json({ message: 'Invalid episode ID.' });
+    const file = req.file;
+    if (!file) return res.status(400).json({ message: 'No video file uploaded.' });
+    try {
+      const video = await cloudinaryVideo.uploadVideo(file.path);
+      const videoUrl = video.secure_url;
+      const schema = await getSchema();
+      if (hasColumn(schema, 'episodes', 'manual_video_url')) {
+        await db.query('UPDATE episodes SET manual_video_url = ? WHERE id = ?', [videoUrl, episodeId]);
+      } else {
+        await db.query('UPDATE episodes SET video_url = ? WHERE id = ?', [videoUrl, episodeId]);
+      }
+      await logActivity(req, `Uploaded video for episode #${episodeId}`, 'episode', episodeId);
+      return sendSuccess(res, { url: videoUrl, public_id: video.public_id, duration: video.duration, manual_video_url: videoUrl }, { message: 'Video uploaded and linked to episode.' }, 201);
+    } catch (error) {
+      console.error('[Admin] uploadEpisodeVideo error:', error.message);
+      return res.status(502).json({ message: error.message || 'Video upload failed.' });
+    } finally {
+      if (file.path) require('fs').promises.unlink(file.path).catch(() => {});
+    }
+  },
 
   // ─── Bulk Update Operations ─────────────────────────────────────
 

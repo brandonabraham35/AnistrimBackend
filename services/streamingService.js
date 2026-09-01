@@ -710,6 +710,56 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
 
   logger.debugStream('resolveStream start', { anime: animeTitle, episode: episodeNumber, tier });
 
+  // ── MANUAL VIDEO SOURCE (Admin-uploaded Cloudinary URL) ────────
+  // This is an ADDITIVE source that takes precedence over AnimeHeaven.
+  // If the episode has a `manual_video_url`, we return it directly as a
+  // playable source WITHOUT touching the AnimeHeaven resolution flow,
+  // the AnimeHeaven playable-URL fields, or the AnimeHeaven stream cache.
+  //
+  // It NEVER writes to, repurposes, or clears the existing AnimeHeaven
+  // fields. It only reads `episodes.manual_video_url`.
+  if (episodeId != null && episodeId !== '') {
+    try {
+      const [manualRows] = await db.query(
+        'SELECT manual_video_url FROM episodes WHERE id = ? LIMIT 1',
+        [episodeId]
+      );
+      const manualUrl = manualRows?.[0]?.manual_video_url;
+      if (manualUrl && String(manualUrl).trim()) {
+        const cleanUrl = String(manualUrl).trim();
+        logger.info('[MANUAL_VIDEO] Manual source selected for playback', {
+          anime: animeTitle,
+          episode: episodeNumber,
+          episodeId,
+        });
+        const source = { url: cleanUrl, quality: 'auto', isM3U8: false };
+        return {
+          provider: 'manual',
+          streamUrl: cleanUrl,
+          sources: [source],
+          downloadSources: [],
+          subtitles: [],
+          bestQuality: 'auto',
+          tier,
+          cached: false,
+          providerUsed: 'manual',
+          fallbackActivated: false,
+          attemptCount: 1,
+          manualVideo: true,
+        };
+      }
+    } catch (manualErr) {
+      // A manual-source lookup failure must NEVER break playback — fall
+      // through to the existing AnimeHeaven resolution exactly as before.
+      logger.warn('[MANUAL_VIDEO] manual_video_url lookup failed (non-fatal)', {
+        anime: animeTitle,
+        episode: episodeNumber,
+        episodeId,
+        error: manualErr.message,
+      });
+    }
+  }
+
   // ── Phase 3: DB lookup for persisted AnimeHeaven identifiers ──
   // This is the FAST PATH. The search step NEVER runs during playback.
   // The slug + episode key are stored at import time.

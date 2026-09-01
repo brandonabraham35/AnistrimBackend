@@ -20,13 +20,19 @@
 const db = require('../config/db');
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const IS_TEST_MODE = process.env.POSTMARK_TEST_MODE === 'true';
 
 // Postmark's official test-mode API token. When used as the server token,
 // Postmark accepts all API requests and returns success responses but NEVER
 // actually sends the email. Nothing counts against delivery stats or bounce
 // rates. See: https://postmarkapp.com/developer/api/overview#test-mode
 const POSTMARK_TEST_TOKEN = 'POSTMARK_API_TEST';
+
+// Called at runtime (not a module-level constant) so the mailer unit tests
+// can set POSTMARK_TEST_MODE=false independently and verify the unconfigured
+// state without test-mode interference.
+function isTestMode() {
+  return process.env.POSTMARK_TEST_MODE === 'true';
+}
 
 // ── Placeholder detection ────────────────────────────────────────
 // Any value containing these markers (case-insensitive) is treated as a
@@ -49,9 +55,9 @@ function smtpConfigured() {
 }
 
 function postmarkConfigured() {
-  // In test mode, Postmark's test API token (POSTMARK_API_TEST) is used.
-  // It accepts requests but never sends emails — perfect for CI/test suites.
-  if (IS_TEST_MODE) return true;
+  // NOTE: isTestMode() is intentionally NOT checked in postmarkConfigured().
+  // The mailer unit tests need to verify the unconfigured state
+  // independently. Test-mode bypass happens inside sendEmail() below.
   return Boolean(
     isRealValue(process.env.POSTMARK_SERVER_TOKEN) &&
     isRealValue(process.env.POSTMARK_FROM_EMAIL)
@@ -79,7 +85,7 @@ function getTimeoutMs() {
 // Postmark env vars. Never logs the actual token value.
 function runStartupConfigWarnings() {
   // In test mode, Postmark test token is used — no warnings needed.
-  if (IS_TEST_MODE) return;
+  if (isTestMode()) return;
   const token = process.env.POSTMARK_SERVER_TOKEN;
   const fromEmail = process.env.POSTMARK_FROM_EMAIL;
 
@@ -183,21 +189,30 @@ function stripHtml(html) {
 async function sendEmail(to, subject, html, otpCode) {
   if (!postmarkConfigured()) {
     if (IS_PRODUCTION) {
-      // Fail loudly — never silently swallow mail delivery in production, and
-      // never print the OTP code.
-      console.error(`EMAIL NOT SENT (Postmark unconfigured) to: ${to}`);
-      recordEmailEvent(to, subject, 'failure', 'Postmark is not configured (production)');
-      throw new Error('Postmark is not configured and we are in production. Email not sent.');
-    }
-    // Development fallback: print the code so local testing still works.
-    if (otpCode) {
-      console.log(`[DEV MAIL] To: ${to} | Subject: ${subject} | Code: ${otpCode}`);
+      if (isTestMode()) {
+        // Test mode: Postmark is not configured but we're in test mode.
+        // Fall through to the Postmark API call below with the test token.
+        // The test token (POSTMARK_API_TEST) accepts all requests and returns
+        // success, but NEVER actually sends the email.
+        console.log(`[Postmark] Test mode — using test token for ${to} (${subject})`);
+      } else {
+        // Fail loudly — never silently swallow mail delivery in production, and
+        // never print the OTP code.
+        console.error(`EMAIL NOT SENT (Postmark unconfigured) to: ${to}`);
+        recordEmailEvent(to, subject, 'failure', 'Postmark is not configured (production)');
+        throw new Error('Postmark is not configured and we are in production. Email not sent.');
+      }
     } else {
-      console.log(`[DEV MAIL] To: ${to} | Subject: ${subject} (no code supplied)`);
+      // Development fallback: print the code so local testing still works.
+      if (otpCode) {
+        console.log(`[DEV MAIL] To: ${to} | Subject: ${subject} | Code: ${otpCode}`);
+      } else {
+        console.log(`[DEV MAIL] To: ${to} | Subject: ${subject} (no code supplied)`);
+      }
+      // Dev console-delivery counts as success (it delivered to the dev console).
+      recordEmailEvent(to, subject, 'success', null);
+      return { messageId: 'dev-console' };
     }
-    // Dev console-delivery counts as success (it delivered to the dev console).
-    recordEmailEvent(to, subject, 'success', null);
-    return { messageId: 'dev-console' };
   }
 
   // Build a plain-text part from the optional OTP code, else strip the HTML.
@@ -211,9 +226,9 @@ async function sendEmail(to, subject, html, otpCode) {
   const from = getFrom();
   const messageStream = process.env.POSTMARK_MESSAGE_STREAM || 'outbound';
 
-  const postmarkToken = IS_TEST_MODE ? POSTMARK_TEST_TOKEN : process.env.POSTMARK_SERVER_TOKEN;
+  const postmarkToken = isTestMode() ? POSTMARK_TEST_TOKEN : process.env.POSTMARK_SERVER_TOKEN;
 
-  console.log(`[Postmark] Email send started -> ${to} (${subject})${IS_TEST_MODE ? ' [TEST MODE]' : ''}`);
+  console.log(`[Postmark] Email send started -> ${to} (${subject})${isTestMode() ? ' [TEST MODE]' : ''}`);
 
   // AbortController-based hard timeout so a hung Postmark request can never
   // stall the signup/OTP flow. On abort we record a failure event with the

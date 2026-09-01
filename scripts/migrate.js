@@ -26,6 +26,7 @@ const CRITICAL_COLUMNS = {
   ],
   episodes: [
     'anime_id', 'episode_number', 'season', 'title', 'video_url',
+    'manual_video_url',
     'is_published', 'access_tier', 'premium_until', 'is_premium',
     'consumet_id', 'updated_at', 'created_at',
   ],

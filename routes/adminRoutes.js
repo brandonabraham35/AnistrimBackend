@@ -75,6 +75,21 @@ router.get('/episodes/:id',                 admin.getEpisode);
 router.put('/episodes/:id',                 admin.updateEpisode);
 router.delete('/episodes/:id',              admin.deleteEpisode);
 router.post('/episodes/bulk-delete',        admin.bulkDeleteEpisodes);
+// Upload video for an episode (sets manual_video_url — independent of AnimeHeaven)
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const videoTempDir = path.join(require('os').tmpdir(), 'anistrim-episode-videos');
+fs.mkdirSync(videoTempDir, { recursive: true });
+const episodeVideoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, videoTempDir),
+    filename: (_req, file, callback) => callback(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`),
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => callback(null, /^video\/(mp4|quicktime|x-matroska|webm)$/.test(file.mimetype)),
+});
+router.post('/episodes/:id/upload-video', episodeVideoUpload.single('video'), admin.uploadEpisodeVideo);
 // Stream Diagnostic (Phase 6 — read-only cached stream inspection)
 router.get('/streams/:episodeId/diagnostic', admin.getStreamDiagnostic);
 // Stream Observation (Phase 6 — empirical URL lifetime tracking)

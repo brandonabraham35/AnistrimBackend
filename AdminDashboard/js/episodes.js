@@ -116,6 +116,60 @@
     });
     _$el('episode-form')?.addEventListener('submit', _handleFormSubmit);
 
+    // Manual video upload button
+    _$el('ep-upload-video-btn')?.addEventListener('click', () => {
+      if (!_episodesEditId) {
+        window.showToast?.('Save the episode first, then edit to upload a video.', 'warning');
+        return;
+      }
+      _$el('ep-manual-video-file')?.click();
+    });
+
+    // Clear manual video URL button
+    _$el('ep-clear-manual-video-btn')?.addEventListener('click', () => {
+      _$el('ep-manual-video-url').value = '';
+      _$el('ep-upload-status').textContent = '';
+      window.showToast?.('Manual video URL cleared. Save the episode to confirm.', 'info');
+    });
+
+    // File input change → upload to Cloudinary via dedicated endpoint
+    _$el('ep-manual-video-file')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!_episodesEditId) {
+        window.showToast?.('Episode ID not available. Save the episode first.', 'error');
+        return;
+      }
+      const statusEl = _$el('ep-upload-status');
+      const uploadBtn = _$el('ep-upload-video-btn');
+      if (statusEl) statusEl.textContent = 'Uploading video to Cloudinary...';
+      if (uploadBtn) uploadBtn.disabled = true;
+      try {
+        const fd = new FormData();
+        fd.append('video', file);
+        const data = await window.apiRequest(`/api/admin/episodes/${_episodesEditId}/upload-video`, {
+          method: 'POST',
+          body: fd,
+          headers: { 'X-Client': 'admin' },
+        });
+        const url = data.manual_video_url || data.url;
+        if (url) {
+          _$el('ep-manual-video-url').value = url;
+          if (statusEl) statusEl.textContent = '✓ Video uploaded and linked!';
+          window.showToast?.('Video uploaded and linked to episode.', 'success');
+        } else {
+          throw new Error('No URL returned from upload.');
+        }
+      } catch (error) {
+        console.error('[Episodes] Manual video upload failed:', error);
+        if (statusEl) statusEl.textContent = 'Upload failed: ' + error.message;
+        window.showToast?.('Video upload failed: ' + error.message, 'error');
+      } finally {
+        if (uploadBtn) uploadBtn.disabled = false;
+        e.target.value = ''; // clear file input for re-upload
+      }
+    });
+
     // Escape key
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') _closeEpisodeModal();
@@ -180,7 +234,7 @@
     if (!tbody) return;
 
     if (_episodesData.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9">' + window.EmptyState.render({
+      tbody.innerHTML = '<tr><td colspan="10">' + window.EmptyState.render({
         icon: '🎬',
         title: 'No Episodes Found',
         description: _currentAnimeId ? 'This anime has no episodes yet.' : 'No episodes in the database.',
@@ -203,6 +257,11 @@
         <td>${ep.duration_sec ? Math.floor(ep.duration_sec / 60) + 'm ' + (ep.duration_sec % 60) + 's' : '—'}</td>
         <td>${window.Badge.premium(ep.is_premium)}</td>
         <td>${(ep.view_count || 0).toLocaleString()}</td>
+        <td style="text-align:center;">${
+          ep.manual_video_url
+            ? '<span title=\"Manual video linked: ' + window._escapeHTML(ep.manual_video_url) + '\" style=\"color:var(--accent,#7c4dff);cursor:help;\"><i class=\"fas fa-cloud-upload-alt\"></i></span>'
+            : '<span style=\"color:var(--text-muted,#555);\">—</span>'
+        }</td>
         <td style="white-space:nowrap;">
           <button class="btn-action edit" data-id="${ep.id}" title="Edit Episode" aria-label="Edit Episode"><i class="fas fa-edit"></i> Edit</button>
           <button class="btn-action inspect-stream" data-id="${ep.id}" title="Inspect Stream" aria-label="Inspect Stream"><i class="fas fa-search"></i> Inspect</button>
@@ -381,6 +440,8 @@ function _renderPagination() {
       form.querySelector('#ep-description').value = ep.description || '';
       form.querySelector('#ep-duration').value = ep.duration_sec || '';
       form.querySelector('#ep-video-url').value = ep.video_url || '';
+      form.querySelector('#ep-manual-video-url').value = ep.manual_video_url || '';
+      form.querySelector('#ep-upload-status').textContent = ep.manual_video_url ? '✓ Manual video linked' : '';
       form.querySelector('#ep-thumbnail-url').value = ep.thumbnail_url || '';
       form.querySelector('#ep-is-premium').checked = !!ep.is_premium;
       const tierSel = form.querySelector('#ep-access-tier');
@@ -421,6 +482,7 @@ function _renderPagination() {
       description: form.querySelector('#ep-description').value || null,
       duration_sec: parseInt(form.querySelector('#ep-duration').value, 10) || null,
       video_url: form.querySelector('#ep-video-url').value || null,
+      manual_video_url: form.querySelector('#ep-manual-video-url').value || null,
       thumbnail_url: form.querySelector('#ep-thumbnail-url').value || null,
       is_premium: form.querySelector('#ep-is-premium').checked ? '1' : '0',
       access_tier: form.querySelector('#ep-access-tier')?.value || 'inherit',

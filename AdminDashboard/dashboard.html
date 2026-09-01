@@ -763,7 +763,8 @@
                                 <th>Duration</th>
                                 <th>Premium</th>
                                 <th>Views</th>
-                                <th style="width:100px">Actions</th>
+                                <th style="width:40px" title="Manual video source">Manual</th>
+                                <th style="width:150px">Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -1217,6 +1218,20 @@
                     <label class="wide">Description <textarea id="ep-description" name="description" rows="3" placeholder="Episode description (optional)"></textarea></label>
                     <label>Duration (seconds) <input id="ep-duration" name="duration_sec" type="number" min="0" placeholder="e.g. 1440"></label>
                     <label class="wide">Video URL <input id="ep-video-url" name="video_url" placeholder="https://..."></label>
+                    <label class="wide" style="border-top:1px solid var(--border,#2a2c37);padding-top:0.75rem;margin-top:0.5rem;">
+                        <strong style="color:var(--accent,#7c4dff);">Manual Video (Cloudinary)</strong>
+                        <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem;">
+                            <input id="ep-manual-video-url" name="manual_video_url" placeholder="Cloudinary URL or upload a video..." style="flex:1;">
+                            <button type="button" class="btn secondary" id="ep-upload-video-btn" style="white-space:nowrap;flex-shrink:0;" title="Upload a video file to Cloudinary">
+                                <i class="fas fa-cloud-upload-alt"></i> Upload
+                            </button>
+                            <button type="button" class="btn danger small" id="ep-clear-manual-video-btn" style="white-space:nowrap;flex-shrink:0;" title="Clear manual video URL">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <input type="file" id="ep-manual-video-file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm" style="display:none;">
+                        <div id="ep-upload-status" style="font-size:0.8rem;margin-top:0.25rem;color:var(--text-muted,#888);"></div>
+                    </label>
                     <label class="wide">Thumbnail URL <input id="ep-thumbnail-url" name="thumbnail_url" placeholder="https://..."></label>
                     <label><input id="ep-is-premium" name="is_premium" type="checkbox"> Premium only</label>
                     <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">

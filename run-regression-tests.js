@@ -5,9 +5,14 @@
 const http = require('http');
 const url = require('url');
 
-// ── Test environment ─────────────────────────────────────────
-// Ensure Postmark test mode is active so test-triggered signup
-// emails never reach the production Postmark server.
+// IMPORTANT: This script makes HTTP requests to a server process. The server
+// loads mailer.js at startup with its own environment. To prevent the signup
+// validation test from accidentally triggering real Postmark emails, this
+// script sets POSTMARK_TEST_MODE for the client process, but the REAL
+// protection is that the signup test uses empty/invalid fields which fail
+// validation before sendEmail() is ever called. For full protection when
+// testing against a server with a real Postmark token, set
+// POSTMARK_TEST_MODE=true in the server's environment (e.g., Render staging).
 process.env.POSTMARK_TEST_MODE = 'true';
 const BASE = 'http://localhost:5000';
 
