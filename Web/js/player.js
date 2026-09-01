@@ -101,7 +101,7 @@
   function playWhenReady() {
     if (!videoEl || !state) return;
     var promise = videoEl.play();
-    if (promise && typeof promise.catch === 'function') promise.catch(function () { status('Ready to play. Press play to start.'); });
+    if (promise && typeof promise.catch === 'function') promise.catch(function () { status('Loading…'); });
   }
   function finishReady() {
     if (!state || state.ready) return;
@@ -185,7 +185,7 @@
     state.reauthorizing = true;
     var owner = state;
     var resumeAt = videoEl && isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
-    status('Refreshing stream authorization…');
+    status('Loading…');
     API.authorizeStream(state.episodeId).then(function (auth) {
       if (state !== owner) return;
       state.reauthorizing = false;
@@ -207,7 +207,7 @@
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
       if (state.networkRecoveries < 1) {
         state.networkRecoveries += 1;
-        status('Network interruption. Reconnecting…');
+        status('Loading…');
         try { hlsInstance.startLoad(); return; } catch (e) { /* reauthorize below */ }
       }
       if (reauthorizeAndReload('network recovery')) return;
@@ -216,7 +216,7 @@
     }
     if (data.type === Hls.ErrorTypes.MEDIA_ERROR && state.mediaRecoveries < 1) {
       state.mediaRecoveries += 1;
-      status('Recovering playback…');
+      status('Loading…');
       try { hlsInstance.recoverMediaError(); return; } catch (e2) { /* fail below */ }
     }
     fail(new Error('The video stream could not be decoded or is unavailable.'));
@@ -235,7 +235,7 @@
     clearRuntime(false, true);
     state.ready = false;
     state.failed = false;
-    status('Loading stream…');
+    status('Loading…');
     var owner = state;
     state.readyTimer = setTimeout(function () {
       if (state === owner && !state.ready && !reauthorizeAndReload('source timeout')) fail(new Error('Timed out loading the video stream.'));
@@ -271,7 +271,7 @@
     };
     if (!videoEl) { fail(new Error('Player element is unavailable.')); return null; }
     try {
-      status('Authorizing playback…');
+      status('Loading…');
       var auth = await API.authorizeStream(state.episodeId);
       if (!state) return null;
       applyAuthorization(auth);

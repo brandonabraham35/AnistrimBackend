@@ -628,27 +628,32 @@ function setPlayerState(state, meta) {
     window.__aniStrimPlaybackDebug.state = state;
   }
   // Update the loading-status text to reflect the current state.
+  // INTERNAL PIPELINE STATES (INITIALIZING, AUTH_CHECK, PREMIUM_CHECK,
+  // STREAM_LOADING, SOURCE_RESOLVED, STREAM_AUTHORIZED, MANIFEST_*,
+  // LEVEL_LOADED, FRAGMENT_LOADED, BUFFER_READY, CANPLAY, PLAY_REQUESTED,
+  // AUTOPLAY_BLOCKED) all show "Loading…" — the user sees ONE consistent
+  // loader throughout preparation, never internal pipeline messages.
   var statusText = {};
-  statusText[PLAYER_STATES.INITIALIZING] = 'Preparing player...';
-  statusText[PLAYER_STATES.AUTH_CHECK] = 'Checking account...';
-  statusText[PLAYER_STATES.PREMIUM_CHECK] = 'Checking access...';
-  statusText[PLAYER_STATES.STREAM_LOADING] = 'Finding stream...';
-  statusText[PLAYER_STATES.SOURCE_RESOLVED] = 'Stream found';
-  statusText[PLAYER_STATES.STREAM_AUTHORIZED] = 'Stream authorized';
-  statusText[PLAYER_STATES.MANIFEST_REQUESTED] = 'Loading manifest...';
-  statusText[PLAYER_STATES.MANIFEST_LOADED] = 'Manifest loaded';
-  statusText[PLAYER_STATES.LEVEL_LOADED] = 'Quality loaded';
-  statusText[PLAYER_STATES.FRAGMENT_LOADED] = 'Loading video...';
-  statusText[PLAYER_STATES.BUFFER_READY] = 'Ready';
-  statusText[PLAYER_STATES.CANPLAY] = 'Ready to play';
-  statusText[PLAYER_STATES.PLAY_REQUESTED] = 'Starting playback...';
+  statusText[PLAYER_STATES.INITIALIZING] = 'Loading…';
+  statusText[PLAYER_STATES.AUTH_CHECK] = 'Loading…';
+  statusText[PLAYER_STATES.PREMIUM_CHECK] = 'Loading…';
+  statusText[PLAYER_STATES.STREAM_LOADING] = 'Loading…';
+  statusText[PLAYER_STATES.SOURCE_RESOLVED] = 'Loading…';
+  statusText[PLAYER_STATES.STREAM_AUTHORIZED] = 'Loading…';
+  statusText[PLAYER_STATES.MANIFEST_REQUESTED] = 'Loading…';
+  statusText[PLAYER_STATES.MANIFEST_LOADED] = 'Loading…';
+  statusText[PLAYER_STATES.LEVEL_LOADED] = 'Loading…';
+  statusText[PLAYER_STATES.FRAGMENT_LOADED] = 'Loading…';
+  statusText[PLAYER_STATES.BUFFER_READY] = 'Loading…';
+  statusText[PLAYER_STATES.CANPLAY] = 'Loading…';
+  statusText[PLAYER_STATES.PLAY_REQUESTED] = 'Loading…';
   statusText[PLAYER_STATES.PLAYING] = 'Playing';
   statusText[PLAYER_STATES.TIME_ADVANCING] = 'Playing';
   statusText[PLAYER_STATES.PLAYBACK_SUCCESS] = 'Playing';
   statusText[PLAYER_STATES.PAUSED] = 'Paused';
   statusText[PLAYER_STATES.BUFFERING] = 'Buffering...';
   statusText[PLAYER_STATES.ENDED] = 'Ended';
-  statusText[PLAYER_STATES.AUTOPLAY_BLOCKED] = 'Ready to play';
+  statusText[PLAYER_STATES.AUTOPLAY_BLOCKED] = 'Loading…';
   statusText[PLAYER_STATES.PLAYBACK_FAILED] = 'Playback failed';
   statusText[PLAYER_STATES.AUTH_REQUIRED] = 'Sign in required';
   statusText[PLAYER_STATES.PREMIUM_REQUIRED] = 'Premium required';
@@ -716,7 +721,7 @@ async function loadWatch() {
 
   try {
     console.log('[WATCH DEBUG] starting playback initialization');
-    setLoadingStatus('Finding episode...');
+    setLoadingStatus('Loading…');
     watchLog('anime request started', { animeId });
     console.log('[WATCH DEBUG] calling playback API: /api/anime/' + animeId);
 
@@ -858,7 +863,7 @@ async function loadWatch() {
 
       if (ep && ep.video_url) {
         setPlayerState(PLAYER_STATES.STREAM_LOADING, { mode: 'direct' });
-        setLoadingStatus('Loading video...');
+        setLoadingStatus('Loading…');
         await initializePlayerWithSource(video, { url: ep.video_url, quality: 'auto' }, {
           provider: 'direct',
           sources: [{ url: ep.video_url, quality: 'auto' }],
@@ -868,7 +873,7 @@ async function loadWatch() {
         watchLog('source selected', { directVideo: true });
       } else {
         setPlayerState(PLAYER_STATES.STREAM_LOADING, { mode: 'backend' });
-        setLoadingStatus('Finding stream...');
+        setLoadingStatus('Loading…');
         console.log('[PLAYBACK] Resolving stream', { animeTitle: currentAnimeTitle, episode: currentEp });
         // IMPORTANT: Use the EXACT same arguments as the "Change Server"
         // button (currentAnimeTitle + preferredProvider='animeheaven') so the
@@ -1207,7 +1212,7 @@ function ensurePlayerCoreInitialized(video) {
     for (const source of sourcesToTry) {
         try {
             console.log(`[PLAYER] Attempting to attach source: ${source.url} (Quality: ${source.quality})`);
-            setLoadingStatus('Connecting to server...');
+            setLoadingStatus('Loading…');
             watchLog('source selected', { url: source.url, quality: source.quality });
 
             await initializePlayerWithSource(video, source, {
@@ -1249,7 +1254,7 @@ async function switchProvider(providerName) {
   if (errorOverlay) errorOverlay.style.display = 'none';
 
   try {
-    setLoadingStatus('Connecting to server...');
+    setLoadingStatus('Loading…');
     await resolveAndPlayStream(currentAnimeTitle, currentEp, video, providerName || undefined);
 
     video.addEventListener('loadedmetadata', function() {
@@ -1717,7 +1722,7 @@ function setupPlayer(video) {
           return currentStreamUrl ? appendStreamToken(currentStreamUrl) : null;
         },
         onReconnect: function(level) {
-          setLoadingStatus(level >= 4 ? 'Playback failed' : 'Reconnecting…');
+          setLoadingStatus(level >= 4 ? 'Playback failed' : 'Loading…');
         },
         onErrorCard: function() {
           showWatchError('Playback could not be recovered. Please try again.');
@@ -1946,7 +1951,7 @@ async function switchToEpisode(epNum) {
   // Show loading
   const loadingOverlay = document.getElementById('loading-overlay');
   if (loadingOverlay) loadingOverlay.style.display = 'flex';
-  setLoadingStatus('Loading video...');
+  setLoadingStatus('Loading…');
 
   const video = document.getElementById('animePlayer');
   if (!video) return;
@@ -2497,7 +2502,7 @@ async function playNextEp() {
       // Show loading
       const loadingOverlay = document.getElementById('loading-overlay');
       if (loadingOverlay) loadingOverlay.style.display = 'flex';
-      setLoadingStatus('Loading video...');
+      setLoadingStatus('Loading…');
 
       // Ensure PlayerCore is initialized before source attachment.
       ensurePlayerCoreInitialized(video);
@@ -3486,7 +3491,7 @@ function showWatchError(msg) {
       if (errorOverlay) errorOverlay.style.display = 'none';
       const loadingOverlay = document.getElementById('loading-overlay');
       if (loadingOverlay) loadingOverlay.style.display = 'flex';
-      setLoadingStatus('Reconnecting…');
+      setLoadingStatus('Loading…');
       if (window.__playerResilience && typeof window.__playerResilience.restart === 'function') {
         window.__playerResilience.restart();
       } else {
@@ -3505,7 +3510,7 @@ function showWatchError(msg) {
         const loadingOverlay = document.getElementById('loading-overlay');
         if (errorOverlay) errorOverlay.style.display = 'none';
         if (loadingOverlay) loadingOverlay.style.display = 'flex';
-        setLoadingStatus('Connecting to server...');
+        setLoadingStatus('Loading…');
         resolveAndPlayStream(currentAnimeTitle, currentEp, video, 'animeheaven')
           .then(() => {
             if (loadingOverlay) loadingOverlay.style.display = 'none';

@@ -1418,7 +1418,10 @@
     Player.destroy();
     Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
     Player.setStatusDisplay(function (m) {
-      if (loadingEl) { loadingEl.textContent = m; loadingEl.style.display = m === 'Playing' ? 'none' : 'flex'; }
+      if (loadingEl) {
+        loadingEl.textContent = 'Loading…';
+        loadingEl.style.display = (m === 'Playing' || m === 'Buffering…') ? 'none' : 'flex';
+      }
     });
     try {
       var anime = await API.anime(id);
