@@ -317,7 +317,7 @@ function getRobots(req, res) {
 async function getAnimeSeo(req, res) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(404).type('html; charset=utf-8').send(notFoundPage());
+    return res.status(404).type('html').send(notFoundPage());
   }
   try {
     const [rows] = await pool.query(
@@ -327,7 +327,7 @@ async function getAnimeSeo(req, res) {
     );
     if (!rows.length) {
       return res.status(404)
-        .type('html; charset=utf-8')
+        .type('html')
         .set('X-Robots-Tag', 'noindex')
         .send(notFoundPage('This title is not available.'));
     }
@@ -340,14 +340,14 @@ async function getAnimeSeo(req, res) {
       [id]
     );
     res.status(200)
-      .type('html; charset=utf-8')
+      .type('html')
       .set('Cache-Control', 'public, max-age=600')
       .send(animeSeoPage(rows[0], genreRows));
   } catch (err) {
     console.error('[seo] anime page failed:', err.message);
     // Fail closed without leaking internals; humans still get a way in.
     res.status(500)
-      .type('html; charset=utf-8')
+      .type('html')
       .set('X-Robots-Tag', 'noindex')
       .send(notFoundPage('This page is temporarily unavailable.'));
   }
@@ -369,12 +369,12 @@ async function getBrowseSeo(req, res) {
     );
     const genreNames = genreRows.map(function (r) { return r.name; });
     res.status(200)
-      .type('html; charset=utf-8')
+      .type('html')
       .set('Cache-Control', 'public, max-age=600')
       .send(browseSeoPage(rows, genreNames));
   } catch (err) {
     console.error('[seo] browse hub failed:', err.message);
-    res.status(500).type('html; charset=utf-8')
+    res.status(500).type('html')
       .set('X-Robots-Tag', 'noindex')
       .send(notFoundPage('This page is temporarily unavailable.'));
   }
@@ -478,12 +478,12 @@ async function getSearchSeo(req, res) {
     );
     const genreNames = genreRows.map(function (r) { return r.name; });
     res.status(200)
-      .type('html; charset=utf-8')
+      .type('html')
       .set('Cache-Control', 'public, max-age=600')
       .send(searchSeoPage(genreNames));
   } catch (err) {
     console.error('[seo] search page failed:', err.message);
-    res.status(500).type('html; charset=utf-8')
+    res.status(500).type('html')
       .set('X-Robots-Tag', 'noindex')
       .send(notFoundPage('This page is temporarily unavailable.'));
   }
@@ -493,7 +493,7 @@ async function getSearchSeo(req, res) {
 async function getGenreSeo(req, res) {
   const genreName = decodeURIComponent(req.params.name || '').trim();
   if (!genreName) {
-    return res.status(404).type('html; charset=utf-8').send(notFoundPage());
+    return res.status(404).type('html').send(notFoundPage());
   }
   try {
     // Verify genre exists.
@@ -503,7 +503,7 @@ async function getGenreSeo(req, res) {
     );
     if (!genreCheck.length) {
       return res.status(404)
-        .type('html; charset=utf-8')
+        .type('html')
         .set('X-Robots-Tag', 'noindex')
         .send(notFoundPage('This genre does not exist.'));
     }
@@ -516,13 +516,13 @@ async function getGenreSeo(req, res) {
       [genreCheck[0].id]
     );
     res.status(200)
-      .type('html; charset=utf-8')
+      .type('html')
       .set('Cache-Control', 'public, max-age=600')
       .send(genreSeoPage(genreCheck[0].name, rows));
   } catch (err) {
     console.error('[seo] genre page failed:', err.message);
     res.status(500)
-      .type('html; charset=utf-8')
+      .type('html')
       .set('X-Robots-Tag', 'noindex')
       .send(notFoundPage('This page is temporarily unavailable.'));
   }
