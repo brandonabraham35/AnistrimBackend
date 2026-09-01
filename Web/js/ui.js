@@ -158,7 +158,7 @@
     var logged = Auth.state.isLoggedIn;
     var name = user && (user.displayName || user.username || user.email || '');
     var initial = name ? name.charAt(0).toUpperCase() : '?';
-    var avatar = (user && user.avatar) || '';
+    var avatar = (user && (user.avatarUrl || user.avatar || user.avatar_url)) || '';
     h.innerHTML =
       '<nav class="nav"><div class="nav-inner">' +
       '<button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle navigation" aria-expanded="false" onclick="AniStrimUI.toggleMobileNav()"><span class="bar"></span><span class="bar"></span><span class="bar"></span></button>' +
@@ -169,7 +169,7 @@
       '<div class="nav-auth">' +
       (logged
         ? '<a href="#/profile" class="nav-avatar" aria-label="Profile">' +
-          (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) +
+          (avatar ? '<img src="' + esc(avatar) + '" alt="' + esc(initial) + '" onerror="this.onerror=null;this.replaceWith(document.createTextNode(\'' + esc(initial) + '\'))">' : esc(initial)) +
           '</a>'
         : '<a href="#/login" class="btn-outline btn-sm">Sign In</a><a href="#/signup" class="btn-primary btn-sm">Get Started</a>') +
       '</div></div></nav>' +
@@ -180,7 +180,7 @@
       '<div class="mobile-nav" id="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation menu">' +
       '<div class="mobile-nav-header"><button class="mobile-nav-close" onclick="AniStrimUI.closeMobileNav()" aria-label="Close menu">\u2715</button></div>' +
       (logged && user ? '<div class="nav-user">' +
-        '<div class="nav-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : esc(initial)) + '</div>' +
+        '<div class="nav-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="' + esc(initial) + '" onerror="this.onerror=null;this.replaceWith(document.createTextNode(\'' + esc(initial) + '\'))">' : esc(initial)) + '</div>' +
         '<div><div style="font-weight:600">' + esc(name) + '</div>' +
         (user.email ? '<div style="font-size:.85rem;color:var(--clr-text-muted)">' + esc(user.email) + '</div>' : '') +
         '</div></div>' : '') +
