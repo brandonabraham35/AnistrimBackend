@@ -722,5 +722,11 @@ function _renderPagination() {
   }
   }
 
+  // ── Export ─────────────────────────────────────────────────────
+  // Expose section initializer so dashboard.js sidebar navigation can call it.
+  // Without this, clicking "Episodes" in the sidebar never triggers setup,
+  // event listeners are never registered, and "Add Episode" does nothing.
+  window.initializeEpisodesSection = initializeEpisodesSection;
+
 })();
 
