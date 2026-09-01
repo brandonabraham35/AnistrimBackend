@@ -8,11 +8,18 @@
   // opened directly (or served by a static host) with no hash, transparently
   // convert it to the equivalent hash route so the SPA renders the right view
   // instead of silently showing the home page. replaceState avoids a reload.
+  //
+  // All valid frontend SPA routes are handled here so direct navigation from
+  // search engines or external links renders the correct page.
   try {
     var bootPath = window.location.pathname || '/';
     var bootHash = window.location.hash || '';
+    // Match any valid SPA route: /browse, /search, /anime/:id, /genre/:name,
+    // /watch/:id/:ep, /watchlist, /history, /profile, /settings, /upgrade,
+    // /support, /login, /signup, /verify, /forgot-password, /reset-password,
+    // /payment-return
     if ((!bootHash || bootHash === '#' || bootHash === '#/') &&
-        /^\/(browse|anime\/[^/]+)\/?$/.test(bootPath)) {
+        /^\/(browse|search|anime\/[^/]+|genre\/[^/]+|watch\/[^/]+\/[^/]+|watchlist|history|profile|settings|upgrade|support(\/my-requests|\/ticket\/[^/]+)?|login|signup|verify|forgot-password|reset-password|payment-return)\/?$/.test(bootPath)) {
       history.replaceState(null, '', '/#' + bootPath.replace(/\/+$/, ''));
     }
   } catch (e) { /* older browsers / sandboxed frames */ }
