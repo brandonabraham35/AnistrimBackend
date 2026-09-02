@@ -17,8 +17,7 @@
   function status(message) { if (typeof onStatusDisplay === 'function') onStatusDisplay(message); }
   function supportsNativeHls(video) { return !!(video && video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl')); }
   function isHlsUrl(url) {
-    return /\.m3u8(?:$|\?)/i.test(url || '') ||
-      (/\/api\/stream-proxy\//.test(url || '') && !/\.(mp4|webm|ogg)(?:$|\?)/i.test(url || ''));
+    return /\.m3u8(?:$|\?)/i.test(url || '');
   }
   function streamUrl(auth) {
     if (!auth) return '';
