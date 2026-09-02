@@ -29,8 +29,8 @@ const runPremiumAutomation = async () => {
     try {
         console.log('🤖 Running Threshold Premium Automation (access_tier)...');
 
-        // Step 1: Reset ALL anime to Free (access_tier = 'free')
-        await pool.query(`UPDATE anime SET access_tier = 'free'`);
+        // Step 1: Reset ALL anime to Free (access_tier = 'free'), keep legacy is_premium in sync
+        await pool.query(`UPDATE anime SET access_tier = 'free', is_premium = 0`);
 
         // Step 2: Find all anime that crossed the 50 daily views threshold
         const [viralAnime] = await pool.query(`
@@ -43,7 +43,7 @@ const runPremiumAutomation = async () => {
             const viralIds = viralAnime.map(anime => anime.id);
             await pool.query(`
                 UPDATE anime
-                SET access_tier = 'premium'
+                SET access_tier = 'premium', is_premium = 1
                 WHERE id IN (?)
             `, [viralIds]);
             console.log(`✅ Locked ${viralIds.length} viral anime behind Premium.`);
