@@ -971,6 +971,9 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
           return continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers);
         }
 
+        // Record direct MySQL cache hit (user-facing serving path).
+        streamCacheMetrics.increment('mysqlHits');
+
         const payload = {
           provider: cachedWinner.provider || STREAM_CACHE_PROVIDER,
           streamUrl: best.url,
