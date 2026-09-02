@@ -288,11 +288,25 @@
         var t = readToken();
         if (!t || this.isExpired()) { this.clear(); return null; }
         try {
+          // When the canonical apiFetch is installed, delegate to it so the
+          // { success: true, data: { ... } } envelope is unwrapped correctly
+          // and 401 → refresh-token rotation is handled automatically.
+          if (typeof window.apiFetch === 'function') {
+            var result = await window.apiFetch('/api/auth/me');
+            if (result.ok && result.data && result.data.id) {
+              writeUser(result.data);
+              return result.data;
+            }
+            this.clear();
+            return null;
+          }
           var res = await fetch((window.getApiBaseUrl ? window.getApiBaseUrl() : API_BASE_URL) + '/api/auth/me', {
             headers: { 'Authorization': 'Bearer ' + t, 'Accept': 'application/json' }
           });
           if (res.status === 401) { this.clear(); return null; }
-          var data = await res.json().catch(function () { return null; });
+          var body = await res.json().catch(function () { return null; });
+          // Unwrap standard envelope: { success: true, data: { id, ... } }
+          var data = (body && body.success === true && body.data) ? body.data : body;
           if (data && data.id) { writeUser(data); return data; }
           return readUser();
         } catch (e) { return readUser(); }

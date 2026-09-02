@@ -46,6 +46,9 @@
   function setUserPublic(user) { setUser(user); }
 
   // Fetch the authoritative user DTO from /api/auth/me.
+  // Uses the canonical apiFetch helper (js/api.js) which unwraps the standard
+  // { success: true, data: { ... } } envelope, handles 401 refresh-token
+  // rotation, and returns { ok, status, data }.
   async function refresh() {
     var token = getToken();
     if (!token) {
@@ -53,6 +56,21 @@
       return null;
     }
     try {
+      // When the canonical apiFetch is installed, delegate to it for correct
+      // envelope unwrapping and automatic 401 → refresh → replay.
+      if (typeof window.apiFetch === 'function') {
+        var result = await window.apiFetch('/api/auth/me');
+        if (result.ok && result.data && result.data.id) {
+          setUser(result.data);
+          return result.data;
+        }
+        // 401 or invalid response — session is gone.
+        setUser(null);
+        return null;
+      }
+
+      // Fallback: direct fetch with manual envelope unwrap
+      // (used when js/api.js has not loaded yet, e.g. very early page init).
       var res = await fetch(API_BASE + '/api/auth/me', {
         headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
       });
@@ -61,7 +79,9 @@
         setUser(null);
         return null;
       }
-      var data = await res.json().catch(function () { return null; });
+      var body = await res.json().catch(function () { return null; });
+      // Unwrap standard envelope: { success: true, data: { id, ... } }
+      var data = (body && body.success === true && body.data) ? body.data : body;
       if (data && data.id) {
         setUser(data);
         return data;

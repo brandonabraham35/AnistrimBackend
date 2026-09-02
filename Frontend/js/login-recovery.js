@@ -57,11 +57,13 @@
       .then(function(res){
         clearTimeout(tid);
         if(res.status===401){if(root.Auth&&typeof root.Auth.clear==="function"){root.Auth.clear();}resolve(null);return;}
-        return res.json().then(function(data){
-          if(data&&data.id){
-            if(root.Auth&&typeof root.Auth.setUser==="function"){root.Auth.setUser(data);}
-            if(root.Session&&typeof root.Session.setUser==="function"){root.Session.setUser(data);}
-            resolve(data);
+        return res.json().then(function(body){
+          // Unwrap standard AniStrim envelope: { success:true, data:{ id, ... } }
+          var dto = (body && body.success === true && body.data) ? body.data : body;
+          if(dto && dto.id){
+            if(root.Auth&&typeof root.Auth.setUser==="function"){root.Auth.setUser(dto);}
+            if(root.Session&&typeof root.Session.setUser==="function"){root.Session.setUser(dto);}
+            resolve(dto);
           }else{var ca=null;try{ca=JSON.parse(localStorage.getItem("user")||"null");}catch(e){}resolve(ca||null);}
         });
       }).catch(function(){clearTimeout(tid);var ca=null;try{ca=JSON.parse(localStorage.getItem("user")||"null");}catch(e){}resolve(ca||null);});
