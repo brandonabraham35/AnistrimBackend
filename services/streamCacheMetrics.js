@@ -9,22 +9,24 @@
 //   • Only exposes aggregate counts and anonymized distributions.
 //
 // METRICS TRACKED:
-//   1. redisHits       — Redis cache hits (fastest path)
-//   2. mysqlHits       — MySQL cache hits (persistent path)
-//   3. resolverCalls   — Total resolver invocations (any provider)
-//   4. animeHeavenCalls — AnimeHeaven resolver calls
-//   5. consumetCalls   — Consumet resolver calls
-//   6. thordataCalls   — Thordata/proxy-backed resolver calls
-//   7. cacheMisses     — All tiers missed → resolver invoked
-//   8. expiredSources  — Sources found expired during resolution
-//   9. invalidSources  — Sources marked invalid during resolution
-//  10. verificationSuccesses — Monitor verification successes
-//  11. verificationFailures  — Monitor verification failures
-//  12. playbackReportedFailures — Client-reported playback failures
-//  13. sourceLifetimes  — Array of observed source lifetimes (ms) for avg calc
-//  14. activeCachedSources    — DB snapshot: currently active sources
-//  15. knownExpirySources       — DB snapshot: sources with detected_expires_at
-//  16. unknownExpirySources     — DB snapshot: sources without detected_expires_at
+//   1. tier1Hits       — streamingService Tier-1 cache hits
+//   2. redisHits       — Redis cache hits (persistent stream-cache paths)
+//   3. inMemoryHits    — In-flight resolver memory-cache hits
+//   4. mysqlHits       — MySQL cache hits (persistent path)
+//   5. resolverCalls   — Total resolver invocations (any provider)
+//   6. animeHeavenCalls — AnimeHeaven resolver calls
+//   7. consumetCalls   — Consumet resolver calls
+//   8. thordataCalls   — Thordata/proxy-backed resolver calls
+//   9. cacheMisses     — All tiers missed → resolver invoked
+//  10. expiredSources  — Sources found expired during resolution
+//  11. invalidSources  — Sources marked invalid during resolution
+//  12. verificationSuccesses — Monitor verification successes
+//  13. verificationFailures  — Monitor verification failures
+//  14. playbackReportedFailures — Client-reported playback failures
+//  15. sourceLifetimes  — Array of observed source lifetimes (ms) for avg calc
+//  16. activeCachedSources    — DB snapshot: currently active sources
+//  17. knownExpirySources       — DB snapshot: sources with detected_expires_at
+//  18. unknownExpirySources     — DB snapshot: sources without detected_expires_at
 //
 // USAGE:
 //   const metrics = require('./services/streamCacheMetrics');
@@ -40,6 +42,7 @@ const logger = require('../utils/logger');
 // ── In-memory counters ────────────────────────────────────
 
 const counters = {
+  tier1Hits: 0,
   redisHits: 0,
   mysqlHits: 0,
   resolverCalls: 0,
@@ -47,6 +50,7 @@ const counters = {
   consumetCalls: 0,
   thordataCalls: 0,
   cacheMisses: 0,
+  inMemoryHits: 0,
   expiredSources: 0,
   invalidSources: 0,
   verificationSuccesses: 0,
@@ -125,7 +129,9 @@ async function getSnapshot(dbPool) {
 
   return {
     // Cache tier hits
+    tier1Hits: counters.tier1Hits,
     redisHits: counters.redisHits,
+    inMemoryHits: counters.inMemoryHits,
     mysqlHits: counters.mysqlHits,
     cacheMisses: counters.cacheMisses,
 

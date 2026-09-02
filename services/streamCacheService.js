@@ -913,7 +913,7 @@ async function getOrResolve(episodeId, provider, resolver) {
   const memCached = inFlightResolverManager.getCached(key);
   if (memCached && memCached.sources && memCached.sources.length > 0) {
     logger.info('[STREAM_CACHE] MEMORY_HIT', { episodeId, provider });
-    streamCacheMetrics.increment('mysqlHits');
+    streamCacheMetrics.increment('inMemoryHits');
     return memCached;
   }
 

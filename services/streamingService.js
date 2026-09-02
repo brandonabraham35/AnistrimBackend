@@ -858,6 +858,8 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
             endTime: new Date().toISOString(),
             latencyMs: Date.now() - overallStart,
           });
+          // Record Tier-1 cache hit for observability.
+          streamCacheMetrics.increment('tier1Hits');
           return {
             provider: cached.provider || ANIME_HEAVEN_TAG,
             streamUrl: best.url,
