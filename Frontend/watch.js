@@ -246,6 +246,7 @@ function preferAuthorizedProxyUrl(url) {
 let isScrubbing = false;
 let autoplayEnabled = localStorage.getItem('anistrim_autoplay') !== 'off';
 let autoplayCountdownSeconds = parseInt(localStorage.getItem('anistrim_autoplay_seconds') || '10', 10);
+const PRE_END_PROMPT_THRESHOLD_SEC = 120;
 let speedValue = parseFloat(localStorage.getItem('anistrim_speed') || '1');
 let lastTapTime = 0;
 let lastTapX = 0;
@@ -1463,11 +1464,13 @@ function setupPlayer(video) {
     }
 
     // Next-episode overlay near end (premium)
-    if (isPremium && nextEpData && video.duration) {
+    // Phase H: Prompt appears at ~120 seconds before end, not at the ended event.
+    // The autoplay countdown remains tied to the ended event (see ended listener below).
+    if (isPremium && nextEpData && video.duration && isFinite(video.duration)) {
       var remaining = video.duration - video.currentTime;
-      if (remaining <= 30 && remaining > 0 && !cancelledNext) {
+      if (remaining <= PRE_END_PROMPT_THRESHOLD_SEC && remaining > 0 && !cancelledNext) {
         showEndOverlay();
-      } else if (remaining > 30) {
+      } else if (remaining > PRE_END_PROMPT_THRESHOLD_SEC) {
         hideEndOverlay();
       }
     }

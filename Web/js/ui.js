@@ -1118,6 +1118,8 @@
   var progressSeekTimer = null;
   var autoplayTimer = null;
   var autoplayRemaining = 0;
+  var preEndDismissed = false;
+  var preEndCleanup = null;
   var watchState = null;
   var markerCleanup = null;
   var progressLastPosition = null;
@@ -1192,10 +1194,13 @@
     progressLastPosition = null;
     if (markerCleanup) markerCleanup();
     markerCleanup = null;
+    if (preEndCleanup) preEndCleanup();
+    preEndCleanup = null;
   }
   function clearAutoplay() {
     if (autoplayTimer) clearInterval(autoplayTimer);
     autoplayTimer = null;
+    preEndDismissed = true;
     var overlay = document.getElementById('autoplay-next');
     if (overlay) overlay.style.display = 'none';
   }
@@ -1415,6 +1420,7 @@
     var loadingEl = document.getElementById('player-loading');
     stopProgressTracking();
     clearAutoplay();
+    preEndDismissed = false;
     Player.destroy();
     Player.setErrorDisplay(function (m) { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } });
     Player.setStatusDisplay(function (m) {
@@ -1477,6 +1483,30 @@
           } else {
             startProgressTracking(video, target.id, startAutoplay);
             loadEpisodeMarkers(video, target.id);
+
+            // Phase H: Pre-end next-episode prompt at ~120 seconds remaining.
+            // Shows the autoplay-next overlay early so the user can navigate to the
+            // next episode or see that it is ready. Does NOT start autoplay countdown;
+            // the ended event handler remains responsible for autoplay/navigation.
+            if (preEndCleanup) preEndCleanup();
+            preEndCleanup = null;
+            function preEndCheck() {
+              if (!video || !isFinite(video.duration) || video.ended || preEndDismissed) return;
+              var remaining = video.duration - video.currentTime;
+              var overlay = document.getElementById('autoplay-next');
+              if (!overlay) return;
+              if (remaining <= 120 && remaining > 0 && !autoplayTimer) {
+                overlay.style.display = 'flex';
+                var text = document.getElementById('autoplay-next-text');
+                if (text) text.textContent = 'Next episode available';
+              } else if (remaining > 120 && !autoplayTimer) {
+                overlay.style.display = 'none';
+              }
+            }
+            video.addEventListener('timeupdate', preEndCheck);
+            preEndCleanup = function () {
+              video.removeEventListener('timeupdate', preEndCheck);
+            };
           }
         },
         function (err2) {
