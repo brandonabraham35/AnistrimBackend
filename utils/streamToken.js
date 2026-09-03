@@ -5,11 +5,15 @@
 // proxy/:streamId accepts ONLY this token (via ?token= or Bearer).
 //
 // FIX 5 (P1): adds sid (session id) + tv (token_version) to the payload, plus
-// an in-memory revocation set. logout / logout-all / suspension add the session
-// id(s) to the set; proxy verify refuses any token whose sid is revoked or whose
-// tv no longer matches the current user token_version. This kills in-flight
-// playback (within one segment fetch) after logout/suspend/premium-expiry, while
-// the 120 s TTL remains as defense in depth.
+// an in-memory revocation set for revoked SESSION ids. Session revocation
+// (logout / revokeSession) adds the sid to the set; user-wide invalidation
+// (logout-all / password change / suspension / refresh-token reuse) is
+// enforced by the proxy's live DB checks — users.token_version vs the token's
+// tv, and user_sessions.revoked_at vs the token's sid — NOT by an in-memory
+// user-wide marker (a permanent user-wide marker poisoned every future
+// session; see revokeAllForUser). This kills in-flight playback (within one
+// segment fetch) after logout/suspend/premium-expiry, while the 120 s TTL
+// remains as defense in depth.
 const crypto = require('crypto');
 
 const TTL_MS = 120 * 1000; // 120 s
@@ -22,19 +26,25 @@ const TTL_MS = 120 * 1000; // 120 s
 const CHILD_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
 // ── In-memory revocation set ──────────────────────────────
-// Contains revoked session ids (sid) OR "<userId>:<tv>" markers for a global
-// token-version bump (logout-all / password change / suspend). Verified on
-// every /api/stream-proxy/:streamId request. Memory-bounded: entries are
-// dropped once older than TTL_MS (stream tokens can't outlive 120 s anyway).
+// Contains revoked SESSION ids only ('sid:<sessionId>'), added by revokeSid()
+// on logout / session revocation. Checked on every /api/stream-proxy/:streamId
+// request (see isRevoked).
+//
+// USER-WIDE INVALIDATION IS DELIBERATELY NOT TRACKED HERE. A previous
+// implementation also stored a permanent 'all:<userId>' marker on logout-all /
+// password change / suspension. That marker had NO expiry and permanently
+// poisoned every FUTURE session: after any revokeAllForUser(), newly minted
+// tokens (fresh login, new session) were rejected with TOKEN_REVOKED until
+// process restart. User-wide invalidation is instead enforced
+// authoritatively at verify time by streamProxyController's live DB checks:
+//   • users.token_version      vs the token's tv claim  → TV_MISMATCH
+//   • user_sessions.revoked_at vs the token's sid       → session revoked
+// revokeAllSessions() revokes every user_sessions row BEFORE calling
+// revokeAllForUser(), so all pre-existing tokens die via the session check
+// (within one segment fetch), while future sessions remain unaffected.
 const revoked = new Set();
-function pruneRevoked() {
-  const cutoff = Date.now();
-  for (const key of revoked) {
-    if (!key.includes(':')) continue; // sid entries are keyed without ':'
-  }
-}
-// Keep it simple: entries self-expire by not mattering once the 120s window
-// passes (we never need to actively remove them). Cap to avoid unbounded growth.
+// 'sid:' entries only need to outlive the 120 s token TTL; the DB session
+// check remains authoritative afterwards. Cap the set to bound memory.
 const MAX_REVOKED_ENTRIES = 20000;
 function capRevoked() {
   if (revoked.size > MAX_REVOKED_ENTRIES) {
@@ -61,34 +71,46 @@ function revokeSid(sid) {
 }
 
 /**
- * Revoke all stream tokens for a userId (e.g. logout-all, password change,
- * suspension, token_version bump). Stream tokens are bound to the user's
- * token_version (tv); bumping tv invalidates them. We also add a per-user
- * marker so tokens minted between the bump and the next login are refused.
- * @param {number|string} userId
- * @param {number} tv — the CURRENT (after-bump) token_version, if known
+ * Revoke all stream tokens for a userId (logout-all, password change,
+ * suspension, refresh-token reuse).
+ *
+ * COMPATIBILITY NO-OP for the in-memory set: user-wide revocation is NOT
+ * tracked here, and must not be. The previous implementation stored a
+ * permanent 'all:<userId>' marker that never expired, so after any
+ * logout-all every FUTURE session's tokens — minted after a fresh login —
+ * were rejected with TOKEN_REVOKED until process restart. That poisoned
+ * legitimate new sessions.
+ *
+ * User-wide invalidation is enforced authoritatively by the live DB checks
+ * in streamProxyController.streamMedia():
+ *   • users.token_version vs the token's tv claim      → rejects old-tv tokens
+ *   • user_sessions.revoked_at vs the token's sid      → rejects revoked
+ *     sessions (revokeAllSessions() revokes every user_sessions row BEFORE
+ *     calling this, so all pre-existing tokens die via the session check)
+ * Tokens minted between revocation and the next login carry a revoked sid
+ * and are refused by the session check; freshly logged-in sessions get new,
+ * unrevoked sids and must keep working.
+ *
+ * @param {number|string} userId — accepted for signature compatibility
+ * @param {number} [tv] — accepted for signature compatibility; the live
+ *   users.token_version comparison is the authoritative enforcement.
  */
 function revokeAllForUser(userId, tv) {
-  if (userId === undefined || userId === null) return;
-  // Hard-invalidate EVERYTHING currently minted for this user. tv is advisory
-  // here — the authoritative token_version comparison happens against the
-  // CURRENT users.token_version at verify time (see verify tv check). This
-  // marker ensures a token minted a moment ago is refused immediately.
-  revoked.add('all:' + String(userId));
-  capRevoked();
+  // Intentionally no in-memory user-wide marker. See doc above.
 }
 
 /**
- * True if a token payload would be rejected by the in-memory revocation set.
+ * True if a token payload is rejected by the in-memory revocation set.
+ * Only SESSION-level revocations ('sid:<sessionId>') are tracked here.
+ * User-wide invalidation is enforced by the live DB checks in
+ * streamProxyController (users.token_version + user_sessions.revoked_at).
  * @param {object} data - decoded payload { userId, sid, tv }
  * @returns {boolean}
  */
 function isRevoked(data) {
   if (!data) return false;
   const sid = String(data.sid || '');
-  const userId = String(data.userId || '');
   if (sid && revoked.has('sid:' + sid)) return true;
-  if (userId && revoked.has('all:' + userId)) return true;
   return false;
 }
 
