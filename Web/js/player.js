@@ -87,18 +87,50 @@
     var expiresIn = Number(auth && auth.expiresIn) || 120;
     var delay = Math.max(1000, expiresIn * 1000 - AUTH_REFRESH_EARLY_MS);
     state.authTimer = setTimeout(function () {
-      // Keep a fresh concrete URL ready for an HLS/native recovery. Do not
-      // restart healthy playback merely because a token is being refreshed.
+      // Proactively swap in a freshly authorized URL before the current token
+      // expires. reauthorizeAndReload() cannot cover this: it is one-shot per
+      // session while the token expires every 120 seconds.
       if (state !== owner) return;
-      API.authorizeStream(state.episodeId).then(function (next) {
-        if (state === owner) applyAuthorization(next);
-      }).catch(function (err) {
-        console.warn('[WebPlayer] stream authorization refresh failed:', errorMessage(err));
-      });
+      refreshAuthorization(owner);
     }, delay);
+  }
+  function refreshAuthorization(owner) {
+    // The playback URL embeds a short-lived token (streamToken TTL = 120s).
+    // The media element keeps issuing Range requests against the URL it was
+    // loaded with, so once that token expires the proxy answers with a JSON
+    // auth error the element cannot decode — surfacing as
+    // MEDIA_ERR_SRC_NOT_SUPPORTED ("This stream format is not supported by
+    // your browser."). Swap the fresh URL in at the current playback position
+    // so the expiring token never reaches the proxy.
+    if (!state || state.failed) return;
+    var resumeAt = videoEl && isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
+    var wasPaused = !!(videoEl && videoEl.paused && !videoEl.ended);
+    API.authorizeStream(state.episodeId).then(function (next) {
+      if (state !== owner) return;
+      applyAuthorization(next);
+      state.resumePaused = wasPaused;
+      attachSource(state.url, resumeAt);
+    }).catch(function (err) {
+      if (state !== owner) return;
+      if (accessFailure(err)) {
+        fail(err);
+        return;
+      }
+      // Transient failure — retry shortly; the currently playing source keeps
+      // its old token until the retry succeeds.
+      console.warn('[WebPlayer] stream authorization refresh failed, retrying:', errorMessage(err));
+      if (state.authTimer) clearTimeout(state.authTimer);
+      state.authTimer = setTimeout(function () { refreshAuthorization(owner); }, 5000);
+    });
   }
   function playWhenReady() {
     if (!videoEl || !state) return;
+    if (state.resumePaused) {
+      // Paused across a token-refresh source swap — stay paused.
+      state.resumePaused = false;
+      try { videoEl.pause(); } catch (e) { /* ignore */ }
+      return;
+    }
     var promise = videoEl.play();
     if (promise && typeof promise.catch === 'function') promise.catch(function () { status('Loading…'); });
   }
@@ -226,6 +258,13 @@
     var message = mediaError && mediaError.code === 2 ? 'Network error while loading the video.' :
       mediaError && mediaError.code === 3 ? 'The video could not be decoded.' :
       mediaError && mediaError.code === 4 ? 'This stream format is not supported by your browser.' : 'The video source could not be loaded.';
+    // A code-4 error against a proxy URL usually means the embedded stream
+    // token expired or was rejected (the proxy answers with a JSON error body
+    // the media element cannot decode). Reauthorize and reload before giving
+    // up with a misleading "format not supported" message.
+    if (mediaError && mediaError.code === 4 &&
+        /\/api\/stream-proxy\//.test((videoEl && videoEl.currentSrc) || '') &&
+        reauthorizeAndReload('native source rejection')) return;
     if (mediaError && mediaError.code === 2 && reauthorizeAndReload('native network error')) return;
     fail(new Error(message));
   }
@@ -266,7 +305,7 @@
     state = {
       episodeId: String(episodeId), callbacks: Object.assign({ onAccessDenied: onAccessDenied, onError: onError }, callbacks || {}),
       listeners: [], ready: false, failed: false, networkRecoveries: 0, mediaRecoveries: 0,
-      reauthAttempts: 0, reauthorizing: false, readyTimer: null, authTimer: null,
+      reauthAttempts: 0, reauthorizing: false, readyTimer: null, authTimer: null, resumePaused: false,
     };
     if (!videoEl) { fail(new Error('Player element is unavailable.')); return null; }
     try {
