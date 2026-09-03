@@ -110,6 +110,8 @@
       if (el) el.textContent = value == null ? '—' : String(value);
     }
 
+    setEl('sc-tier1-hits', sc.tier1Hits || 0);
+    setEl('sc-in-memory-hits', sc.inMemoryHits || 0);
     setEl('sc-redis-hits', window._formatNumber ? window._formatNumber(sc.redisHits || 0) : (sc.redisHits || 0));
     setEl('sc-mysql-hits', window._formatNumber ? window._formatNumber(sc.mysqlHits || 0) : (sc.mysqlHits || 0));
     setEl('sc-cache-misses', window._formatNumber ? window._formatNumber(sc.cacheMisses || 0) : (sc.cacheMisses || 0));
