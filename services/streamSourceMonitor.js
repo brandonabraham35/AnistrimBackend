@@ -28,8 +28,9 @@ function parsePositiveInt(value, fallback) {
 }
 
 const CONFIG = {
-  // Master switch — disabled by default.
-  enabled: process.env.STREAM_MONITOR_ENABLED !== 'false',
+  // Master switch — DISABLED unless explicitly enabled with STREAM_MONITOR_ENABLED=true.
+  // undefined / false / "false" → disabled; only the literal "true" enables it.
+  enabled: process.env.STREAM_MONITOR_ENABLED === 'true',
 
   // Interval between monitoring runs (in milliseconds).
   // Default: 1 hour.
@@ -131,9 +132,20 @@ function createMonitor(deps = {}) {
     const sourceUrl = row.stream_data?.sources?.[0]?.url || row.stream_data?.streamUrl;
     if (!sourceUrl) return { id: row.id, status: 'skipped', reason: 'no_url' };
 
+    // Playback context is persisted by saveStream() at stream_data.sources[i]
+    // (referer/origin/cookies) — NOT at the stream_data top level. The monitor
+    // must probe the same source URL with the same context the application
+    // would use, or context-sensitive CDN URLs can falsely return 403/404.
+    // A legacy top-level fallback preserves any older rows that stored context
+    // at the stream_data root.
+    const sourceCtx = row.stream_data?.sources?.[0] || {};
     const context = {};
-    if (row.stream_data?.referer) context.referer = row.stream_data.referer;
-    if (row.stream_data?.origin) context.origin = row.stream_data.origin;
+    if (sourceCtx.referer) context.referer = sourceCtx.referer;
+    else if (row.stream_data?.referer) context.referer = row.stream_data.referer;
+    if (sourceCtx.origin) context.origin = sourceCtx.origin;
+    else if (row.stream_data?.origin) context.origin = row.stream_data.origin;
+    if (sourceCtx.cookies) context.cookies = sourceCtx.cookies;
+    else if (row.stream_data?.cookies) context.cookies = row.stream_data.cookies;
 
     try {
       const result = await getVerifyAndRecord()(row.id, sourceUrl, context);

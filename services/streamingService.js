@@ -1062,6 +1062,29 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     }
   }
 
+  // ── PERSIST PHASE-4 FRESH RESOLUTION ─────────────────────
+  // The persistent cache row may be invalid/expired (findCachedStream →
+  // NOT_REUSABLE). A fresh AnimeHeaven resolution MUST repair that row through
+  // the existing saveStream() path; otherwise the row stays invalid and every
+  // play after the general cache expires re-resolves (the primary cache-reuse
+  // loop the audit identified). Fallback-provider winners are NOT stored in
+  // the AnimeHeaven persistent-cache row.
+  if (winner && winnerProvider === ANIME_HEAVEN_TAG && usePersistentCache) {
+    try {
+      await streamCacheService.saveStream(episodeId, STREAM_CACHE_PROVIDER, winner);
+      logger.debugStream('[STREAM_CACHE] Phase-4 winner persisted', {
+        anime: animeTitle,
+        episode: episodeNumber,
+        episodeId,
+      });
+    } catch (saveErr) {
+      logger.warn('[STREAM_CACHE] Phase-4 persist failed (non-fatal)', {
+        episodeId,
+        error: saveErr.message,
+      });
+    }
+  }
+
   // ── Structured metrics log ──────────────────────────────
   const elapsed = Date.now() - overallStart;
   if (winner && winner.sources.length > 0) {

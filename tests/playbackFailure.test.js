@@ -4,22 +4,112 @@
 
 const assert = require('assert');
 
-// Mock the dependencies
+// ─ Mock the dependencies ─────────────────
+const dbCalls = { queries: [] };
+let shouldReturnValidRow = false;
+
 const mockDb = {
-  query: async () => [{ affectedRows: 1 }],
+  query: async (sql, params) => {
+    const normalized = String(sql).replace(/\s+/g, ' ').trim();
+    dbCalls.queries.push({ sql: normalized, params });
+    // findCachedStream(): return a persisted row (reusable) or none.
+    if (/SELECT.*FROM episode_stream_cache/i.test(normalized)) {
+      return shouldReturnValidRow ? [[makeCacheRow()], []] : [[], []];
+    }
+    return [{ affectedRows: 1 }];
+  },
 };
+
+const cacheCalls = { delByPrefix: [] };
 const mockCache = {
-  delByPrefix: async () => {},
+  delByPrefix: async (prefix) => { cacheCalls.delByPrefix.push(prefix); },
 };
+
 const mockLogger = {
   warn: () => {},
   info: () => {},
+  debug: () => {},
+  debugStream: () => {},
+  stream: () => {},
+  streamAttempt: () => {},
+  error: () => {},
 };
 
-// Replace modules before requiring the controller
-require.cache[require.resolve('../config/db')] = { id: require.resolve('../config/db'), filename: require.resolve('../config/db'), loaded: true, exports: mockDb };
-require.cache[require.resolve('../utils/cacheService')] = { id: require.resolve('../utils/cacheService'), filename: require.resolve('../utils/cacheService'), loaded: true, exports: mockCache };
-require.cache[require.resolve('../utils/logger')] = { id: require.resolve('../utils/logger'), filename: require.resolve('../utils/logger'), loaded: true, exports: mockLogger };
+// providerHttp.request drives streamCacheService.isCachedSourceAlive().
+let httpBehavior = { mode: 'success', status: 200 };
+const httpCalls = { count: 0 };
+const mockProviderHttp = {
+  request: async () => {
+    httpCalls.count += 1;
+    if (httpBehavior.mode === 'error') {
+      const err = new Error(httpBehavior.message || 'request failed');
+      if (httpBehavior.status) err.response = { status: httpBehavior.status };
+      throw err;
+    }
+    return { status: httpBehavior.status, headers: {} };
+  },
+  isProviderHealthy: () => true,
+  recordSuccess: () => {},
+  recordFailure: () => {},
+  markTimeout: () => {},
+  classifyError: () => ({ category: 'UNKNOWN', description: 'mock' }),
+  isTimeoutError: () => false,
+  getProviderHealth: () => ({}),
+  getHealthStats: () => null,
+};
+
+function makeCacheRow() {
+  return {
+    id: 1,
+    episode_id: 123,
+    provider: 'animeheaven',
+    stream_type: 'direct',
+    stream_data: {
+      provider: 'animeheaven',
+      streamUrl: 'https://cdn.example.com/video.mp4',
+      sources: [{ url: 'https://cdn.example.com/video.mp4', quality: '720', sourceType: 'video', referer: 'https://animeheaven.me', origin: 'https://animeheaven.me', cookies: null, headers: null }],
+      subtitles: [],
+    },
+    expires_at: new Date(Date.now() + 3600 * 1000),
+    detected_expires_at: null,
+    expiry_source: 'unknown',
+    verification_status: 'unknown',
+    last_used_at: new Date(),
+    last_verified_at: null,
+    url_classification: null,
+    classification_confidence: null,
+    classification_reason: null,
+    observed_first_success_at: null,
+    observed_last_success_at: null,
+    observed_first_failure_at: null,
+    observed_lifetime_seconds: null,
+  };
+}
+
+function resetMocks() {
+  dbCalls.queries.length = 0;
+  cacheCalls.delByPrefix.length = 0;
+  httpCalls.count = 0;
+  httpBehavior = { mode: 'success', status: 200 };
+  shouldReturnValidRow = false;
+}
+
+// Replace modules before requiring the controller (fresh instances so this
+// file is hermetic regardless of require-cache state left by earlier files).
+function mountMock(id, exportsObj) {
+  const resolved = require.resolve(id);
+  delete require.cache[resolved];
+  require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports: exportsObj };
+}
+mountMock('../config/db', mockDb);
+mountMock('../utils/cacheService', mockCache);
+mountMock('../utils/logger', mockLogger);
+mountMock('../utils/providerHttp', mockProviderHttp);
+// Avoid loading the real AnimeHeaven provider inside findCachedStream's DIAG block.
+mountMock('../services/animeHeavenProvider', { getPlaybackContext: () => null, provider: {} });
+
+delete require.cache[require.resolve('../services/streamCacheService')];
+delete require.cache[require.resolve('../controllers/reportController')];
 
 const { reportPlaybackFailure } = require('../controllers/reportController');
 const streamCacheService = require('../services/streamCacheService');
@@ -144,18 +234,123 @@ describe('cache invalidation', () => {
   });
 });
 
-describe('next stream request triggers fresh resolution', () => {
-  it('after cache invalidation, MySQL query returns no valid row', async () => {
-    // This is verified by the MySQL UPDATE query setting verification_status = 'invalid'
-    // and the findCachedStream() function checking both expires_at and detected_expires_at.
-    // When verification_status is 'invalid', the row is effectively unusable.
-    assert.ok(true, 'MySQL invalidation verified via UPDATE query');
+// ── Evidence-based cache invalidation (audit Step 2) ────────
+// A playback failure report must NOT permanently poison a cached source unless
+// a probe of the ACTUAL cached source returns an explicit authoritative
+// 403/404. Auth/entitlement, transient browser/network, device-limit, and
+// decode failures are diagnostics only.
+
+let uid = 5000;
+function authReport(body) {
+  uid += 1;
+  return mockReq({ id: uid }, { episodeId: 123, ...(body || {}) });
+}
+
+function invalidateUpdates() {
+  return dbCalls.queries.filter(q => q.sql.includes('verification_status') && q.sql.includes('invalid'));
+}
+
+function diagnosticUpdates() {
+  return dbCalls.queries.filter(q => q.sql.includes('failure_count') && q.sql.includes('last_failed_at') && !q.sql.includes('verification_status'));
+}
+
+describe('evidence-based cache invalidation', () => {
+  beforeEach(() => {
+    resetMocks();
+    shouldReturnValidRow = true; // a cached source exists
   });
 
-  it('Redis entry is deleted on failure report', async () => {
-    // This is verified by the cache.delByPrefix(redisKey) call in reportPlaybackFailure.
-    // The next request will get a Redis miss and fall through to MySQL.
-    assert.ok(true, 'Redis invalidation verified via delByPrefix call');
+  it('does NOT invalidate when the cached source probes 2xx (healthy)', async () => {
+    httpBehavior = { mode: 'success', status: 200 };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport({ reason: 'network_error' }), res);
+    assert.strictEqual(res._status, 200);
+    assert.strictEqual(invalidateUpdates().length, 0, 'no verification_status=invalid update');
+    assert.strictEqual(cacheCalls.delByPrefix.length, 0, 'Redis must not be purged');
+    assert.ok(diagnosticUpdates().length >= 1, 'failure diagnostics still recorded');
+  });
+
+  it('invalidates the source when the actual cached-source probe returns 403', async () => {
+    httpBehavior = { mode: 'error', status: 403, message: 'Forbidden' };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport(), res);
+    assert.strictEqual(invalidateUpdates().length, 1, '403 probe → mark invalid');
+    assert.ok(invalidateUpdates()[0].sql.includes("SET verification_status = 'invalid'"));
+    assert.strictEqual(cacheCalls.delByPrefix.length, 1, 'Redis purged in sync');
+    assert.ok(cacheCalls.delByPrefix[0].includes('animeheaven:123'));
+  });
+
+  it('invalidates the source on an explicit 404', async () => {
+    httpBehavior = { mode: 'error', status: 404, message: 'Not Found' };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport(), res);
+    assert.strictEqual(invalidateUpdates().length, 1);
+    assert.strictEqual(cacheCalls.delByPrefix.length, 1);
+  });
+
+  it('does NOT invalidate on 429 (upstream throttling is not a dead source)', async () => {
+    httpBehavior = { mode: 'error', status: 429, message: 'Too Many Requests' };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport(), res);
+    assert.strictEqual(invalidateUpdates().length, 0);
+    assert.strictEqual(cacheCalls.delByPrefix.length, 0);
+  });
+
+  it('does NOT invalidate on 5xx', async () => {
+    httpBehavior = { mode: 'error', status: 500, message: 'Internal Server Error' };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport(), res);
+    assert.strictEqual(invalidateUpdates().length, 0);
+    assert.strictEqual(cacheCalls.delByPrefix.length, 0);
+  });
+
+  it('does NOT invalidate on timeout / network failure (no status)', async () => {
+    httpBehavior = { mode: 'error', status: 0, message: 'timeout of 4000ms exceeded' };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport(), res);
+    assert.strictEqual(invalidateUpdates().length, 0);
+    assert.strictEqual(cacheCalls.delByPrefix.length, 0);
+  });
+
+  it('does NOT invalidate when no cached row exists (nothing to prove dead)', async () => {
+    shouldReturnValidRow = false;
+    httpBehavior = { mode: 'error', status: 403, message: 'Forbidden' };
+    const res = mockRes();
+    await reportPlaybackFailure(authReport(), res);
+    assert.strictEqual(invalidateUpdates().length, 0);
+    assert.strictEqual(cacheCalls.delByPrefix.length, 0);
+  });
+
+  it('handles a DB failure during the probe without invalidating anything', async () => {
+    const origQuery = mockDb.query;
+    mockDb.query = async () => { throw new Error('DB down'); };
+    try {
+      const res = mockRes();
+      await reportPlaybackFailure(authReport(), res);
+      assert.strictEqual(res._status, 200);
+      assert.strictEqual(invalidateUpdates().length, 0);
+    } finally {
+      mockDb.query = origQuery;
+    }
+  });
+});
+
+describe('authorization/entitlement failures never invalidate (audit Test 3)', () => {
+  beforeEach(() => {
+    resetMocks();
+    shouldReturnValidRow = true;
+    httpBehavior = { mode: 'success', status: 200 }; // source is alive upstream
+  });
+
+  const authReasons = ['401', '403', 'PREMIUM_REQUIRED', 'DEVICE_LIMIT_REACHED', 'session_expired', 'AUTH_FAILED'];
+  authReasons.forEach((reason) => {
+    it(`reason="${reason}": report recorded, source NOT invalidated`, async () => {
+      const res = mockRes();
+      await reportPlaybackFailure(authReport({ reason }), res);
+      assert.strictEqual(res._status, 200);
+      assert.strictEqual(invalidateUpdates().length, 0, 'auth/entitlement errors must not poison the cache');
+      assert.strictEqual(cacheCalls.delByPrefix.length, 0, 'Redis must stay intact');
+    });
   });
 });
 

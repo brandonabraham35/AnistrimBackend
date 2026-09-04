@@ -12,6 +12,11 @@
 'use strict';
 
 const assert = require('assert');
+
+// Make the "disabled by default" guarantee deterministic: the module's CONFIG
+// is read at require time, so clear the env var BEFORE the module loads.
+delete process.env.STREAM_MONITOR_ENABLED;
+
 const { createMonitor } = require('../services/streamSourceMonitor');
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -389,5 +394,172 @@ describe('Stream Source Monitor', () => {
       assert.strictEqual(config.intervalMs, 60 * 60 * 1000); // 1 hour
       assert.strictEqual(config.minVerificationIntervalMs, 30 * 60 * 1000); // 30 min
     });
+  });
+});
+// ── Test 4: STREAM_MONITOR_ENABLED semantics ─────────────────
+// The monitor must be DISABLED unless explicitly enabled with the exact
+// string "true". undefined / false / "false" / "1" / "TRUE" → disabled.
+
+function loadMonitorWithEnv(envValue) {
+  if (envValue === undefined) delete process.env.STREAM_MONITOR_ENABLED;
+  else process.env.STREAM_MONITOR_ENABLED = String(envValue);
+  const mod = require.resolve('../services/streamSourceMonitor');
+  delete require.cache[mod];
+  const { createMonitor: freshCreateMonitor } = require('../services/streamSourceMonitor');
+  return freshCreateMonitor({
+    db: { query: async () => [[]] },
+    logger: { info() {}, debug() {}, warn() {}, error() {} },
+    verifyAndRecord: async () => ({ alive: true, status: 200, contentType: 'video/mp4' }),
+  });
+}
+
+describe('STREAM_MONITOR_ENABLED semantics (Test 4)', () => {
+  after(() => delete process.env.STREAM_MONITOR_ENABLED);
+
+  it('undefined → disabled', () => {
+    assert.strictEqual(loadMonitorWithEnv(undefined).getConfig().enabled, false);
+  });
+
+  it('false → disabled', () => {
+    assert.strictEqual(loadMonitorWithEnv(false).getConfig().enabled, false);
+  });
+
+  it('"false" → disabled', () => {
+    assert.strictEqual(loadMonitorWithEnv('false').getConfig().enabled, false);
+  });
+
+  it('"TRUE" (case variant) → disabled — only the literal "true" enables', () => {
+    assert.strictEqual(loadMonitorWithEnv('TRUE').getConfig().enabled, false);
+  });
+
+  it('"1" → disabled — only the literal "true" enables', () => {
+    assert.strictEqual(loadMonitorWithEnv('1').getConfig().enabled, false);
+  });
+
+  it('"true" → enabled', () => {
+    assert.strictEqual(loadMonitorWithEnv('true').getConfig().enabled, true);
+  });
+});
+// ── Test 5: Monitor source context (persisted playback context) ──
+// saveStream() persists the playback context at stream_data.sources[i]
+// (referer/origin/cookies). The monitor must probe with that context.
+
+describe('Monitor source context (Test 5)', () => {
+  it('uses sources[0].referer/origin/cookies from stream_data', async () => {
+    let captured = null;
+    const verifyAndRecord = async (id, url, context) => {
+      captured = context;
+      return { alive: true, status: 200, contentType: 'video/mp4' };
+    };
+    const row = makeRow(700, {
+      streamData: {
+        sources: [{
+          url: 'https://cdn.example.com/700.mp4',
+          referer: 'https://animeheaven.me',
+          origin: 'https://animeheaven.me',
+          cookies: 'k=v',
+        }],
+      },
+    });
+    const monitor = makeMonitor({ verifyAndRecord });
+    await monitor.verifyWithConcurrency([row]);
+    assert.strictEqual(captured.referer, 'https://animeheaven.me');
+    assert.strictEqual(captured.origin, 'https://animeheaven.me');
+    assert.strictEqual(captured.cookies, 'k=v');
+  });
+
+  it('does NOT require context when the source legitimately has none', async () => {
+    let captured = null;
+    const verifyAndRecord = async (id, url, context) => {
+      captured = context;
+      return { alive: true, status: 200 };
+    };
+    const row = makeRow(701, { streamData: { sources: [{ url: 'https://cdn.example.com/701.mp4' }] } });
+    const monitor = makeMonitor({ verifyAndRecord });
+    await monitor.verifyWithConcurrency([row]);
+    assert.strictEqual(captured.referer, undefined);
+    assert.strictEqual(captured.origin, undefined);
+    assert.strictEqual(captured.cookies, undefined);
+  });
+
+  it('falls back to streamUrl and legacy top-level context if sources[0] has no URL', async () => {
+    let capturedUrl = null;
+    let capturedContext = null;
+    const verifyAndRecord = async (id, url, context) => {
+      capturedUrl = url;
+      capturedContext = context;
+      return { alive: true, status: 200 };
+    };
+    const row = makeRow(702, {
+      streamData: {
+        sources: [],
+        streamUrl: 'https://cdn.example.com/legacy.mp4',
+        referer: 'https://legacy.animeheaven.me',
+      },
+    });
+    const monitor = makeMonitor({ verifyAndRecord });
+    await monitor.verifyWithConcurrency([row]);
+    assert.strictEqual(capturedUrl, 'https://cdn.example.com/legacy.mp4');
+    assert.strictEqual(capturedContext.referer, 'https://legacy.animeheaven.me');
+  });
+});
+// ── Test 6: Monitor HTTP result mapping ──────────────────────
+// The monitor forwards each source to streamCacheService.verifyAndRecord and
+// maps the result: alive → 'verified'/reusable; not-alive (403/404) → will be
+// marked invalid downstream; fail-open outcomes (429/5xx/timeout/network) stay
+// reusable; thrown exceptions yield 'error' (never invalid).
+
+describe('Monitor HTTP result mapping (Test 6)', () => {
+  function probeThrough(verifyAndRecord) {
+    const rows = [makeRow(800, { streamData: { sources: [{ url: 'https://cdn.example.com/http.mp4' }] } })];
+    const monitor = makeMonitor({ verifyAndRecord });
+    return monitor.verifyWithConcurrency(rows);
+  }
+
+  it('200 → verified/alive (active/reusable)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: true, status: 200, contentType: 'video/mp4' }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, true);
+  });
+
+  it('206 → verified/alive (active/reusable)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: true, status: 206, contentType: 'video/mp4' }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, true);
+  });
+
+  it('403 → not-alive (invalidated downstream)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: false, status: 403, contentType: null }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, false);
+  });
+
+  it('404 → not-alive (invalidated downstream)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: false, status: 404, contentType: null }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, false);
+  });
+
+  it('429 → fail-open alive (NOT permanently invalidated)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: true, status: 429, contentType: null }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, true);
+  });
+
+  it('5xx → fail-open alive (NOT permanently invalidated)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: true, status: 500, contentType: null }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, true);
+  });
+
+  it('timeout/network failure → fail-open alive (NOT permanently invalidated)', async () => {
+    const [r] = await probeThrough(async () => ({ alive: true, status: 0, contentType: null }));
+    assert.strictEqual(r.status, 'verified');
+    assert.strictEqual(r.alive, true);
+  });
+
+  it('verification exception → error result (never invalid)', async () => {
+    const [r] = await probeThrough(async () => { throw new Error('network down'); });
+    assert.strictEqual(r.status, 'error');
   });
 });

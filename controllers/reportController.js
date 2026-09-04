@@ -48,7 +48,12 @@ exports.submitReport = async (req, res) => {
  * POST /api/reports/playback-failure
  * Body: { episodeId, reason }
  * Reports a playback failure for an authorized stream.
- * Invalidates the cached source so the next play triggers a fresh resolution.
+ *
+ * Cache invalidation is EVIDENCE-BASED: the persistent source is only marked
+ * invalid when a probe of the actual cached source returns an explicit
+ * authoritative 403/404. Auth/entitlement, transient browser/network,
+ * device-limit, and decode failures are recorded for diagnostics but do NOT
+ * poison a healthy cached source.
  *
  * Security:
  *   - Requires authentication (protect middleware).
@@ -83,41 +88,98 @@ exports.reportPlaybackFailure = async (req, res) => {
       failureReportCounts.set(userId, { count: 1, resetAt: now + FAILURE_REPORT_WINDOW_MS });
     }
 
-    // Invalidate Redis cache for the default provider.
+    // ── EVIDENCE-BASED CACHE INVALIDATION ───────────────────
+    // A user-facing playback failure report is NOT proof that the upstream
+    // stream source is dead. Auth/entitlement, transient browser/network,
+    // device-limit, and decode failures can all be reported while the cached
+    // AnimeHeaven source is perfectly healthy. The persistent source is only
+    // invalidated when a probe of the ACTUAL cached source returns an explicit
+    // authoritative 403/404 (the existing source-liveness mechanism). The
+    // failure report itself is always recorded for diagnostics.
     const provider = process.env.STREAM_CACHE_PROVIDER || 'animeheaven';
-    const redisKey = streamCacheService.buildRedisKey(epId, provider);
     streamCacheMetrics.increment('playbackReportedFailures');
+
+    let shouldInvalidate = false;
     try {
-      await cache.delByPrefix(redisKey);
-    } catch (redisErr) {
-      logger.warn('[ReportController] Redis invalidation failed (non-fatal)', {
-        episodeId: epId, error: redisErr.message,
+      const lookup = await streamCacheService.findCachedStream(epId, provider);
+      let data = (lookup && lookup.row && lookup.row.stream_data) || null;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (_) { data = null; }
+      }
+      const source = data && Array.isArray(data.sources)
+        ? data.sources.find(s => s && s.url) || null
+        : null;
+      if (source) {
+        const alive = await streamCacheService.isCachedSourceAlive(source.url, {
+          referer: source.referer || null,
+          origin: source.origin || null,
+          cookies: source.cookies || null,
+        });
+        shouldInvalidate = !alive;
+      }
+    } catch (probeErr) {
+      // Probe failure (DB read error, etc.) must NEVER poison the cache.
+      logger.warn('[ReportController] Source-liveness probe failed (no invalidation)', {
+        episodeId: epId, error: probeErr.message,
+      });
+      shouldInvalidate = false;
+    }
+
+    if (shouldInvalidate) {
+      // Explicit authoritative 403/404 → the cached source is dead; invalidate
+      // BOTH Redis and MySQL so the next play triggers a fresh resolution.
+      const redisKey = streamCacheService.buildRedisKey(epId, provider);
+      try {
+        await cache.delByPrefix(redisKey);
+      } catch (redisErr) {
+        logger.warn('[ReportController] Redis invalidation failed (non-fatal)', {
+          episodeId: epId, error: redisErr.message,
+        });
+      }
+      try {
+        await db.query(
+          `UPDATE episode_stream_cache
+           SET verification_status = 'invalid',
+               failure_count = failure_count + 1,
+               last_failed_at = NOW()
+           WHERE episode_id = ? AND provider = ?`,
+          [epId, provider]
+        );
+      } catch (dbErr) {
+        logger.warn('[ReportController] MySQL invalidation failed (non-fatal)', {
+          episodeId: epId, error: dbErr.message,
+        });
+      }
+      logger.info('[ReportController] Playback failure confirmed dead → cache invalidated', {
+        userId, episodeId: epId, reason: reason || 'unspecified',
+      });
+    } else {
+      // Diagnostics only — no evidence the cached source is dead, so the
+      // persistent row remains reusable. Redis is left untouched to stay in
+      // sync with the (unchanged) MySQL decision.
+      try {
+        await db.query(
+          `UPDATE episode_stream_cache
+           SET failure_count = failure_count + 1,
+               last_failed_at = NOW()
+           WHERE episode_id = ? AND provider = ?`,
+          [epId, provider]
+        );
+      } catch (dbErr) {
+        logger.warn('[ReportController] MySQL diagnostic update failed (non-fatal)', {
+          episodeId: epId, error: dbErr.message,
+        });
+      }
+      logger.info('[ReportController] Playback failure reported (no invalidation — no dead-source evidence)', {
+        userId, episodeId: epId, reason: reason || 'unspecified',
       });
     }
 
-    // Invalidate MySQL cache: mark as invalid, increment failure count.
-    try {
-      await db.query(
-        `UPDATE episode_stream_cache
-         SET verification_status = 'invalid',
-             failure_count = failure_count + 1,
-             last_failed_at = NOW()
-         WHERE episode_id = ? AND provider = ?`,
-        [epId, provider]
-      );
-    } catch (dbErr) {
-      logger.warn('[ReportController] MySQL invalidation failed (non-fatal)', {
-        episodeId: epId, error: dbErr.message,
-      });
-    }
+    const responseMessage = shouldInvalidate
+      ? 'Playback failure reported. The cached source was confirmed dead and will be re-resolved on next play.'
+      : 'Playback failure reported for diagnostics. The cached source remains reusable until verified otherwise.';
 
-    logger.info('[ReportController] Playback failure reported', {
-      userId, episodeId: epId, reason: reason || 'unspecified',
-    });
-
-    return sendSuccess(res, null, {
-      message: 'Playback failure reported. A fresh source will be resolved on next play.',
-    });
+    return sendSuccess(res, null, { message: responseMessage });
   } catch (err) {
     console.error('[ReportController] reportPlaybackFailure error:', err.message);
     res.status(500).json({ message: 'Failed to report playback failure.' });
