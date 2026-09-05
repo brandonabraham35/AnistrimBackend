@@ -179,7 +179,7 @@ describe('Stream Source Monitor', () => {
       );
     });
 
-    it('excludes sources with expires_at in the past', async () => {
+    it('does NOT exclude old-but-unknown sources (age is not proof of death)', async () => {
       let capturedSql = '';
       const dbQuery = async (sql) => {
         capturedSql = sql;
@@ -190,8 +190,12 @@ describe('Stream Source Monitor', () => {
       await monitor.selectBatch();
 
       assert.ok(
-        capturedSql.includes('expires_at > NOW()'),
-        'SELECT should exclude sources with past expires_at (AniStrim TTL)'
+        !capturedSql.includes('AND expires_at > NOW()'),
+        'SELECT must NOT use the AniStrim TTL (expires_at) to skip old-but-unknown sources'
+      );
+      assert.ok(
+        capturedSql.includes('verification_status') && capturedSql.includes('invalid'),
+        'SELECT should still skip proven-invalid sources'
       );
     });
   });

@@ -7,7 +7,7 @@
 //
 //  Env vars:
 //    STREAM_CACHE_ENABLED     — master switch (true/false)
-//    STREAM_CACHE_TTL_MINUTES — how long a cached stream is valid
+//    STREAM_CACHE_TTL_MINUTES — performance/reference TTL for cached streams
 //    STREAM_CACHE_PROVIDER    — the provider tag this cache serves
 // ============================================================
 'use strict';
@@ -16,19 +16,26 @@
 // data can only play back while the underlying AnimeHeaven CDN playback
 // context (cookies/mirrors) is still valid when the source requires it.
 //
-// Instead of universally clamping the TTL to the cookie lifetime, the cache
-// now uses the CONFIGURED TTL as the upper bound and lets per-source URL
-// expiry detection (detected_expires_at) determine the actual per-entry
-// expiry in streamCacheService.saveStream().  This means a stable,
-// non-tokenized source URL can stay cached for the full configured window,
-// while a source with detectable expiration parameters gets a shorter
-// per-entry expiry.
+//  PERSISTENT-UNTIL-PROVEN-DEAD (current policy):
+//    • A saved source is retained indefinitely. An elapsed `ttlMinutes` /
+//      `expires_at` is a PERFORMANCE/reference TTL, NOT proof the source died.
+//    • A source only becomes non-reusable when the source itself is proven
+//      dead (evidence-based invalidation) or when a REAL upstream expiry
+//      (detected_expires_at) is known and passes.
+//    • `detected_expires_at` is preserved — real upstream expiration is still
+//      respected; the distinction is:
 //
-// The 8-minute cookie lifetime is no longer a universal clamp, because the
-// final CDN URL often needs no cookies at all (the unsafe context is the
-// gate/mirror page, not the media CDN).  Per-source detection is safer:
-// if an expiration parameter is found in the CDN URL's query string, it
-// becomes the per-entry expires_at; otherwise the configured TTL is used.
+//          AniStrim cache age  ≠  actual provider URL expiration
+//
+//    • Redis TTL is a performance-cache TTL; Redis expiry does NOT invalidate
+//      the MySQL source of truth.
+//
+//  History note:
+//    Before this policy the cache used the CONFIGURED TTL as the source-validity
+//    window and per-source URL expiry detection could shorten entries. The
+//    configured TTL is retained for compatibility/housekeeping and as an upper
+//    bound for the performance caches, but it is no longer the authority on
+//    whether a saved source is usable.
 
 function parseBool(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -41,9 +48,10 @@ function parsePositiveInt(value, fallback) {
   return n;
 }
 
-// The configured cache validity window in minutes. Default 360 minutes (6
-// hours). Parseable as a configuration knob; used for the in-memory TTL
-// exposure.
+// The configured performance/reference cache window in minutes. Default 360
+// minutes (6 hours). Parseable as a configuration knob; used for the
+// in-memory TTL exposure and `expires_at` housekeeping. It is NOT treated as
+// proof that a source is dead when it elapses.
 const configuredTtlMinutes = parsePositiveInt(process.env.STREAM_CACHE_TTL_MINUTES, 360);
 
 module.exports = {
@@ -54,9 +62,13 @@ module.exports = {
   // provider in the current engine.
   provider: process.env.STREAM_CACHE_PROVIDER || 'animeheaven',
 
-  // Cache TTL in minutes.  Per-source expiry detection
-  // (detected_expires_at) can shorten individual entries below this
-  // value; this is the maximum permitted window.
+  // Source persistence policy flag — exposed for observability/diagnostics.
+  // true = saved sources are kept until proven dead (age is never expiration).
+  persistentUntilProvenDead: true,
+
+  // Performance/reference TTL in minutes. Per-source REAL upstream expiry
+  // detection (detected_expires_at) can shorten individual entries below this
+  // value; this is the maximum permitted performance-cache window.
   ttlMinutes: configuredTtlMinutes,
 
   // TTL in milliseconds (convenience for expiry math).

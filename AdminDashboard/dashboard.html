@@ -193,6 +193,22 @@
                             <span class="health-metric-value" id="hm-sc-active">—</span>
                         </div>
                         <div class="health-metric">
+                            <span class="health-metric-label">Persistent Sources</span>
+                            <span class="health-metric-value" id="hm-sc-total">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Reusable Sources</span>
+                            <span class="health-metric-value" id="hm-sc-reusable">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Invalid Sources</span>
+                            <span class="health-metric-value" id="hm-sc-invalid">—</span>
+                        </div>
+                        <div class="health-metric">
+                            <span class="health-metric-label">Known Expired</span>
+                            <span class="health-metric-value" id="hm-sc-known-expired">—</span>
+                        </div>
+                        <div class="health-metric">
                             <span class="health-metric-label">Known Expiry</span>
                             <span class="health-metric-value" id="hm-sc-known-exp">—</span>
                         </div>
@@ -465,6 +481,21 @@
                 <div class="section-card-header">
                     <h4 class="section-card-title"><i class="fas fa-server"></i> Stream Cache Metrics</h4>
                 </div>
+                <!-- Persistent-until-proven-dead policy panel -->
+                <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;">
+                    <div style="font-size:0.8rem;font-weight:700;color:var(--text,#e5e7eb);letter-spacing:0.02em;">
+                        <i class="fas fa-infinity" style="color:#10b981;"></i> STREAM SOURCE POLICY
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.4rem 1rem;margin-top:0.4rem;font-size:0.78rem;color:var(--text-muted,#9ca3af);">
+                        <span>Persistence: <strong style="color:#10b981;">Persistent until proven dead</strong></span>
+                        <span>Unknown expiry: <strong>Reusable</strong></span>
+                        <span>Age-based expiration: <strong>Disabled for source validity</strong></span>
+                        <span>Confirmed 403/404: <strong>Invalidates source</strong></span>
+                        <span>Temporary network errors: <strong>Do not invalidate</strong></span>
+                        <span>Redis expiration: <strong>Does not invalidate source</strong></span>
+                        <span>MySQL source of truth: <strong>Performance caches are acceleration only</strong></span>
+                    </div>
+                </div>
                 <div class="stats-grid" id="stream-cache-overview">
                     <div class="stat-card card">
                         <div class="stat-card-info card-info">
@@ -554,6 +585,148 @@
                         <div class="stat-card-info card-info">
                             <div class="stat-card-label">Unknown Expiry</div>
                             <div class="stat-card-value value" id="sc-unknown-expiry">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="height:16px"></div>
+                <!-- Persistent-until-proven-dead source counts -->
+                <div class="stats-grid" id="stream-cache-persistence">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Persistent Sources</div>
+                            <div class="stat-card-value value" id="sc-persistent-sources">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Reusable Sources</div>
+                            <div class="stat-card-value value" id="sc-reusable-sources">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Invalid Sources</div>
+                            <div class="stat-card-value value" id="sc-invalid-sources">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Known Expired (upstream)</div>
+                            <div class="stat-card-value value" id="sc-known-expired-sources">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Verified Recently (24h)</div>
+                            <div class="stat-card-value value" id="sc-verified-recently">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="height:16px"></div>
+                <!-- Provider call categories + cache efficiency -->
+                <div class="stats-grid" id="stream-cache-provider-calls">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">AnimeHeaven User Calls</div>
+                            <div class="stat-card-value value" id="sc-ah-user">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">AnimeHeaven Prefetch Calls</div>
+                            <div class="stat-card-value value" id="sc-ah-prefetch">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">AnimeHeaven Repair Calls</div>
+                            <div class="stat-card-value value" id="sc-ah-repair">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">AnimeHeaven Retry Calls</div>
+                            <div class="stat-card-value value" id="sc-ah-retry">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Provider Calls Avoided</div>
+                            <div class="stat-card-value value" id="sc-avoided">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Cache Hit Rate</div>
+                            <div class="stat-card-value value" id="sc-hit-rate">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="height:16px"></div>
+                <!-- Source age observability (age is NOT expiration) -->
+                <div class="stats-grid" id="stream-cache-ages">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Oldest Saved Source</div>
+                            <div class="stat-card-value value" id="sc-oldest-age">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Average Source Age</div>
+                            <div class="stat-card-value value" id="sc-avg-age">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Median Source Age</div>
+                            <div class="stat-card-value value" id="sc-median-age">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Older than 1 day</div>
+                            <div class="stat-card-value value" id="sc-age-1d">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Older than 7 days</div>
+                            <div class="stat-card-value value" id="sc-age-7d">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Older than 30 days</div>
+                            <div class="stat-card-value value" id="sc-age-30d">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="height:16px"></div>
+                <!-- Last provider resolution (process lifetime) -->
+                <div class="stats-grid" id="stream-cache-last-resolution">
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Last AnimeHeaven Resolution</div>
+                            <div class="stat-card-value value" id="sc-last-resolution">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Last User-Driven Resolution</div>
+                            <div class="stat-card-value value" id="sc-last-user">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Last Prefetch Resolution</div>
+                            <div class="stat-card-value value" id="sc-last-prefetch">—</div>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-card-info card-info">
+                            <div class="stat-card-label">Last Repair Resolution</div>
+                            <div class="stat-card-value value" id="sc-last-repair">—</div>
                         </div>
                     </div>
                 </div>

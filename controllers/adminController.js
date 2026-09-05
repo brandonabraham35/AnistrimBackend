@@ -1096,21 +1096,10 @@ case 'provider-usage': {
         payments: { buckets: payments.buckets, source: payments.source, hours: payments.hours },
         email: { buckets: email.buckets, source: email.source, hours: email.hours },
         streamCache: {
-          tier1Hits: streamCache.tier1Hits,
-          redisHits: streamCache.redisHits,
-          mysqlHits: streamCache.mysqlHits,
-          inMemoryHits: streamCache.inMemoryHits,
-          cacheMisses: streamCache.cacheMisses,
-          resolverCalls: streamCache.resolverCalls,
-          animeHeavenCalls: streamCache.animeHeavenCalls,
-          consumetCalls: streamCache.consumetCalls,
-          verificationSuccesses: streamCache.verificationSuccesses,
-          verificationFailures: streamCache.verificationFailures,
-          playbackReportedFailures: streamCache.playbackReportedFailures,
-          activeCachedSources: streamCache.activeCachedSources,
-          knownExpirySources: streamCache.knownExpirySources,
-          unknownExpirySources: streamCache.unknownExpirySources,
-          averageSourceLifetimeMs: streamCache.averageSourceLifetimeMs,
+          // All snapshot fields are safe aggregates (never URLs/credentials).
+          // Spreading keeps existing dashboard consumers working and exposes
+          // the persistent-until-proven-dead observability fields.
+          ...streamCache,
         },
       });
     } catch (error) {

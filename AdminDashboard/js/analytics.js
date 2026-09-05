@@ -110,6 +110,26 @@
       if (el) el.textContent = value == null ? '—' : String(value);
     }
 
+    // ── Age formatting (observability only) ──
+    function formatAgeMs(ms) {
+      if (!ms && ms !== 0) return '—';
+      const s = Math.max(0, Math.floor(ms / 1000));
+      if (s < 60) return s + 's';
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + 'm';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ' + (m % 60) + 'm';
+      const d = Math.floor(h / 24);
+      return d + 'd ' + (h % 24) + 'h';
+    }
+
+    // ── Timestamp formatting ──
+    function formatTs(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? '—' : d.toLocaleString();
+    }
+
     setEl('sc-tier1-hits', sc.tier1Hits || 0);
     setEl('sc-in-memory-hits', sc.inMemoryHits || 0);
     setEl('sc-redis-hits', window._formatNumber ? window._formatNumber(sc.redisHits || 0) : (sc.redisHits || 0));
@@ -128,6 +148,41 @@
     setEl('sc-verify-fail', window._formatNumber ? window._formatNumber(sc.verificationFailures || 0) : (sc.verificationFailures || 0));
     setEl('sc-known-expiry', window._formatNumber ? window._formatNumber(sc.knownExpirySources || 0) : (sc.knownExpirySources || 0));
     setEl('sc-unknown-expiry', window._formatNumber ? window._formatNumber(sc.unknownExpirySources || 0) : (sc.unknownExpirySources || 0));
+
+    // ── Persistent-until-proven-dead source counts ──
+    setEl('sc-persistent-sources', window._formatNumber ? window._formatNumber(sc.persistentSources || 0) : (sc.persistentSources || 0));
+    setEl('sc-reusable-sources', window._formatNumber ? window._formatNumber(sc.reusableSources || 0) : (sc.reusableSources || 0));
+    setEl('sc-invalid-sources', window._formatNumber ? window._formatNumber(sc.invalidSourcesCount != null ? sc.invalidSourcesCount : 0) : (sc.invalidSourcesCount || 0));
+    setEl('sc-known-expired-sources', window._formatNumber ? window._formatNumber(sc.knownExpiredSources || 0) : (sc.knownExpiredSources || 0));
+
+    const recentlyVerified = sc.recentlyVerifiedSources || {};
+    setEl('sc-verified-recently',
+      (recentlyVerified.within24h != null ? recentlyVerified.within24h : 0) + ' (5m: ' + (recentlyVerified.within5m || 0) + ')');
+
+    // ── Provider-call categories ──
+    setEl('sc-ah-user', window._formatNumber ? window._formatNumber(sc.animeHeavenUserCalls || 0) : (sc.animeHeavenUserCalls || 0));
+    setEl('sc-ah-prefetch', window._formatNumber ? window._formatNumber(sc.animeHeavenPrefetchCalls || 0) : (sc.animeHeavenPrefetchCalls || 0));
+    setEl('sc-ah-repair', window._formatNumber ? window._formatNumber(sc.animeHeavenRepairCalls || 0) : (sc.animeHeavenRepairCalls || 0));
+    setEl('sc-ah-retry', window._formatNumber ? window._formatNumber(sc.animeHeavenRetryCalls || 0) : (sc.animeHeavenRetryCalls || 0));
+
+    // ── Cache efficiency (derived from observable counters) ──
+    setEl('sc-avoided', window._formatNumber ? window._formatNumber(sc.providerCallsAvoided || 0) : (sc.providerCallsAvoided || 0));
+    setEl('sc-hit-rate', sc.cacheHitRate != null ? Number(sc.cacheHitRate).toFixed(2) + '%' : '—');
+
+    // ── Source age observability (age is NOT expiration) ──
+    setEl('sc-oldest-age', formatAgeMs(sc.oldestSourceAgeMs));
+    setEl('sc-avg-age', formatAgeMs(sc.averageSourceAgeMs));
+    setEl('sc-median-age', formatAgeMs(sc.medianSourceAgeMs));
+    const ageBuckets = sc.sourceAgeBuckets || {};
+    setEl('sc-age-1d', ageBuckets.older1d || 0);
+    setEl('sc-age-7d', ageBuckets.older7d || 0);
+    setEl('sc-age-30d', ageBuckets.older30d || 0);
+
+    // ── Last provider resolution (process lifetime) ──
+    setEl('sc-last-resolution', formatTs(sc.lastAnimeHeavenResolutionAt));
+    setEl('sc-last-user', formatTs(sc.lastUserResolutionAt));
+    setEl('sc-last-prefetch', formatTs(sc.lastPrefetchResolutionAt));
+    setEl('sc-last-repair', formatTs(sc.lastRepairResolutionAt));
   }
 
   window.initializeAnalyticsSection = initializeAnalyticsSection;

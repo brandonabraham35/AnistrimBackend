@@ -129,6 +129,7 @@ const mockAnimeHeavenImportService = {
 const mockStreamCacheMetrics = {
   increment() {}, reset() {}, getSnapshot: async () => ({}),
   recordSourceLifetime() {}, counters: {},
+  recordProviderCall() {}, recordInvalidation() {},
 };
 
 const mockStreamDiagnostics = {
@@ -214,5 +215,53 @@ describe('Stream cache reuse after NOT_REUSABLE (audit Step 1)', () => {
       state.queryLog.some(q => q.sql.includes('FROM episode_stream_cache')),
       'second play must read the persistent cache'
     );
+  });
+
+  // ── Persistent-until-proven-dead regression (core end-to-end proof) ──
+
+  it('persistent row survives Tier-1 expiry and keeps serving without AnimeHeaven', async () => {
+    // Seed a REUSABLE (unknown) persistent row directly; wipe the general +
+    // Redis caches to simulate Tier-1/Redis expiration.
+    state.cacheValid = true;
+    mockCache.store.clear();
+
+    const result = await streamingService.resolveStream('Test Anime', 1, {
+      isPremium: true,
+      episodeId: 123,
+    });
+
+    assert.ok(result && result.cached, 'must be served from the persistent (MySQL) source');
+    assert.strictEqual(callsForEpisode('ep-1'), 0, 'AnimeHeaven must NOT be called when a reusable MySQL source exists');
+    assert.ok(
+      state.queryLog.some(q => q.sql.includes('FROM episode_stream_cache')),
+      'Tier-1 expiry must fall through to the MySQL source, not straight to AnimeHeaven'
+    );
+  });
+
+  it('prefetch does NOT call AnimeHeaven when the next episode already has a reusable persistent source (Prompt #13/18)', async () => {
+    const reasons = [];
+    const origRecord = mockStreamCacheMetrics.recordProviderCall;
+    mockStreamCacheMetrics.recordProviderCall = (reason) => reasons.push(reason);
+    try {
+      // Seed a reusable persistent row AND wipe all performance caches. The
+      // requested episode loads from MySQL; the next-episode warm-cache finds
+      // the same reusable row and must SKIP contacting AnimeHeaven.
+      state.cacheValid = true;
+      mockCache.store.clear();
+
+      await streamingService.resolveStream('Test Anime', 1, { isPremium: true, episodeId: 123 });
+
+      assert.ok(
+        reasons.length === 0,
+        'no provider call should be recorded when the persistent source is reusable'
+      );
+      assert.ok(
+        !reasons.includes('prefetch'),
+        'prefetch must NOT resolve an episode that already has a reusable persistent source'
+      );
+      assert.strictEqual(callsForEpisode('ep-2'), 0, 'AnimeHeaven must NOT be contacted for an already-cached next episode');
+    } finally {
+      mockStreamCacheMetrics.recordProviderCall = origRecord;
+    }
   });
 });

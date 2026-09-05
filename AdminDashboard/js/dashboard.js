@@ -343,6 +343,10 @@ document.addEventListener('DOMContentLoaded', () => {
         _set('hm-sc-verify-fail', sc.verificationFailures);
         _set('hm-sc-playback-fail', sc.playbackReportedFailures);
         _set('hm-sc-active', sc.activeCachedSources);
+        _set('hm-sc-total', sc.persistentSources != null ? sc.persistentSources : sc.activeCachedSources);
+        _set('hm-sc-reusable', sc.reusableSources != null ? sc.reusableSources : sc.activeCachedSources);
+        _set('hm-sc-invalid', sc.invalidSourcesCount != null ? sc.invalidSourcesCount : sc.invalidSources);
+        _set('hm-sc-known-expired', sc.knownExpiredSources != null ? sc.knownExpiredSources : 0);
         _set('hm-sc-known-exp', sc.knownExpirySources);
         _set('hm-sc-unknown-exp', sc.unknownExpirySources);
       }
@@ -399,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) {
       console.warn('[HealthMetrics] Failed to load:', e.message);
-      ['hm-p50','hm-p95','hm-5xx','hm-stream-fails','hm-payment-fails','hm-email-fails','hm-sc-redis','hm-sc-mysql','hm-sc-misses','hm-sc-resolvers','hm-sc-animeheaven','hm-sc-consumet','hm-sc-verify-ok','hm-sc-verify-fail','hm-sc-playback-fail','hm-sc-active','hm-sc-known-exp','hm-sc-unknown-exp'].forEach(id => _set(id, null));
+      ['hm-p50','hm-p95','hm-5xx','hm-stream-fails','hm-payment-fails','hm-email-fails','hm-sc-redis','hm-sc-mysql','hm-sc-misses','hm-sc-resolvers','hm-sc-animeheaven','hm-sc-consumet','hm-sc-verify-ok','hm-sc-verify-fail','hm-sc-playback-fail','hm-sc-active','hm-sc-known-exp','hm-sc-unknown-exp','hm-sc-total','hm-sc-reusable','hm-sc-invalid','hm-sc-known-expired'].forEach(id => _set(id, null));
       _destroyChart('chart-5xx-rate');
       _destroyChart('chart-health-sparkline');
       const topEl = document.getElementById('hm-top-episodes');

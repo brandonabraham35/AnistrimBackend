@@ -100,6 +100,7 @@ exports.reportPlaybackFailure = async (req, res) => {
     streamCacheMetrics.increment('playbackReportedFailures');
 
     let shouldInvalidate = false;
+    let probedStatus = null;
     try {
       const lookup = await streamCacheService.findCachedStream(epId, provider);
       let data = (lookup && lookup.row && lookup.row.stream_data) || null;
@@ -110,12 +111,13 @@ exports.reportPlaybackFailure = async (req, res) => {
         ? data.sources.find(s => s && s.url) || null
         : null;
       if (source) {
-        const alive = await streamCacheService.isCachedSourceAlive(source.url, {
+        const probe = await streamCacheService.probeSource(source.url, {
           referer: source.referer || null,
           origin: source.origin || null,
           cookies: source.cookies || null,
         });
-        shouldInvalidate = !alive;
+        shouldInvalidate = !probe.alive;
+        probedStatus = probe.status;
       }
     } catch (probeErr) {
       // Probe failure (DB read error, etc.) must NEVER poison the cache.
@@ -150,8 +152,15 @@ exports.reportPlaybackFailure = async (req, res) => {
           episodeId: epId, error: dbErr.message,
         });
       }
+      // Record the invalidation EVIDENCE for dashboard observability. Only
+      // 403/404 are conclusive source death; probeSource only returns alive=false
+      // for those statuses.
+      streamCacheMetrics.increment('invalidSources');
+      streamCacheMetrics.recordInvalidation(
+        probedStatus === 403 ? 'confirmed_403' : probedStatus === 404 ? 'confirmed_404' : 'other_confirmed_dead'
+      );
       logger.info('[ReportController] Playback failure confirmed dead → cache invalidated', {
-        userId, episodeId: epId, reason: reason || 'unspecified',
+        userId, episodeId: epId, reason: reason || 'unspecified', status: probedStatus,
       });
     } else {
       // Diagnostics only — no evidence the cached source is dead, so the

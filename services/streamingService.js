@@ -264,10 +264,14 @@ function buildCacheKey(animeTitle, episodeNumber, providerName) {
  * @param {string} animeTitle
  * @param {number|string} episodeNumber
  * @param {object} [identifiers] — { slug, episodeKey } from DB lookup
+ * @param {object} [callMeta] — { reason } structured provider-call reason
+ *   (user_fresh_resolution, cache_miss, cache_invalid, cache_expired,
+ *    liveness_failure, prefetch, self_heal, explicit_provider_resolution, retry)
  * @returns {Promise<object>} Encapsulated outcome
  */
-async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}) {
-  streamCacheMetrics.increment('animeHeavenCalls');
+async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}, callMeta = {}) {
+  const reason = (callMeta && callMeta.reason) || 'user_fresh_resolution';
+  streamCacheMetrics.recordProviderCall(reason);
   const healthKey = toHealthKey(ANIME_HEAVEN_TAG) || ANIME_HEAVEN_TAG;
   const start = Date.now();
 
@@ -590,10 +594,11 @@ async function executeFallbackProvider(providerId, animeTitle, episodeNumber) {
  * @param {number} overallStart
  * @param {boolean} usePersistentCache
  * @param {object} identifiers — { slug, episodeKey }
+ * @param {object} [callMeta] — { reason } structured provider-call reason
  * @returns {Promise<object>} final stream payload
  */
-async function continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers = {}) {
-  const resolveFresh = async () => executeAnimeHeaven(animeTitle, episodeNumber, identifiers);
+async function continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers = {}, callMeta = {}) {
+  const resolveFresh = async () => executeAnimeHeaven(animeTitle, episodeNumber, identifiers, callMeta);
 
   let outcome;
   if (usePersistentCache) {
@@ -695,6 +700,9 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   const { isPremium = false, skipCache = false, episodeId } = options;
   const tier = isPremium ? 'premium' : 'free';
   const overallStart = Date.now();
+  // Reason for the persistent-cache miss (cache_miss/cache_invalid/cache_expired)
+  // so the first AnimeHeaven attempt is attributable.
+  let persistentMissReason = null;
 
   // ── Movie Guard ─────────────────────────────────────────
   const moviePattern = /\b(movie|film|ova|special|the movie)\b/i;
@@ -945,6 +953,14 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       logger.debug('[STREAM_CACHE] Redis check failed (non-fatal)', { error: cacheErr.message });
     }
     const cachedLookup = await streamCacheService.findCachedStream(episodeId, STREAM_CACHE_PROVIDER);
+    if (!cachedLookup.result) {
+      // Record WHY the persistent tier missed so the eventual provider call is
+      // attributable (cache_miss / cache_invalid / cache_expired). A miss is a
+      // missing/invalid source, NOT proof that anything else is wrong.
+      if (cachedLookup.state === 'invalid') persistentMissReason = 'cache_invalid';
+      else if (cachedLookup.state === 'expired') persistentMissReason = 'cache_expired';
+      else persistentMissReason = 'cache_miss';
+    }
     if (cachedLookup.result) {
       logger.debugStream('Persistent stream cache hit', { anime: animeTitle, episode: episodeNumber, episodeId });
       const cachedWinner = cachedLookup.result;
@@ -954,21 +970,28 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
 
         // ── CACHE-SOURCE LIVENESS PROBE ─────────────────────
         const bestSource = best || {};
-        const alive = await streamCacheService.isCachedSourceAlive(
+        const probe = await streamCacheService.probeSource(
           bestSource.url,
           {
             referer: bestSource.referer || null,
             origin: bestSource.origin || null,
           }
         );
-        if (!alive) {
+        if (!probe.alive) {
           logger.debugStream('Persistent stream cache source dead — invalidating & re-resolving', {
             anime: animeTitle,
             episode: episodeNumber,
             episodeId,
+            status: probe.status,
           });
-          await streamCacheService.deleteInvalidCache(episodeId, STREAM_CACHE_PROVIDER);
-          return continueWithFreshResolution(animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers);
+          // PROVEN DEAD (explicit 403/404 from the probe): mark the source
+          // invalid (historical MySQL row preserved) and purge the short-lived
+          // Redis copy. The fresh resolution upserts the replacement.
+          await streamCacheService.invalidateSource(episodeId, STREAM_CACHE_PROVIDER, probe.status);
+          return continueWithFreshResolution(
+            animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers,
+            { reason: 'liveness_failure' }
+          );
         }
 
         // Record direct MySQL cache hit (user-facing serving path).
@@ -1022,11 +1045,17 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   let lastError = null;
 
   // Attempt 1..3: AnimeHeaven.
+  // The FIRST attempt's reason reflects why the persistent tier missed
+  // (cache_miss / cache_invalid / cache_expired / user_fresh_resolution);
+  // subsequent attempts are retries of the same user-driven resolution.
   for (let attempt = 1; attempt <= ANIMEHEAVEN_MAX_ATTEMPTS; attempt++) {
     attemptCount += 1;
     logger.debugStream('[AnimeHeaven] Attempt', { anime: animeTitle, episode: episodeNumber, attempt, of: ANIMEHEAVEN_MAX_ATTEMPTS });
 
-    const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers);
+    const firstReason = persistentMissReason || 'user_fresh_resolution';
+    const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers, {
+      reason: attempt === 1 ? firstReason : 'retry',
+    });
     if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
       winner = outcome.result;
       winnerProvider = ANIME_HEAVEN_TAG;
@@ -1211,8 +1240,15 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
  *
  * When a user watches episode N, this preloads episode N+1's AnimeHeaven
  * stream into the persistent cache so the next-play is a cache hit (warm),
- * not a cold resolution. This is fire-and-forget: it never blocks the current
- * request and any failure is swallowed.
+ * not a cold resolution.
+ *
+ * PERSISTENT-UNTIL-PROVEN-DEAD: before calling AnimeHeaven for episode N+1 we
+ * check the persistent source cache. If a REUSABLE saved source already
+ * exists (unknown/active, no passed upstream expiry), AnimeHeaven is NOT
+ * contacted — the episode is already warm. If no reusable source exists, a
+ * provider resolution is allowed and its result is persisted.
+ *
+ * Fire-and-forget: never blocks the current request; failures are swallowed.
  *
  * @param {string} animeTitle
  * @param {number|string} currentEpisodeNumber
@@ -1230,8 +1266,31 @@ async function prefetchNextEpisode(animeTitle, currentEpisodeNumber, isPremium) 
       return;
     }
 
+    // ── Persistent-cache gate ─────────────────────────────
+    // If the next episode already has a reusable saved source, do NOT contact
+    // AnimeHeaven again. Age of the saved source is irrelevant — reuse wins.
+    if (nextIdentifiers.episodeId != null && nextIdentifiers.episodeId !== '') {
+      try {
+        const existing = await streamCacheService.findCachedStream(nextIdentifiers.episodeId, STREAM_CACHE_PROVIDER);
+        if (existing.result) {
+          logger.debugStream('Prefetch: next episode already has a reusable persistent source — skipping provider', {
+            anime: animeTitle,
+            nextEp,
+            episodeId: nextIdentifiers.episodeId,
+          });
+          return;
+        }
+      } catch (cacheErr) {
+        logger.debugStream('Prefetch: persistent-cache gate failed (non-fatal)', {
+          anime: animeTitle,
+          nextEp,
+          error: cacheErr.message,
+        });
+      }
+    }
+
     // Resolve the next episode via the FAST path (no search) and cache it.
-    const outcome = await executeAnimeHeaven(animeTitle, nextEp, nextIdentifiers);
+    const outcome = await executeAnimeHeaven(animeTitle, nextEp, nextIdentifiers, { reason: 'prefetch' });
     if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
       // Persist to the persistent episode_stream_cache (if episodeId known).
       if (nextIdentifiers.episodeId) {
@@ -1278,7 +1337,7 @@ async function resolveAllProviders(animeTitle, episodeNumber, options = {}) {
 
   // Use the fast path (DB identifiers) when available.
   const identifiers = await animeHeavenImportService.resolvePlaybackIdentifiers(animeTitle, episodeNumber);
-  const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers);
+  const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers, { reason: 'explicit_provider_resolution' });
 
   if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
     const filteredSources = filterSourcesByTier(outcome.result.sources, isPremium);

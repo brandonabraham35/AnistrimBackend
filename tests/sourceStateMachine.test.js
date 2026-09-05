@@ -65,14 +65,17 @@ describe('Source state: EXPIRED', () => {
     assert.strictEqual(state, 'expired');
   });
 
-  it('EXPIRED when AniStrim TTL (expires_at) has passed', () => {
+  it('UNKNOWN (not EXPIRED) when only the AniStrim TTL (expires_at) has passed', () => {
     const now = Date.now();
     const row = mockRow({
-      expires_at: new Date(now - 3600 * 1000), // AniStrim TTL expired
+      expires_at: new Date(now - 3600 * 1000), // AniStrim performance TTL expired
       detected_expires_at: null,
     });
     const state = getSourceState(row, now);
-    assert.strictEqual(state, 'expired');
+    // AGE IS NOT PROOF OF DEATH — an elapsed AniStrim TTL is not evidence that
+    // the underlying source died, so the state stays 'unknown' (reusable).
+    assert.strictEqual(state, 'unknown');
+    assert.strictEqual(isReusable(row, now), true);
   });
 
   it('isReusable returns false for EXPIRED', () => {
@@ -260,7 +263,8 @@ describe('Edge cases', () => {
     const now = Date.now();
     const row = { id: 1 };
     const state = getSourceState(row, now);
-    assert.strictEqual(state, 'expired'); // expires_at missing → expired
+    // Missing metadata is NOT proof of death — the source remains reusable.
+    assert.strictEqual(state, 'unknown');
   });
 
   it('EXPIRED detected_expires_at takes priority over ACTIVE verification', () => {
@@ -285,7 +289,7 @@ describe('Edge cases', () => {
     assert.strictEqual(isReusable(row, now), true);
   });
 
-  it('UNKNOWN past AniStrim TTL is not reusable', () => {
+  it('UNKNOWN past AniStrim TTL remains reusable (age is not proof of death)', () => {
     const now = Date.now();
     const past = new Date(now - 3600 * 1000);
     const row = mockRow({
@@ -293,6 +297,58 @@ describe('Edge cases', () => {
       detected_expires_at: null,
       verification_status: 'unknown',
     });
+    assert.strictEqual(isReusable(row, now), true);
+  });
+
+  it('UNKNOWN with old expires_at AND null detected_expires_at stays reusable (Prompt Test 1)', () => {
+    const now = Date.now();
+    const row = mockRow({
+      expires_at: new Date(now - 7 * 24 * 3600 * 1000), // a week old TTL
+      detected_expires_at: null,
+      verification_status: 'unknown',
+    });
+    assert.strictEqual(isReusable(row, now), true);
+  });
+
+  it('ACTIVE with old expires_at stays reusable unless upstream expiry is known (Prompt Test 2)', () => {
+    const now = Date.now();
+    const row = mockRow({
+      expires_at: new Date(now - 24 * 3600 * 1000),
+      detected_expires_at: null,
+      verification_status: 'active',
+      last_verified_at: new Date(now - 60000),
+    });
+    assert.strictEqual(getSourceState(row, now), 'active');
+    assert.strictEqual(isReusable(row, now), true);
+  });
+
+  it('detected_expires_at in the FUTURE is reusable (Prompt Test 3a)', () => {
+    const now = Date.now();
+    const row = mockRow({
+      expires_at: new Date(now - 3600 * 1000), // old AniStrim TTL
+      detected_expires_at: new Date(now + 7200 * 1000), // real upstream expiry in future
+    });
+    assert.strictEqual(getSourceState(row, now), 'unknown');
+    assert.strictEqual(isReusable(row, now), true);
+  });
+
+  it('detected_expires_at in the PAST is expired / not reusable (Prompt Test 3b)', () => {
+    const now = Date.now();
+    const row = mockRow({
+      detected_expires_at: new Date(now - 3600 * 1000),
+    });
+    assert.strictEqual(getSourceState(row, now), 'expired');
+    assert.strictEqual(isReusable(row, now), false);
+  });
+
+  it('invalid source is never reusable regardless of age (Prompt Test 4)', () => {
+    const now = Date.now();
+    const row = mockRow({
+      expires_at: new Date(now + 3600 * 1000),
+      detected_expires_at: null,
+      verification_status: 'invalid',
+    });
+    assert.strictEqual(getSourceState(row, now), 'invalid');
     assert.strictEqual(isReusable(row, now), false);
   });
 });

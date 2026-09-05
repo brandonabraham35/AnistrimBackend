@@ -106,13 +106,17 @@ function createMonitor(deps = {}) {
   async function selectBatch() {
     const cutoff = new Date(Date.now() - CONFIG.minVerificationIntervalMs);
 
+    // PERSISTENT-UNTIL-PROVEN-DEAD: the AniStrim performance TTL
+    // (expires_at) is NOT used to skip sources. An old-but-unknown source
+    // remains eligible for verification; only proven-invalid sources and
+    // sources with a passed real upstream expiry (detected_expires_at) are
+    // excluded. AGE IS NOT PROOF OF DEATH.
     const [rows] = await getDb().query(
       `SELECT id, episode_id, provider, stream_data, verification_status,
               detected_expires_at, expires_at, last_verified_at
        FROM episode_stream_cache
        WHERE verification_status != 'invalid'
          AND (detected_expires_at IS NULL OR detected_expires_at > NOW())
-         AND expires_at > NOW()
          AND (last_verified_at IS NULL OR last_verified_at < ?)
        ORDER BY
          CASE WHEN verification_status = 'active' AND detected_expires_at IS NULL THEN 0

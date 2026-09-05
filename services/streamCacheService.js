@@ -371,6 +371,11 @@ async function verifyAndRecord(cacheRowId, url, context = {}) {
         [now, 'invalid', result.status, result.contentType, now, now, cacheRowId]
       );
       streamCacheMetrics.increment('verificationFailures');
+      // Record the evidence — only 403/404 are conclusive source death. A
+      // verify result with alive=false is ONLY returned for 403/404.
+      streamCacheMetrics.recordInvalidation(
+        result.status === 403 ? 'confirmed_403' : result.status === 404 ? 'confirmed_404' : 'other_confirmed_dead'
+      );
     }
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (verify record)', { cacheRowId, error: err.message });
@@ -382,13 +387,28 @@ async function verifyAndRecord(cacheRowId, url, context = {}) {
 /**
  * Probe a single cached source URL for aliveness. FAIL-OPEN.
  *
+ * Returns the raw probe outcome (alive + status) so callers that need to
+ * invalidate a proven-dead source can record the exact evidence (403/404).
+ *
  * @param {string} url - the raw (pre-proxy) AnimeHeaven CDN source URL
  * @param {object} [context] - { referer, origin } used when probing
- * @returns {Promise<boolean>} `true` = likely alive / unknown (serve the cache);
- *   `false` = explicitly dead (403/404) — caller should invalidate & re-resolve.
+ * @returns {Promise<{alive: boolean, status: number|null, contentType: string|null}>}
+ *   `alive: true` = likely alive / unknown (serve the cache); `alive: false`
+ *   = explicitly dead (403/404) — caller should invalidate & re-resolve.
  */
-async function isCachedSourceAlive(url, context = {}) {
-  if (!url) return true; // fail-open: nothing to probe
+async function probeSource(url, context = {}) {
+  const failOpen = (status) => ({
+    alive: true,
+    status: status == null ? null : status,
+    contentType: null,
+  });
+  const dead = (status) => ({
+    alive: false,
+    status: status == null ? null : status,
+    contentType: null,
+  });
+
+  if (!url) return failOpen(null); // fail-open: nothing to probe
   const extraHeaders = {};
   if (context.referer) extraHeaders.Referer = String(context.referer);
   if (context.origin) extraHeaders.Origin = String(context.origin);
@@ -410,33 +430,50 @@ async function isCachedSourceAlive(url, context = {}) {
     );
     // DIAG: log successful probe
     streamDiag.logCacheProbe(url, { method: 'head', skipProxy: true, hadCookies: false, hadReferer: !!context.referer, hadOrigin: !!context.origin }, { status: 200, contentType: null, alive: true, durationMs: Date.now() - _probeStart });
-    return true; // 2xx/3xx (or a resolved HEAD) → source is alive
+    return failOpen(200); // 2xx/3xx (or a resolved HEAD) → source is alive
   } catch (err) {
     const status = Number(err?.response?.status || 0);
     const probeResult = { status, contentType: null, alive: false, durationMs: Date.now() - _probeStart };
     // Only explicit 403/404 mean the token/context is rejected/dead.
     if (status === 403 || status === 404) {
       streamDiag.logCacheProbe(url, { method: 'head', skipProxy: true, hadCookies: false, hadReferer: !!context.referer, hadOrigin: !!context.origin }, { ...probeResult, alive: false });
-      return false;
+      return dead(status);
     }
     // Network error / timeout / 5xx / 429 / redirect-loop etc. — cannot
     // conclude it is dead. Fail-open: keep the cached source (playback must
     // not break).
     streamDiag.logCacheProbe(url, { method: 'head', skipProxy: true, hadCookies: false, hadReferer: !!context.referer, hadOrigin: !!context.origin }, { ...probeResult, alive: true });
-    return true;
+    return failOpen(status);
   }
+}
+
+/**
+ * Probe a single cached source URL for aliveness. FAIL-OPEN.
+ *
+ * @param {string} url - the raw (pre-proxy) AnimeHeaven CDN source URL
+ * @param {object} [context] - { referer, origin } used when probing
+ * @returns {Promise<boolean>} `true` = likely alive / unknown (serve the cache);
+ *   `false` = explicitly dead (403/404) — caller should invalidate & re-resolve.
+ */
+async function isCachedSourceAlive(url, context = {}) {
+  const result = await probeSource(url, context);
+  return result.alive;
 }
 
 /**
  * Determine the source state for a cached row.
  *
- * States:
- *   ACTIVE    — Source is known to be valid (verified recently or within AniStrim TTL)
- *   EXPIRED   — Upstream expiry (detected_expires_at) has passed
- *   INVALID   — Verification or playback failure marked it unusable
- *   UNKNOWN   — No upstream expiry known, verification status unknown or stale
+ * States (PERSISTENT-UNTIL-PROVEN-DEAD semantics):
+ *   ACTIVE    — Source has been positively verified (verification_status=active)
+ *   EXPIRED   — A REAL upstream expiry (detected_expires_at) is known and passed
+ *   INVALID   — The source has been PROVEN dead (403/404 evidence or explicit
+ *               permanent-death outcome)
+ *   UNKNOWN   — No real upstream expiry known, no proof of death
  *
- * NEVER classifies "no expiry detected" as "permanent".
+ * IMPORTANT: an elapsed AniStrim performance TTL (expires_at) is NEVER treated
+ * as evidence that the source died. `unknown` stays reusable indefinitely.
+ * Only a passed `detected_expires_at` or `verification_status='invalid'` makes
+ * a source non-reusable.
  *
  * @param {object} row - DB row from episode_stream_cache
  * @param {number} now - Date.now()
@@ -445,7 +482,8 @@ async function isCachedSourceAlive(url, context = {}) {
 function getSourceState(row, now = Date.now()) {
   if (!row) return 'unknown';
 
-  // Rule 1: If detected_expires_at exists and is in the past → EXPIRED.
+  // Rule 1: If a REAL upstream expiry is known and has passed → EXPIRED.
+  // This is the only age that can expire a source.
   if (row.detected_expires_at) {
     const detectedExpiry = new Date(row.detected_expires_at).getTime();
     if (Number.isFinite(detectedExpiry) && detectedExpiry <= now) {
@@ -453,23 +491,20 @@ function getSourceState(row, now = Date.now()) {
     }
   }
 
-  // Rule 3: If verification_status is 'invalid' → INVALID.
+  // Rule 2: If the source has been PROVEN dead → INVALID.
   if (row.verification_status === 'invalid') {
     return 'invalid';
   }
 
-  // Rule 2: If source has recently verified successfully → ACTIVE.
+  // Rule 3: If the source has been positively verified → ACTIVE.
   if (row.verification_status === 'active' && row.last_verified_at) {
     return 'active';
   }
 
-  // Rule 4: If AniStrim's cache TTL (expires_at) has passed → treat as expired.
-  if (isExpired(row, now)) {
-    return 'expired';
-  }
-
-  // Rule 4 continued: No upstream expiry known, but within AniStrim TTL → UNKNOWN.
-  // This means the source may still be valid, but we don't know for sure.
+  // Rule 4: Otherwise → UNKNOWN. An elapsed AniStrim cache TTL (expires_at)
+  // does NOT downgrade a source to 'expired'. The source remains eligible for
+  // reuse/verification until independently proven dead or a real upstream
+  // expiry passes. AGE IS NOT PROOF OF DEATH.
   return 'unknown';
 }
 
@@ -480,7 +515,7 @@ function getSourceState(row, now = Date.now()) {
  *   ACTIVE    → reuse
  *   EXPIRED   → do not reuse
  *   INVALID   → do not reuse
- *   UNKNOWN   → reuse (within AniStrim TTL); verification will happen on next play
+ *   UNKNOWN   → reuse (verification will happen on next play if needed)
  *
  * @param {object} row - DB row from episode_stream_cache
  * @param {number} now - Date.now()
@@ -734,6 +769,15 @@ function classifySource(row, now = Date.now()) {
  * Uses INSERT ... ON DUPLICATE KEY UPDATE so a single row per (episode,provider)
  * is maintained — no duplicate rows on repeated playback.
  *
+ * SEMANTICS (persistent-until-proven-dead):
+ *   • The MySQL row is retained indefinitely — `expires_at` is a performance /
+ *     reference TTL for compatibility and housekeeping; it is NEVER treated as
+ *     proof that the source died.
+ *   • A real upstream expiry (detected_expires_at) is the only writer-set
+ *     expiration that can make the source non-reusable.
+ *   • On success the canonical persistent Redis key is populated from the same
+ *     saved result. Redis TTL is a PERFORMANCE TTL only.
+ *
  * @param {number|string} episodeId
  * @param {string} provider
  * @param {object} providerResult - { provider, streamUrl, sources, subtitles }
@@ -810,8 +854,30 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
       episodeId, provider, ttlMin: ttl, streamType,
       detectedExpiresAt, expirySource, verificationStatus,
     });
+
+    // Populate the canonical persistent Redis cache from the same saved result
+    // (best-effort, never breaks the save). Redis TTL is a PERFORMANCE TTL —
+    // its expiry must never be interpreted as source expiry; MySQL is the
+    // source of truth.
+    try {
+      await cache.set(
+        buildRedisKey(episodeId, provider),
+        {
+          ...payload,
+          detectedExpiresAt,
+          expirySource,
+          verificationStatus,
+          resolvedAt: now.toISOString(),
+        },
+        REDIS_TTL_SECONDS
+      );
+    } catch (redisErr) {
+      logger.debug('[STREAM_CACHE] Redis populate after save failed (non-fatal)', { error: redisErr.message });
+    }
+
+    // DIAG: log cache creation (moved before return so it actually runs).
+    streamDiag.logCacheCreation(episodeId, provider, providerResult, ttl * 60 * 1000, expires);
     return true;
-streamDiag.logCacheCreation(episodeId, provider, providerResult, ttl * 60 * 1000, expires);
   } catch (err) {
     // Migration not applied / table missing / other DB error — never break playback.
     logger.warn('[STREAM_CACHE] FAILURE (save)', { episodeId, provider, error: err.message });
@@ -841,6 +907,51 @@ async function deleteInvalidCache(episodeId, provider) {
     return true;
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (delete)', { episodeId, provider, error: err.message });
+    return false;
+  }
+}
+
+/**
+ * Mark a cached source as proven dead WITHOUT deleting the historical MySQL row.
+ *
+ * PERSISTENT-UNTIL-PROVEN-DEAD: instead of `DELETE ROW`, we set
+ * verification_status='invalid' (plus failure counters). The row stays in MySQL
+ * as historical metadata; the next playback sees NOT_REUSABLE and performs a
+ * fresh resolution which upserts a replacement into the same row.
+ *
+ * The short-lived Redis copy is purged so a stale entry is never served.
+ *
+ * @param {number|string} episodeId
+ * @param {string} provider
+ * @param {number} [status] - HTTP status of the confirming probe (403/404/etc.)
+ * @returns {Promise<boolean>}
+ */
+async function invalidateSource(episodeId, provider, status = 0) {
+  if (!episodeId) return false;
+  const statusCode = Number(status) || 0;
+  try {
+    await db.query(
+      `UPDATE episode_stream_cache
+         SET verification_status = 'invalid',
+             failure_count = failure_count + 1,
+             last_failed_at = NOW()
+       WHERE episode_id = ? AND provider = ?`,
+      [episodeId, provider]
+    );
+    streamCacheMetrics.increment('invalidSources');
+    streamCacheMetrics.recordInvalidation(
+      statusCode === 403 ? 'confirmed_403' : statusCode === 404 ? 'confirmed_404' : 'other_confirmed_dead'
+    );
+    logger.info('[STREAM_CACHE] INVALIDATE', { episodeId, provider, status: statusCode });
+    // Purge the short-lived Redis copy (best-effort). Redis expiry is a
+    // performance TTL — we delete it so nothing stale can be served.
+    const redisKey = buildRedisKey(episodeId, provider);
+    cache.del(redisKey).catch(err => {
+      logger.warn('[STREAM_CACHE] Redis purge after invalidate failed (non-fatal)', { episodeId, provider, error: err && err.message });
+    });
+    return true;
+  } catch (err) {
+    logger.warn('[STREAM_CACHE] FAILURE (invalidate)', { episodeId, provider, error: err.message });
     return false;
   }
 }
@@ -920,9 +1031,18 @@ async function getOrResolve(episodeId, provider, resolver) {
   // TIER 3: MySQL cache check — if a concurrent request persisted a result.
   const dbHit = await findCachedStream(episodeId, provider);
   if (dbHit.result) {
-    // Populate Redis from MySQL hit for next time.
+    // Populate Redis from MySQL hit for next time. Redis TTL is a performance
+    // TTL only — MySQL remains the source of truth. Include the upstream
+    // expiry/verification metadata so a Redis hit can honour a real upstream
+    // expiry without touching the DB.
     try {
-      await cache.set(redisKey, dbHit.result, REDIS_TTL_SECONDS);
+      const redisPayload = {
+        ...dbHit.result,
+        detectedExpiresAt: dbHit.row?.detected_expires_at || null,
+        expirySource: dbHit.row?.expiry_source || 'unknown',
+        verificationStatus: dbHit.row?.verification_status || 'unknown',
+      };
+      await cache.set(redisKey, redisPayload, REDIS_TTL_SECONDS);
     } catch (err) {
       logger.debug('[STREAM_CACHE] Redis populate failed (non-fatal)', { error: err.message });
     }
@@ -973,23 +1093,35 @@ async function getOrResolve(episodeId, provider, resolver) {
 }
 
 // ── Optional background expiry sweeper ────────────────────
-// Lightweight, best-effort cleanup of expired cache rows using the existing
-// `expires_at` index. It is deliberately NON-blocking for playback:
+// Lightweight, best-effort housekeeping for PROVEN-DEAD cache rows using the
+// existing `expires_at` index. It is deliberately NON-blocking for playback:
 //   • Runs on a low-frequency interval (default 30 min), NOT per-request.
 //   • Any failure is swallowed — it can never affect playback.
 //   • The interval is unref'd so it does not prevent a clean process shutdown.
-//   • Only rows whose expires_at has passed are deleted (never valid rows).
+//   • Only rows that are BOTH old (expires_at passed, performance TTL) AND
+//     provably non-reusable are deleted:
+//         verification_status = 'invalid'  (proven dead), or
+//         detected_expires_at <= NOW()      (real upstream expiry has passed)
+//   • Reusable rows (unknown/active with no passed upstream expiry) are NEVER
+//     deleted by age alone. AGE IS NOT PROOF OF DEATH.
 const SWEEP_INTERVAL_MS = Number(process.env.STREAM_CACHE_SWEEP_INTERVAL_MS || 30 * 60 * 1000);
 
 /**
- * Delete expired cache rows (best-effort). Never throws.
+ * Prune only proven-dead/known-upstream-expired old rows (best-effort).
+ * Reusable rows are retained indefinitely. Never throws.
  * @returns {Promise<number>} number of rows deleted
  */
 async function sweepExpired() {
   try {
+    const now = new Date();
     const [result] = await db.query(
-      'DELETE FROM episode_stream_cache WHERE expires_at <= ?',
-      [new Date()]
+      `DELETE FROM episode_stream_cache
+        WHERE expires_at <= ?
+          AND (
+            verification_status = 'invalid'
+            OR (detected_expires_at IS NOT NULL AND detected_expires_at <= ?)
+          )`,
+      [now, now]
     );
     const deleted = result?.affectedRows || 0;
     if (deleted > 0) {
@@ -1025,11 +1157,14 @@ module.exports = {
   findCachedStream,
   saveStream,
   deleteInvalidCache,
+  invalidateSource,
   isExpired,
   getOrResolve,
   sweepExpired,
   startSweeper,
   isCachedSourceAlive,
+  // Probe with status (for evidence-based invalidation) + boolean wrapper.
+  probeSource,
   // Verification functions (exposed for testing + external use).
   verifySource,
   verifySourceWithRange,

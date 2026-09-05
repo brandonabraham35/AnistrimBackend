@@ -13,8 +13,12 @@ function loadMetrics() {
   }
 
   const mockDb = { query: async () => [[{
-    total: 10, active: 6, known_expiry: 3, unknown_expiry: 7
-  }]] };
+    total: 10, active: 6, unknown: 3, invalid: 1,
+    known_expiry: 3, unknown_expiry: 7, known_expired: 2,
+    verified_5m: 1, verified_1h: 4, verified_24h: 8,
+    oldest_age_sec: 30 * 86400, avg_age_sec: 5 * 86400,
+    older_1d: 6, older_7d: 3, older_30d: 1,
+  }, []]] };
   const mockLogger = { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} };
 
   const dbPath = require.resolve('../config/db');
@@ -78,6 +82,34 @@ describe('Stream Cache Metrics', () => {
       assert.strictEqual(metrics.counters.playbackReportedFailures, 1);
     });
 
+    it('recordProviderCall increments animeHeavenCalls and the right category', () => {
+      const metrics = loadMetrics();
+      metrics.reset();
+      metrics.recordProviderCall('user_fresh_resolution');
+      metrics.recordProviderCall('cache_miss');
+      metrics.recordProviderCall('cache_invalid');
+      metrics.recordProviderCall('prefetch');
+      metrics.recordProviderCall('liveness_failure');
+      metrics.recordProviderCall('retry');
+
+      assert.strictEqual(metrics.counters.animeHeavenCalls, 6);
+      assert.strictEqual(metrics.counters.animeHeavenUserCalls, 4);
+      assert.strictEqual(metrics.counters.animeHeavenPrefetchCalls, 1);
+      assert.strictEqual(metrics.counters.animeHeavenRepairCalls, 1);
+      assert.strictEqual(metrics.counters.animeHeavenRetryCalls, 1);
+    });
+
+    it('recordInvalidation only records evidence-based reasons', () => {
+      const metrics = loadMetrics();
+      metrics.reset();
+      metrics.recordInvalidation('confirmed_403');
+      metrics.recordInvalidation('confirmed_404');
+      metrics.recordInvalidation('other_confirmed_dead');
+      assert.strictEqual(metrics.counters.invalidationConfirmed403, 1);
+      assert.strictEqual(metrics.counters.invalidationConfirmed404, 1);
+      assert.strictEqual(metrics.counters.invalidationOtherConfirmedDead, 1);
+    });
+
     it('ignores unknown counter names', () => {
       const metrics = loadMetrics();
       metrics.reset();
@@ -115,7 +147,7 @@ describe('Stream Cache Metrics', () => {
   });
 
   describe('snapshot', () => {
-    it('returns all 16 metrics fields', async () => {
+    it('returns the persistent-until-proven-dead metrics fields', async () => {
       const metrics = loadMetrics();
       metrics.reset();
       metrics.increment('redisHits');
@@ -127,6 +159,7 @@ describe('Stream Cache Metrics', () => {
       metrics.increment('verificationSuccesses');
       metrics.increment('verificationFailures');
       metrics.recordSourceLifetime(3600000);
+      metrics.recordProviderCall('prefetch');
 
       const snapshot = await metrics.getSnapshot();
 
@@ -134,9 +167,11 @@ describe('Stream Cache Metrics', () => {
       assert.strictEqual(snapshot.mysqlHits, 1);
       assert.strictEqual(snapshot.cacheMisses, 1);
       assert.strictEqual(snapshot.resolverCalls, 1);
-      assert.strictEqual(snapshot.animeHeavenCalls, 1);
+      // animeHeavenCalls = 1 direct increment + 1 from recordProviderCall
+      assert.strictEqual(snapshot.animeHeavenCalls, 2);
+      assert.strictEqual(snapshot.animeHeavenPrefetchCalls, 1);
       assert.strictEqual(snapshot.consumetCalls, 1);
-      assert.strictEqual(snapshot.thordataCalls, 0);
+      assert.strictEqual(snapshot.tier1Hits, 0);
       assert.strictEqual(snapshot.expiredSources, 0);
       assert.strictEqual(snapshot.invalidSources, 0);
       assert.strictEqual(snapshot.verificationSuccesses, 1);
@@ -146,6 +181,19 @@ describe('Stream Cache Metrics', () => {
       assert.strictEqual(snapshot.knownExpirySources, 3);
       assert.strictEqual(snapshot.unknownExpirySources, 7);
       assert.ok(snapshot.averageSourceLifetimeMs > 0);
+
+      // Persistent-until-proven-dead fields
+      assert.strictEqual(snapshot.persistentSources, 10);
+      assert.strictEqual(snapshot.reusableSources, 9);
+      assert.strictEqual(snapshot.invalidSourcesCount, 1);
+      assert.strictEqual(snapshot.knownExpiredSources, 2);
+      assert.strictEqual(snapshot.recentlyVerifiedSources.within24h, 8);
+      assert.strictEqual(snapshot.sourceAgeBuckets.older30d, 1);
+      assert.strictEqual(snapshot.invalidationReasons.known_upstream_expiry, 2);
+
+      // Cache efficiency derived from observable counters (no fabrication)
+      assert.strictEqual(snapshot.providerCallsAvoided, 2); // redis + mysql hits
+      assert.ok(snapshot.cacheHitRate != null);
     });
 
     it('handles DB failure gracefully', async () => {
@@ -162,6 +210,10 @@ describe('Stream Cache Metrics', () => {
       assert.strictEqual(snapshot.activeCachedSources, 0);
       assert.strictEqual(snapshot.knownExpirySources, 0);
       assert.strictEqual(snapshot.unknownExpirySources, 0);
+      assert.strictEqual(snapshot.persistentSources, 0);
+      assert.strictEqual(snapshot.reusableSources, 0);
+      assert.strictEqual(snapshot.invalidSourcesCount, 0);
+      assert.strictEqual(snapshot.knownExpiredSources, 0);
       assert.strictEqual(snapshot.redisHits, 0);
     });
   });

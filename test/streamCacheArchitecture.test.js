@@ -268,9 +268,10 @@ describe('14. Source state machine', () => {
   test('INVALID when verification_status is invalid', () => {
     assert.strictEqual(streamCacheService.getSourceState(makeCacheRow({ verification_status: 'invalid' }), Date.now()), 'invalid');
   });
-  test('EXPIRED when TTL passed', () => {
+  test('UNKNOWN when only AniStrim TTL (expires_at) passed — age is not proof of death', () => {
     const row = makeCacheRow({ expires_at: new Date(Date.now() - 3600 * 1000), detected_expires_at: null });
-    assert.strictEqual(streamCacheService.getSourceState(row, Date.now()), 'expired');
+    assert.strictEqual(streamCacheService.getSourceState(row, Date.now()), 'unknown');
+    assert.strictEqual(streamCacheService.isReusable(row, Date.now()), true);
   });
 });
 
