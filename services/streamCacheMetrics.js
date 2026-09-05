@@ -83,6 +83,11 @@ const counters = {
   invalidationConfirmed403: 0,
   invalidationConfirmed404: 0,
   invalidationOtherConfirmedDead: 0,
+
+  // Provider-calls-avoided: a cache hit (Tier-1/Redis/MySQL reusable source)
+  // or the prefetch persistent-cache gate that genuinely prevented a provider
+  // resolution. This is an EXPLICIT event counter, not a derived approximation.
+  providerCallsAvoided: 0,
 };
 
 // Structured provider-call reasons → dashboard category.
@@ -136,6 +141,25 @@ function recordSourceLifetime(lifetimeMs) {
   if (sourceLifetimes.length > MAX_LIFETIME_SAMPLES) {
     sourceLifetimes.shift();
   }
+}
+
+/**
+ * Record a genuinely avoided provider call.
+ *
+ * Incremented ONLY at real cache-serving/avoidance boundaries:
+ *   • Tier-1 cache hit            (resolveStream returns cached payload)
+ *   • persistent Redis hit        (resolveStream / getOrResolve return without provider)
+ *   • persistent MySQL reusable hit (liveness probe passes, source served)
+ *   • in-memory resolver hit      (getOrResolve returns a settled result)
+ *   • prefetch persistent gate    (next episode already cached → no AnimeHeaven)
+ *
+ * NEVER incremented for verification, invalidation, metric-only ops, failed
+ * requests, retries, provider calls, or cache misses. This is the authoritative
+ * (explicit) number behind the dashboard's "Provider Calls Avoided" display —
+ * not a derived cache-hit approximation.
+ */
+function recordProviderAvoided() {
+  counters.providerCallsAvoided += 1;
 }
 
 // ── Provider-call reason observability ─────────────────────
@@ -327,9 +351,14 @@ async function getSnapshot(dbPool) {
     averageSourceLifetimeMs: Math.round(avgLifetimeMs),
     sourceLifetimeSamples: sourceLifetimes.length,
 
-    // Cache efficiency (derived, observable counters only)
+    // Cache efficiency
+    //   cacheHitRate               — derived, observable counters only
+    //   providerCallsAvoided       — EXPLICIT event counter (not derived). The
+    //                                only derived/approximate number is
+    //                                cacheHitRate; providerCallsAvoided is now
+    //                                an authoritative explicit counter.
     cacheHitRate: cacheLookups > 0 ? Math.round((cacheHits / cacheLookups) * 10000) / 100 : null,
-    providerCallsAvoided: cacheHits,
+    providerCallsAvoided: counters.providerCallsAvoided,
 
     // DB source counts (live query on episode_stream_cache, ALL rows — the age
     // of `expires_at` is never treated as source death)
@@ -376,6 +405,7 @@ module.exports = {
   increment,
   recordSourceLifetime,
   recordProviderCall,
+  recordProviderAvoided,
   recordInvalidation,
   getSnapshot,
   reset,

@@ -868,6 +868,8 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
           });
           // Record Tier-1 cache hit for observability.
           streamCacheMetrics.increment('tier1Hits');
+          // Tier-1 served the payload → no provider resolution was needed.
+          streamCacheMetrics.recordProviderAvoided();
           return {
             provider: cached.provider || ANIME_HEAVEN_TAG,
             streamUrl: best.url,
@@ -925,6 +927,7 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
         if (!upstreamExpired) {
           logger.debugStream('Redis stream cache hit', { anime: animeTitle, episode: episodeNumber, episodeId });
           streamCacheMetrics.increment('redisHits');
+          streamCacheMetrics.recordProviderAvoided(); // persistent Redis served → no provider
           const filteredSources = filterSourcesByTier(redisHit.sources, isPremium);
           if (filteredSources.length > 0) {
             const best = pickBestSource(filteredSources);
@@ -996,6 +999,8 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
 
         // Record direct MySQL cache hit (user-facing serving path).
         streamCacheMetrics.increment('mysqlHits');
+        // Reusable persistent MySQL source served → no provider resolution.
+        streamCacheMetrics.recordProviderAvoided();
 
         const payload = {
           provider: cachedWinner.provider || STREAM_CACHE_PROVIDER,
@@ -1043,6 +1048,21 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
   let winner = null;
   let winnerProvider = null;
   let lastError = null;
+
+  // ── Semantic cache-miss / resolver boundary ────────────────
+  // We reach this point ONLY when the general Tier-1 cache MISSED (it returns
+  // above on a hit), AND the persistent cache is unavailable (Redis miss,
+  // MySQL miss/invalid/expired — reusable hits return above). That is the
+  // single "cache miss" event for the primary playback path.
+  //
+  // We are about to start a fresh provider resolution, so record ONE resolver
+  // call here (not per retry — retries are the same logical resolution). The
+  // repair/liveness path (proven-dead MySQL hit → invalidateSource →
+  // continueWithFreshResolution → getOrResolve()) never reaches this block and
+  // has its own single cache-miss/resolver accounting, so there is NO double
+  // counting.
+  streamCacheMetrics.increment('cacheMisses');
+  streamCacheMetrics.increment('resolverCalls');
 
   // Attempt 1..3: AnimeHeaven.
   // The FIRST attempt's reason reflects why the persistent tier missed
@@ -1273,6 +1293,9 @@ async function prefetchNextEpisode(animeTitle, currentEpisodeNumber, isPremium) 
       try {
         const existing = await streamCacheService.findCachedStream(nextIdentifiers.episodeId, STREAM_CACHE_PROVIDER);
         if (existing.result) {
+          // Persistent-cache gate: a reusable source already exists for episode
+          // N+1 → AnimeHeaven is NOT contacted. Record the avoided provider call.
+          streamCacheMetrics.recordProviderAvoided();
           logger.debugStream('Prefetch: next episode already has a reusable persistent source — skipping provider', {
             anime: animeTitle,
             nextEp,

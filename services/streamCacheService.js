@@ -621,16 +621,6 @@ async function findCachedStream(episodeId, provider) {
 
     logger.info('[STREAM_CACHE] HIT', { episodeId, provider, state });
     return { row, result: reconstructProviderResult(row), state };
-// ── DIAG: log cache hit with context age check ──────────
-    try {
-      const { getPlaybackContext } = require('./animeHeavenProvider');
-      const result = reconstructProviderResult(row);
-      const firstSrc = result?.sources?.[0];
-      const playbackCtx = getPlaybackContext(firstSrc?.url, firstSrc?.referer || null);
-      const cacheAge = row.resolved_at ? Date.now() - new Date(row.resolved_at).getTime() : 0;
-      const remaining = new Date(row.expires_at).getTime() - Date.now();
-      streamDiag.logCacheHit(episodeId, provider, row, result, cacheAge, remaining, playbackCtx);
-    } catch (_) { /* non-fatal diagnostic */ }
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (find)', { episodeId, provider, error: err.message });
     return { row: null, result: null, state: null };
@@ -887,9 +877,15 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
 
 /**
  * Delete an invalid/expired cache row (best-effort).
+ *
+ * NOTE: this is the legacy hard-delete path (still used by
+ * streamObservationService on a directly confirmed 403/404). The primary
+ * invalidation path is `invalidateSource()` below, which preserves the
+ * historical MySQL row by setting verification_status='invalid' instead of
+ * deleting it.
+ *
  * @param {number|string} episodeId
  * @param {string} provider
-streamDiag.logCacheInvalidation(episodeId, provider, 'probe_dead', null, null);
  * @returns {Promise<boolean>}
  */
 async function deleteInvalidCache(episodeId, provider) {
@@ -1011,6 +1007,7 @@ async function getOrResolve(episodeId, provider, resolver) {
       if (!upstreamExpired) {
         logger.info('[STREAM_CACHE] REDIS_HIT', { episodeId, provider });
         streamCacheMetrics.increment('redisHits');
+        streamCacheMetrics.recordProviderAvoided();
         return redisHit;
       }
       logger.info('[STREAM_CACHE] REDIS_EXPIRED', { episodeId, provider });
@@ -1025,6 +1022,7 @@ async function getOrResolve(episodeId, provider, resolver) {
   if (memCached && memCached.sources && memCached.sources.length > 0) {
     logger.info('[STREAM_CACHE] MEMORY_HIT', { episodeId, provider });
     streamCacheMetrics.increment('inMemoryHits');
+    streamCacheMetrics.recordProviderAvoided();
     return memCached;
   }
 
@@ -1048,6 +1046,7 @@ async function getOrResolve(episodeId, provider, resolver) {
     }
     logger.info('[STREAM_CACHE] MYSQL_HIT', { episodeId, provider });
     streamCacheMetrics.increment('mysqlHits');
+    streamCacheMetrics.recordProviderAvoided();
     return dbHit.result;
   }
 

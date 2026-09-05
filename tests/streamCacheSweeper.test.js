@@ -24,6 +24,7 @@ const mockStreamDiag = { logCacheProbe() {}, logCacheCreation() {}, logFreshReso
 
 const mockMetrics = {
   increment() {}, recordSourceLifetime() {}, recordProviderCall() {}, recordInvalidation() {},
+  recordProviderAvoided() {},
   getSnapshot: async () => ({}), reset() {}, counters: {}, sourceLifetimes: [],
 };
 

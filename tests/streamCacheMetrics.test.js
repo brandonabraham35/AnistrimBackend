@@ -191,8 +191,15 @@ describe('Stream Cache Metrics', () => {
       assert.strictEqual(snapshot.sourceAgeBuckets.older30d, 1);
       assert.strictEqual(snapshot.invalidationReasons.known_upstream_expiry, 2);
 
-      // Cache efficiency derived from observable counters (no fabrication)
-      assert.strictEqual(snapshot.providerCallsAvoided, 2); // redis + mysql hits
+      // Cache efficiency — providerCallsAvoided is an EXPLICIT event counter:
+      // it only increments via recordProviderAvoided() at genuine
+      // cache-serving/avoidance boundaries (Tier-1/Redis/MySQL hits, prefetch
+      // gate). Merely incrementing tier hit counters does NOT increment it.
+      assert.strictEqual(snapshot.providerCallsAvoided, 0);
+      metrics.recordProviderAvoided(); // e.g. Tier-1 served the payload
+      metrics.recordProviderAvoided(); // e.g. prefetch gate skipped provider
+      const snapshot2 = await metrics.getSnapshot();
+      assert.strictEqual(snapshot2.providerCallsAvoided, 2);
       assert.ok(snapshot.cacheHitRate != null);
     });
 

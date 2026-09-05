@@ -130,6 +130,7 @@ const mockStreamCacheMetrics = {
   increment() {}, reset() {}, getSnapshot: async () => ({}),
   recordSourceLifetime() {}, counters: {},
   recordProviderCall() {}, recordInvalidation() {},
+  recordProviderAvoided() {},
 };
 
 const mockStreamDiagnostics = {
