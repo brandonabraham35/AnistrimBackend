@@ -5,21 +5,8 @@
 (function () {
   'use strict';
 
-  let _currentPlatform = 'all';
-  let _currentRange = 30;
-
   function initializeAnalyticsSection() {
     console.log('[Analytics] Initializing...');
-
-    document.getElementById('analytics-platform')?.addEventListener('change', (e) => {
-      _currentPlatform = e.target.value;
-      loadAnalytics();
-    });
-
-    document.getElementById('analytics-range')?.addEventListener('change', (e) => {
-      _currentRange = parseInt(e.target.value);
-      loadAnalytics();
-    });
 
     loadAnalytics();
   }
@@ -59,8 +46,6 @@
     setEl('analytics-total-users', users.total || 0);
     setEl('analytics-active-today', users.activeToday || 0);
     setEl('analytics-total-views', window._formatNumber ? window._formatNumber(content.totalViews || 0) : (content.totalViews || 0));
-    // Searches not available from dashboard overview, show 0
-    setEl('analytics-total-searches', 0);
 
     // Platform breakdown
     const container = document.getElementById('analytics-platform-breakdown');
@@ -140,9 +125,6 @@
     setEl('sc-animeheaven', window._formatNumber ? window._formatNumber(sc.animeHeavenCalls || 0) : (sc.animeHeavenCalls || 0));
     setEl('sc-consumet', window._formatNumber ? window._formatNumber(sc.consumetCalls || 0) : (sc.consumetCalls || 0));
     setEl('sc-resolvers', window._formatNumber ? window._formatNumber(sc.resolverCalls || 0) : (sc.resolverCalls || 0));
-    setEl('sc-avg-lifetime', sc.averageSourceLifetimeMs
-      ? Math.round(sc.averageSourceLifetimeMs / 60000) + 'm'
-      : '—');
 
     setEl('sc-verify-ok', window._formatNumber ? window._formatNumber(sc.verificationSuccesses || 0) : (sc.verificationSuccesses || 0));
     setEl('sc-verify-fail', window._formatNumber ? window._formatNumber(sc.verificationFailures || 0) : (sc.verificationFailures || 0));

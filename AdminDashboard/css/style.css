@@ -567,6 +567,18 @@ body::before {
     gap: 0.5rem;
 }
 
+/* Global header: hidden on desktop (each section has its own page header),
+   shown on mobile so the hamburger button can open the sidebar. */
+#global-header {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    #global-header {
+        display: flex;
+    }
+}
+
 .live-badge i {
     color: var(--accent-cyan);
     font-size: 0.7rem;
@@ -1334,10 +1346,6 @@ th.sortable.sorted-desc i::before { content: '\f0dd'; } /* fa-sort-down */
 }
 
 /* Confirmation modal refinements */
-#confirm-modal .anime-import-dialog {
-  max-width: 420px;
-}
-
 /* ─── Dashboard Recent Payments Table ──────────────────────── */
 #recent-payments-table {
   width: 100%;

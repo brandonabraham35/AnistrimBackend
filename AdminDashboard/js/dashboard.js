@@ -104,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
       { id: 'chart-anime-growth', type: 'anime-growth', label: 'Anime Growth' },
       { id: 'chart-episode-views', type: 'episode-views', label: 'Episode Views' },
       { id: 'chart-genre-distribution', type: 'genre-distribution', label: 'Genre Distribution' },
-      { id: 'chart-provider-usage', type: 'provider-usage', label: 'Provider Usage' },
     ];
 
     const chartPromises = chartTypes.map(async (chart) => {
@@ -112,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await window.apiRequest(`/api/admin/dashboard/charts/${chart.type}`);
         if (!data || !data.labels || !data.values) return;
 
-        const isPie = chart.type === 'genre-distribution' || chart.type === 'provider-usage';
+        const isPie = chart.type === 'genre-distribution';
         const colors = ['#dc2626', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6'];
 
         if (isPie) {

@@ -198,13 +198,6 @@ actionBtn.classList.contains('sync-streams') ? 'sync-streams' :
     _$el('anime-details-modal').hidden = true;
   });
 
-  // Confirm modal
-  _$el('confirm-modal-cancel')?.addEventListener('click', _closeConfirmModal);
-  _$el('confirm-modal-confirm')?.addEventListener('click', () => {
-    if (_confirmCallback) _confirmCallback();
-    _closeConfirmModal();
-  });
-
   // Click outside modals
   document.querySelectorAll('.anime-import-modal').forEach(modal => {
     modal.addEventListener('click', (e) => {
@@ -839,20 +832,9 @@ async function _showDetails(id) {
 }
 
 // ─── Confirmation Modal
-// Using shared _confirm() from shared.js
-let _confirmCallback = null;
-
+// Uses shared _confirm() from shared.js (dynamic overlay modal).
 function _showConfirm(title, message) {
-  return _confirm(
-    title,
-    message.replace(/\n/g, ' '),
-    'Confirm',
-    'Cancel'
-  );
-}
-
-function _closeConfirmModal() {
-  _confirmCallback = null;
+  return _confirm(title, String(message || '').replace(/\n/g, ' '), 'Confirm', 'Cancel');
 }
 
 // ─── Add/Edit Modal ───────────────────────────────────────────────────────────

@@ -30,7 +30,7 @@
     </div>
 
     <div class="main-content">
-        <div class="header" id="global-header" style="display:none;">
+        <div class="header" id="global-header">
             <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Open menu">
                 <i class="fas fa-bars"></i>
             </button>
@@ -38,7 +38,6 @@
                 <i class="fa fa-shield-halved"></i>
                 <span>Administrative Overview</span>
             </h2>
-            <div id="active-user-badge" class="live-badge"><i class="fas fa-circle"></i> Live Testing Environment</div>
         </div>
         <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
@@ -359,14 +358,6 @@
                         <div class="chart-container" id="chart-genre-distribution" style="height:200px;"><canvas></canvas></div>
                     </div>
 
-                    <!-- Provider Usage -->
-                    <div class="section-card">
-                        <div class="section-card-header">
-                            <h4 class="section-card-title"><i class="fas fa-server"></i> Provider Usage</h4>
-                        </div>
-                        <div class="chart-container" id="chart-provider-usage" style="height:200px;"><canvas></canvas></div>
-                    </div>
-
                     <!-- Ads Metrics (ad_events) -->
                     <div class="section-card">
                         <div class="section-card-header">
@@ -417,19 +408,6 @@
         <section id="analytics" class="content-section">
             <div class="page-header">
                 <h1><i class="fas fa-chart-line"></i> Analytics</h1>
-                <div class="header-actions">
-                    <select id="analytics-platform" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text)">
-                        <option value="all">All Platforms</option>
-                        <option value="web">Web</option>
-                        <option value="mobile">Mobile</option>
-                        <option value="desktop">Desktop</option>
-                    </select>
-                    <select id="analytics-range" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text)">
-                        <option value="7">7 Days</option>
-                        <option value="30" selected>30 Days</option>
-                        <option value="90">90 Days</option>
-                    </select>
-                </div>
             </div>
 
             <!-- Overview Cards -->
@@ -450,12 +428,6 @@
                     <div class="stat-card-info card-info">
                         <div class="stat-card-label">Total Views</div>
                         <div class="stat-card-value value" id="analytics-total-views">—</div>
-                    </div>
-                </div>
-                <div class="stat-card card">
-                    <div class="stat-card-info card-info">
-                        <div class="stat-card-label">Total Searches</div>
-                        <div class="stat-card-value value" id="analytics-total-searches">—</div>
                     </div>
                 </div>
             </div>
@@ -480,6 +452,10 @@
             <div class="section-card" id="stream-cache-section">
                 <div class="section-card-header">
                     <h4 class="section-card-title"><i class="fas fa-server"></i> Stream Cache Metrics</h4>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-muted,#9ca3af);margin-bottom:0.75rem;">
+                    Hit/miss and resolver counters are <strong>process-lifetime (since last restart)</strong>.
+                    Source counts (Persistent/Reusable/Invalid/Age) are live database totals.
                 </div>
                 <!-- Persistent-until-proven-dead policy panel -->
                 <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;">
@@ -529,7 +505,7 @@
                     </div>
                     <div class="stat-card card">
                         <div class="stat-card-info card-info">
-                            <div class="stat-card-label">In-Memory Hits</div>
+                            <div class="stat-card-label" title="In-flight resolver/repair-path memory-cache hits (process-lifetime). Not normal playback cache hits.">Resolver Memory Hits</div>
                             <div class="stat-card-value value" id="sc-in-memory-hits">—</div>
                         </div>
                     </div>
@@ -554,12 +530,6 @@
                             <div class="stat-card-value value" id="sc-resolvers">—</div>
                         </div>
                     </div>
-                    <div class="stat-card card">
-                        <div class="stat-card-info card-info">
-                            <div class="stat-card-label">Avg Lifetime</div>
-                            <div class="stat-card-value value" id="sc-avg-lifetime">—</div>
-                        </div>
-                    </div>
                 </div>
                 <div style="height:16px"></div>
                 <div class="stats-grid" id="stream-cache-health">
@@ -577,13 +547,13 @@
                     </div>
                     <div class="stat-card card">
                         <div class="stat-card-info card-info">
-                            <div class="stat-card-label">Known Expiry</div>
+                            <div class="stat-card-label" title="Sources with known upstream expiration information (detected_expires_at). Note: known upstream expiry does not by itself mark a source invalid.">Known Upstream Expiry</div>
                             <div class="stat-card-value value" id="sc-known-expiry">—</div>
                         </div>
                     </div>
                     <div class="stat-card card">
                         <div class="stat-card-info card-info">
-                            <div class="stat-card-label">Unknown Expiry</div>
+                            <div class="stat-card-label" title="Sources with no known upstream expiry established. This does NOT mean expired — these sources remain reusable.">No Known Upstream Expiry</div>
                             <div class="stat-card-value value" id="sc-unknown-expiry">—</div>
                         </div>
                     </div>
@@ -657,7 +627,7 @@
                     </div>
                     <div class="stat-card card">
                         <div class="stat-card-info card-info">
-                            <div class="stat-card-label">Cache Hit Rate</div>
+                            <div class="stat-card-label" title="Derived/approximate metric computed from observable cache-hit counters. Not an exact provider-avoidance percentage — see Provider Calls Avoided.">Derived Cache Hit Rate</div>
                             <div class="stat-card-value value" id="sc-hit-rate">—</div>
                         </div>
                     </div>
@@ -1254,20 +1224,6 @@
         </div>
     </div>
 
-    <!-- Confirm Modal -->
-    <div id="confirm-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
-        <div class="anime-import-dialog" style="max-width:420px;">
-            <div class="anime-import-header"><h3 id="confirm-modal-title">Confirm Action</h3></div>
-            <div class="anime-import-panel" style="text-align:center;">
-                <p id="confirm-modal-message" style="margin-bottom:1.5rem;font-size:1.05rem;"></p>
-                <div style="display:flex;gap:.75rem;justify-content:center;">
-                    <button type="button" class="btn secondary" id="confirm-modal-cancel">Cancel</button>
-                    <button type="button" class="btn danger" id="confirm-modal-confirm">Confirm</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Anime Details Modal -->
     <div id="anime-details-modal" class="anime-import-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="anime-details-title">
         <div class="anime-import-dialog" style="max-width:700px;">
@@ -1356,7 +1312,6 @@
                     <label>Premium Expiry <input id="edit-user-premium-expiry" name="premium_expires_at" type="date"></label>
                     <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
                         <button type="submit" class="btn">Save Changes</button>
-                        <button type="button" class="btn secondary" id="close-edit-user-modal-cancel">Cancel</button>
                     </div>
                 </form>
             </div>
@@ -1377,7 +1332,6 @@
                     </label>
                     <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
                         <button type="submit" class="btn">Save Changes</button>
-                        <button type="button" class="btn secondary" id="close-edit-genre-modal-cancel">Cancel</button>
                     </div>
                 </form>
             </div>
@@ -1421,7 +1375,6 @@
                     <label><input id="ep-is-premium" name="is_premium" type="checkbox"> Premium only</label>
                     <div class="wide" style="display:flex;gap:.75rem;margin-top:0.5rem;">
                         <button type="submit" class="btn">Save Episode</button>
-                        <button type="button" class="btn secondary" id="close-episode-modal-cancel">Cancel</button>
                     </div>
                 </form>
             </div>
