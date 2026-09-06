@@ -177,6 +177,10 @@ describe('Stream cache reuse after NOT_REUSABLE (audit Step 1)', () => {
     state.providerLog.length = 0;
     state.queryLog.length = 0;
     mockCache.store.clear();
+    // Resolution now flows through getOrResolve()'s single-flight manager,
+    // which keeps a short-lived in-memory copy of the last resolution.
+    // Reset it so each test starts with cold caches (as on a fresh boot).
+    require('../services/inFlightResolverManager').reset();
   });
 
   function saveUpserts() {

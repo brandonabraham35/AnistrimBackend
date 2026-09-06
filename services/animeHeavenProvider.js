@@ -2647,6 +2647,8 @@ let targetIdentifier = identifier || slug || null;
         anime: details.title,
         episode: selected.number,
         hasHtml: !!gatePage.html,
+        providerResolution: true,
+        stage: 'gate',
       });
 
       if (gatePage.reason === REASON.CLOUDFLARE) recordProviderMetric('cloudflare', Date.now() - started);
@@ -2796,7 +2798,7 @@ sources = sortSourcesByQuality(sources)
         .map(src => Object.assign({}, src, { forDownload: true }));
       sources = sources.filter(src => !isDownloadSource(src));
 
-      logger.info('[PLAYBACK]', { event: 'sourceValidated', title, episode, sourceCount: sources.length, downloadSourceCount: downloadSources.length });
+      logger.info('[PLAYBACK]', { event: 'sourceValidated', title, episode, sourceCount: sources.length, downloadSourceCount: downloadSources.length, providerResolution: true, stage: 'media' });
 
       if (!sources.length) {
         logger.info('[AnimeHeaven] Stream missing', { title, episode });
@@ -2865,6 +2867,8 @@ sources = sortSourcesByQuality(sources)
         title,
         episode,
         sources: sources.length,
+        providerResolution: true,
+        stage: 'complete',
       });
 
       // Final timing log for extractStreams

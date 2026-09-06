@@ -8,7 +8,7 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const config = require('../config/streamCache');
-const { request } = require('../utils/providerHttp');
+const { request, isPermanentSourceFailure } = require('../utils/providerHttp');
 const { fingerprint, compareUrls } = require('../utils/urlFingerprint');
 const { getPlaybackContext } = require('./animeHeavenProvider');
 
@@ -36,7 +36,7 @@ async function checkDirect(url, context) { if (!context) context = {};
         return { status: rr.status || 200, contentType: rr.headers ? rr.headers['content-type'] || null : null, durationMs: Date.now() - start, alive: true, failureCategory: null };
       } catch (re) { return { status: re && re.response ? re.response.status : 0, contentType: null, durationMs: Date.now() - start, alive: false, failureCategory: classifyFailureStatus(re && re.response ? re.response.status : 0, re) }; }
     }
-    return { status: s, contentType: null, durationMs: Date.now() - start, alive: s !== 403 && s !== 404, failureCategory: classifyFailureStatus(s, e) };
+    return { status: s, contentType: null, durationMs: Date.now() - start, alive: !isPermanentSourceFailure(s), failureCategory: classifyFailureStatus(s, e) };
   }
 }
 
@@ -91,7 +91,7 @@ async function recordObservation(episodeId, provider, obs) {
         await db.query('UPDATE episode_stream_cache SET url_first_failure_at = COALESCE(url_first_failure_at, ?), url_last_failure_at = ?, url_failure_count = url_failure_count + 1 WHERE episode_id = ? AND provider = ?', [now, now, episodeId, provider]);
       }
     }
-    logger.info('[STREAM_OBS] recorded', { episodeId: episodeId, provider: provider, directStatus: obs.directStatus, proxyStatus: obs.proxyStatus });
+    logger.info('[STREAM_OBS] recorded', { episodeId: episodeId, provider: provider, directStatus: obs.directStatus, proxyStatus: obs.proxyStatus, sourceValidation: true, method: obs.method || 'HEAD_DIRECT,RANGE_PROXY' });
   } catch (err) { logger.warn('[STREAM_OBS] record failed', { episodeId: episodeId, error: err.message }); }
 }
 
@@ -155,11 +155,21 @@ async function observeOnCacheHit(episodeId, provider, row, playbackCtx) {
       try { pr = await checkProxy(url, { referer: referer, origin: origin, cookies: cookies, userAgent: userAgent }); } catch (_) {}
       var probeAlive = dr.status >= 200 && dr.status < 400;
       var playbackAlive = pr ? (pr.status >= 200 && pr.status < 400) : probeAlive;
-      await recordObservation(episodeId, provider, { checkPath: 'BOTH', url: url, directStatus: dr.status, directDurationMs: dr.durationMs, directContentType: dr.contentType, proxyStatus: pr ? pr.status : null, proxyDurationMs: pr ? pr.durationMs : null, proxyContentType: pr ? pr.contentType : null, probeAlive: probeAlive, playbackAlive: playbackAlive });
-      if ((dr.status === 403 || dr.status === 404) && (!pr || (pr.status !== 200 && pr.status !== 206))) {
+      await recordObservation(episodeId, provider, { checkPath: 'BOTH', url: url, directStatus: dr.status, directDurationMs: dr.durationMs, directContentType: dr.contentType, proxyStatus: pr ? pr.status : null, proxyDurationMs: pr ? pr.durationMs : null, proxyContentType: pr ? pr.contentType : null, probeAlive: probeAlive, playbackAlive: playbackAlive, sourceValidation: true, method: 'HEAD_DIRECT,RANGE_PROXY' });
+      // EVIDENCE RULES: only strong, mutually-confirming evidence may mark the
+      // source unusable. The direct check must be an explicit 403/404/410 AND
+      // the playback-faithful proxy check must ALSO explicitly return
+      // 403/404/410. A proxy failure caused by timeout / network error / 5xx /
+      // 429 is temporary evidence ONLY — it must NOT invalidate the source
+      // (previously a missing/failed proxy check let a cookie-less direct 403
+      // false-positive delete a playable URL). The row is preserved via
+      // invalidateSource() (state machine) instead of a hard delete; the next
+      // playback then re-resolves, and only then.
+      var proxyConfirmedDead = pr && isPermanentSourceFailure(pr.status);
+      if (isPermanentSourceFailure(dr.status) && proxyConfirmedDead) {
         var d = require('./streamCacheService');
-        await d.deleteInvalidCache(episodeId, provider);
-        logger.info('[STREAM_OBS] invalidated URL dead', { episodeId: episodeId, directStatus: dr.status, proxyStatus: pr ? pr.status : null });
+        await d.invalidateSource(episodeId, provider, dr.status);
+        logger.info('[STREAM_OBS] invalidated URL dead', { episodeId: episodeId, directStatus: dr.status, proxyStatus: pr ? pr.status : null, sourceValidation: true, method: 'HEAD_DIRECT,RANGE_PROXY', type: 'confirmed_dead' });
       }
     } catch (err) { logger.warn('[STREAM_OBS] deferred check failed', { episodeId: episodeId, error: err.message }); }
   });
@@ -218,9 +228,11 @@ async function processEpisode(episodeId, forceRefresh) {
     var pr = await checkProxy(url, pctx); result.proxyStatus = pr.status;
     var cls = classifyUrl({ url_observed_lifetime_seconds: row.url_observed_lifetime_seconds, url_failure_count: row.url_failure_count, url_last_failure_at: row.url_last_failure_at, url_first_failure_at: row.url_first_failure_at, observed_last_success_at: row.observed_last_success_at, observed_first_success_at: row.observed_first_success_at, rotation_count: row.rotation_count, probe_playback_match_count: row.probe_playback_match_count, detected_expires_at: row.detected_expires_at });
     result.classification = cls.classification;
-    await recordObservation(episodeId, provider, { checkPath: 'BOTH', url: url, directStatus: dr.status, directDurationMs: dr.durationMs, directContentType: dr.contentType, proxyStatus: pr.status, proxyDurationMs: pr.durationMs, proxyContentType: pr.contentType, probeAlive: dr.alive, playbackAlive: pr.alive });
-    var urlDead = dr.status === 403 || dr.status === 404;
-    var proxyFails = pr.status === 403 || pr.status === 502;
+    await recordObservation(episodeId, provider, { checkPath: 'BOTH', url: url, directStatus: dr.status, directDurationMs: dr.durationMs, directContentType: dr.contentType, proxyStatus: pr.status, proxyDurationMs: pr.durationMs, proxyContentType: pr.contentType, probeAlive: dr.alive, playbackAlive: pr.alive, sourceValidation: true, method: 'HEAD_DIRECT,RANGE_PROXY' });
+    var urlDead = dr.status === 403 || dr.status === 404 || dr.status === 410;
+    // Proxy failure must be PERMANENT evidence (403/404/410) — a proxy 502 /
+    // timeout / network error is temporary and must not trigger a refresh.
+    var proxyFails = isPermanentSourceFailure(pr.status);
     if (forceRefresh || (urlDead && proxyFails)) {
       var ahp = require('./animeHeavenProvider');
       var [ar] = await db.query('SELECT a.animeheaven_slug, e.animeheaven_episode_key FROM episodes e JOIN anime a ON a.id = e.anime_id WHERE e.id = ?', [episodeId]);

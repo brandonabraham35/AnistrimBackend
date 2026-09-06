@@ -467,6 +467,29 @@ const ERROR_CATEGORIES = {
  * @param {Error} err — The error object from axios
  * @returns {{ category: string, status: number, retryable: boolean, description: string }}
  */
+/**
+ * PERMANENT vs TEMPORARY source-failure classification (documented contract).
+ *
+ * PERMANENT (strong evidence the saved URL is unusable):
+ *   403 — CDN/token rejects the saved URL's context
+ *   404 — resource no longer exists
+ *   410 — resource gone
+ *
+ * TEMPORARY (MUST NOT invalidate a saved URL, MUST NOT trigger re-resolution):
+ *   timeouts, ECONNRESET, ECONNREFUSED, DNS failures, 429, 5xx, and any other
+ *   transient network/infrastructure error.
+ *
+ * Used by streamCacheService verification, streamObservationService, and
+ * streamProxyController so every subsystem shares ONE death definition.
+ *
+ * @param {number} status - HTTP status (0 for network-level failures)
+ * @returns {boolean} true only for documented permanent source failures
+ */
+function isPermanentSourceFailure(status) {
+  const s = Number(status) || 0;
+  return s === 403 || s === 404 || s === 410;
+}
+
 function classifyError(err) {
   if (!err) return { category: ERROR_CATEGORIES.UNKNOWN, status: 0, retryable: false, description: 'No error object' };
 
@@ -885,6 +908,7 @@ module.exports = {
 
   // Error classification
   classifyError,
+  isPermanentSourceFailure,
   ERROR_CATEGORIES,
 
 };

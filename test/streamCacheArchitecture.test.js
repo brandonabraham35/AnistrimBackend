@@ -174,12 +174,28 @@ describe('5. Redis unavailable + MySQL MISS', () => {
 // ═══════════════════════════════════════════════════════════
 //  6. Expired MySQL cache (expires_at passed)
 // ═══════════════════════════════════════════════════════════
-describe('6. Expired MySQL cache', () => {
-  test('Expired cache is not used', () => {
+describe('6. Expired MySQL cache reference TTL', () => {
+  test('elapsed expires_at does NOT make a playable (unknown) source non-reusable', () => {
     const past = new Date(Date.now() - 3600 * 1000);
-    const row = makeCacheRow({ expires_at: past });
-    assert.strictEqual(streamCacheService.isExpired(row, Date.now()), true, 'should be expired');
-    assert.strictEqual(streamCacheService.isReusable(row, Date.now()), false, 'should not be reusable');
+    const row = makeCacheRow({ expires_at: past, verification_status: 'unknown', detected_expires_at: null });
+    // The legacy helper specifically reads the AniStrim reference TTL:
+    assert.strictEqual(streamCacheService.isExpired(row, Date.now()), true, 'legacy isExpired reads the reference TTL');
+    // But the source state machine ignores age: a playable URL stays reusable.
+    // AGE IS NOT PROOF OF DEATH — only real upstream expiry / proven death matter.
+    assert.strictEqual(streamCacheService.getSourceState(row, Date.now()), 'unknown');
+    assert.strictEqual(streamCacheService.isReusable(row, Date.now()), true, 'age must not mark a playable URL non-reusable');
+  });
+
+  test('elapsed expires_at does NOT make an ACTIVE source non-reusable', () => {
+    const now = Date.now();
+    const row = makeCacheRow({
+      expires_at: new Date(now - 3600 * 1000),
+      verification_status: 'active',
+      last_verified_at: new Date(now - 60000),
+      detected_expires_at: null,
+    });
+    assert.strictEqual(streamCacheService.getSourceState(row, now), 'active');
+    assert.strictEqual(streamCacheService.isReusable(row, now), true);
   });
 });
 // ═══════════════════════════════════════════════════════════

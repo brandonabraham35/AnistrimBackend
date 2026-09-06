@@ -41,7 +41,7 @@
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const config = require('../config/streamCache');
-const { request } = require('../utils/providerHttp');
+const { request, isPermanentSourceFailure } = require('../utils/providerHttp');
 const inFlightResolverManager = require('./inFlightResolverManager');
 const cache = require('../utils/cacheService');
 const streamCacheMetrics = require('./streamCacheMetrics');
@@ -274,8 +274,8 @@ async function verifySource(url, context = {}) {
       return verifySourceWithRange(url, context, extraHeaders);
     }
 
-    // Explicit dead: 403/404.
-    if (headStatus === 403 || headStatus === 404) {
+    // Explicit dead: 403/404/410 (central permanent-failure classification).
+    if (isPermanentSourceFailure(headStatus)) {
       return { status: headStatus, contentType: null, alive: false };
     }
 
@@ -317,8 +317,8 @@ async function verifySourceWithRange(url, context, extraHeaders) {
   } catch (rangeErr) {
     const rangeStatus = Number(rangeErr?.response?.status || 0);
 
-    // Explicit dead: 403/404.
-    if (rangeStatus === 403 || rangeStatus === 404) {
+    // Explicit dead: 403/404/410 (central permanent-failure classification).
+    if (isPermanentSourceFailure(rangeStatus)) {
       return { status: rangeStatus, contentType: null, alive: false };
     }
 
@@ -527,6 +527,85 @@ function isReusable(row, now = Date.now()) {
 }
 
 /**
+ * Decide whether a reusable cached source is DUE for an upstream liveness
+ * verification, using an INTERVAL/STATE-BASED model.
+ *
+ * Verification is due ONLY when:
+ *   * the source has NEVER been verified (no last_verified_at), or
+ *   * the configured verification interval
+ *     (STREAM_VERIFICATION_INTERVAL_MINUTES, default 30) has elapsed since the
+ *     last successful verification.
+ *
+ * It is NEVER due merely because a playback request happened, and NEVER
+ * because the cache entry is old (expires_at is a performance TTL, not death
+ * evidence). Non-reusable rows (invalid/expired) are never scheduled — they
+ * are not served anyway.
+ *
+ * @param {object} row - DB row from episode_stream_cache (as returned by findCachedStream)
+ * @param {number} [now] - Date.now()
+ * @returns {boolean} true when an upstream verification MAY occur
+ */
+function isSourceVerificationDue(row, now = Date.now()) {
+  if (!row || !isReusable(row, now)) return false;
+  if (!row.last_verified_at) return true; // never verified → initial verification
+  const lastVerified = new Date(row.last_verified_at).getTime();
+  if (!Number.isFinite(lastVerified)) return true;
+  const intervalMs = config.verificationIntervalMinutes * 60 * 1000;
+  return (now - lastVerified) >= intervalMs;
+}
+
+/**
+ * Conditionally schedule a DEFERRED (non-blocking) upstream liveness check for
+ * a reusable cached source. This is the ONLY on-playback verification entry
+ * point, and it is governed by isSourceVerificationDue():
+ *
+ *   * recently-verified / active sources → NO upstream request at all;
+ *   * never-verified or interval-elapsed sources → ONE deferred HEAD/Range
+ *     check (verifyAndRecord), never awaited by the playback request;
+ *   * temporary failures (timeout / 429 / 5xx / network errors) are fail-open
+ *     and CANNOT mark the source dead — the row stays reusable;
+ *   * ONLY an explicit 403/404/410 marks the source unusable, via
+ *     invalidateSource() (row preserved, Redis purged) so the NEXT playback
+ *     performs a fresh resolution. The CURRENT playback always continues with
+ *     the saved URL.
+ *
+ * @param {number|string} episodeId
+ * @param {string} provider
+ * @param {object} row - DB row (findCachedStream shape)
+ * @param {object} [context] - { referer, origin }
+ * @returns {boolean} true when a verification was scheduled (deferred)
+ */
+function scheduleVerificationIfNeeded(episodeId, provider, row, context = {}) {
+  if (!episodeId || !provider || !row) return false;
+  if (!isSourceVerificationDue(row)) return false;
+
+  const data = row.stream_data || {};
+  const url = data.streamUrl || (Array.isArray(data.sources) && data.sources[0] && data.sources[0].url) || null;
+  if (!url) return false;
+
+  const referer = (Array.isArray(data.sources) && data.sources[0] && data.sources[0].referer) || context.referer || null;
+  const origin = (Array.isArray(data.sources) && data.sources[0] && data.sources[0].origin) || context.origin || null;
+
+  setImmediate(async () => {
+    try {
+      const result = await verifyAndRecord(row.id, url, { referer, origin });
+      if (!result.alive) {
+        // verifyAndRecord only returns alive=false for explicit 403/404/410 —
+        // strong evidence of death. Preserve the row via invalidateSource();
+        // the next playback re-resolves. Temporary failures never reach here.
+        await invalidateSource(episodeId, provider, result.status);
+      }
+    } catch (err) {
+      // Never let a verification problem affect playback or the cache row.
+      logger.warn('[STREAM_CACHE] deferred verification failed (non-fatal)', {
+        episodeId, provider, error: err && err.message,
+      });
+    }
+  });
+  return true;
+}
+
+/**
  * Check whether a cached row is still valid (not expired).
  * Kept for backward compatibility with existing callers.
  * @param {object} row - DB row
@@ -610,6 +689,7 @@ async function findCachedStream(episodeId, provider) {
         episodeId, provider, state,
         detectedExpiresAt: row.detected_expires_at,
         verificationStatus: row.verification_status,
+        cacheEvent: 'not_reusable',
       });
       if (state === 'expired') streamCacheMetrics.increment('expiredSources');
       if (state === 'invalid') streamCacheMetrics.increment('invalidSources');
@@ -619,7 +699,17 @@ async function findCachedStream(episodeId, provider) {
     // Refresh last_used_at opportunistically (best-effort, non-fatal).
     markUsed(row.id).catch(() => {});
 
-    logger.info('[STREAM_CACHE] HIT', { episodeId, provider, state });
+    // Source age in minutes for logging.
+    const sourceAgeMin = row.resolved_at ? Math.round((Date.now() - new Date(row.resolved_at).getTime()) / 60000) : null;
+
+    logger.info('[STREAM_CACHE] HIT', {
+      episodeId, provider, state,
+      cacheEvent: 'hit',
+      cacheSource: 'mysql',
+      verificationStatus: row.verification_status,
+      sourceAgeMin,
+      lastVerifiedAt: row.last_verified_at ? new Date(row.last_verified_at).toISOString() : null,
+    });
     return { row, result: reconstructProviderResult(row), state };
   } catch (err) {
     logger.warn('[STREAM_CACHE] FAILURE (find)', { episodeId, provider, error: err.message });
@@ -843,6 +933,8 @@ async function saveStream(episodeId, provider, providerResult, ttlMin) {
     logger.info('[STREAM_CACHE] SAVE', {
       episodeId, provider, ttlMin: ttl, streamType,
       detectedExpiresAt, expirySource, verificationStatus,
+      cacheEvent: 'save',
+      providerResolution: true,
     });
 
     // Populate the canonical persistent Redis cache from the same saved result
@@ -938,7 +1030,7 @@ async function invalidateSource(episodeId, provider, status = 0) {
     streamCacheMetrics.recordInvalidation(
       statusCode === 403 ? 'confirmed_403' : statusCode === 404 ? 'confirmed_404' : 'other_confirmed_dead'
     );
-    logger.info('[STREAM_CACHE] INVALIDATE', { episodeId, provider, status: statusCode });
+    logger.info('[STREAM_CACHE] INVALIDATE', { episodeId, provider, status: statusCode, cacheEvent: 'invalidated' });
     // Purge the short-lived Redis copy (best-effort). Redis expiry is a
     // performance TTL — we delete it so nothing stale can be served.
     const redisKey = buildRedisKey(episodeId, provider);
@@ -1005,12 +1097,12 @@ async function getOrResolve(episodeId, provider, resolver) {
         ? new Date(redisHit.detectedExpiresAt).getTime() <= Date.now()
         : false;
       if (!upstreamExpired) {
-        logger.info('[STREAM_CACHE] REDIS_HIT', { episodeId, provider });
+        logger.info('[STREAM_CACHE] REDIS_HIT', { episodeId, provider, cacheSource: 'redis', cacheEvent: 'hit', verificationStatus: redisHit.verificationStatus || null });
         streamCacheMetrics.increment('redisHits');
         streamCacheMetrics.recordProviderAvoided();
         return redisHit;
       }
-      logger.info('[STREAM_CACHE] REDIS_EXPIRED', { episodeId, provider });
+      logger.info('[STREAM_CACHE] REDIS_EXPIRED', { episodeId, provider, cacheEvent: 'redis_expired', upstreamExpiredAt: redisHit.detectedExpiresAt || null });
     }
   } catch (err) {
     logger.debug('[STREAM_CACHE] Redis check failed (non-fatal)', { error: err.message });
@@ -1020,7 +1112,7 @@ async function getOrResolve(episodeId, provider, resolver) {
   //    reaches the DB cache on the next request).
   const memCached = inFlightResolverManager.getCached(key);
   if (memCached && memCached.sources && memCached.sources.length > 0) {
-    logger.info('[STREAM_CACHE] MEMORY_HIT', { episodeId, provider });
+    logger.info('[STREAM_CACHE] MEMORY_HIT', { episodeId, provider, cacheSource: 'memory', cacheEvent: 'hit' });
     streamCacheMetrics.increment('inMemoryHits');
     streamCacheMetrics.recordProviderAvoided();
     return memCached;
@@ -1044,7 +1136,7 @@ async function getOrResolve(episodeId, provider, resolver) {
     } catch (err) {
       logger.debug('[STREAM_CACHE] Redis populate failed (non-fatal)', { error: err.message });
     }
-    logger.info('[STREAM_CACHE] MYSQL_HIT', { episodeId, provider });
+    logger.info('[STREAM_CACHE] MYSQL_HIT', { episodeId, provider, cacheSource: 'mysql', cacheEvent: 'hit', verificationStatus: dbHit.row?.verification_status || null });
     streamCacheMetrics.increment('mysqlHits');
     streamCacheMetrics.recordProviderAvoided();
     return dbHit.result;
@@ -1171,6 +1263,9 @@ module.exports = {
   // Source state machine (exposed for testing + external use).
   getSourceState,
   isReusable,
+  // Interval/state-based playback verification gate (no HEAD on every play).
+  isSourceVerificationDue,
+  scheduleVerificationIfNeeded,
   // Source classification (exposed for testing + external use).
   classifySource,
   // Expiry detection functions (exposed for testing).

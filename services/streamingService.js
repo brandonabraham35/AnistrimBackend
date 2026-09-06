@@ -301,7 +301,7 @@ async function executeAnimeHeaven(animeTitle, episodeNumber, identifiers = {}, c
   }
 
   const attemptStart = Date.now();
-  logger.info('[PLAYBACK]', { event: 'providerStarted', provider: ANIME_HEAVEN_TAG, animeTitle, episode: episodeNumber });
+  logger.info('[PLAYBACK]', { event: 'providerStarted', provider: ANIME_HEAVEN_TAG, animeTitle, episode: episodeNumber, providerResolution: true });
   logger.debugStream('Stream attempt pending', { provider: ANIME_HEAVEN_TAG, anime: animeTitle, episode: episodeNumber });
 
   try {
@@ -482,7 +482,7 @@ async function executeFallbackProvider(providerId, animeTitle, episodeNumber) {
   }
 
   const attemptStart = Date.now();
-  logger.info('[PLAYBACK]', { event: 'fallbackProviderStarted', provider: providerId, animeTitle, episode: episodeNumber });
+  logger.info('[PLAYBACK]', { event: 'fallbackProviderStarted', provider: providerId, animeTitle, episode: episodeNumber, providerResolution: true });
 
   try {
     const consumet = new ConsumetProvider();
@@ -795,10 +795,22 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       hasEpisodeKey: !!identifiers.episodeKey,
     });
 
-    // ── SELF-HEALING: if the episode key is missing, use the stored slug to
+    // PERMANENT-UNTIL-PROVEN-DEAD: the SAVED URL is the source of truth. A
+    // missing episode key is NOT a reason to contact AnimeHeaven while a
+    // reusable playable URL is already saved for this episode. Only self-heal
+    // (fetch details to persist the key) when no reusable saved source exists.
+    let hasReusableSavedSource = false;
+    if (identifiers.episodeId != null && identifiers.episodeId !== '') {
+      try {
+        const existingSaved = await streamCacheService.findCachedStream(identifiers.episodeId, STREAM_CACHE_PROVIDER);
+        hasReusableSavedSource = !!existingSaved.result;
+      } catch (_) { /* non-fatal: fall through to self-heal on lookup failure */ }
+    }
+
+    // SELF-HEALING: if the episode key is missing, use the stored slug to
     // fetch details ONCE, locate the episode, persist the missing key, then
     // continue playback. This is a one-time repair, not a search.
-    if (!identifiers.episodeKey && identifiers.animeId) {
+    if (!identifiers.episodeKey && identifiers.animeId && !hasReusableSavedSource) {
       try {
         logger.info('[AnimeHeaven Mapping] Episode key missing — self-healing', {
           animeId: identifiers.animeId,
@@ -971,31 +983,17 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
       if (filteredSources.length > 0) {
         const best = pickBestSource(filteredSources);
 
-        // ── CACHE-SOURCE LIVENESS PROBE ─────────────────────
+        // ── PERMANENT-UNTIL-PROVEN-DEAD ─────────────────────
+        // A reusable MySQL cache HIT is the SOURCE OF TRUTH: serve the SAVED
+        // URL and do NOT let any pre-play probe invalidate it. A cookie-less,
+        // proxy-less HEAD probe is NOT the authoritative playback path (real
+        // AnimeHeaven playback requires the cookies/referer that the proxy
+        // injects), so such a probe can return 403 for a URL that is perfectly
+        // playable. Invalidate-and-re-resolve on that signal is exactly the
+        // forbidden sequence (saved URL → probe false-positive → AnimeHeaven
+        // contacted again before the URL is proven unusable). The saved URL is
+        // kept until a REAL confirmed playback failure marks it unusable.
         const bestSource = best || {};
-        const probe = await streamCacheService.probeSource(
-          bestSource.url,
-          {
-            referer: bestSource.referer || null,
-            origin: bestSource.origin || null,
-          }
-        );
-        if (!probe.alive) {
-          logger.debugStream('Persistent stream cache source dead — invalidating & re-resolving', {
-            anime: animeTitle,
-            episode: episodeNumber,
-            episodeId,
-            status: probe.status,
-          });
-          // PROVEN DEAD (explicit 403/404 from the probe): mark the source
-          // invalid (historical MySQL row preserved) and purge the short-lived
-          // Redis copy. The fresh resolution upserts the replacement.
-          await streamCacheService.invalidateSource(episodeId, STREAM_CACHE_PROVIDER, probe.status);
-          return continueWithFreshResolution(
-            animeTitle, episodeNumber, episodeId, isPremium, tier, overallStart, usePersistentCache, identifiers,
-            { reason: 'liveness_failure' }
-          );
-        }
 
         // Record direct MySQL cache hit (user-facing serving path).
         streamCacheMetrics.increment('mysqlHits');
@@ -1028,8 +1026,25 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
           endTime: new Date().toISOString(),
           latencyMs: Date.now() - overallStart,
         });
-// ── DIAG: deferred observation for URL lifetime tracking ─
-        streamObservationService.observeOnCacheHit(episodeId, STREAM_CACHE_PROVIDER, cachedLookup.row, { referer: bestSource.referer, origin: bestSource.origin });
+// ── DIAG: deferred verification / observation for URL lifetime tracking ─
+        // INTERVAL/STATE-BASED VALIDATION: normal playback performs NO upstream
+        // liveness check. The saved URL is served as-is. At most ONE deferred,
+        // non-blocking upstream check may be scheduled, and only when the
+        // interval/state model says it is actually necessary:
+        //   • never verified, or verification interval elapsed → ONE deferred
+        //     verification (verifyAndRecord; only 403/404/410 can mark the
+        //     source unusable, and that affects the NEXT play, never this one);
+        //   • otherwise (recently verified) → the existing deferred observation
+        //     path, which self-gates on its own observation interval. Both are
+        //     fire-and-forget: the playback response below is never delayed.
+        if (streamCacheService.isSourceVerificationDue(cachedLookup.row)) {
+          streamCacheService.scheduleVerificationIfNeeded(
+            episodeId, STREAM_CACHE_PROVIDER, cachedLookup.row,
+            { referer: bestSource.referer, origin: bestSource.origin }
+          );
+        } else {
+          streamObservationService.observeOnCacheHit(episodeId, STREAM_CACHE_PROVIDER, cachedLookup.row, { referer: bestSource.referer, origin: bestSource.origin });
+        }
         return {
           ...payload,
           providerUsed: payload.provider,
@@ -1040,99 +1055,136 @@ async function resolveStream(animeTitle, episodeNumber, options = {}) {
     }
   }
 
-  // ── Phase 4: AnimeHeaven-first with fallback ─────────────
+  // ── Phase 4: AnimeHeaven-first with fallback — SINGLE-FLIGHT ──
   // AnimeHeaven is attempted ANIMEHEAVEN_MAX_ATTEMPTS (3) times.
   // Only after all 3 fail do the fallback providers activate.
+  //
+  // COLD-START STAMPEDE PROTECTION:
+  // The ENTIRE expensive pipeline (AnimeHeaven attempts + fallback providers)
+  // runs inside streamCacheService.getOrResolve(), which is single-flight
+  // keyed by (provider, episodeId) via the InFlightResolverManager:
+  //   • N concurrent requests for one episode → exactly ONE pipeline run;
+  //     all other requests ATTACH to the in-flight resolver and receive the
+  //     SAME result (all get the same streamUrl/sources/attemptCount).
+  //   • The leader's re-check of Redis/memory/MySQL inside getOrResolve()
+  //     also closes the window where a concurrent request saved a reusable
+  //     URL between this request's cache reads and Phase 4 — in that case NO
+  //     resolution runs at all and every caller gets the persisted URL.
+  // Requests without a persistent-cache key (skipCache / no episodeId) keep
+  // the legacy direct pipeline (nothing to key the flight on).
+  const runFreshResolutionPipeline = async () => {
+    let attemptCount = 0;
+    let fallbackActivated = false;
+    let winner = null;
+    let winnerProvider = null;
+    let lastError = null;
+
+    // ONE cache-miss + resolver-call accounting per LOGICAL resolution (the
+    // single-flight leader), not per HTTP request and not per retry.
+    streamCacheMetrics.increment('cacheMisses');
+    streamCacheMetrics.increment('resolverCalls');
+
+    // Attempt 1..3: AnimeHeaven. The FIRST attempt's reason reflects why the
+    // persistent tier missed; subsequent attempts are retries.
+    for (let attempt = 1; attempt <= ANIMEHEAVEN_MAX_ATTEMPTS; attempt++) {
+      attemptCount += 1;
+      logger.debugStream('[AnimeHeaven] Attempt', { anime: animeTitle, episode: episodeNumber, attempt, of: ANIMEHEAVEN_MAX_ATTEMPTS });
+
+      const firstReason = persistentMissReason || 'user_fresh_resolution';
+      const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers, {
+        reason: attempt === 1 ? firstReason : 'retry',
+      });
+      if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
+        winner = outcome.result;
+        winnerProvider = ANIME_HEAVEN_TAG;
+        break;
+      }
+      lastError = outcome.error || 'no playable stream found';
+      // Small backoff between AnimeHeaven retries (avoid hammering upstream).
+      if (attempt < ANIMEHEAVEN_MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 300 * attempt));
+      }
+    }
+
+    // If AnimeHeaven failed all 3 times → activate fallback providers.
+    if (!winner) {
+      fallbackActivated = true;
+      logger.warn('[AnimeHeaven] All 3 attempts failed — activating fallback providers', {
+        anime: animeTitle,
+        episode: episodeNumber,
+        lastError,
+      });
+
+      for (const providerId of FALLBACK_PROVIDER_ORDER) {
+        attemptCount += 1;
+        logger.debugStream('[Fallback] Attempting provider', { anime: animeTitle, episode: episodeNumber, provider: providerId });
+
+        const outcome = await executeFallbackProvider(providerId, animeTitle, episodeNumber);
+        if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
+          winner = outcome.result;
+          winnerProvider = providerId;
+          break;
+        }
+        lastError = outcome.error || 'no playable stream found';
+      }
+    }
+
+    // Carry pipeline metadata to ALL single-flight waiters on the result
+    // object (non-enumerable → excluded from JSON persistence in saveStream).
+    if (winner) {
+      Object.defineProperty(winner, '_resolutionMeta', {
+        value: { attemptCount, fallbackActivated, winnerProvider, lastError },
+        enumerable: false, configurable: true, writable: true,
+      });
+    }
+    return winner;
+  };
+
   let attemptCount = 0;
   let fallbackActivated = false;
   let winner = null;
   let winnerProvider = null;
   let lastError = null;
 
-  // ── Semantic cache-miss / resolver boundary ────────────────
-  // We reach this point ONLY when the general Tier-1 cache MISSED (it returns
-  // above on a hit), AND the persistent cache is unavailable (Redis miss,
-  // MySQL miss/invalid/expired — reusable hits return above). That is the
-  // single "cache miss" event for the primary playback path.
-  //
-  // We are about to start a fresh provider resolution, so record ONE resolver
-  // call here (not per retry — retries are the same logical resolution). The
-  // repair/liveness path (proven-dead MySQL hit → invalidateSource →
-  // continueWithFreshResolution → getOrResolve()) never reaches this block and
-  // has its own single cache-miss/resolver accounting, so there is NO double
-  // counting.
-  streamCacheMetrics.increment('cacheMisses');
-  streamCacheMetrics.increment('resolverCalls');
-
-  // Attempt 1..3: AnimeHeaven.
-  // The FIRST attempt's reason reflects why the persistent tier missed
-  // (cache_miss / cache_invalid / cache_expired / user_fresh_resolution);
-  // subsequent attempts are retries of the same user-driven resolution.
-  for (let attempt = 1; attempt <= ANIMEHEAVEN_MAX_ATTEMPTS; attempt++) {
-    attemptCount += 1;
-    logger.debugStream('[AnimeHeaven] Attempt', { anime: animeTitle, episode: episodeNumber, attempt, of: ANIMEHEAVEN_MAX_ATTEMPTS });
-
-    const firstReason = persistentMissReason || 'user_fresh_resolution';
-    const outcome = await executeAnimeHeaven(animeTitle, episodeNumber, identifiers, {
-      reason: attempt === 1 ? firstReason : 'retry',
-    });
-    if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
-      winner = outcome.result;
+  if (usePersistentCache) {
+    // SINGLE-FLIGHT: one pipeline per (provider, episodeId); waiters attach.
+    winner = await streamCacheService.getOrResolve(episodeId, STREAM_CACHE_PROVIDER, runFreshResolutionPipeline);
+    if (winner && winner._resolutionMeta) {
+      const meta = winner._resolutionMeta;
+      delete winner._resolutionMeta;
+      attemptCount = meta.attemptCount;
+      fallbackActivated = meta.fallbackActivated;
+      winnerProvider = meta.winnerProvider;
+      lastError = meta.lastError;
+    } else if (winner) {
+      // Result came from getOrResolve's own cache tiers (a concurrent request
+      // persisted it mid-flight) — it is an AnimeHeaven persisted stream.
       winnerProvider = ANIME_HEAVEN_TAG;
-      break;
+      attemptCount = 1;
     }
-    lastError = outcome.error || 'no playable stream found';
-    // Small backoff between AnimeHeaven retries (avoid hammering upstream).
-    if (attempt < ANIMEHEAVEN_MAX_ATTEMPTS) {
-      await new Promise(r => setTimeout(r, 300 * attempt));
-    }
-  }
-
-  // If AnimeHeaven failed all 3 times → activate fallback providers.
-  if (!winner) {
-    fallbackActivated = true;
-    logger.warn('[AnimeHeaven] All 3 attempts failed — activating fallback providers', {
-      anime: animeTitle,
-      episode: episodeNumber,
-      lastError,
-    });
-
-    for (const providerId of FALLBACK_PROVIDER_ORDER) {
-      attemptCount += 1;
-      logger.debugStream('[Fallback] Attempting provider', { anime: animeTitle, episode: episodeNumber, provider: providerId });
-
-      const outcome = await executeFallbackProvider(providerId, animeTitle, episodeNumber);
-      if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
-        winner = outcome.result;
-        winnerProvider = providerId;
-        break;
-      }
-      lastError = outcome.error || 'no playable stream found';
+  } else {
+    // Legacy direct pipeline (no persistent-cache key to fly on).
+    streamCacheMetrics.increment('cacheMisses');
+    streamCacheMetrics.increment('resolverCalls');
+    winner = await runFreshResolutionPipeline();
+    if (winner && winner._resolutionMeta) {
+      const meta = winner._resolutionMeta;
+      delete winner._resolutionMeta;
+      attemptCount = meta.attemptCount;
+      fallbackActivated = meta.fallbackActivated;
+      winnerProvider = meta.winnerProvider;
+      lastError = meta.lastError;
     }
   }
 
   // ── PERSIST PHASE-4 FRESH RESOLUTION ─────────────────────
-  // The persistent cache row may be invalid/expired (findCachedStream →
-  // NOT_REUSABLE). A fresh AnimeHeaven resolution MUST repair that row through
-  // the existing saveStream() path; otherwise the row stays invalid and every
-  // play after the general cache expires re-resolves (the primary cache-reuse
-  // loop the audit identified). Fallback-provider winners are NOT stored in
-  // the AnimeHeaven persistent-cache row.
-  if (winner && winnerProvider === ANIME_HEAVEN_TAG && usePersistentCache) {
-    try {
-      await streamCacheService.saveStream(episodeId, STREAM_CACHE_PROVIDER, winner);
-      logger.debugStream('[STREAM_CACHE] Phase-4 winner persisted', {
-        anime: animeTitle,
-        episode: episodeNumber,
-        episodeId,
-      });
-    } catch (saveErr) {
-      logger.warn('[STREAM_CACHE] Phase-4 persist failed (non-fatal)', {
-        episodeId,
-        error: saveErr.message,
-      });
-    }
-  }
+  // NOTE (single-flight): persistence is handled INSIDE the single-flight
+  // pipeline by streamCacheService.getOrResolve() — its resolver calls
+  // saveStream() for a successful AnimeHeaven winner exactly ONCE per
+  // (provider, episodeId) flight, so the leader persists the row and every
+  // waiter receives the same result WITHOUT extra DB writes. Fallback-provider
+  // winners are NOT stored in the AnimeHeaven persistent-cache row (the
+  // getOrResolve persist guard skips results whose provider differs).
 
   // ── Structured metrics log ──────────────────────────────
   const elapsed = Date.now() - overallStart;
@@ -1312,13 +1364,56 @@ async function prefetchNextEpisode(animeTitle, currentEpisodeNumber, isPremium) 
       }
     }
 
-    // Resolve the next episode via the FAST path (no search) and cache it.
+    // SINGLE-FLIGHT warm-cache resolution.
+    // Route the prefetch through getOrResolve() so that a background prefetch
+    // racing concurrent user requests for the SAME (episode_id, provider)
+    // shares ONE resolver flight instead of stampeding AnimeHeaven. The
+    // fire-and-forget prefetches from N concurrent waiters all attach to the
+    // same flight; getOrResolve persists the winner to MySQL exactly once.
+    if (nextIdentifiers.episodeId != null && nextIdentifiers.episodeId !== '') {
+      const result = await streamCacheService.getOrResolve(
+        nextIdentifiers.episodeId,
+        STREAM_CACHE_PROVIDER,
+        async () => {
+          const outcome = await executeAnimeHeaven(animeTitle, nextEp, nextIdentifiers, { reason: 'prefetch' });
+          if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
+            // Tag as an AnimeHeaven winner so getOrResolve persists it.
+            Object.defineProperty(outcome.result, '_resolutionMeta', {
+              value: { attemptCount: 1, fallbackActivated: false, winnerProvider: ANIME_HEAVEN_TAG, lastError: null },
+              enumerable: false, configurable: true, writable: true,
+            });
+            return outcome.result;
+          }
+          return null;
+        }
+      );
+      if (result && Array.isArray(result.sources) && result.sources.length > 0) {
+        // Also warm the short-lived Tier-1 title cache for instant hits.
+        try {
+          const cacheKey = buildCacheKey(animeTitle, nextEp);
+          const filtered = filterSourcesByTier(result.sources, isPremium);
+          const best = pickBestSource(filtered);
+          if (best) {
+            await cache.set(cacheKey, {
+              provider: result.provider || ANIME_HEAVEN_TAG,
+              streamUrl: best.url,
+              sources: filtered,
+              subtitles: result.subtitles || [],
+              bestQuality: best.quality || 'auto',
+            }, STREAM_CACHE_TTL);
+          }
+        } catch (warmErr) {
+          logger.debugStream('Prefetch: Tier-1 warm-cache failed (non-fatal)', { anime: animeTitle, nextEp, error: warmErr.message });
+        }
+        logger.info('[AnimeHeaven] Warm-cached next episode', { anime: animeTitle, nextEp, sources: result.sources.length });
+      }
+      return;
+    }
+
+    // No episodeId for N+1 — resolve directly (no persistent-cache key to fly
+    // on); this path cannot stampede the persistent cache.
     const outcome = await executeAnimeHeaven(animeTitle, nextEp, nextIdentifiers, { reason: 'prefetch' });
     if (outcome.resolved && outcome.result && outcome.result.sources.length > 0) {
-      // Persist to the persistent episode_stream_cache (if episodeId known).
-      if (nextIdentifiers.episodeId) {
-        await streamCacheService.saveStream(nextIdentifiers.episodeId, STREAM_CACHE_PROVIDER, outcome.result);
-      }
       // Also cache in the in-memory stream cache for instant warm hits.
       const cacheKey = buildCacheKey(animeTitle, nextEp);
       const filtered = filterSourcesByTier(outcome.result.sources, isPremium);

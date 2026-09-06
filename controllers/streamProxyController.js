@@ -41,7 +41,7 @@
 // =============================================================
 'use strict';
 
-const { request } = require('../utils/providerHttp');
+const { request, isPermanentSourceFailure } = require('../utils/providerHttp');
 const streamProxyStore = require('../utils/streamProxyStore');
 const logger = require('../utils/logger');
 // Single source of truth for the playback headers. getPlaybackContext reuses
@@ -504,6 +504,12 @@ streamDiag.logPlaybackFailure(null, { status: 404, contentType: null, error: 'St
     });
 // ── DIAG: log proxy playback failure ────────────────────
     const errStatus = err.response?.status || 0;
+    // Permanent upstream failure on the REAL playback path (proxy + cookies,
+    // transient retry already exhausted) → positively prove the saved URL dead.
+    if (isPermanentSourceFailure(errStatus)) {
+      const ctx = authPayload && authPayload.episodeId ? { episodeId: authPayload.episodeId } : null;
+      noteUpstreamPlaybackFailure(ctx, errStatus);
+    }
     let failureType = 'upstream_error';
     if (errStatus === 403 || errStatus === 404) failureType = 'cdn_rejected';
     else if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') failureType = 'upstream_timeout';
@@ -511,6 +517,32 @@ streamDiag.logPlaybackFailure(null, { status: 404, contentType: null, error: 'St
     streamDiag.logPlaybackFailure(ctx, { status: errStatus, contentType: null, error: err.message }, { type: failureType, detail: err.message });
   }
 };
+
+/**
+ * Called when the REAL proxy/GET/range playback path (with cookies, referer,
+ * origin) confirms a permanent upstream CDN failure.
+ *
+ * Only actual 403/404/410 from upstream (via the central
+ * isPermanentSourceFailure classification) are accepted as evidence that the
+ * saved AnimeHeaven URL is truly unusable. Timeouts / 5xx / 429 / ECONNRESET
+ * are TEMPORARY evidence and must NEVER invalidate the source.
+ *
+ * The saved URL is marked invalid so the NEXT playback request performs a
+ * single-flight re-resolution. The CURRENT playback is never blocked.
+ */
+function noteUpstreamPlaybackFailure(ctx, status) {
+  const s = Number(status) || 0;
+  if (!isPermanentSourceFailure(s)) return; // temporary → keep the saved URL authoritative
+  const episodeId = ctx && ctx.episodeId;
+  if (!episodeId) return;
+  // Lazy require avoids a circular import at module load.
+  const scs = require('../services/streamCacheService');
+  scs.invalidateSource(episodeId, 'animeheaven', s).catch((err) => {
+    logger.warn('[streamProxy] Failed to record permanent playback failure', { episodeId, status: s, error: err && err.message });
+  });
+}
+
+exports.noteUpstreamPlaybackFailure = noteUpstreamPlaybackFailure;
 
 /**
  * Preflight handler for the proxy route (CORS).
