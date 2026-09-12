@@ -1,0 +1,24 @@
+# ============================================================
+#  Gitleaks configuration for AniStrimBackend
+#  Run locally:  gitleaks detect --source . --config .gitleaks.toml
+#  Run in CI:    see .github/workflows/secret-scanning.yml
+# ============================================================
+
+title = "AniStrimBackend secret scanning config"
+
+# Extend the default ruleset installed with gitleaks.
+[extend]
+useDefault = true
+
+# Paths that are allowed to contain placeholder/sample values.
+[allowlist]
+description = "Repo-specific allowlist"
+paths = [
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+  '''package\.json$''',
+  '''test/.*''',
+  '''tests/.*''',
+  '''test-.*\.js$''',
+  '''docs/credential-rotation-checklist\.md$''',
+]

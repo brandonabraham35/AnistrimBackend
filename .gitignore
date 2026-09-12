@@ -1,29 +1,118 @@
+﻿# ============================================================
+#  AniStrimBackend - .gitignore
+#  Production hygiene: secrets, logs, temp & diagnostic artifacts
+#  are NEVER committed. package-lock.json stays tracked.
+# ============================================================
+
+# === Dependencies ===
 node_modules/
 
-# ── Secrets & credentials (do NOT commit) ──────────────────
-# These were committed in the working tree and must be removed from git history.
+# === Environment & secrets (NEVER commit) ===
+# Real .env files are never tracked. .env.example is the allowed exception.
 .env
 .env.*
-.DS_Store
-*.log
-logs/
-*.log.*
+*.env
+!.env.example
 
-# Google / OAuth
+# Production secret / key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+*.der
+*.pkcs12
+*.secret
+.secret*
+id_key.json
+token.json
+credentials*.json
+service-account*.json
+*client_secret*.json
 client_secret_*.json
-*.client_secret.json
-
-# Gmail API
 Gmail Key.txt
 MyKey
-*.key
-id_key.json
-credentials*.json
-token.json
 
-# Environment-specific
+# Environment-specific local config
 config/local-*.js
 
-# OS editors
+# === Logs ===
+*.log
+*.log.*
+logs/
+**/logs/
+*.pid
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === Temporary / one-off diagnostic scripts & text dumps ===
+tmp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.swp
+/_*.js
+/_*.txt
+/_*.log
+/c
+/controll
+
+# === Diagnostic reports & screenshots (generated, not source-controlled) ===
+diagnostics/
+subtitle-proof-screenshots/
+*.validation.json
+*-report.json
+report-*.json
+audit_*.txt
+validation-audit-quick.log
+
+# Generated diagnostic data & reports (root-level, not source-controlled)
+/animeheaven-*.json
+/*-validation.json
+/*-diagnostic.json
+/*-verification.json
+/*-report.json
+/*-recovery.json
+/*-completeness.json
+/cache-validation.json
+/cloudflare-validation.json
+/concurrency-report.json
+/failure-recovery.json
+/metadata-completeness.json
+/mirror-validation.json
+/provider-health-report.json
+/proxy-verification-report.json
+/regression-test-report.json
+/search-quality-report.json
+/stream-validation.json
+/subtitle-delivery-report.json
+/subtitle-proof-data.json
+/subtitle-validation.json
+/audit_*.txt
+/focused_audit.txt
+/new_inventory.txt
+/old_inventory.txt
+/Reticia
+# === OS / editors ===
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
+*.iml
+
+# === Android build output ===
+android/app/build/
+android/app/debug/
+android/app/release/
+*.apk
+*.aab
+
+# === Runtime / coverage ===
+.pm2/
+coverage/
+
