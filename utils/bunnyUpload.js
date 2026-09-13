@@ -45,6 +45,11 @@ async function handleImageUpload(req, res, folderKey, onUploaded) {
     await parseUpload(req, res);
     const file = firstUploadedFile(req);
     if (!file) return res.status(400).json({ success: false, message: 'No image uploaded.', acceptedFields: FIELD_NAMES });
+    // Server-side magic-byte validation — never trust the client MIME type.
+    const { sniffImageType } = require('./uploadContent');
+    if (!sniffImageType(file.buffer)) {
+      return res.status(400).json({ success: false, message: 'Unsupported or invalid image file.' });
+    }
     const result = await uploadBufferToCloudinary(file, folderKey);
     // Allow callers (e.g. the avatar route) to persist the resulting URL
     // (e.g. UPDATE users SET avatar_url = ?) before responding.
@@ -55,7 +60,7 @@ async function handleImageUpload(req, res, folderKey, onUploaded) {
   } catch (error) {
     console.error('Cloudinary image upload failed:', error.message);
     const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 502;
-    return res.status(status).json({ success: false, message: error.message || 'Image upload failed.' });
+    return res.status(status).json({ success: false, message: 'Image upload failed.' });
   }
 }
 

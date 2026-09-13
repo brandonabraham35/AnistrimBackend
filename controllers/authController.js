@@ -10,24 +10,11 @@ const { sendSuccess, sendAuth } = require('../utils/response');
 // Helper to add a consistent prefix to our debug logs
 const log = (message) => console.log(`[AUTH] ${message}`);
 
-// ── Password pepper (application-level HMAC) ──────────────────────
-// Adds an extra layer of defense against database breaches. Even if the
-// database is compromised, passwords cannot be cracked without also
-// compromising the application server's PASSWORD_PEPPER secret.
-function pepperPassword(password) {
-  const pepper = process.env.PASSWORD_PEPPER;
-  if (pepper && typeof pepper === 'string' && pepper.trim() !== '') {
-    return crypto.createHmac('sha256', pepper.trim()).update(password).digest('hex');
-  }
-  // In production, missing pepper is a warning but not fatal — existing
-  // hashes without pepper would be impossible to verify if we made it fatal.
-  if (process.env.NODE_ENV === 'production' && (!pepper || pepper.trim() === '')) {
-    console.warn('[AUTH] WARNING: PASSWORD_PEPPER is not set in production. ' +
-      'Password hashes are vulnerable to offline cracking if the database is breached. ' +
-      'Set PASSWORD_PEPPER to a 64+ character random string.');
-  }
-  return password;
-}
+// ── Password processing policy (single source of truth) ──────────
+// Every password-writing path uses utils/password.js so the pepper + bcrypt
+// policy is identical everywhere (signup, login, set/change/reset password,
+// admin creation). See utils/password.js for the transition note.
+const { pepperPassword, hashPassword, verifyPassword } = require('../utils/password');
 
 // Startup safety check — crash immediately in production if JWT_RESET_SECRET
 // is missing, rather than failing on the first forgot-password request.
@@ -49,18 +36,10 @@ const MAX_VERIFICATION_ATTEMPTS = 5;
 // Minimum seconds between resend requests
 const RESEND_THROTTLE_SECONDS = 60;
 
-// Used password reset token JTI store — prevents token reuse.
-// Since reset tokens expire in 1 hour, this Map self-cleans via TTL.
-const usedResetJtis = new Map();
-const RESET_JTI_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (longer than token expiry)
-
-// Periodically clean up expired used JTIs
-setInterval(() => {
-  const now = Date.now();
-  for (const [jti, expiresAt] of usedResetJtis.entries()) {
-    if (now > expiresAt) usedResetJtis.delete(jti);
-  }
-}, 5 * 60 * 1000).unref?.();
+// Single-use reset-token state is persisted in the `password_reset_tokens`
+// table (see sql/migrations_v56_password_reset_tokens.sql) and consumed
+// atomically in resetPassword. There is NO in-memory-only replay store, so a
+// process restart can never make a used token valid again.
 
 // Simple disposable-domain blocklist (anti-burner control).
 // Extend as needed. Lowercase, no leading dot.
@@ -229,8 +208,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        const pepperedPassword = pepperPassword(password);
-        const match = await bcrypt.compare(pepperedPassword, user.password_hash);
+        const match = await verifyPassword(password, user.password_hash);
         if (!match) {
             log('Password mismatch.');
             await sessionService.logEvent(user.id, 'login_failed', 'password', req).catch(() => {});
@@ -340,9 +318,7 @@ exports.signup = async (req, res) => {
     }
 
     try {
-        const salt = await bcrypt.genSalt(10);
-        const pepperedPassword = pepperPassword(password);
-        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
+        const passwordHash = await hashPassword(password);
 
         // Generate a secure 6-digit OTP and set a 15-minute expiry.
         // Store the SHA-256 hash of the code, never the plaintext.
@@ -650,9 +626,7 @@ exports.setPassword = async (req, res) => {
         }
         const user = rows[0];
 
-        const salt = await bcrypt.genSalt(10);
-        const pepperedPassword = pepperPassword(newPassword);
-        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
+        const passwordHash = await hashPassword(newPassword);
 
         // Update ONLY password_hash. google_id and auth_provider stay intact.
         await pool.query(
@@ -699,8 +673,19 @@ exports.forgotPassword = async (req, res) => {
             return sendSuccess(res, null, { message: 'If an account exists for that email, a reset link has been sent.' });
         }
 
+        const resetJti = crypto.randomUUID();
+        const resetExpiresAt = new Date(Date.now() + 60 * 60 * 1000)
+          .toISOString().slice(0, 19).replace('T', ' ');
+
+        // Persist the token so it can be consumed atomically and durably at
+        // reset time (single-use, survives process restarts, concurrency-safe).
+        await pool.query(
+          'INSERT INTO password_reset_tokens (jwt_id, user_id, email, expires_at) VALUES (?, ?, ?, ?)',
+          [resetJti, rows[0].id, rows[0].email, resetExpiresAt]
+        );
+
         const token = jwt.sign(
-            { email: rows[0].email, purpose: 'password-reset', sub: rows[0].id, jti: crypto.randomUUID() },
+            { email: rows[0].email, purpose: 'password-reset', sub: rows[0].id, jti: resetJti },
             getResetSecret(),
             { expiresIn: '1h', algorithm: 'HS256' }
         );
@@ -754,6 +739,10 @@ exports.forgotPassword = async (req, res) => {
 };
 
 // ─── Compatibility: reset password using token ─────────────────
+// Persistent, atomic single-use consumption. The token is consumed by flipping
+// password_reset_tokens.used_at from NULL to NOW() in one UPDATE — only one
+// request can ever succeed, the state survives process restarts, and two
+// concurrent requests cannot both consume the same token.
 exports.resetPassword = async (req, res) => {
     const { token, newPassword } = req.body;
 
@@ -765,16 +754,28 @@ exports.resetPassword = async (req, res) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
 
+    let decoded;
     try {
-        const decoded = jwt.verify(token, getResetSecret(), { algorithms: ['HS256'] });
-        if (!decoded?.email || decoded?.purpose !== 'password-reset') {
-            return res.status(400).json({ message: 'Invalid or expired reset link.' });
-        }
+        decoded = jwt.verify(token, getResetSecret(), { algorithms: ['HS256'] });
+    } catch (error) {
+        return res.status(400).json({ message: 'Invalid or expired reset link.' });
+    }
 
-        // Single-use enforcement: check if this JTI has already been used
-        const jti = decoded.jti;
-        if (jti && usedResetJtis.has(jti)) {
-            return res.status(400).json({ message: 'This reset link has already been used. Please request a new one.' });
+    if (!decoded?.email || decoded?.purpose !== 'password-reset' || !decoded?.jti) {
+        return res.status(400).json({ message: 'Invalid or expired reset link.' });
+    }
+
+    try {
+        // Atomic single-use consumption. Only the request that flips used_at
+        // from NULL to NOW() (while the token is unused and unexpired) proceeds.
+        const [consume] = await pool.query(
+            `UPDATE password_reset_tokens
+                SET used_at = NOW()
+              WHERE jwt_id = ? AND used_at IS NULL AND expires_at > NOW()`,
+            [decoded.jti]
+        );
+        if (consume.affectedRows !== 1) {
+            return res.status(400).json({ message: 'This reset link has already been used or has expired. Please request a new one.' });
         }
 
         const [rows] = await pool.query('SELECT id FROM users WHERE email = ?', [decoded.email]);
@@ -782,27 +783,24 @@ exports.resetPassword = async (req, res) => {
             return res.status(400).json({ message: 'Invalid or expired reset link.' });
         }
 
-        const salt = await bcrypt.genSalt(10);
-        const pepperedPassword = pepperPassword(newPassword);
-        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
-
+        const passwordHash = await hashPassword(newPassword);
         await pool.query(
             'UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?',
             [passwordHash, rows[0].id]
         );
         await sessionService.logEvent(rows[0].id, 'password_reset', 'password', req).catch(() => {});
 
-        // Mark this JTI as used to prevent replay
-        if (jti) usedResetJtis.set(jti, Date.now() + RESET_JTI_TTL_MS);
-
         return sendSuccess(res, null, { message: 'Password reset successfully.' });
     } catch (error) {
-        if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError') {
-            return res.status(400).json({ message: 'Invalid or expired reset link.' });
+        // Fail closed: if the persistent token table is unavailable, never fall
+        // back to an in-memory-only replay check.
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            console.error('[AUTH] password_reset_tokens table missing. Run `npm run migrate`.');
+            return res.status(500).json({ message: 'Password reset is temporarily unavailable.' });
         }
         log(`CRITICAL ERROR during resetPassword: ${error.message}`);
         console.error(error);
-        res.status(500).json({ message: 'Server error while resetting password.' });
+        return res.status(500).json({ message: 'Server error while resetting password.' });
     }
 };
 
@@ -925,15 +923,12 @@ exports.changePassword = async (req, res) => {
             return res.status(400).json({ message: 'This account uses Google Sign-In. Set a password first.' });
         }
 
-        const pepperedOldPassword = pepperPassword(oldPassword);
-        const match = await bcrypt.compare(pepperedOldPassword, user.password_hash);
+        const match = await verifyPassword(oldPassword, user.password_hash);
         if (!match) {
             return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect.' });
         }
 
-        const salt = await bcrypt.genSalt(10);
-        const pepperedPassword = pepperPassword(newPassword);
-        const passwordHash = await bcrypt.hash(pepperedPassword, salt);
+        const passwordHash = await hashPassword(newPassword);
 
         // token_version++ invalidates ALL other sessions' access tokens.
         await pool.query(
@@ -1115,7 +1110,7 @@ exports.deleteAccount = async (req, res) => {
             if (!password || typeof password !== 'string') {
                 return res.status(400).json({ message: 'Please enter your password to confirm account deletion.' });
             }
-            const match = await bcrypt.compare(pepperPassword(password), user.password_hash);
+            const match = await verifyPassword(password, user.password_hash);
             if (!match) {
                 return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect password. Account deletion cancelled.' });
             }

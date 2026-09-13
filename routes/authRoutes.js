@@ -10,6 +10,7 @@ const {
   otpLimiter,
   resendOtpLimiter,
   signupLimiter,
+  signupIpLimiter,
   refreshLimiter,
   sensitiveLimiter,
   googleLimiter,
@@ -23,7 +24,10 @@ router.post('/login', loginLimiter, authController.login);
 // @route   POST /api/auth/signup
 // @desc    Register a new user account (requires email verification)
 // @access  Public
-router.post('/signup', signupLimiter, authController.signup);
+// Layered signup throttling: signupIpLimiter (per-IP) runs FIRST so an attacker
+// cannot bypass account-creation throttling by cycling email addresses, then
+// signupLimiter (per-IP+email) bounds per-email creation.
+router.post('/signup', signupIpLimiter, signupLimiter, authController.signup);
 
 // @route   POST /api/auth/verify-email
 // @desc    Verify a manual registration using the emailed 6-digit OTP

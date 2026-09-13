@@ -1,41 +1,38 @@
-// utils/hasRole.js — authoritative, server-side role check (P1 / Defect 6).
+﻿// utils/hasRole.js - authoritative, server-side role check (FAIL CLOSED).
 //
 // Roles live in the dedicated `user_roles` table (NOT on the profile/users row),
-// and admin authorization checks this table FRESH on every request instead of
-// trusting a stale JWT `isAdmin` claim. MySQL has no Postgres RLS / SECURITY
-// DEFINER, so the enforcement point is here, consumed by middleware/auth.js
-// `adminOnly` and any other write path that must verify a role.
+// and privileged authorization checks this table FRESH on every request instead
+// of trusting a stale JWT claim.
+//
+// FAIL-CLOSED POLICY:
+//   - Admin is granted ONLY when `user_roles` returns the 'admin' role.
+//   - If the role lookup FAILS (DB error, missing table), the user is treated as
+//     NOT privileged - we never fall back to users.is_admin on an error.
+//   - The legacy `users.is_admin` flag is NOT consulted at runtime. Existing
+//     admins must hold a user_roles row; migrations_v27_user_roles.sql and
+//     `npm run admin:create` both populate it. This ensures a demoted or failed
+//     role lookup can never re-grant admin.
 const pool = require('../config/db');
 
 /**
  * Resolve the roles a user currently holds from user_roles (authoritative).
- * Falls back to the legacy `users.is_admin` flag so the migration is safe even
- * before user_roles has been backfilled (defensive; normal path reads the table).
+ * Fail-closed: a DB error resolves to ['user']; is_admin is NEVER consulted.
  * @param {number|string} userId
  * @returns {Promise<string[]>} e.g. ['admin'] or ['user']
  */
 async function rolesOf(userId) {
   if (userId === undefined || userId === null) return [];
+  let rows;
   try {
-    const [rows] = await pool.query(
-      'SELECT role FROM user_roles WHERE user_id = ?',
-      [userId]
-    );
-    const roles = rows.map(r => r.role);
-    if (roles.length) return roles;
-    // Backfill safety: if the table is empty for this user (pre-migration),
-    // honor the legacy profile flag so we don't accidentally lock everyone out.
-    const [u] = await pool.query('SELECT is_admin FROM users WHERE id = ?', [userId]);
-    if (u.length && u[0].is_admin) return ['admin'];
-    return ['user'];
+    [rows] = await pool.query('SELECT role FROM user_roles WHERE user_id = ?', [userId]);
   } catch (e) {
-    // If the table doesn't exist yet (migration not run), fall back to the flag.
-    try {
-      const [u] = await pool.query('SELECT is_admin FROM users WHERE id = ?', [userId]);
-      if (u.length && u[0].is_admin) return ['admin'];
-    } catch (_) { /* ignore */ }
+    // Role lookup failed - deny, never fall back to users.is_admin.
+    console.error('[HASROLE] role lookup failed (deny):', e.message);
     return ['user'];
   }
+  const roles = rows.map(r => r.role).filter(Boolean);
+  // Empty user_roles => no roles granted (fail closed; no is_admin fallback).
+  return roles.length ? roles : ['user'];
 }
 
 /**

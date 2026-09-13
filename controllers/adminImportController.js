@@ -197,8 +197,7 @@ exports.importAnime = async (req, res) => {
     console.error('[IMPORT ERROR]', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to complete anime import.',
-      error: error.message
+      message: 'Failed to complete anime import.'
     });
   }
 };
@@ -344,7 +343,7 @@ exports.importAnimeHeaven = async (req, res) => {
     }, null, 201);
   } catch (error) {
     console.error('AnimeHeaven import failed:', error.message);
-    res.status(502).json({ success: false, message: 'AnimeHeaven import failed.', error: error.message });
+    res.status(502).json({ success: false, message: 'AnimeHeaven import failed.' });
   }
 };
 
@@ -364,7 +363,7 @@ exports.syncAnimeHeaven = async (req, res) => {
     });
   } catch (error) {
     console.error('AnimeHeaven sync failed:', error.message);
-    res.status(502).json({ success: false, message: 'AnimeHeaven sync failed.', error: error.message });
+    res.status(502).json({ success: false, message: 'AnimeHeaven sync failed.' });
   }
 };
 
@@ -452,7 +451,7 @@ exports.bulkImportAnimeHeaven = async (req, res) => {
     return sendSuccess(res, result);
   } catch (error) {
     console.error('AnimeHeaven bulk import failed:', error.message);
-    res.status(502).json({ success: false, message: 'AnimeHeaven bulk import failed.', error: error.message });
+    res.status(502).json({ success: false, message: 'AnimeHeaven bulk import failed.' });
   }
 };
 
@@ -469,7 +468,7 @@ exports.bulkSyncAnimeHeaven = async (req, res) => {
     return sendSuccess(res, result);
   } catch (error) {
     console.error('AnimeHeaven bulk sync failed:', error.message);
-    res.status(502).json({ success: false, message: 'AnimeHeaven bulk sync failed.', error: error.message });
+    res.status(502).json({ success: false, message: 'AnimeHeaven bulk sync failed.' });
   }
 };
 
@@ -497,6 +496,6 @@ exports.runAnimeHeavenDailyRefresh = async (req, res) => {
     return sendSuccess(res, result);
   } catch (error) {
     console.error('AnimeHeaven daily refresh failed:', error.message);
-    res.status(502).json({ success: false, message: 'AnimeHeaven daily refresh failed.', error: error.message });
+    res.status(502).json({ success: false, message: 'AnimeHeaven daily refresh failed.' });
   }
 };

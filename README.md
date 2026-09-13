@@ -69,15 +69,42 @@ Behavior:
 - **Production**: if SMTP is missing, the server logs a loud startup error and throws on send, so OTP delivery can never silently fail. OTP codes are never logged.
 - **Development**: if SMTP is missing, the OTP is printed to the console (so signup/verify still works locally).
 
-### Database Migrations
+### Database Setup & Migrations
 
-Apply pending schema migrations (idempotent, tracked in a `schema_migrations` table):
+The application never modifies the database automatically. Running
+`node server.js` does NOT run migrations. All schema changes and account setup
+are explicit, opt-in commands.
+
+**First-time install (brand-new empty database):**
 
 ```bash
-npm run migrate
+npm run db:bootstrap      # creates the DB, applies foundational schema + all migrations
+npm run admin:create      # explicitly create the administrator (you supply credentials)
 ```
 
-This runs every `.sql` file in `migrations/` in filename order. The email-verification columns (`is_verified`, `verification_code`, `verification_expires`, `verification_attempts`, `verification_last_sent`, `auth_provider`, `google_id`) are added by `migrations/002_add_email_verification.sql`.
+**Upgrade an existing database:**
+
+```bash
+npm run migrate           # apply pending migrations (serialized with a MySQL lock)
+npm run migrate:status    # read-only: show applied/pending migrations
+```
+
+Notes:
+
+- `db:bootstrap` is the only supported path for a brand-new database. It applies
+  the foundational schema (`sql/schema.sql` + `sql/oauth_login_codes.sql`),
+  records a baseline marker, then applies every versioned migration
+  (`sql/migrations_v*.sql`) on top. It is idempotent.
+- `migrate` is the UPGRADE path for an existing database. Runs are serialized
+  with a MySQL advisory lock so two deployments cannot migrate at once.
+- `migrate:status` is strictly read-only.
+- `server.js` performs a read-only schema health check on startup and refuses to
+  start if critical tables are missing — it never migrates and never creates
+  administrators.
+- `admin:create` never uses a hardcoded/default password, refuses weak values,
+  and applies `PASSWORD_PEPPER` exactly like the login path.
+
+See `docs/database-setup.md` for the full first-install and upgrade reference.
 
 ### STEP 3 — Configure Environment
 

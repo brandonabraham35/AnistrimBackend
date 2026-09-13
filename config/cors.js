@@ -120,9 +120,12 @@ function buildCorsOptions() {
       if (isOriginAllowed(origin, allowedOrigins)) {
         return callback(null, true);
       }
-      // B9 fix: Log rejected origins so CORS failures are diagnosable.
+      // Do NOT throw here: throwing surfaces as a 500 through the global error
+      // handler. Instead return allow=false (no ACAO header is set); the CORS
+      // rejection wrapper at the end of server.js turns this into an explicit
+      // 403 CORS_BLOCKED response so clients get a proper client error.
       console.warn('[cors] blocked origin:', origin);
-      return callback(new Error('Origin not allowed: ' + origin));
+      return callback(null, false);
     },
     // PATCH added (was missing per audit B1)
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

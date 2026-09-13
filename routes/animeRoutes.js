@@ -125,7 +125,10 @@ router.get('/genres',           anime.getGenres);
 router.get('/years',            anime.getYears);
 router.get('/search/advanced',  catalogue.advancedSearch);
 router.get('/recommendations/:id', anime.getRecommendations);
-router.get('/resolve/stream', anime.resolveStream);
+// Legacy public stream resolver `/api/anime/resolve/stream` was REMOVED: it was
+// an unauthenticated video-source resolution proxy that bypassed entitlement and
+// rate limiting, and no client uses it (the player uses /api/stream/resolve).
+// See controllers/animeController.js for the removed handler.
 
 // P0-2: Gate the stream endpoint behind protect + canWatch.
 // The frontend does not use this route (it uses /api/stream/:animeTitle/:ep),

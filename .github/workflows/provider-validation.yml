@@ -1,0 +1,38 @@
+name: Provider Validation
+
+# External provider / network validation. This is intentionally NOT part of the
+# normal PR CI (which must stay fast and non-flaky). It is run manually or on a
+# schedule against real external providers.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *' # daily 03:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-validation
+  cancel-in-progress: true
+
+jobs:
+  providers:
+    name: External provider validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      POSTMARK_TEST_MODE: "true"
+      JWT_SECRET: ci_jwt_secret_placeholder_do_not_use_in_prod
+      JWT_RESET_SECRET: ci_reset_secret_placeholder_do_not_use_in_prod
+      STREAM_TOKEN_SECRET: ci_stream_secret_placeholder_do_not_use_in_prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Provider / network validation
+        run: npm run validate:quick

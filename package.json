@@ -6,14 +6,19 @@
     "cap:sync:android": "node scripts/capacitor-preflight.js && cap copy android && cap sync android",
     "cap:sync:ios": "node scripts/capacitor-preflight.js && cap copy ios && cap sync ios",
     "migrate": "node scripts/migrate.js",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "migrate:status": "node scripts/migrate.js --status",
+    "db:bootstrap": "node scripts/db-bootstrap.js",
+    "admin:create": "node scripts/admin-create.js",
+    "lint": "eslint server.js config controllers middleware routes services utils scripts validation test tests shared",
+    "lint:fix": "eslint server.js config controllers middleware routes services utils scripts validation test tests shared --fix",
     "seed:catalogue": "node scripts/seed-catalogue.js",
     "validate:nightly": "node validation/index.js",
     "validate:quick": "node validation/index.js --quick",
     "validate:concurrency": "node validation/index.js --skipConcurrency",
     "verify:schema": "node scripts/verify-schema.js",
-    "test": "node --require ./test/setup.js --test test/**/*.test.js",
+    "test": "npm run test:node && npm run test:mocha",
+    "test:node": "node --require ./test/setup.js --test test/**/*.test.js",
+    "test:mocha": "mocha --require ./test/setup.js \"tests/**/*.test.js\" --reporter dot",
     "test:hls": "node --require ./test/setup.js --test test/hlsRewriter.test.js",
     "test:ssrf": "node --require ./test/setup.js --test test/ssrfGuard.test.js"
   },
@@ -53,5 +58,9 @@
     "eslint": "^8.57.0",
     "mocha": "^11.8.0",
     "puppeteer-core": "^25.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
   }
 }

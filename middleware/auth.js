@@ -133,10 +133,10 @@ exports.optionalAuth = async (req, res, next) => {
 
 // Must be used AFTER protect.
 // P1 (Defect 6): role is authoritative from the `user_roles` table, checked fresh
-// on every request — a stale JWT `isAdmin` claim can no longer grant admin. The
-// JWT claim is only a fast-path fallback if the role lookup fails (DB hiccup), so
-// a temporary DB issue can't lock an admin out, while a demoted admin is rejected
-// immediately.
+// on every request — a stale JWT `isAdmin` claim can no longer grant admin.
+// FAIL-CLOSED: if the role lookup fails or returns no 'admin' role, access is
+// denied (403). There is no fallback to users.is_admin or to JWT claims, so a
+// failed lookup can never grant admin.
 exports.adminOnly = async (req, res, next) => {
   if (!req.user) {
     return res.status(403).json({ message: 'Admin access required.' });

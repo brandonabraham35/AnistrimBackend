@@ -222,13 +222,12 @@ INSERT IGNORE INTO genres (name) VALUES
   ('Supernatural'), ('Thriller'), ('Psychological');
 
 -- ============================================================
--- SEED DATA: Default Admin User
--- Password: admin123  (bcrypt hash — change immediately!)
+-- ADMIN USER: intentionally NOT seeded here.
+-- Creating/seeding an administrator from a bootstrap file would embed a
+-- hardcoded/default password. Administrators are created explicitly and
+-- securely with:
+--   npm run admin:create
 -- ============================================================
-INSERT IGNORE INTO users (name, email, password_hash, is_admin, is_premium) VALUES
-  ('Admin', 'admin@anistrim.com',
-   '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17ldy',
-   1, 1);
 
 -- ============================================================
 -- SEED DATA: Sample Anime Titles

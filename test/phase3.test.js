@@ -124,15 +124,11 @@ test('FIX 8: watchlist.js reads canonical field names', () => {
 });
 
 // ── FIX 9: Migration ordering (done in Phase 2) ──────────────
-test('FIX 9: runner discovers only versioned migrations, ordered numerically', () => {
+test('FIX 9: runner discovers versioned migrations (incl. migrations_v5.sql), ordered numerically', () => {
   const src = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate.js'), 'utf8');
-  // Actual runner contract: ONLY sql/migrations_v<N>_*.sql files participate,
-  // sorted numerically by the v-number. schema.sql is a manual Workbench
-  // bootstrap document and updates.sql is a legacy patch file — neither is
-  // ever executed or recorded by the runner.
-  assert.match(src, /\^migrations_v\\d\+_\.\*\\\.sql\$/, 'discovery must match only migrations_v<N>_*.sql files');
-  assert.doesNotMatch(src, /schema\.sql/, 'schema.sql must not be executed or referenced by the runner');
-  assert.doesNotMatch(src, /updates\.sql/, 'updates.sql must not be executed or referenced by the runner');
+  // The runner discovers every sql/migrations_v<N>.sql / migrations_v<N>_*.sql
+  // file (numeric suffix optional), sorted ascending by the v-number.
+  assert.match(src, /\^migrations_v\\d\+\(\?:_\[\^\/\]\+\)\?\\\.sql\$/, 'discovery must allow an optional suffix after the version');
   assert.match(src, /parseInt\(a\.match\(/, 'sort key must parse the v-number');
   assert.match(src, /return va - vb;/, 'migrations must be ordered ascending by v-number');
 });

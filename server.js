@@ -28,29 +28,37 @@ require('dotenv').config();
 
 // ── End Google OAuth validation ──────────────────────────────
 
-// Global Error Boundaries to prevent Render crashes
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('⚠️ [CRASH PREVENTION] Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error('💥 [CRASH PREVENTION] Critical Uncaught Exception:', error);
-});
+// ── Fatal process-level errors ─────────────────────────────────
+// An uncaughtException / unhandledRejection indicates an unrecoverable process
+// state. We log safely (redacted), then terminate so the process supervisor
+// (systemd) restarts the app — we must NOT keep serving after such an error.
+const { redact } = require('./utils/redact');
+function processFatal(kind) {
+  return (...args) => {
+    const detail = {
+      message: (args[0] && args[0].message) ? args[0].message : String(args[0]),
+      stack: (args[0] && args[0].stack) ? args[0].stack : null,
+    };
+    console.error(`[FATAL:${kind}]`, JSON.stringify(redact(detail)));
+    setTimeout(() => process.exit(1), 500).unref?.();
+  };
+}
+process.on('uncaughtException', processFatal('uncaughtException'));
+process.on('unhandledRejection', processFatal('unhandledRejection'));
 
 const app = express();
 
-// ── Render/Express proxy trust (FIX: ERR_ERL_UNEXPECTED_X_FORWARDED_FOR) ──
-// AniStrim2 is deployed behind Render's reverse proxy. Render terminates TLS
-// and forwards X-Forwarded-For / X-Forwarded-Proto. Without "trust proxy",
-// Express overwrites req.ip with the socket's remote address (the proxy
-// itself), so express-rate-limit sees every request coming from the same
-// internal IP and rejects the X-Forwarded-For header with
-// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
-//
-// trust proxy = 1 means "trust the first hop only" — correct for a single
-// proxy layer (Render's load balancer). Set BEFORE any middleware that
-// reads req.ip (CORS, rate-limiting, request metrics).
-app.set('trust proxy', 1);
+// ── Reverse-proxy trust (explicit, one-hop Nginx) ─────────────
+// The backend runs as a single Node process behind a one-hop reverse proxy
+// (Nginx under systemd). `trust proxy` tells Express which X-Forwarded-*
+// headers to trust. Default: production trusts exactly one hop; all other
+// environments trust none, so bypassing the proxy cannot spoof headers.
+// Override with TRUST_PROXY (e.g. "1", "false", "loopback", or a sub-IP list).
+// Set BEFORE any middleware that reads req.ip (CORS, rate-limiting, metrics).
+const TRUST_PROXY = process.env.TRUST_PROXY !== undefined
+  ? (process.env.TRUST_PROXY === 'false' || process.env.TRUST_PROXY === '0' ? false : process.env.TRUST_PROXY)
+  : (process.env.NODE_ENV === 'production' ? 1 : 0);
+app.set('trust proxy', TRUST_PROXY);
 
 // ── Security headers ──────────────────────────────────────────
 // These are intentionally set AFTER trust-proxy but BEFORE routes.
@@ -111,9 +119,13 @@ if (VERCEL_SECRET) {
 // Render terminates TLS at the edge and forwards X-Forwarded-Proto.
 // Without this, direct IP access to the Render instance would serve
 // unencrypted HTTP, exposing Bearer tokens to MITM attacks.
-if (process.env.NODE_ENV === 'production') {
+// HTTPS enforcement (production, behind a trusted proxy). Uses req.protocol
+// (which respects `trust proxy`) rather than trusting a raw client header, and
+// only enforces when a trusted proxy is configured. The backend must not be
+// reachable directly (bind to loopback/private behind Nginx).
+if (process.env.NODE_ENV === 'production' && TRUST_PROXY) {
   app.use((req, res, next) => {
-    if (req.headers['x-forwarded-proto'] !== 'https') {
+    if (req.protocol !== 'https') {
       return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
     }
     next();
@@ -133,18 +145,15 @@ const { sendSuccess } = require('./utils/response');
 // and must NOT fall back to JWT_SECRET — a stream-token key compromise must
 // never become an auth-token (JWT) key compromise, and rotation must be
 // possible independently. Generate with: openssl rand -hex 32
-const REQUIRED_ENV = ['JWT_SECRET', 'STREAM_TOKEN_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
-// PASSWORD_PEPPER is strongly recommended for production security.
-// Without it, passwords are vulnerable to offline cracking if the database is breached.
-// Generate with: openssl rand -hex 32
-// Note: We don't make it required to avoid breaking existing deployments that
-// would need a migration strategy for existing password hashes.
-if (process.env.NODE_ENV === 'production') {
-  const missing = REQUIRED_ENV.filter(k => !process.env[k]);
-  if (missing.length) {
-    console.error(`❌ [SECURITY] Missing required env vars: ${missing.join(', ')}. Refusing to start.`);
-    process.exit(1);
-  }
+// Production configuration validation. Fails clearly when essential config is
+// missing; optional features only require their credentials when enabled.
+const { validateConfig } = require('./config/validateEnv');
+const { errors: configErrors, warnings: configWarnings } = validateConfig(process.env);
+for (const w of configWarnings) console.warn('⚠️ [CONFIG] ' + w);
+if (configErrors.length) {
+  console.error('❌ [CONFIG] Invalid production configuration. Refusing to start:');
+  for (const e of configErrors) console.error('   - ' + e);
+  process.exit(1);
 }
 
 // Phase 4 (Item 5): generous streaming timeouts. The effective configuration
@@ -157,22 +166,20 @@ if (Number(process.versions.node.split('.')[0]) < 18) {
   process.exit(1);
 }
 
-// ── Prompt 10: Migration runner + critical-table assertion ──
-// Apply any pending sql/migrations_v*.sql files (recorded in schema_migrations)
-// and verify the critical tables exist BEFORE any service that depends on them
-// starts. Fails loudly — never silently falls back to a legacy path.
-//
-// The ENTIRE server bootstrap (route registration + app.listen) is wrapped in
-// an async IIFE that AWAITS migrations first, so no request can ever hit an
-// unmigrated schema. If migrations fail, the process exits before binding.
+// ── Read-only schema readiness check ────────────────
+// Starting the server MUST NOT modify the database schema. Migrations are an
+// explicit, opt-in operation (`npm run db:bootstrap` for a fresh DB, or
+// `npm run migrate` to upgrade an existing DB). Here we only verify that the
+// critical tables/columns exist (pure read-only information_schema queries) and
+// refuse to start if they do not, so a misconfigured deployment fails fast
+// instead of serving against an incomplete schema.
 (async () => {
   try {
-    const { runMigrations, assertCriticalTables } = require('./scripts/migrate');
-    await runMigrations();
+    const { assertCriticalTables } = require('./scripts/migrate');
     await assertCriticalTables();
-    console.log('✅ Migrations verified. Starting server...');
+    console.log('✅ Schema ready (read-only check). Starting server...');
   } catch (e) {
-    console.error('❌ [MIGRATIONS] Startup blocked:', e.message);
+    console.error('❌ [MIGRATIONS] Schema not ready. Run `npm run migrate` (or `npm run db:bootstrap` for a fresh DB) first.', e.message);
     process.exit(1);
   }
 
@@ -288,9 +295,32 @@ if (process.env.NODE_ENV !== 'production') {
   console.log('ℹ️ Consumet microservice disabled in production (using stream proxy instead)');
 }
 
-// ─── Health Check ──────────────────────────────────────────
+// ─── Health Check (liveness) ────────────────────────────────
+// Lightweight liveness: the process is up. Does not touch the database.
 app.get('/api/health', (req, res) => {
   sendSuccess(res, { status: 'OK', time: new Date(), environment: process.env.NODE_ENV || 'development' });
+});
+
+// ─── Readiness ──────────────────────────────────────────────
+// Verifies MySQL connectivity + required schema state. 200 when ready, 503
+// otherwise. Optional external providers are NOT part of readiness.
+const { checkReadiness } = require('./config/readiness');
+const { getReleaseInfo } = require('./config/releaseInfo');
+app.get('/api/ready', async (req, res) => {
+  const result = await checkReadiness();
+  const status = result.ready ? 200 : 503;
+  res.status(status).json({
+    status: result.ready ? 'READY' : 'NOT_READY',
+    checks: result.checks,
+    reason: result.reason || null,
+    release: getReleaseInfo(),
+  });
+});
+
+// ─── Release identification ──────────────────────────────────
+// Safe, non-secret release descriptor (git commit, version, deploy version).
+app.get('/api/release', (req, res) => {
+  sendSuccess(res, getReleaseInfo());
 });
 
 // ─── Google Auth Configuration Status ─────────────────────
@@ -537,10 +567,14 @@ const server = http.createServer(
   },
   app
 );
-server.listen(PORT, '0.0.0.0', () => {
+const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
+server.listen(PORT, BIND_HOST, () => {
+  const release = getReleaseInfo();
   console.log('==================================================');
-  console.log(`🚀 AniStrim2 running on port ${PORT}`);
-  console.log(`   Listening on: http://0.0.0.0:${PORT}`);
+  console.log(`🚀 AniStrim2 running on port ${PORT} (bind ${BIND_HOST})`);
+  console.log(`   Listening on: http://${BIND_HOST}:${PORT}`);
+  console.log(`   Release: ${release.commit || 'unknown'} (v${release.version || '?'}) env=${release.environment}`);
+  console.log('   Single-process architecture: schedulers run in-process. Do NOT run multiple instances concurrently.');
   console.log('==================================================');
 });
 // Detect abnormal server-closing conditions so we can log the cause.
@@ -548,6 +582,13 @@ server.on('clientError', (err, socket) => {
   console.error('⚠️ [SERVER] clientError:', err.message);
   if (socket && !socket.destroyed) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
 });
+
+// ── Graceful shutdown ───────────────────────────────────────
+// On SIGTERM/SIGINT: stop accepting requests, drain for a bounded period, close
+// the DB pool, then exit so systemd can restart the process cleanly.
+const { installGracefulShutdown } = require('./config/shutdown');
+const pool = require('./config/db');
+installGracefulShutdown(server, { pool });
 
 // Start background jobs
 require('./utils/premiumAutomation');

@@ -137,14 +137,13 @@ test('origin callback allows capacitor origin in production', () => {
   });
 });
 
-test('origin callback blocks unknown origin in production', () => {
+test('origin callback blocks unknown origin in production (allow=false, no throw)', () => {
   process.env.NODE_ENV = 'production';
   process.env.API_ALLOWED_ORIGINS = '';
   const options = corsConfig.buildCorsOptions();
   options.origin('https://evil.example.com', (err, allow) => {
-    assert.ok(err instanceof Error);
-    assert.equal(err.message, 'Origin not allowed: https://evil.example.com');
-    assert.equal(allow, undefined);
+    assert.equal(err, null);
+    assert.equal(allow, false);
   });
 });
 

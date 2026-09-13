@@ -1,7 +1,15 @@
-// config/db.js — MySQL connection pool using mysql2
+﻿// config/db.js - MySQL connection pool using mysql2
+//
+// IMPORTANT: Importing this module is intentionally SIDE-EFFECT FREE with
+// respect to the database. It only builds a lazy connection pool. It does NOT
+// connect, create/promote administrators, run migrations, or write anything.
+//
+// All schema changes and admin creation are explicit, opt-in commands:
+//   npm run db:bootstrap   (fresh database bootstrap)
+//   npm run migrate       (apply pending migrations)
+//   npm run admin:create  (create/promote an admin account)
 const mysql = require('mysql2/promise');
 require('dotenv').config();
-const bcrypt = require('bcryptjs');
 
 const pool = mysql.createPool({
   host:               process.env.DB_HOST     || 'localhost',
@@ -10,85 +18,25 @@ const pool = mysql.createPool({
   password:           process.env.DB_PASSWORD || '',
   database:           process.env.DB_NAME     || 'anistrim2',
   waitForConnections: true,
-  connectionLimit:    3,  // Never exceed your host's limit of 5 — 3 is safe headroom
-  queueLimit:         0,  // Unlimited queuing (requests wait for a free connection)
+  connectionLimit:    3,
+  queueLimit:         0,
   charset:            'utf8mb4',
-  // Destroy connections that have been idle for 10s to free up pool slots
   idleTimeout:        10000,
 });
 
 /**
- * Ensures that a default admin user exists and has the correct password hash.
- * This runs on server startup to prevent login issues in any environment.
+ * Read-only connectivity check. Never writes to the database.
+ * @returns {Promise<boolean>} true if the server is reachable.
  */
-async function ensureAdminUser() {
-  let connection;
+async function testConnection() {
+  const conn = await pool.getConnection();
   try {
-    connection = await pool.getConnection();
-    console.log(' Verifying default admin user...');
-
-    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@anistrim.com';
-    const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
-
-    // Check if the user exists
-    const [rows] = await connection.query('SELECT id FROM users WHERE email = ?', [adminEmail]);
-
-    if (rows.length > 0) {
-      // User exists — just ensure they have admin role. NEVER reset the password
-      // of an existing admin, as this would overwrite any custom password.
-      const user = rows[0];
-      await connection.query('UPDATE users SET is_admin = 1 WHERE id = ?', [user.id]);
-      console.log(`✅ Admin user '${adminEmail}' verified (role granted, password unchanged).`);
-    } else {
-      // User does not exist, create them with the default password.
-      // SECURITY: In production, DEFAULT_ADMIN_PASSWORD must be set.
-      if (process.env.NODE_ENV === 'production' && !process.env.DEFAULT_ADMIN_PASSWORD) {
-        console.warn('⚠️ DEFAULT_ADMIN_PASSWORD is not set in production. ' +
-          'The admin account will be created with a default password. ' +
-          'Set DEFAULT_ADMIN_PASSWORD to a strong random value.');
-      }
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(adminPassword, salt);
-
-      // Check whether the Phase-1 `status` column exists yet (migrations may not
-      // have run on a fresh DB). If it does, set status='active'; otherwise omit
-      // it so the INSERT does not crash with "Unknown column 'status'".
-      const [colRows] = await connection.query(
-        `SELECT COUNT(*) AS c FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'status'`
-      );
-      const hasStatus = Number(colRows[0]?.c) > 0;
-      if (hasStatus) {
-        await connection.query(
-          "INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified, status) VALUES (?, ?, ?, 1, 1, 1, 'active')",
-          ['Default Admin', adminEmail, passwordHash]
-        );
-      } else {
-        await connection.query(
-          "INSERT INTO users (name, email, password_hash, is_admin, is_premium, is_verified) VALUES (?, ?, ?, 1, 1, 1)",
-          ['Default Admin', adminEmail, passwordHash]
-        );
-      }
-      console.log(`✅ Admin user '${adminEmail}' created successfully.`);
-    }
-  } catch (error) {
-    console.error('❌ Failed to ensure admin user:', error.message);
+    await conn.query('SELECT 1');
+    return true;
   } finally {
-    if (connection) connection.release();
+    conn.release();
   }
 }
 
-// Test connection on startup
-pool.getConnection()
-  .then(conn => {
-    console.log('✅ MySQL connected to:', process.env.DB_NAME);
-    conn.release();
-    // After successful connection, ensure the admin user is configured
-    ensureAdminUser();
-  })
-  .catch(err => {
-    console.error('❌ MySQL connection failed:', err.message);
-    console.error('   Check your .env DB_HOST / DB_USER / DB_PASSWORD / DB_NAME');
-  });
-
 module.exports = pool;
+module.exports.testConnection = testConnection;

@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# Least privilege: read-only contents. No secrets are required for this job.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint, Bootstrap, Tests, Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Isolated, disposable MySQL for the whole job.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_password
+          MYSQL_DATABASE: anistrim_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    # Disposable test-only credentials (never production values).
+    env:
+      NODE_ENV: test
+      POSTMARK_TEST_MODE: "true"
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ci_root_password
+      DB_NAME: anistrim_test
+      DB_TEST_ISOLATED: "1"
+      DB_TEST_ADMIN_USER: root
+      DB_TEST_ADMIN_PASSWORD: ci_root_password
+      JWT_SECRET: ci_jwt_secret_placeholder_do_not_use_in_prod
+      JWT_RESET_SECRET: ci_reset_secret_placeholder_do_not_use_in_prod
+      STREAM_TOKEN_SECRET: ci_stream_secret_placeholder_do_not_use_in_prod
+      PASSWORD_PEPPER: ci_pepper_placeholder_do_not_use_in_prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Secret scanning
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: .gitleaks.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint (backend scope)
+        run: npm run lint
+
+      - name: Bootstrap fresh database
+        run: npm run db:bootstrap
+
+      - name: Apply migrations
+        run: npm run migrate
+
+      - name: Backend tests (node:test + mocha)
+        run: npm test
+
+      - name: Application startup + liveness/readiness smoke
+        run: |
+          node server.js & SERVER_PID=$!
+          # Give the server time to connect to MySQL and verify the schema.
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:5000/api/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          echo "--- liveness (/api/health) ---"
+          curl -fsS http://127.0.0.1:5000/api/health
+          echo
+          echo "--- readiness (/api/ready) ---"
+          curl -fsS http://127.0.0.1:5000/api/ready
+          echo
+          kill $SERVER_PID || true

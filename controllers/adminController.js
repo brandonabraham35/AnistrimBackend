@@ -266,7 +266,7 @@ const adminController = {
       const data = anime.map(row => ({ ...DTO.animeDto(row), genres: genreMap[row.id] || [] }));
 
       return sendPaginated(res, data, { page, perPage: limit, totalItems: total });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async getAnimeById(req, res) {
@@ -293,7 +293,7 @@ const adminController = {
       anime.total_episode_views = epViews[0]?.views || 0;
 
       return sendSuccess(res, DTO.animeDto(anime));
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async createAnime(req, res) {
@@ -310,7 +310,7 @@ const adminController = {
        invalidateCatalogue(result.insertId);
       await logActivity(req, `Created anime: ${title.trim()}`, 'anime', result.insertId);
       return sendSuccess(res, { id: result.insertId }, { message: 'Anime created.' }, 201);
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async updateAnime(req, res) {
@@ -336,7 +336,7 @@ const adminController = {
       // Phase 5.3 — record the before/after audit trail via logAdminAction.
       await logAdminAction(req, { action: 'anime.update', entityType: 'anime', entityId: req.params.id, before, after: values });
       return sendSuccess(res, null, { message: 'Anime updated.' });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async deleteAnime(req, res) {
@@ -354,7 +354,7 @@ const adminController = {
        await logActivity(req, `Deleted anime #${req.params.id}`, 'anime', req.params.id);
        invalidateCatalogue(req.params.id);
       return sendSuccess(res, null, { message: 'Anime deleted.' });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async replaceGenres(animeId, genres) {
@@ -363,9 +363,9 @@ const adminController = {
     if (ids.length) await db.query('INSERT IGNORE INTO anime_genres (anime_id, genre_id) VALUES ?', [ids.map(id => [animeId, id])]);
   },
 
-  async getAllGenres(req, res) { try { const [rows] = await db.query('SELECT id, name FROM genres ORDER BY name'); return sendSuccess(res, rows); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); return sendSuccess(res, { id: r.insertId, name: req.body.name.trim() }, null, 201); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : error.message }); } },
-  async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); return sendSuccess(res, null, { message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAllGenres(req, res) { try { const [rows] = await db.query('SELECT id, name FROM genres ORDER BY name'); return sendSuccess(res, rows); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
+  async createGenre(req, res) { if (!req.body.name?.trim()) return res.status(400).json({ message: 'Genre name is required.' }); try { const [r] = await db.query('INSERT INTO genres (name) VALUES (?)', [req.body.name.trim()]); await logActivity(req, `Created genre: ${req.body.name.trim()}`, 'genre', r.insertId); return sendSuccess(res, { id: r.insertId, name: req.body.name.trim() }, null, 201); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'Genre already exists.' : 'Internal server error.' }); } },
+  async deleteGenre(req, res) { try { const [r] = await db.query('DELETE FROM genres WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Genre not found.' }); await logActivity(req, `Deleted genre #${req.params.id}`, 'genre', req.params.id); return sendSuccess(res, null, { message: 'Genre deleted.' }); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
 
   async getAllEpisodes(req, res) {
     try {
@@ -383,7 +383,7 @@ const adminController = {
         [limit, offset]
       );
       return sendPaginated(res, rows.map(DTO.episodeDto), { page, perPage: limit, totalItems: total });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
   async getAnimeEpisodes(req, res) {
     try {
@@ -403,9 +403,9 @@ const adminController = {
         [animeId, limit, offset]
       );
       return sendPaginated(res, rows.map(DTO.episodeDto), { page, perPage: limit, totalItems: total });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
-  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); return sendSuccess(res, DTO.episodeDto(rows[0])); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getEpisode(req, res) { try { const [rows] = await db.query('SELECT * FROM episodes WHERE id = ?', [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); return sendSuccess(res, DTO.episodeDto(rows[0])); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
   // P2: server-side premium timing. Maps an admin-chosen duration label to a
   // premium_until timestamp (server clock, not device clock). 'permanent'/null
   // means null (permanent).
@@ -441,7 +441,7 @@ const adminController = {
     if (!updates.length) return res.status(400).json({ message: 'No episode fields were supplied.' });
     try { const [r] = await db.query(`UPDATE episodes SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Episode not found.' }); await logActivity(req, `Updated episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); return sendSuccess(res, null, { message: 'Episode updated.' }); } catch (error) { res.status(error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ message: error.code === 'ER_DUP_ENTRY' ? 'This episode number already exists.' : error.message }); }
   },
-  async deleteEpisode(req, res) { try { const schema = await getSchema(); const videoColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null; const thumbnailColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null; const [rows] = await db.query(`SELECT ${videoColumn || 'NULL AS video_public_id'}, ${thumbnailColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id = ?`, [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (rows[0].video_public_id) cloudinaryVideo.deleteVideo(rows[0].video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (rows[0].thumbnail_public_id) deleteImage(rows[0].thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); return sendSuccess(res, null, { message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async deleteEpisode(req, res) { try { const schema = await getSchema(); const videoColumn = hasColumn(schema, 'episodes', 'cloudinary_public_id') ? 'cloudinary_public_id' : null; const thumbnailColumn = hasColumn(schema, 'episodes', 'thumbnail_public_id') ? 'thumbnail_public_id' : null; const [rows] = await db.query(`SELECT ${videoColumn || 'NULL AS video_public_id'}, ${thumbnailColumn || 'NULL AS thumbnail_public_id'} FROM episodes WHERE id = ?`, [req.params.id]); if (!rows.length) return res.status(404).json({ message: 'Episode not found.' }); await db.query('DELETE FROM episodes WHERE id = ?', [req.params.id]); if (rows[0].video_public_id) cloudinaryVideo.deleteVideo(rows[0].video_public_id).catch(error => console.error('Cloudinary video cleanup failed:', error.message)); if (rows[0].thumbnail_public_id) deleteImage(rows[0].thumbnail_public_id).catch(error => console.error('Cloudinary thumbnail cleanup failed:', error.message)); await logActivity(req, `Deleted episode #${req.params.id}`, 'episode', req.params.id); invalidateCatalogue(); return sendSuccess(res, null, { message: 'Episode deleted.' }); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
 
   async getAllUsers(req, res) {
     try {
@@ -458,7 +458,7 @@ const adminController = {
         [limit, offset]
       );
       return sendPaginated(res, rows.map(DTO.userDto), { page, perPage: limit, totalItems: total });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
   async updateUser(req, res) {
     const allowed = ['name', 'email', 'status', 'is_admin', 'is_premium', 'premium_expires_at'];
@@ -532,16 +532,16 @@ const adminController = {
       }
       await logActivity(req, `Updated user #${req.params.id}`, 'user', req.params.id);
       return sendSuccess(res, null, { message: 'User updated.' });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
-  async getSettings(req, res) { try { return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'cloudinary_cloud_name']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getSettings(req, res) { try { return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
+  async updateSettings(req, res) { const aliases = { premium_monthly_amount: 'premium_price_monthly', premium_yearly_amount: 'premium_price_yearly' }; const allowed = new Set(['site_name', 'announcement', 'maintenance_mode', 'premium_price_monthly', 'premium_price_yearly', 'premium_monthly_amount', 'premium_yearly_amount', 'contact_email', 'cloudinary_cloud_name']); const entries = Object.entries(req.body).filter(([key]) => allowed.has(key)).map(([key, value]) => [aliases[key] || key, value === null || value === undefined ? '' : String(value)]); if (!entries.length) return res.status(400).json({ message: 'No settings were supplied.' }); try { await db.query('INSERT INTO settings (`key`, `value`) VALUES ? ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', [entries]); await logActivity(req, 'Updated site settings', 'settings'); return sendSuccess(res, settingsResponse(await getSettingsObject())); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
 
-  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); return sendSuccess(res, rows.map(DTO.adDto)); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async createAd(req, res) { const { title, type = 'banner', image_url, banner_url, video_url, target_url, frequency, frequency_minutes, is_active = 1, target_free_only = 1 } = req.body; if (!title?.trim()) return res.status(400).json({ message: 'Ad title is required.' }); try { const [r] = await db.query('INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), type, image_url || banner_url || null, video_url || null, target_url || null, Number(frequency ?? frequency_minutes) || 1, toBool(is_active) ? 1 : 0, toBool(target_free_only) ? 1 : 0]); await logActivity(req, `Created advertisement: ${title.trim()}`, 'ad', r.insertId); return sendSuccess(res, { id: r.insertId }, { message: 'Advertisement created.' }, 201); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
-  async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async getAds(req, res) { try { const [rows] = await db.query('SELECT * FROM ads ORDER BY created_at DESC'); return sendSuccess(res, rows.map(DTO.adDto)); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
+  async createAd(req, res) { const { title, type = 'banner', image_url, banner_url, video_url, target_url, frequency, frequency_minutes, is_active = 1, target_free_only = 1 } = req.body; if (!title?.trim()) return res.status(400).json({ message: 'Ad title is required.' }); try { const [r] = await db.query('INSERT INTO ads (title, type, image_url, video_url, target_url, frequency, is_active, target_free_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), type, image_url || banner_url || null, video_url || null, target_url || null, Number(frequency ?? frequency_minutes) || 1, toBool(is_active) ? 1 : 0, toBool(target_free_only) ? 1 : 0]); await logActivity(req, `Created advertisement: ${title.trim()}`, 'ad', r.insertId); return sendSuccess(res, { id: r.insertId }, { message: 'Advertisement created.' }, 201); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
+  async updateAd(req, res) { const map = { banner_url: 'image_url', frequency_minutes: 'frequency' }; const allowed = new Set(['title', 'type', 'image_url', 'banner_url', 'video_url', 'target_url', 'frequency', 'frequency_minutes', 'is_active', 'target_free_only']); const updates = []; const values = []; for (const [key, value] of Object.entries(req.body)) if (allowed.has(key)) { const field = map[key] || key; updates.push(`${field} = ?`); values.push(['is_active', 'target_free_only'].includes(field) ? (toBool(value) ? 1 : 0) : field === 'frequency' ? Number(value) || 1 : value || null); } if (!updates.length) return res.status(400).json({ message: 'No advertisement fields were supplied.' }); try { const [r] = await db.query(`UPDATE ads SET ${updates.join(', ')} WHERE id = ?`, [...values, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Updated advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement updated.' }); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
+  async deleteAd(req, res) { try { const [r] = await db.query('DELETE FROM ads WHERE id = ?', [req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Advertisement not found.' }); await logActivity(req, `Deleted advertisement #${req.params.id}`, 'ad', req.params.id); return sendSuccess(res, null, { message: 'Advertisement deleted.' }); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
 
   // ── GET /api/admin/dashboard/ads-metrics ────────────────────
   // Per-slot, per-day ad_events breakdown for the last 30 days, plus fill-rate
@@ -612,7 +612,7 @@ const adminController = {
     }
   },
 
-  async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); return sendSuccess(res, null, { message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: error.message }); } },
+  async updatePaymentStatus(req, res) { const { status } = req.body; if (!['pending', 'successful', 'failed', 'refunded'].includes(status)) return res.status(400).json({ message: 'Invalid payment status.' }); try { const [r] = await db.query('UPDATE payments SET status = ?, paid_at = CASE WHEN ? = "successful" THEN COALESCE(paid_at, NOW()) ELSE paid_at END WHERE id = ?', [status, status, req.params.id]); if (!r.affectedRows) return res.status(404).json({ message: 'Payment not found.' }); await logActivity(req, `Updated payment #${req.params.id} to ${status}`, 'payment', req.params.id); return sendSuccess(res, null, { message: 'Payment updated.' }); } catch (error) { res.status(500).json({ message: 'Internal server error.' }); } },
   async uploadEpisodeVideo(req, res) {
     const episodeId = Number(req.params.id);
     if (!Number.isInteger(episodeId)) return res.status(400).json({ message: 'Invalid episode ID.' });
@@ -631,7 +631,7 @@ const adminController = {
       return sendSuccess(res, { url: videoUrl, public_id: video.public_id, duration: video.duration, manual_video_url: videoUrl }, { message: 'Video uploaded and linked to episode.' }, 201);
     } catch (error) {
       console.error('[Admin] uploadEpisodeVideo error:', error.message);
-      return res.status(502).json({ message: error.message || 'Video upload failed.' });
+      return res.status(502).json({ message: 'Video upload failed.' });
     } finally {
       if (file.path) require('fs').promises.unlink(file.path).catch(() => {});
     }
@@ -696,7 +696,7 @@ const adminController = {
     } catch (error) {
       try { await conn.rollback(); } catch (e) {}
       console.error('Bulk update anime error:', error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Internal server error.' });
     } finally {
       conn.release();
     }
@@ -744,7 +744,7 @@ const adminController = {
       return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Successfully deleted ${result.affectedRows} anime.` });
     } catch (error) {
       console.error('Bulk delete anime error:', error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Internal server error.' });
     }
   },
 
@@ -775,7 +775,7 @@ const adminController = {
       return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Successfully deleted ${result.affectedRows} episodes.` });
     } catch (error) {
       console.error('Bulk delete episodes error:', error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Internal server error.' });
     }
   },
 
@@ -818,7 +818,7 @@ if (search) {
       return sendPaginated(res, rows.map(DTO.paymentDto), { page: pageNum, perPage: limitNum, totalItems: total }, { summary: { total } });
     } catch (error) {
       console.error('getPayments error:', error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Internal server error.' });
     }
   },
 
@@ -837,7 +837,7 @@ if (search) {
       return sendSuccess(res, { affectedRows: result.affectedRows }, { message: `Successfully deleted ${result.affectedRows} user(s).` });
     } catch (error) {
       console.error('Bulk delete users error:', error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Internal server error.' });
     }
   },
 async updateGenre(req, res) {
@@ -862,7 +862,7 @@ async updateGenre(req, res) {
       );
       if (!rows.length) return res.status(404).json({ message: 'User not found.' });
       return sendSuccess(res, DTO.userDto(rows[0]));
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async getUserWatchHistory(req, res) {
@@ -883,7 +883,7 @@ async updateGenre(req, res) {
         [req.params.id]
       );
       return sendSuccess(res, rows);
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async getUserLoginHistory(req, res) {
@@ -906,7 +906,7 @@ async updateGenre(req, res) {
         );
         return sendSuccess(res, rows);
       }
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   async getActivityLogs(req, res) {
@@ -918,7 +918,7 @@ async updateGenre(req, res) {
         : `SELECT a.action, a.created_at, NULL ip_address, ${userNameExpr} user_name FROM admin_logs a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.created_at DESC LIMIT 50`;
       const [rows] = await db.query(sql);
       return sendSuccess(res, rows.map(DTO.logDto));
-    } catch (error) { res.status(500).json({ message: error.message }); }
+    } catch (error) { res.status(500).json({ message: 'Internal server error.' }); }
   },
 
   // ─── Live Dashboard: Health Check (Phase 9 / item 20) ───────────────
@@ -1153,7 +1153,7 @@ case 'provider-usage': {
       return sendPaginated(res, rows.map(DTO.auditDto), { page, perPage: limit, totalItems: countRows[0]?.total || 0 });
     } catch (error) {
       console.error('[Admin] getAuditLogs error:', error.message);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: 'Internal server error.' });
     }
   },
 

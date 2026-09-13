@@ -17,6 +17,7 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const logger = require('./logger');
 const { getReferer } = require('../services/providerRegistry');
 const { streamingHttp, STREAMING_TIMEOUT } = require('./streamingHttp');
+const { followWithGuard } = require('./redirectSafeHttp');
 
 // Streaming requests default to the dedicated 10-second streaming client
 // timeout. Non-streaming requests keep the historical 15s default. This is
@@ -32,10 +33,7 @@ const { streamingHttp, STREAMING_TIMEOUT } = require('./streamingHttp');
  * Build proxy URL from environment variables.
  * Supports two formats:
  *   1. PROXY_LIST — comma-separated list of fully qualified proxy URLs
- *      e.g. http://user:pass@host:port,http://user2:pass2@host2:port2
  *   2. PROXY_HOST/PORT/USER/PASS — single proxy (legacy)
- *
- * If PROXY_LIST is empty, falls back to legacy PROXY_HOST/PORT/USER/PASS.
  */
 function buildProxyUrl(host, port, user, pass) {
   if (!host || !port) return null;
@@ -44,17 +42,8 @@ function buildProxyUrl(host, port, user, pass) {
 }
 
 function buildProxyList() {
-  // Precedence: PROXY_HOST / PORT / USER / PASS (explicit single-proxy
-  // configuration) are authoritative when ALL are set. This ensures newly
-  // provisioned Thordata credentials actually take effect rather than being
-  // silently shadowed by a stale PROXY_LIST.
-  //
-  // PROXY_LIST is retained as a fallback / multi-proxy rotation mechanism:
-  //   - If PROXY_HOST is NOT set (or empty), PROXY_LIST is used as before.
-  //   - If PROXY_HOST IS set, the single-proxy vars are the ONLY source and
-  //     PROXY_LIST is ignored (avoiding dangerous credential shadowing).
-  //
-  // 1. Check single-proxy vars first (authoritative when PROXY_HOST is set).
+  // PROXY_HOST / PORT / USER / PASS are authoritative when PROXY_HOST is set;
+  // PROXY_LIST is the fallback / multi-proxy rotation mechanism.
   const hasHost = process.env.PROXY_HOST && process.env.PROXY_HOST.trim().length > 0;
   const hasPort = process.env.PROXY_PORT && process.env.PROXY_PORT.trim().length > 0;
   if (hasHost) {
@@ -73,20 +62,14 @@ function buildProxyList() {
       return [single];
     }
   }
-
-  // 2. Fallback to PROXY_LIST (multi-proxy rotation or legacy config).
   const list = (process.env.PROXY_LIST || '')
     .split(',')
     .map(p => p.trim())
     .filter(Boolean);
-
   if (list.length > 0) {
-    logger.info('[Proxy] Using PROXY_LIST (' + list.length + ' entries)', {
-      proxyCount: list.length,
-    });
+    logger.info('[Proxy] Using PROXY_LIST (' + list.length + ' entries)', { proxyCount: list.length });
     return list;
   }
-
   return [];
 }
 
@@ -113,32 +96,7 @@ function createProxyAgent(proxyUrl) {
   }
 }
 
-/**
- * Creates an HTTPS agent with relaxed TLS verification for EPROTO workarounds.
- * This disables strict certificate validation to work around servers that send
- * malformed TLS records (e.g., animeheaven.me on Render/Node.js).
- *
- * WARNING: This makes the connection vulnerable to MITM attacks — use only
- * as a fallback for scraping providers when strict TLS fails.
- *
- * @param {string|null} proxyUrl - Optional proxy URL
- * @returns {HttpsProxyAgent|https.Agent} Configured agent
- */
-function createRelaxedTlsAgent(proxyUrl) {
-  const agentOptions = {
-    rejectUnauthorized: false, // Relaxes TLS verification for EPROTO workarounds
-  };
 
-  if (proxyUrl) {
-    try {
-      return new HttpsProxyAgent(proxyUrl, agentOptions);
-    } catch (err) {
-      logger.warn('Failed to create relaxed TLS proxy agent', { proxy: '[REDACTED]', error: err.message });
-    }
-  }
-
-  return new https.Agent(agentOptions);
-}
 
 // ───────────────────────────────────────────────────────────────
 //  PROVIDER HEALTH TRACKING
@@ -619,14 +577,12 @@ async function request(config, options = {}) {
   const effectiveTimeout = config.timeout || timeout;
   // Streaming retries are DISABLED at the HTTP layer; the streaming pipeline
   // (streamingService.executeWithRetry) already coordinates per-provider retries.
-  // EXCEPTION: TLS errors get one retry with relaxed verification even in streaming mode.
+  // Redirects are followed with per-hop SSRF validation (see utils/redirectSafeHttp.js).
   let effectiveMaxRetries = streaming ? 0 : maxRetries;
   const startTime = Date.now();
 
   let lastError;
   let proxiedUrl = null;
-  let tlsRelaxed = false; // Track if we've tried with relaxed TLS
-  let relaxedHttpsAgent = null; // Cached relaxed TLS agent for retries
 
   for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
     // Check provider health before attempting
@@ -659,7 +615,7 @@ async function request(config, options = {}) {
         ...mergedHeaders,
         ...config.headers,
       },
-      httpsAgent: relaxedHttpsAgent || proxyAgent || config.httpsAgent || undefined,
+      httpsAgent: proxyAgent || config.httpsAgent || undefined,
       // Also set httpAgent so HTTP (plaintext) provider destinations also use
       // the Thordata CONNECT tunnel, not just HTTPS destinations. The
       // HttpsProxyAgent handles both HTTP and HTTPS through CONNECT.
@@ -689,9 +645,7 @@ async function request(config, options = {}) {
       // Streaming-provider requests route through the DEDICATED streaming axios
       // client (utils/streamingHttp.js) which enforces the 10s timeout,
       // retry-disabled behaviour, and descriptive timeout/error logging.
-      const response = streaming
-        ? await streamingHttp.request(requestConfig)
-        : await axios(requestConfig);
+      const response = await followWithGuard(streaming ? streamingHttp : axios, requestConfig);
       const responseTime = Date.now() - attemptStart;
 
       // Track health
@@ -718,8 +672,7 @@ async function request(config, options = {}) {
       const statusText = status ? `HTTP ${status}` : 'NETWORK_ERROR';
       const isTimeout = isTimeoutError(err);
       const cloudflareDetected = status === 403 || /cloudflare/i.test(err.message || '');
-      const isTlsError = err.code === 'EPROTO' || /ssl routines|tls_get_more_records|packet length|ssl_error/i.test(err.message || '');
-      // Detect proxy authentication failure: EPROTO on a proxied request with
+            // Detect proxy authentication failure: EPROTO on a proxied request with
       // no HTTP response almost certainly means the proxy returned a plaintext
       // 407 which OpenSSL cannot parse as TLS.  Do NOT treat this as a TLS
       // certificate issue — the only fix is to check proxy credentials/session.
@@ -738,7 +691,7 @@ async function request(config, options = {}) {
         timeoutStatus: isTimeout,
       });
 
-      // Proxy authentication failure — fail fast, do NOT retry with relaxed TLS.
+      // Proxy authentication failure — fail fast.
       if (isProxyAuthFailure) {
         logger.warn('[providerHttp] Proxy authentication failure (EPROTO on proxied request)', {
           provider: providerName,
@@ -754,27 +707,7 @@ async function request(config, options = {}) {
         });
       }
 
-      // TLS error fallback: retry once with relaxed TLS verification
-      // This applies even in streaming mode where normal retries are disabled.
-      // IMPORTANT: only fires for genuine TLS errors, NOT proxy auth failures.
-      if (isTlsError && !tlsRelaxed && !isProxyAuthFailure) {
-        tlsRelaxed = true;
-        // Allow one extra attempt for TLS errors (even in streaming mode)
-        effectiveMaxRetries = Math.max(effectiveMaxRetries, 1);
-        
-        logger.warn('[providerHttp] TLS error detected, retrying with relaxed TLS verification', {
-          provider: providerName,
-          url: config.url?.substring(0, 120),
-          error: err.message?.substring(0, 200),
-        });
-
-        // Create and cache relaxed TLS agent for subsequent attempts
-        relaxedHttpsAgent = createRelaxedTlsAgent(proxiedUrl);
-
-        const delay = BASE_DELAY_MS + Math.random() * 300;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
+      
 
 // Track health on final failure only (to not count retries as separate failures).
       // Genuine timeouts are recorded via markTimeout (a failure + separate timeout

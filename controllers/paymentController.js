@@ -283,39 +283,23 @@ exports.handlePesapalIPN = async (req, res) => {
 
     const subscription = subs[0];
 
-    // 6. Verify amount if available from Pesapal
-    if (txnStatus.amount !== undefined && txnStatus.amount !== null) {
-      const txnAmount = Number(txnStatus.amount);
-      const subAmount = Number(subscription.amount);
-      if (subAmount > 0 && Math.abs(txnAmount - subAmount) > 1) {
-        // Allow 1-unit tolerance for currency rounding
-        console.warn(
-          `[IPN] Amount mismatch: expected=${subAmount}, got=${txnAmount} ` +
-          `for ref=${OrderMerchantReference}`
-        );
-        return ack();
-      }
-    }
+    // 6. Financial validation. For a COMPLETED payment the amount, currency and
+    //    merchant reference must ALL be present, finite and consistent. An
+    //    incomplete or non-finite financial response is NEVER granted premium.
+    const txnAmount = Number(txnStatus.amount);
+    const amountValid =
+      txnStatus.amount !== undefined && txnStatus.amount !== null &&
+      Number.isFinite(txnAmount) && txnAmount > 0 &&
+      (Number(subscription.amount) <= 0 || Math.abs(txnAmount - Number(subscription.amount)) <= 1);
+    const currencyValid =
+      !!txnStatus.currency && !!subscription.currency &&
+      String(txnStatus.currency).toUpperCase() === String(subscription.currency).toUpperCase();
+    const merchantRefValid = txnStatus.merchant_reference === OrderMerchantReference;
 
-    // 7. Verify currency if available from Pesapal
-    if (txnStatus.currency && subscription.currency) {
-      const txnCurrency = String(txnStatus.currency).toUpperCase();
-      const subCurrency = String(subscription.currency).toUpperCase();
-      if (txnCurrency !== subCurrency) {
-        console.warn(
-          `[IPN] Currency mismatch: expected=${subCurrency}, got=${txnCurrency} ` +
-          `for ref=${OrderMerchantReference}`
-        );
-        return ack();
-      }
-    }
-
-    // 8. Check if payment is completed
+    // 7. Non-completed payment — mark FAILED if still pending (never downgrade a
+    //    completed payment), then ack. No premium is granted here.
     if (!pesapal.isPaymentCompleted(txnStatus.status)) {
       console.log(`[IPN] Payment not completed (status: ${txnStatus.status}).`);
-
-      // Only update to FAILED if the subscription is still PENDING.
-      // Never downgrade an already completed payment.
       if (subscription.status === 'PENDING' || subscription.status === 'pending') {
         await db.query(
           `UPDATE subscriptions
@@ -333,8 +317,22 @@ exports.handlePesapalIPN = async (req, res) => {
       return ack();
     }
 
-    // 9. Payment is COMPLETED — resolve plan + compute expiry.
-    //    Never downgrade an already completed payment.
+    // 8. Payment is COMPLETED — require amount/currency/merchant_reference to be
+    //    present, finite and consistent before granting premium.
+    if (!amountValid) {
+      console.warn(`[IPN] Completed payment missing/invalid amount for ref=${OrderMerchantReference} (got: ${txnStatus.amount})`);
+      return ack();
+    }
+    if (!currencyValid) {
+      console.warn(`[IPN] Completed payment currency mismatch for ref=${OrderMerchantReference} (expected ${subscription.currency}, got ${txnStatus.currency})`);
+      return ack();
+    }
+    if (!merchantRefValid) {
+      console.warn(`[IPN] Completed payment merchant_reference mismatch for ref=${OrderMerchantReference} (got ${txnStatus.merchant_reference})`);
+      return ack();
+    }
+
+    // 9. Never downgrade an already completed payment.
     if (subscription.status === 'COMPLETED') {
       console.log(`[IPN] Duplicate IPN — payment already completed for ref=${OrderMerchantReference}`);
       return ack();

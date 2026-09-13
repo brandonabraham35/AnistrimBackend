@@ -25,25 +25,25 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 // ── FIX 1: Migration ordering ─────────────────────────────────────
-test('FIX 1: runner discovers only versioned migrations, ordered numerically', () => {
+test('FIX 1: runner discovers versioned migrations (incl. migrations_v5.sql), ordered numerically', () => {
   const migrateSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate.js'), 'utf8');
-  // Actual runner contract: the runner applies ONLY sql/migrations_v<N>_*.sql,
-  // sorted numerically by the v-number. schema.sql (manual Workbench bootstrap)
-  // and updates.sql (legacy patch file) are intentionally NOT part of the
-  // recorded, idempotent runner.
-  assert.match(migrateSrc, /\^migrations_v\\d\+_\.\*\\\.sql\$/, 'discovery must match only migrations_v<N>_*.sql files');
-  assert.doesNotMatch(migrateSrc, /schema\.sql/, 'schema.sql must not be executed or referenced by the runner');
-  assert.doesNotMatch(migrateSrc, /updates\.sql/, 'updates.sql must not be executed or referenced by the runner');
+  // The runner discovers every sql/migrations_v<N>.sql / migrations_v<N>_*.sql
+  // file (numeric suffix optional), sorted ascending by the v-number. The
+  // foundational schema (schema.sql) is applied by db:bootstrap, not here.
+  assert.match(migrateSrc, /\^migrations_v\\d\+\(\?:_\[\^\/\]\+\)\?\\\.sql\$/, 'discovery must allow an optional suffix after the version');
   assert.match(migrateSrc, /parseInt\(a\.match\(/, 'sort key must parse the v-number');
   assert.match(migrateSrc, /return va - vb;/, 'migrations must be ordered ascending by v-number');
+  const { discoverMigrations } = require(path.join(ROOT, 'scripts', 'migrate.js'));
+  const files = discoverMigrations();
+  assert.ok(files.includes('migrations_v5.sql'), 'must include migrations_v5.sql (previously dropped)');
 });
 
 test('FIX 1: migration runner aborts with exit code 1 on failure', () => {
   const migrateSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate.js'), 'utf8');
-  // Actual contract: applyMigration re-throws non-idempotent statement
-  // failures; the CLI entry logs "Migration failed:" and exits 1
-  // (runMigrations → catch → process.exit(1)).
-  assert.match(migrateSrc, /throw e;/, 'non-idempotent statement failures must propagate');
+  // Actual contract: applyMigration throws a descriptive error when a
+  // non-idempotent statement fails; the CLI entry logs "Migration failed:" and
+  // exits 1 (runMigrations -> catch -> process.exit(1)).
+  assert.match(migrateSrc, /FAILED at statement/, 'a failed statement must throw a descriptive error');
   assert.match(migrateSrc, /Migration failed:/, 'must log the migration failure');
   assert.match(migrateSrc, /process\.exit\(1\)/, 'must exit with code 1 on failure');
 });
@@ -184,8 +184,9 @@ test('FIX 11: deleteAccount requires password', () => {
   const authSrc = fs.readFileSync(path.join(ROOT, 'controllers', 'authController.js'), 'utf8');
   assert.match(authSrc, /const \{ password \} = req\.body/, 'must read password from body');
   // The password-pepper hardening wraps the password in an HMAC before the
-  // bcrypt comparison — the re-auth requirement is unchanged (and stronger).
-  assert.match(authSrc, /bcrypt\.compare\(pepperPassword\(password\), user\.password_hash\)/, 'must verify password (peppered)');
+  // bcrypt comparison — routed through the shared utils/password.js policy. The
+  // re-auth requirement is unchanged (and stronger).
+  assert.match(authSrc, /verifyPassword\(password, user\.password_hash\)/, 'must verify password (shared pepper-aware verifyPassword)');
 });
 
 test('FIX 11: profile.js sends password for delete', () => {

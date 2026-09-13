@@ -127,7 +127,7 @@ Both prefixes route to the same controllers. New clients should use `/api/v1/*`.
 | GET    | `/api/anime/genres`                  | Public   | Get all genres                        |
 | GET    | `/api/anime/search/advanced`         | Public   | Advanced search                       |
 | GET    | `/api/anime/recommendations/:id`     | Public   | Get recommendations                   |
-| GET    | `/api/anime/resolve/stream`          | Public   | Resolve stream URL                    |
+| GET    | ~~`/api/anime/resolve/stream`~~      | ~~Public~~ | **REMOVED** (was an unauthenticated video-source resolution proxy; the player uses `/api/stream/resolve`) |
 | GET    | `/api/anime/kitsu/:kitsuId/episodes` | Public   | Get episodes by Kitsu ID              |
 | GET    | `/api/anime/:animeId/episodes`       | Optional | Get episodes (masked for non-premium) |
 | GET    | `/api/anime/:id/stream/:episode`     | Bearer   | Get stream (protected)                |

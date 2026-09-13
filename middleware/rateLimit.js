@@ -67,6 +67,17 @@ const signupLimiter = rateLimit({
   handler,
 });
 
+// Layered per-IP signup cap: 20 / hour per IP REGARDLESS of email. This is the
+// defense against email-cycling: even if an attacker rotates email addresses, a
+// single IP cannot create more than this many accounts in an hour.
+const signupIpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler,
+});
+
 // Refresh: 30 / 15 min per IP
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -250,6 +261,7 @@ module.exports = {
   otpLimiter,
   resendOtpLimiter,
   signupLimiter,
+  signupIpLimiter,
   refreshLimiter,
   sensitiveLimiter,
   googleLimiter,
